@@ -1166,67 +1166,70 @@ describe('collection index loading', () => {
 		}
 	);
 
-	it('excludes bundled fungible tokens from canonical and legacy discovery results', async () => {
-		const l1Id = 'A'.repeat(43);
-		const bundledId = 'B'.repeat(43);
-		const legacyBundledId = 'C'.repeat(43);
-		const bundleId = 'Z'.repeat(43);
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
-				if (!body.query?.includes('FungibleTokens')) return new Response('unavailable', { status: 503 });
-				expect(body.query.match(/bundledIn \{ id \}/g)).toHaveLength(3);
-				return Response.json({
-					data: {
-						transactions: {
-							count: 2,
-							pageInfo: { hasNextPage: false },
-							edges: [
-								{
-									cursor: 'l1-token',
-									node: {
-										id: l1Id,
-										bundledIn: null,
-										tags: [{ name: 'Name', value: 'L1 Token' }],
+	it.each([null, { id: '' }])(
+		'keeps unbundled tokens (%j) and excludes bundled discovery results',
+		async (unbundled) => {
+			const l1Id = 'A'.repeat(43);
+			const bundledId = 'B'.repeat(43);
+			const legacyBundledId = 'C'.repeat(43);
+			const bundleId = 'Z'.repeat(43);
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+					const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+					if (!body.query?.includes('FungibleTokens')) return new Response('unavailable', { status: 503 });
+					expect(body.query.match(/bundledIn \{ id \}/g)).toHaveLength(3);
+					return Response.json({
+						data: {
+							transactions: {
+								count: 2,
+								pageInfo: { hasNextPage: false },
+								edges: [
+									{
+										cursor: 'l1-token',
+										node: {
+											id: l1Id,
+											bundledIn: unbundled,
+											tags: [{ name: 'Name', value: 'L1 Token' }],
+										},
 									},
-								},
-								{
-									cursor: 'bundled-token',
-									node: {
-										id: bundledId,
-										bundledIn: { id: bundleId },
-										tags: [{ name: 'Name', value: 'Bundled Token' }],
+									{
+										cursor: 'bundled-token',
+										node: {
+											id: bundledId,
+											bundledIn: { id: bundleId },
+											tags: [{ name: 'Name', value: 'Bundled Token' }],
+										},
 									},
-								},
-							],
+								],
+							},
+							legacyHintStyle: {
+								count: 1,
+								pageInfo: { hasNextPage: false },
+								edges: [
+									{
+										cursor: 'legacy-bundled-token',
+										node: {
+											id: legacyBundledId,
+											bundledIn: { id: bundleId },
+											tags: [{ name: 'hint-style', value: 'fungible' }],
+										},
+									},
+								],
+							},
+							legacyAssetType: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
 						},
-						legacyHintStyle: {
-							count: 1,
-							pageInfo: { hasNextPage: false },
-							edges: [
-								{
-									cursor: 'legacy-bundled-token',
-									node: {
-										id: legacyBundledId,
-										bundledIn: { id: bundleId },
-										tags: [{ name: 'hint-style', value: 'fungible' }],
-									},
-								},
-							],
-						},
-						legacyAssetType: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
-					},
-				});
-			})
-		);
+					});
+				})
+			);
 
-		const result = await loadCollections();
-		const tokens = result.collections.find((collection) => collection.kind === 'tokens');
+			const result = await loadCollections();
+			const tokens = result.collections.find((collection) => collection.kind === 'tokens');
 
-		expect(tokens?.assets.map((asset) => asset.id)).toEqual([l1Id]);
-		expect(tokens?.total).toBe(1);
-	});
+			expect(tokens?.assets.map((asset) => asset.id)).toEqual([l1Id]);
+			expect(tokens?.total).toBe(1);
+		}
+	);
 
 	it('includes fungible tokens indexed under immutable legacy marker names', async () => {
 		const legacyId = 'L'.repeat(43);
@@ -1248,7 +1251,7 @@ describe('collection index loading', () => {
 									cursor: 'legacy-token',
 									node: {
 										id: legacyId,
-										bundledIn: null,
+										bundledIn: { id: '' },
 										tags: [
 											{ name: 'asset-type', value: 'fungible' },
 											{ name: 'name', value: 'Legacy Token' },
@@ -1260,7 +1263,7 @@ describe('collection index loading', () => {
 									cursor: 'hidden-test-token',
 									node: {
 										id: hiddenId,
-										bundledIn: null,
+										bundledIn: { id: '' },
 										tags: [
 											{ name: 'asset-type', value: 'fungible' },
 											{ name: 'name', value: '[TEST] Weave Credit' },

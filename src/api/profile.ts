@@ -1,5 +1,10 @@
 import { createArweaveClient } from 'helpers/arweave';
-import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveDataUrl,
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+} from 'helpers/config';
 
 import { signedTransactionSignerAddress } from './arweave-transaction-signature';
 import { type AssetUploadData, type AssetUploadOptions } from './asset-uploader';
@@ -316,7 +321,7 @@ function normalizeAvatar(value: string): string {
 async function fetchAccountProfile(address: string, options: ProfileReadOptions): Promise<AccountProfile | null> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const gateway = options.gateway ?? arweaveGatewayFromLocation();
-	const response = await fetcher(`${gateway}/graphql`, {
+	const response = await fetcher(arweaveGraphqlEndpoint(gateway), {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({

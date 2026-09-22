@@ -48,10 +48,8 @@ import {
 	type AssetCandidate,
 	bazarAtomicAssetFromState,
 	type CollectionActivityEvent,
-	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
-	discoverAllCollectionActivityBatched,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
 	discoverCollectionActivityPage,
@@ -118,7 +116,6 @@ import {
 	replaceHiddenCollectionAssetIndex,
 	withVisibleCollectionAssets,
 } from 'api/collections';
-import { operationWithDeadline } from 'api/fetch-with-deadline';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -154,7 +151,6 @@ import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel, type ErrorPanelAction } from 'components/ErrorPanel';
-import { GlobalActivityCharts } from 'components/GlobalActivityCharts';
 import { InteractiveHtmlArtwork } from 'components/InteractiveHtmlArtwork';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
@@ -214,6 +210,7 @@ import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
 
+import { createGlobalActivityPager, type GlobalActivityFilter } from './global-activity';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
 	marketplaceCodedError,
@@ -224,6 +221,7 @@ import {
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
 	type MarketplaceRequestSource,
+	purchaseQuoteFailure,
 } from './marketplace-error';
 import {
 	atomicOperationActivityId,
@@ -294,6 +292,7 @@ import {
 	preloadArweaveTransactionSync,
 	preloadAtomicTransactionRuntime,
 } from './runtime';
+import { mergeSearchAssets, type SearchAsset, searchAssetMatchesScope } from './search-assets';
 import {
 	type HomeListingShell,
 	loadAssetShellSnapshot,
@@ -345,6 +344,8 @@ function MarketActivityList(props: React.ComponentProps<typeof DeferredMarketAct
 
 type MarketContextValue = {
 	collections: Collection[];
+	searchAssets: SearchAsset[];
+	rememberSearchAssets(assets: SearchAsset[]): void;
 	verifiedCollectionIds: ReadonlySet<string>;
 	visibilityReady: boolean;
 	loading: boolean;
@@ -405,6 +406,8 @@ export function verifiedCollectionIdsFrom(collections: Collection[]) {
 
 export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
+	searchAssets: [],
+	rememberSearchAssets: () => undefined,
 	verifiedCollectionIds: new Set(),
 	visibilityReady: false,
 	loading: true,
@@ -424,6 +427,8 @@ export function App() {
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
+		searchAssets: [],
+		rememberSearchAssets: () => undefined,
 		verifiedCollectionIds: new Set(),
 		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
@@ -587,10 +592,23 @@ export function App() {
 			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
 	}, []);
+	const rememberSearchAssets = React.useCallback((assets: SearchAsset[]) => {
+		if (!assets.length) return;
+		setMarket((current) => ({ ...current, searchAssets: mergeSearchAssets(current.searchAssets, assets) }));
+	}, []);
 	const retry = React.useCallback(() => setMarketRetry((current) => current + 1), []);
 	const value = React.useMemo(
-		() => ({ ...market, pageRefreshing, loadMore, addCreatedAsset, addCollection, setPageRefreshing, retry }),
-		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, retry]
+		() => ({
+			...market,
+			pageRefreshing,
+			loadMore,
+			addCreatedAsset,
+			addCollection,
+			rememberSearchAssets,
+			setPageRefreshing,
+			retry,
+		}),
+		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, rememberSearchAssets, retry]
 	);
 
 	return (
@@ -1849,9 +1867,19 @@ function Header() {
 		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery
 			? indexedAtomicSearch.results
 			: [];
+	const encounteredAssetResults = React.useMemo(
+		() =>
+			market.searchAssets.filter(
+				(result) =>
+					searchAssetMatchesScope(result, scope) &&
+					(!deferredNormalizedQuery ||
+						marketplaceAssetMatchesSearch(result.asset, result.collection, deferredNormalizedQuery))
+			),
+		[market.searchAssets, scope, deferredNormalizedQuery]
+	);
 	const assetResults = React.useMemo(
 		() =>
-			[...localAssetResults, ...atomicIndexResults]
+			[...localAssetResults, ...encounteredAssetResults, ...atomicIndexResults]
 				.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 				.filter(
 					({ asset }, index, results) =>
@@ -1863,7 +1891,7 @@ function Header() {
 						searchResultScore(left, deferredNormalizedQuery)
 				)
 				.slice(0, 8),
-		[atomicIndexResults, deferredNormalizedQuery, localAssetResults]
+		[atomicIndexResults, deferredNormalizedQuery, encounteredAssetResults, localAssetResults]
 	);
 	const tokenResults = assetResults.filter(({ collection }) => collection.kind === 'tokens');
 	const collectibleResults = assetResults.filter(({ collection }) => collection.kind !== 'tokens');
@@ -2053,6 +2081,7 @@ function Header() {
 										to="/create"
 									>
 										<Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
+										<span className="create-link-label">Create</span>
 									</Link>
 								)}
 							</Tooltip>
@@ -2375,7 +2404,7 @@ function Header() {
 												? 'More token records remain available from the token collection.'
 												: atomicIndexSearchFailed
 												? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-												: 'Try another token, Unique, collection, or Arweave name.'}
+												: 'Try the full asset name or process ID. Newly created assets may take time to appear in search.'}
 										</span>
 									</div>
 								) : null}
@@ -3260,6 +3289,9 @@ function Home() {
 				}),
 		[homeListingShells, market.collections]
 	);
+	React.useEffect(() => {
+		market.rememberSearchAssets(displayHomeListings);
+	}, [displayHomeListings, market.rememberSearchAssets]);
 	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
 	const [portableHomeListingsComplete, setPortableHomeListingsComplete] = React.useState(false);
 	const [portableHomeListingsFailure, setPortableHomeListingsFailure] = React.useState<
@@ -3289,7 +3321,7 @@ function Home() {
 			normalizedQuery
 				? homeSearchAssets(
 						market.collections,
-						displayHomeListings,
+						[...displayHomeListings, ...market.searchAssets],
 						normalizedQuery,
 						loadedAssetLimit,
 						homeSearchMatches ?? undefined
@@ -3300,6 +3332,7 @@ function Home() {
 		[
 			assetView,
 			loadedAssetLimit,
+			market.searchAssets,
 			homeSearchMatches,
 			market.collections,
 			normalizedQuery,
@@ -4270,7 +4303,7 @@ function Home() {
 												: 'Browse fungible tokens and Uniques on the permaweb.'
 											: homeTab === 'collections'
 											? 'Browse NFT and name collections.'
-											: 'Latest indexed purchases, listings, and transfers across every marketplace collection.'}
+											: 'Recent indexed listings, reservations, and transfers. Load older activity to explore more.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
@@ -4604,35 +4637,13 @@ export function globalActivityRecipientIds(collections: Collection[]) {
 	return [...ids];
 }
 
-export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
+export type { GlobalActivityFilter } from './global-activity';
 
 export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
 
 export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
 	if (filter === 'all') return events;
-	return events.filter(
-		(event) => event.action === filter && (filter !== 'register-interest' || Boolean(event.purchaseProof))
-	);
-}
-
-export function globalActivityWindowDescription(
-	eventCount: number,
-	assetCount = 0,
-	loading = false,
-	hasMoreAssets = false
-) {
-	const count = Math.max(0, Math.floor(eventCount));
-	const assets = Math.max(0, Math.floor(assetCount));
-	if (loading) {
-		return `Reading complete indexed history for ${assets.toLocaleString()} marketplace ${
-			assets === 1 ? 'asset' : 'assets'
-		}. ${count.toLocaleString()} ${count === 1 ? 'event' : 'events'} found so far.`;
-	}
-	return `All ${count.toLocaleString()} indexed ${count === 1 ? 'event' : 'events'} found for ${
-		hasMoreAssets ? 'the currently loaded ' : ''
-	}${assets.toLocaleString()} marketplace ${assets === 1 ? 'asset is' : 'assets are'} loaded.${
-		hasMoreAssets ? ' More assets remain in paged collections.' : ''
-	}`;
+	return events.filter((event) => event.action === filter);
 }
 
 export function globalActivityRevealDescription(
@@ -4644,327 +4655,131 @@ export function globalActivityRevealDescription(
 ) {
 	const shown = Math.max(0, Math.floor(shownCount));
 	const matching = Math.max(0, Math.floor(matchingCount));
-	const qualifier = filtered ? ' matching' : '';
-	if (shown < matching) {
-		return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()}${qualifier} indexed events.`;
-	}
-	const eventLabel = matching === 1 ? 'event' : 'events';
-	const verb = matching === 1 ? 'is' : 'are';
-	return `All ${matching.toLocaleString()}${qualifier} indexed ${eventLabel} ${verb} shown.`;
+	return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()} loaded${
+		filtered ? ' matching' : ''
+	} events.`;
 }
 
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
-	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
-	const [loading, setLoading] = React.useState(true);
-	const [verifyingPurchases, setVerifyingPurchases] = React.useState(false);
-	const [purchaseVerificationFailures, setPurchaseVerificationFailures] = React.useState(0);
-	const [purchaseVerificationIncomplete, setPurchaseVerificationIncomplete] = React.useState(false);
-	const [error, setError] = React.useState<string | null>(null);
-	const [retry, setRetry] = React.useState(0);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
 	const [activityLimit, setActivityLimit] = React.useState(20);
-	const [activityRevealAnnouncement, setActivityRevealAnnouncement] = React.useState('');
-	const eventsRef = React.useRef(events);
-	const scopeRef = React.useRef('');
+	const [request, setRequest] = React.useState({ kind: 'initial' as 'initial' | 'more', id: 0 });
+	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
+	const [hasNextPage, setHasNextPage] = React.useState(true);
+	const [loading, setLoading] = React.useState(true);
+	const [error, setError] = React.useState<string | null>(null);
+	const [announcement, setAnnouncement] = React.useState('');
 	const activityListId = React.useId();
-	const activityWindowDescriptionId = React.useId();
-	const activityRevealRef = React.useRef<HTMLParagraphElement>(null);
-	const eventCountRef = React.useRef(events.length);
-	eventsRef.current = events;
-	eventCountRef.current = events.length;
-	const activityScope = collections
-		.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
-		.sort()
-		.join('|');
 	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
-	const hasMoreActivityAssets = collections.some((collection) => collection.hasMore);
+	const activityScope = React.useMemo(() => JSON.stringify([...activityRecipients].sort()), [activityRecipients]);
+	const graphql = arweaveGraphqlEndpoint();
+	const pager = React.useMemo(() => {
+		const recipients = new Set<string>(JSON.parse(activityScope));
+		return createGlobalActivityPager({ graphql, acceptProcessId: (id) => recipients.has(id) });
+	}, [activityScope, graphql]);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
-		setActivityRevealAnnouncement('');
-	}, [activityFilter, activityScope]);
+		setAnnouncement('');
+	}, [activityFilter, pager]);
 
 	React.useEffect(() => {
-		if (!activityScope || scopeRef.current === activityScope) return;
-		try {
-			const cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
-				Boolean(globalActivityCollection(collections, event.processId))
-			);
-			if (!cachedEvents.length) return;
-			scopeRef.current = activityScope;
-			eventsRef.current = cachedEvents;
-			setEvents(cachedEvents);
-		} catch {
-			// Browser storage is optional; live Arweave discovery continues below.
-		}
-	}, [activityScope, collections]);
-
-	React.useEffect(() => {
-		if (marketLoading) return;
-		if (!collections.length) {
-			setEvents([]);
-			setLoading(false);
-			setVerifyingPurchases(false);
-			setPurchaseVerificationFailures(0);
-			setPurchaseVerificationIncomplete(false);
-			return;
-		}
 		const controller = new AbortController();
-		const sameScope = scopeRef.current === activityScope;
-		let cachedEvents: CollectionActivityEvent[] = [];
-		if (!sameScope) {
-			try {
-				cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
-					Boolean(globalActivityCollection(collections, event.processId))
-				);
-			} catch {
-				// Browser storage is optional; live Arweave discovery continues below.
-			}
-		}
-		const initialEvents = sameScope && eventsRef.current.length ? eventsRef.current : cachedEvents;
-		const preserveEvents = initialEvents.length > 0;
-		const found = new Map(initialEvents.map((event) => [event.id, event]));
-		scopeRef.current = activityScope;
-		if (!preserveEvents) {
-			eventsRef.current = [];
-			setEvents([]);
-		} else if (!sameScope) {
-			eventsRef.current = initialEvents;
-			setEvents(initialEvents);
-		}
-		setLoading(true);
-		setVerifyingPurchases(false);
-		setPurchaseVerificationFailures(0);
-		setPurchaseVerificationIncomplete(false);
+		const cached = pager.get(activityFilter);
+		setEvents(cached.events);
+		setHasNextPage(cached.hasNextPage);
 		setError(null);
-		let publishFrame: number | undefined;
-		const commitFound = () => {
-			publishFrame = undefined;
-			if (controller.signal.aborted) return;
-			eventsRef.current = newestCollectionActivity([...found.values()], Number.MAX_SAFE_INTEGER);
-			setEvents(eventsRef.current);
-		};
-		const publish = (nextEvents: CollectionActivityEvent[], immediately = false) => {
-			if (controller.signal.aborted) return;
-			for (const event of nextEvents) {
-				const previous = found.get(event.id);
-				found.set(
-					event.id,
-					previous?.purchaseProof && !event.purchaseProof
-						? { ...event, purchaseProof: previous.purchaseProof }
-						: event
-				);
-			}
-			if (immediately) {
-				if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
-				commitFound();
-			} else {
-				publishFrame ??= window.requestAnimationFrame(commitFound);
-			}
-		};
-		const proofFailureProcesses = new Set<string>();
-		const publishedProofPayments = new Set(
-			initialEvents.flatMap((event) =>
-				event.purchaseProof?.transactionId ? [event.purchaseProof.transactionId] : []
-			)
-		);
-		let proofVerificationIncomplete = false;
-		const verifyPurchases = async (candidates: CollectionActivityEvent[]) => {
-			if (!candidates.some((event) => event.action === 'register-interest' && !event.purchaseProof)) return;
-			setVerifyingPurchases(true);
-			try {
-				await operationWithDeadline(
-					(signal) =>
-						confirmPurchaseActivity(candidates, {
-							signal,
-							verificationTimeoutMs: 15_000,
-							onFailure: (processId) => {
-								proofFailureProcesses.add(processId);
-							},
-							onProof: (event) => {
-								const paymentId = event.purchaseProof?.transactionId;
-								if (!paymentId || publishedProofPayments.has(paymentId)) return;
-								publishedProofPayments.add(paymentId);
-								publish([event]);
-							},
-							readCurrent: (processId, readSignal) =>
-								readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
-						}),
-					controller.signal,
-					{
-						timeoutMs: 45_000,
-						timeoutError: 'purchase-proof-verification-budget-exhausted',
-					}
-				);
-			} catch (cause) {
-				if (controller.signal.aborted) return;
-				proofVerificationIncomplete = true;
-			}
-		};
-		const initialEventIds = new Set(initialEvents.map((event) => event.id));
-		// Cached activity can be verified immediately while the index refresh runs.
-		// This prevents a complete recipient scan from delaying recent purchase proofs.
-		const initialVerification = verifyPurchases(initialEvents);
-		void (async () => {
-			const historyFailures: unknown[] = [];
-			try {
-				const completeEvents = await discoverAllCollectionActivityBatched({
-					recipients: activityRecipients,
-					concurrency: 2,
-					signal: controller.signal,
-					onPage: (page) => publish(page),
-				});
-				publish(completeEvents, true);
-			} catch (cause) {
-				if (controller.signal.aborted) return;
-				historyFailures.push(cause);
-			}
-			if (controller.signal.aborted) return;
-			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
-			commitFound();
-			// The complete indexed-history scan ends here. Purchase-proof verification is
-			// slower optional enrichment and must not keep the history loader running.
+		setLoading(true);
+		if (marketLoading) return () => controller.abort();
+		if (!activityRecipients.length) {
 			setLoading(false);
+			setHasNextPage(false);
+			return () => controller.abort();
+		}
+		void (async () => {
+			let current = cached;
 			try {
-				await initialVerification;
-				await verifyPurchases(
-					initialEvents.length
-						? eventsRef.current.filter((event) => !initialEventIds.has(event.id))
-						: eventsRef.current
-				);
+				if (!cached.loaded || request.kind !== 'initial') {
+					current = await pager.load(activityFilter, {
+						signal: controller.signal,
+					});
+				}
+				if (controller.signal.aborted) return;
+				setEvents(current.events);
+				setHasNextPage(current.hasNextPage);
+				if (request.kind === 'more') setActivityLimit((limit) => limit + 20);
+				setAnnouncement(`${current.events.length.toLocaleString()} indexed events loaded.`);
 			} catch (cause) {
 				if (controller.signal.aborted) return;
-				proofVerificationIncomplete = true;
+				setError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+				setLoading(false);
+				return;
 			}
-			if (controller.signal.aborted) return;
-			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
-			publishFrame = undefined;
-			setVerifyingPurchases(false);
-			setPurchaseVerificationFailures(proofFailureProcesses.size);
-			setPurchaseVerificationIncomplete(proofVerificationIncomplete);
-			commitFound();
-			try {
-				saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
-			} catch {
-				// The live result remains available even when storage is unavailable.
-			}
-			if (historyFailures.length) {
-				const kind = historyFailures.some((cause) => marketplaceFailureKind(cause) === 'rate-limited')
-					? 'rate-limited'
-					: 'unavailable';
-				setError(marketplaceRequestFailureMessage('index', kind));
-			}
+			setLoading(false);
 		})();
-		return () => {
-			controller.abort();
-			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
-		};
-	}, [activityRecipients, activityScope, collections, marketLoading, retry]);
+		return () => controller.abort();
+	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
 
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
-	eventCountRef.current = filteredEvents.length;
 	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
 		{ value: 'all', label: 'All' },
 		{ value: 'make-offer', label: 'Listings' },
-		{ value: 'register-interest', label: 'Confirmed purchases' },
 		{ value: 'transfer', label: 'Transfers' },
 		{ value: 'cancel-order', label: 'Cancellations' },
 	];
-	const retryActivity = () => {
+	const requestPage = (kind: 'initial' | 'more') => {
 		if (loading) return;
-		setActivityRevealAnnouncement('');
-		setRetry((value) => value + 1);
+		setRequest((current) => ({ kind, id: current.id + 1 }));
 	};
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(collections, event.processId);
+	const canReveal = activityLimit < filteredEvents.length;
 	return (
 		<div
-			aria-busy={loading || verifyingPurchases}
+			aria-busy={loading}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<GlobalActivityCharts events={events} />
+			<div aria-label="Filter global activity" className="activity-filters" role="group">
+				{activityFilters.map((filter) => (
+					<Button
+						aria-controls={activityListId}
+						aria-pressed={activityFilter === filter.value}
+						className="activity-filter"
+						key={filter.value}
+						onClick={() => {
+							setActivityFilter(filter.value);
+							setRequest((current) => ({ kind: 'initial', id: current.id + 1 }));
+						}}
+						size="small"
+					>
+						{filter.label}
+					</Button>
+				))}
+			</div>
 			{loading ? (
 				<div className="global-activity-loading">
-					<Loading label="Loading complete global activity history…" />
-				</div>
-			) : verifyingPurchases ? (
-				<div className="global-activity-loading">
-					<Loading label="Verifying confirmed purchases…" />
+					<Loading label={events.length ? 'Loading activity…' : 'Loading recent activity…'} />
 				</div>
 			) : null}
-			<p className="activity-window-description" id={activityWindowDescriptionId}>
-				{globalActivityWindowDescription(
-					events.length,
-					activityRecipients.length,
-					loading,
-					hasMoreActivityAssets
-				)}
-			</p>
-			<div
-				aria-describedby={activityWindowDescriptionId}
-				aria-label="Filter global activity"
-				className="activity-filters"
-				role="group"
-			>
-				{activityFilters.map((filter) => {
-					const count = filterGlobalActivity(events, filter.value).length;
-					const verificationPending = filter.value === 'register-interest' && verifyingPurchases;
-					return (
-						<Button
-							aria-controls={activityListId}
-							aria-pressed={activityFilter === filter.value}
-							className="activity-filter"
-							key={filter.value}
-							onClick={() => setActivityFilter(filter.value)}
-							size="small"
-						>
-							<span>{filter.label}</span>
-							<span aria-hidden="true" className="activity-filter-count">
-								{verificationPending && count === 0 ? '…' : count.toLocaleString()}
-							</span>
-							{verificationPending ? (
-								<span className="sr-only">{count.toLocaleString()} verified so far</span>
-							) : null}
-						</Button>
-					);
-				})}
-			</div>
 			{error ? (
 				events.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
-							The complete history scan hasn’t finished. Showing {events.length.toLocaleString()} indexed{' '}
-							{events.length === 1 ? 'event' : 'events'} already loaded.
+							This page could not be loaded. Your loaded activity is still available. {error}
 						</span>
-						<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+						<Button onClick={() => requestPage(request.kind)} size="small">
+							Retry activity
 						</Button>
 					</div>
 				) : (
-					<ErrorPanel message={`Global activity could not be loaded. ${error}`} onRetry={retryActivity} />
+					<ErrorPanel
+						message={`Activity could not be loaded. ${error}`}
+						onRetry={() => requestPage(request.kind)}
+					/>
 				)
-			) : null}
-			{purchaseVerificationFailures || purchaseVerificationIncomplete ? (
-				<div className="collection-source-notice home-activity-partial-notice retry-notice">
-					<span role="status">
-						{purchaseVerificationIncomplete ? (
-							<>Purchase verification reached its time limit. </>
-						) : (
-							<>
-								{purchaseVerificationFailures.toLocaleString()} marketplace{' '}
-								{purchaseVerificationFailures === 1 ? 'asset could' : 'assets could'} not be fully
-								checked.{' '}
-							</>
-						)}
-						Successfully verified purchases are still shown.
-					</span>
-					<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry verification
-					</Button>
-				</div>
 			) : null}
 			<MarketActivityList
 				ariaLabel={`Global market activity, ${
@@ -4979,59 +4794,51 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				}}
 				resolveCollection={resolveCollection}
 			/>
-			<p
-				className={
-					activityRevealAnnouncement && filteredEvents.length > 20 && activityLimit >= filteredEvents.length
-						? 'collection-result-count reveal-complete'
-						: 'sr-only'
-				}
-				aria-live="polite"
-				ref={activityRevealRef}
-				role="status"
-				tabIndex={-1}
-			>
-				{activityRevealAnnouncement}
+			<p className="sr-only" role="status" aria-live="polite">
+				{announcement}
 			</p>
-			{activityLimit < filteredEvents.length ? (
+			{!loading && !error && !filteredEvents.length ? (
+				<div className="empty-state">
+					<h3>No matching activity loaded</h3>
+					<p>
+						{hasNextPage
+							? 'Check older activity for more results.'
+							: 'No matching events were found for the currently loaded marketplace assets.'}
+					</p>
+				</div>
+			) : null}
+			{canReveal || hasNextPage ? (
 				<Button
 					aria-controls={activityListId}
 					className="load-more"
+					disabled={loading}
 					size="custom"
 					type="button"
 					onClick={() => {
-						const nextLimit = Math.min(filteredEvents.length, activityLimit + 20);
-						setActivityLimit(nextLimit);
-						setActivityRevealAnnouncement(
-							globalActivityRevealDescription(
-								nextLimit,
-								filteredEvents.length,
-								events.length,
-								activityFilter !== 'all'
-							)
-						);
-						window.requestAnimationFrame(() => {
-							if (assetGroupRevealComplete(nextLimit, eventCountRef.current)) {
-								activityRevealRef.current?.focus();
-							}
-						});
+						if (canReveal) {
+							const nextLimit = Math.min(filteredEvents.length, activityLimit + 20);
+							setActivityLimit(nextLimit);
+							setAnnouncement(
+								globalActivityRevealDescription(
+									nextLimit,
+									filteredEvents.length,
+									events.length,
+									activityFilter !== 'all'
+								)
+							);
+						} else requestPage('more');
 					}}
 				>
-					Show {Math.min(20, filteredEvents.length - activityLimit).toLocaleString()} more activity events
+					{loading
+						? 'Loading activity…'
+						: canReveal
+						? `Show ${Math.min(20, filteredEvents.length - activityLimit)} more events`
+						: filteredEvents.length
+						? 'Load older activity'
+						: 'Check older activity'}
 				</Button>
-			) : null}
-			{!loading && !verifyingPurchases && !error && events.length > 0 && !filteredEvents.length ? (
-				<div className="empty-state">
-					<h3>No matching activity</h3>
-					<p>No submitted actions match this filter in the indexed history loaded above.</p>
-				</div>
-			) : null}
-			{!loading && !error && !events.length ? (
-				<div className="empty-state">
-					<h3>No indexed market activity yet</h3>
-					<p>
-						The current marketplace collections have no matching signed market actions in the Arweave index.
-					</p>
-				</div>
+			) : !loading && !error ? (
+				<p className="collection-result-count">End of indexed activity for this filter.</p>
 			) : null}
 		</div>
 	);
@@ -8831,6 +8638,9 @@ function AssetView() {
 		);
 		return () => controller.abort();
 	}, [assetId, collectionId, market.visibilityReady]);
+	React.useEffect(() => {
+		if (indexedAtomic) market.rememberSearchAssets([indexedAtomic]);
+	}, [indexedAtomic, market.rememberSearchAssets]);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -9152,26 +8962,11 @@ function AssetView() {
 			signal: controller.signal,
 		})
 			.then(
-				async (page) => {
+				(page) => {
 					if (controller.signal.aborted) return;
 					setAssetAskActivity(page.events);
 					setAskCursor(page.cursor);
 					setAskHasNextPage(page.hasNextPage);
-					try {
-						const confirmed = await confirmPurchaseActivity(page.events, {
-							signal: controller.signal,
-							verificationTimeoutMs: 15_000,
-							readCurrent: (processId, readSignal) =>
-								readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
-						});
-						if (!controller.signal.aborted && askAssetRef.current === assetId) {
-							setAssetAskActivity(confirmed);
-						}
-					} catch (cause) {
-						if (!controller.signal.aborted) {
-							setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
-						}
-					}
 				},
 				(cause) => {
 					if (!controller.signal.aborted) {
@@ -9229,14 +9024,6 @@ function AssetView() {
 			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
 			setAskCursor(page.cursor);
 			setAskHasNextPage(page.hasNextPage);
-			const confirmed = await confirmPurchaseActivity(page.events, {
-				signal: controller.signal,
-				verificationTimeoutMs: 15_000,
-				readCurrent: (processId, readSignal) =>
-					readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
-			});
-			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
-			setAssetAskActivity((current) => mergeAssetActivityPages(current, confirmed));
 		} catch (cause) {
 			if (!controller.signal.aborted) {
 				setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
@@ -9676,17 +9463,6 @@ function AssetView() {
 								</strong>
 							)}
 						</div>
-						<div className="asset-token-tags" aria-label="Asset protocol details">
-							<span>{state?.device || 'token@1.0'}</span>
-							<span>Arweave</span>
-							<span>Supply 1</span>
-						</div>
-						<StateVerification
-							provider={provider}
-							verifiedAt={verifiedAt}
-							refreshing={loading}
-							failed={Boolean(error)}
-						/>
 						{loading ? <Loading label="Computing current state…" /> : null}
 						{error ? (
 							<ErrorPanel message={error} onRetry={load} secondaryAction={stateRecoveryAction} />
@@ -9694,9 +9470,15 @@ function AssetView() {
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
 								<AssetBalanceStateNotice state={state} />
-								<div className="asset-market-stats">
-									<div>
-										<span>Current ask</span>
+								<div className="asset-purchase-summary">
+									<div className="asset-buy-summary">
+										<span>
+											{order?.status === 'reserved'
+												? 'Reserved at'
+												: order
+												? 'Price'
+												: 'Market status'}
+										</span>
 										<strong>
 											{order ? (
 												<ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText>
@@ -9704,35 +9486,9 @@ function AssetView() {
 												'Not listed'
 											)}
 										</strong>
+										{order ? <small>Network fees are shown before you approve.</small> : null}
 									</div>
-									<div>
-										<span>Supply</span>
-										<strong>1 / 1</strong>
-									</div>
-									<div>
-										<span>Order status</span>
-										<strong>{order ? order.status : 'None'}</strong>
-									</div>
-									<div>
-										<span>License terms</span>
-										<strong>{license.length || 'None'}</strong>
-									</div>
-								</div>
-								<div className="asset-buy-summary">
-									<span>
-										{order?.status === 'reserved'
-											? 'Reserved at'
-											: order
-											? 'Buy for'
-											: 'Market status'}
-									</span>
-									<strong>
-										{order ? (
-											<ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText>
-										) : (
-											'Not listed'
-										)}
-									</strong>
+									<span className="asset-edition">1 of 1</span>
 								</div>
 								{operationActivityEntry ? (
 									<AssetOperationStatus
@@ -9902,24 +9658,6 @@ function AssetView() {
 						>
 							<p className="asset-description">{description}</p>
 							<div className="asset-detail-facts">
-								<div>
-									<span>Owner</span>
-									{owner ? (
-										<WalletAddress address={owner} label="owner" />
-									) : (
-										<strong>
-											{state
-												? balanceStateAvailable
-													? 'Unassigned'
-													: 'Ownership unavailable'
-												: 'State unavailable'}
-										</strong>
-									)}
-								</div>
-								<div>
-									<span>Collection</span>
-									<strong>{collection.name}</strong>
-								</div>
 								<div>
 									<span>Asset type</span>
 									<strong>{asset.contentType ?? state?.device ?? 'process'}</strong>
@@ -10138,6 +9876,17 @@ function AssetView() {
 							role="tabpanel"
 							tabIndex={0}
 						>
+							<div className="asset-token-tags" aria-label="Asset protocol details">
+								<span>{state?.device || 'token@1.0'}</span>
+								<span>Arweave</span>
+								<span>Supply 1</span>
+							</div>
+							<StateVerification
+								provider={provider}
+								verifiedAt={verifiedAt}
+								refreshing={loading}
+								failed={Boolean(error)}
+							/>
 							<dl className="asset-blockchain-details">
 								<div>
 									<dt>Process ID</dt>
@@ -10325,6 +10074,7 @@ function OperationDialog({
 	const [purchaseQuote, setPurchaseQuote] = React.useState<PurchaseCostEstimate | null>(null);
 	const [purchaseWalletBalance, setPurchaseWalletBalance] = React.useState<bigint | null>(null);
 	const [quoteError, setQuoteError] = React.useState('');
+	const [quoteRetryable, setQuoteRetryable] = React.useState(true);
 	const [quoteRetry, setQuoteRetry] = React.useState(0);
 	const [hiding, setHiding] = React.useState(false);
 	const purchaseRef = React.useRef<SwapPurchase | null>(null);
@@ -10383,6 +10133,7 @@ function OperationDialog({
 		setPurchaseQuote(null);
 		setPurchaseWalletBalance(null);
 		setQuoteError('');
+		setQuoteRetryable(true);
 		void loadAtomicTransactionRuntime()
 			.then(async ({ AssetTransactionClient }) => {
 				const client = new AssetTransactionClient();
@@ -10399,7 +10150,11 @@ function OperationDialog({
 					}
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setQuoteError(errorMessage(cause));
+					if (!controller.signal.aborted) {
+						const failure = purchaseQuoteFailure(cause);
+						setQuoteError(failure.message);
+						setQuoteRetryable(failure.retryable);
+					}
 				}
 			);
 		return () => controller.abort();
@@ -11151,7 +10906,19 @@ function OperationDialog({
 									<strong>
 										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
 									</strong>
-									<span>Network fees</span>
+									{/^[1-9]\d*$/.test(operation.order.minimumFee) ? (
+										<>
+											<span>Reservation minimum (included)</span>
+											<strong>
+												<ArCurrencyText>{`${winstonToAr(
+													operation.order.minimumFee
+												)} AR`}</ArCurrencyText>
+											</strong>
+										</>
+									) : null}
+									<span>
+										{/^[1-9]\d*$/.test(operation.order.minimumFee) ? 'Total fees' : 'Network fees'}
+									</span>
 									<strong>
 										{quoteError ? (
 											'Unavailable'
@@ -11198,7 +10965,7 @@ function OperationDialog({
 								<p className="sr-only" id={quoteStatusId} aria-live="polite" role="status">
 									<ArCurrencyText>
 										{quoteError
-											? 'Purchase quote unavailable. Retry the cost check before buying.'
+											? quoteError
 											: purchaseQuote
 											? `Purchase quote ready. Maximum total ${winstonToAr(
 													purchaseQuote.total
@@ -11213,24 +10980,30 @@ function OperationDialog({
 									role={quoteError ? 'status' : undefined}
 								>
 									<span>
-										{quoteError
-											? 'Compute hasn’t completed yet. Please try again.'
-											: purchaseQuote
-											? 'Costs checked.'
-											: 'Checking wallet balance and network fees…'}
+										{quoteError ? (
+											<ArCurrencyText>{quoteError}</ArCurrencyText>
+										) : purchaseQuote ? (
+											'Costs checked.'
+										) : (
+											'Checking wallet balance and network fees…'
+										)}
 									</span>
-									<Button
-										aria-describedby={quoteStatusId}
-										aria-disabled={!purchaseQuote && !quoteError}
-										className="with-icon"
-										size="custom"
-										type="button"
-										onClick={() => {
-											if (purchaseQuote || quoteError) setQuoteRetry((current) => current + 1);
-										}}
-									>
-										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-									</Button>
+									{quoteRetryable && (purchaseQuote || quoteError) ? (
+										<Button
+											aria-describedby={quoteStatusId}
+											aria-disabled={!purchaseQuote && !quoteError}
+											className="with-icon"
+											size="custom"
+											type="button"
+											onClick={() => {
+												if (purchaseQuote || quoteError)
+													setQuoteRetry((current) => current + 1);
+											}}
+										>
+											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+											{purchaseQuote ? 'Refresh costs' : 'Retry cost check'}
+										</Button>
+									) : null}
 								</div>
 							) : null}
 							{operation.kind === 'sell' ? (
@@ -11299,7 +11072,7 @@ function OperationDialog({
 							) : null}
 							<p className="operation-disclosure">
 								{operation.kind === 'buy'
-									? 'Your wallet will ask for two approvals: one reservation and one seller payment. The payment stays local until the reservation is accepted by the network.'
+									? 'You’ll approve twice in your wallet: reserve the asset, then pay the seller. Payment is sent only after the network accepts your reservation.'
 									: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
 							</p>
 						</div>
@@ -11325,7 +11098,15 @@ function OperationDialog({
 							) : operation.kind === 'sell' ? (
 								<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
 							) : null}
-							{operation.kind === 'buy' && purchaseAffordable === false ? (
+							{operation.kind === 'buy' && quoteError ? (
+								quoteRetryable ? (
+									'Cost check unavailable'
+								) : (
+									'Listing needs an update'
+								)
+							) : operation.kind === 'buy' && !purchaseQuote ? (
+								'Checking purchase costs…'
+							) : operation.kind === 'buy' && purchaseAffordable === false ? (
 								<ArCurrencyText>Insufficient AR</ArCurrencyText>
 							) : operation.kind === 'buy' && purchaseQuote ? (
 								<ArCurrencyText>{`Buy · up to ${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>

@@ -847,9 +847,24 @@ async function responseMessage(response: Response): Promise<Record<string, unkno
 	const message: Record<string, unknown> = {};
 	response.headers.forEach((value, encodedName) => {
 		const name = decodeHttpsigHeaderName(encodedName);
-		if (!HTTPSIG_TRANSPORT_HEADERS.has(name)) message[name] = value;
+		if (!HTTPSIG_TRANSPORT_HEADERS.has(name)) {
+			message[name] = ['name', 'title', 'description', 'artist', 'album'].includes(name)
+				? decodeHttpsigDisplayText(value)
+				: value;
+		}
 	});
 	return message;
+}
+
+function decodeHttpsigDisplayText(value: string): string {
+	// Fetch exposes HTTP header octets as Latin-1, while AO metadata is UTF-8.
+	// Already decoded Unicode and legacy Latin-1 values must survive unchanged.
+	if (!/[\u0080-\u00ff]/.test(value) || /[^\u0000-\u00ff]/.test(value)) return value;
+	try {
+		return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(value, (char) => char.charCodeAt(0)));
+	} catch {
+		return value;
+	}
 }
 
 function decodeHttpsigHeaderName(name: string): string {

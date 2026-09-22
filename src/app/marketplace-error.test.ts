@@ -7,7 +7,32 @@ import {
 	marketplaceFailureKind,
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
+	purchaseQuoteFailure,
 } from './marketplace-error';
+
+describe('purchase cost-check recovery', () => {
+	it.each(['asset-purchase-registration-fee-too-high', 'asset-purchase-invalid-registration-fee'])(
+		'keeps %s out of the network retry loop',
+		(code) => {
+			const failure = purchaseQuoteFailure(new Error(code));
+			expect(failure.retryable).toBe(false);
+			expect(failure.message).toContain('seller');
+			expect(failure.message).toContain('reservation fee');
+			expect(failure.message).not.toContain('Compute');
+		}
+	);
+
+	it.each([
+		['wallet-balance-503', 'balance'],
+		['transaction-price-429', 'network fees'],
+		['Failed to fetch', 'connection'],
+	])('identifies the retryable cost-check failure %s', (code, detail) => {
+		const failure = purchaseQuoteFailure(new Error(code));
+		expect(failure.retryable).toBe(true);
+		expect(failure.message).toContain(detail);
+		expect(failure.message).not.toContain('Compute');
+	});
+});
 
 describe('marketplaceErrorMessage', () => {
 	it.each([

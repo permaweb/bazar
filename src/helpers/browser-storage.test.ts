@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	ASSET_SHELL_STORAGE_PREFIX,
+	GLOBAL_ACTIVITY_STATS_STORAGE_KEY,
 	HIDDEN_COLLECTION_ASSETS_STORAGE_KEY,
 	HOME_LISTING_SHELL_STORAGE_KEY,
 	MARKET_ACTIVITY_STORAGE_KEY,
@@ -45,6 +46,7 @@ describe('critical browser storage writes', () => {
 		const initial: Array<[string, string]> = [
 			[MARKET_SHELL_STORAGE_KEY, 'market-cache'.repeat(80)],
 			[MARKET_ACTIVITY_STORAGE_KEY, 'activity-cache'.repeat(20)],
+			[GLOBAL_ACTIVITY_STATS_STORAGE_KEY, 'stats-cache'],
 			[HOME_LISTING_SHELL_STORAGE_KEY, 'listing-cache'],
 			[HIDDEN_COLLECTION_ASSETS_STORAGE_KEY, 'hidden-index'],
 			[`${ASSET_SHELL_STORAGE_PREFIX}${'a'.repeat(43)}`, 'asset-cache'],
@@ -63,6 +65,7 @@ describe('critical browser storage writes', () => {
 		expect(values.get(newKey)).toBe(newValue);
 		expect([...values.keys()].some((key) => key.includes('shell') || key.includes('candidate-scan'))).toBe(false);
 		expect(values.has(MARKET_ACTIVITY_STORAGE_KEY)).toBe(false);
+		expect(values.has(GLOBAL_ACTIVITY_STATS_STORAGE_KEY)).toBe(false);
 		expect(values.has(HIDDEN_COLLECTION_ASSETS_STORAGE_KEY)).toBe(false);
 		expect(values.get(signedKey)).toBe('older-signed-transaction');
 		expect(values.get(purchaseKey)).toBe('purchase-recovery');

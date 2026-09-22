@@ -37,7 +37,6 @@ import {
 	globalActivityCollection,
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
-	globalActivityWindowDescription,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	homeAllAssets,
 	homeAssetPage,
@@ -1124,35 +1123,21 @@ describe('Home market summary retries', () => {
 	it('filters global activity by submitted market action', () => {
 		const events = [
 			{ id: 'listing', action: 'make-offer' },
-			{ id: 'purchase', action: 'register-interest', purchaseProof: { transactionId: 'proof', height: 1 } },
+			{ id: 'registration', action: 'register-interest' },
 			{ id: 'transfer', action: 'transfer' },
 			{ id: 'cancel', action: 'cancel-order' },
 		] as CollectionActivityEvent[];
 
 		expect(filterGlobalActivity(events, 'all')).toEqual(events);
 		expect(filterGlobalActivity(events, 'make-offer').map((event) => event.id)).toEqual(['listing']);
-		expect(filterGlobalActivity(events, 'register-interest').map((event) => event.id)).toEqual(['purchase']);
 		expect(filterGlobalActivity(events, 'transfer').map((event) => event.id)).toEqual(['transfer']);
 		expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
 	});
 
-	it('describes a complete progressive scan without claiming unloaded collection assets', () => {
-		expect(globalActivityWindowDescription(42, 12, true)).toBe(
-			'Reading complete indexed history for 12 marketplace assets. 42 events found so far.'
-		);
-		expect(globalActivityWindowDescription(1, 1)).toBe(
-			'All 1 indexed event found for 1 marketplace asset is loaded.'
-		);
-		expect(globalActivityWindowDescription(200, 50, false, true)).toBe(
-			'All 200 indexed events found for the currently loaded 50 marketplace assets are loaded. More assets remain in paged collections.'
-		);
-	});
-
-	it('describes progressive reveal within the complete loaded history', () => {
-		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 indexed events.');
-		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('All 100 indexed events are shown.');
-		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('All 90 matching indexed events are shown.');
-		expect(globalActivityRevealDescription(1, 1, 18, true)).toBe('All 1 matching indexed event is shown.');
+	it('keeps reveal counts explicitly scoped to loaded events', () => {
+		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 loaded events.');
+		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('Showing 100 of 100 loaded events.');
+		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('Showing 90 of 90 loaded matching events.');
 	});
 
 	it('checks exact collection membership without rescanning loaded assets', () => {
