@@ -20,8 +20,8 @@ import {
 	type MintedAsset,
 } from 'api/mint';
 
+import { appErrorMessage, toAppError } from 'helpers/app-error';
 import { scheduleIdleTask } from 'helpers/idle';
-import { marketplaceErrorMessage as errorMessage } from 'helpers/marketplace-error';
 
 import {
 	initialMarketCollections,
@@ -157,19 +157,18 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 					};
 				});
 			},
-			(error) => {
+			(cause) => {
 				if (!controller.signal.aborted) {
+					const message = appErrorMessage(toAppError(cause, 'collection-indexes-unavailable'));
 					setMarket((current) =>
 						current.collections.length
 							? {
 									...current,
 									loading: false,
 									error: null,
-									notice: `Collection indexes could not be refreshed: ${errorMessage(
-										error
-									)}. Previously loaded collections remain available.`,
+									notice: `Collection indexes could not be refreshed: ${message}. Previously loaded collections remain available.`,
 							  }
-							: { ...current, loading: false, error: errorMessage(error), notice: null }
+							: { ...current, loading: false, error: message, notice: null }
 					);
 				}
 			}

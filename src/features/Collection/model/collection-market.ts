@@ -2,12 +2,12 @@ import type { AssetSummary } from 'api/collections';
 import { type AssetCandidate, isLiveListing, type ResolvedAsset } from 'api/discovery';
 import type { CollectionMintPhase } from 'api/mint';
 
-import type { MarketplaceFailureKind } from 'helpers/marketplace-error';
+import type { RequestFailureKind } from 'helpers/app-error';
 
 export type CollectionCardPrice =
 	| { status: 'resolved'; label: string | null }
 	| { status: 'unindexed' }
-	| { status: 'unavailable'; kind: MarketplaceFailureKind };
+	| { status: 'unavailable'; kind: RequestFailureKind };
 
 export type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
 
@@ -59,7 +59,7 @@ export function collectionRecipientsWithoutListingCandidates(
 
 export type FailedListingCandidate = {
 	candidate: AssetCandidate;
-	kind: MarketplaceFailureKind;
+	kind: RequestFailureKind;
 };
 
 export type ListingResolutionOutcome = {

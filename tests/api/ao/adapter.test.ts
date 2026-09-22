@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from 'api/ao/adapter';
+import {
+	aoFetch,
+	aoPeers,
+	aoPrimaryPeer,
+	aoTransportFailure,
+	createBazarAoFetch,
+	readyAoFetch,
+	warmAoFetch,
+} from 'api/ao/adapter';
 
 import {
 	aoRoutingScopeFromLocation,
@@ -323,5 +331,25 @@ describe('Bazar AO.js routing', () => {
 
 		expect(response.status).toBe(404);
 		expect(await response.text()).toBe('not_found');
+	});
+});
+
+describe('ao.js failure mapping', () => {
+	it('maps routing failures reported only as ao.js text to unavailable compute', () => {
+		for (const text of [
+			'ao.js-response-quorum-not-met',
+			'ao.js-no-route-candidates',
+			'ao.js-unsupported-route:x',
+		]) {
+			const error = aoTransportFailure(new Error(text));
+			expect(error.code).toBe('unavailable');
+			expect(error.message).toMatch(/^compute-/);
+		}
+	});
+
+	it('maps unreachable peers and peer timeouts through the transport taxonomy', () => {
+		expect(aoTransportFailure(new TypeError('Failed to fetch')).code).toBe('offline');
+		expect(aoTransportFailure(new DOMException('Timed out', 'TimeoutError')).code).toBe('timeout');
+		expect(aoTransportFailure(new DOMException('Aborted', 'AbortError')).code).toBe('cancelled');
 	});
 });

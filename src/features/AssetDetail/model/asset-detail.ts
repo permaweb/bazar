@@ -3,9 +3,9 @@ import type { CollectionActivityEvent } from 'api/discovery';
 import { type AssetState, DISPLAY_STATE_TIMEOUT_ERROR, servingNodeOrigin } from 'api/marketplace';
 import { CREATED_COLLECTION_ID, type MintedAsset } from 'api/mint';
 
+import { appErrorMessage, requestFailureMessage, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { bazarAoTransportUrl, usesPermawebOsAo } from 'helpers/config';
-import { marketplaceErrorMessage as errorMessage, marketplaceRequestFailureMessage } from 'helpers/marketplace-error';
 
 import type { TokenPricePoint } from '../components/organisms/TokenPriceChart';
 
@@ -150,18 +150,14 @@ export function isFungiblePendingMint(asset: Pick<MintedAsset, 'contentType' | '
 	);
 }
 
-export function assetStateErrorMessage(error: unknown) {
-	const value = error instanceof Error ? error.message : String(error);
-	if (/^HTTP 429(?:\b|$)/i.test(value)) {
-		return marketplaceRequestFailureMessage('compute', 'rate-limited');
-	}
-	if (/response[-\s]+quorum[-\s]+not[-\s]+met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
-		return 'Live state could not be read through the configured AO peers. Retry shortly or review the AO Core settings in the header.';
-	}
-	if (value === DISPLAY_STATE_TIMEOUT_ERROR) {
+/** Asset-page copy for a failed live-state read, naming the selected AO peer when it could not be reached. */
+export function assetStateErrorMessage(cause: unknown) {
+	const error = toAppError(cause, 'compute-unavailable');
+	if (error.code === 'rate-limited') return requestFailureMessage('compute', 'rate-limited');
+	if (error.reason === DISPLAY_STATE_TIMEOUT_ERROR) {
 		return 'The configured AO peers did not return live state within 45 seconds. Retry or review the AO Core settings in the header.';
 	}
-	if (['Failed to fetch', 'fetch failed', 'compute-provider-failed', 'compute-provider-timeout'].includes(value)) {
+	if (error.code === 'offline' || error.code === 'timeout') {
 		let host = 'The selected AO peer';
 		try {
 			host = new URL(servingNodeOrigin(window.location)).host;
@@ -170,5 +166,8 @@ export function assetStateErrorMessage(error: unknown) {
 		}
 		return `${host} could not be reached. Retry live state or review the AO Core settings in the header.`;
 	}
-	return errorMessage(error);
+	if (error.code === 'unavailable') {
+		return 'Live state could not be read through the configured AO peers. Retry shortly or review the AO Core settings in the header.';
+	}
+	return appErrorMessage(error);
 }

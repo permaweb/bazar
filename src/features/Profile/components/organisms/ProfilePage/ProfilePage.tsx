@@ -7,6 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Pressable } from 'components/atoms/Pressable';
 import { ProfileAvatar, shortProfileAddress } from 'components/molecules/ProfileIdentity';
+import { type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 import type { ProfileSummary } from 'types/profile';
 
 import './ProfileRoute.css';
@@ -96,23 +97,20 @@ export type ProfileEditUpdate = {
 };
 
 export function profileImageError(file: File) {
-	if (!PROFILE_AVATAR_CONTENT_TYPES.includes(file.type)) return 'Choose a PNG, JPEG, WebP, or GIF image.';
-	if (!file.size || file.size > PROFILE_AVATAR_MAX_BYTES) return 'Choose an image smaller than 10 MB.';
+	if (!PROFILE_AVATAR_CONTENT_TYPES.includes(file.type)) return appErrorReasonMessage('invalid-profile-avatar-type');
+	if (!file.size || file.size > PROFILE_AVATAR_MAX_BYTES) return appErrorReasonMessage('invalid-profile-avatar-size');
 	return '';
 }
 
+/** Failures a profile update explains specifically; every other failure keeps the general profile copy. */
+const PROFILE_UPDATE_FAILURES = new Set<AppErrorReason>([
+	'invalid-profile-avatar',
+	'invalid-profile-avatar-type',
+	'invalid-profile-avatar-size',
+	'profile-wallet-account-changed',
+]);
+
 export function profileUpdateError(cause: unknown) {
-	if (cause instanceof Error && cause.message === 'invalid-profile-avatar') {
-		return 'The existing profile picture is not a valid image reference. Choose a new picture and try again.';
-	}
-	if (cause instanceof Error && cause.message === 'invalid-profile-avatar-type') {
-		return 'Choose a PNG, JPEG, WebP, or GIF image.';
-	}
-	if (cause instanceof Error && cause.message === 'invalid-profile-avatar-size') {
-		return 'Choose an image smaller than 10 MB.';
-	}
-	if (cause instanceof Error && cause.message === 'wallet-account-changed') {
-		return 'The connected wallet changed. Return to your current wallet profile and try again.';
-	}
-	return 'Your profile could not be updated. Please try again.';
+	const { reason } = toAppError(cause, 'profile-update-failed');
+	return appErrorReasonMessage(PROFILE_UPDATE_FAILURES.has(reason) ? reason : 'profile-update-failed');
 }

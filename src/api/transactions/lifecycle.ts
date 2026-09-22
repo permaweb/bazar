@@ -1,6 +1,9 @@
 import type { Consensus, ObserverView, PurchaseSnapshot, PurchaseState, TxWatcher, WeaveNetwork } from 'weave-wrangler';
 
+import { appErrorMessage } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
+
+import { purchaseStateFailure } from './failure';
 
 export type PurchaseLifecycleMilestone = 'signed' | 'submitted' | 'accepted' | 'mined' | 'applied' | 'complete';
 export const PURCHASE_SKIP_FROM_DEPTH = 3;
@@ -120,7 +123,10 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		return 'Signed reservation submitted. Waiting for Arweave acceptance; observation delay will not create a replacement.';
 	}
 	if (state.stage === 'signing') return 'Waiting for the reservation and seller payment signatures.';
-	if (state.stage === 'failed') return state.error?.message ?? 'Purchase observation needs attention.';
+	if (state.stage === 'failed') {
+		const failure = purchaseStateFailure(state);
+		return failure ? appErrorMessage(failure) : 'Purchase observation needs attention.';
+	}
 	return '';
 }
 

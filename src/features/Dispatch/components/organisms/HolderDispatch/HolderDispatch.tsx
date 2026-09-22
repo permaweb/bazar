@@ -7,7 +7,6 @@ import {
 	createDispatchPlan,
 	DEFAULT_DISPATCH_BATCH_SIZE,
 	discardDispatchPlan,
-	DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED,
 	type DispatchPlan,
 	estimateDispatchCost,
 	fetchTransferReward,
@@ -35,6 +34,7 @@ import { Loading } from 'components/atoms/Loading';
 import { TokenArtwork } from 'components/atoms/TokenArtwork';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { AssetBalanceStateNotice } from 'features/Operations';
+import { appError, appErrorMessage, toAppError } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { arweaveGatewayFromLocation } from 'helpers/config';
@@ -52,19 +52,14 @@ function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'tick
 	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || 'tokens'}`;
 }
 
+/** Dispatch copy for an application error: holder-dispatch context for shared reasons, the shared table otherwise. */
 export function dispatchErrorMessage(cause: unknown): string {
-	const message = cause instanceof Error ? cause.message : String(cause);
-	switch (message) {
-		case 'dispatch-insufficient-token-balance':
-			return 'Your token balance is smaller than the total quantity in the holder list.';
-		case 'dispatch-self-recipient':
-			return 'Remove your own address from the list. A transfer to yourself is a no-op that balance-based settlement cannot verify.';
+	const error = toAppError(cause, 'dispatch-failed');
+	switch (error.reason) {
 		case ASSET_BALANCE_STATE_UNAVAILABLE:
 			return 'The configured AO routes did not return a complete holder balance table. Bazar did not sign a transfer. Retry after complete state is available; any saved dispatch progress remains available.';
 		case DISPLAY_STATE_TIMEOUT_ERROR:
 			return 'The configured AO routes did not return complete holder state within 45 seconds. No new transfer was signed; saved dispatch progress remains available.';
-		case DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED:
-			return 'Bazar found a transaction ID for this dispatch row, but its saved signed transaction could not be restored. It may already have reached Arweave, so Bazar will not sign a replacement. Keep this dispatch plan for manual review, or restore the original browser data before resuming.';
 		case 'asset-state-timeout':
 			return 'Timed out waiting for settlement. Nothing was lost: posted transfers stay posted — resume to continue watching without re-sending.';
 		case 'wallet-sign-unavailable':
@@ -74,8 +69,7 @@ export function dispatchErrorMessage(cause: unknown): string {
 		case 'wallet-account-changed':
 			return 'The connected wallet changed mid-dispatch. Reconnect the wallet that started this dispatch and resume.';
 	}
-	if (message.startsWith('transaction-dispatch-')) return `Arweave rejected a transfer: ${message}`;
-	return message || 'Dispatch failed.';
+	return appErrorMessage(error);
 }
 
 const STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
@@ -230,12 +224,12 @@ export default function HolderDispatch() {
 		if (needsCostApproval && !costApproved) return;
 		setRunError(null);
 		try {
-			if (!state || !assetBalanceStateAvailable(state)) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+			if (!state || !assetBalanceStateAvailable(state)) throw appError(ASSET_BALANCE_STATE_UNAVAILABLE);
 			// Pre-flight every network reward. Native AR quantity stays zero.
 			// before creating a resumable dispatch plan.
 			if (estimate) {
 				const arBalance = await new AssetTransactionClient().walletBalance(wallet.address);
-				if (arBalance < estimate.totalWinston) throw new Error('asset-purchase-insufficient-funds');
+				if (arBalance < estimate.totalWinston) throw appError('asset-purchase-insufficient-funds');
 			}
 			const created = await createDispatchPlan(processId, wallet.address, parsed.rows);
 			setPlan(created);

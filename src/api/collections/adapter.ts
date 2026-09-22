@@ -1,7 +1,9 @@
 import { type AssetState, readAssetState } from 'api/marketplace/adapter';
 import { assetFromMintState } from 'api/mint/minted-assets';
 import { fetchJsonWithDeadline, fetchTextWithDeadline, operationWithDeadline } from 'api/network/deadline';
+import { httpStatusError } from 'api/network/errors';
 
+import { appError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
@@ -385,13 +387,14 @@ async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void>
 		);
 		const manifestId = tags['initial-value'] ?? tags['reference-value'];
 		if (typeof manifestId !== 'string' || !isArweaveId(manifestId)) {
-			throw new Error('hidden-collection-reference-invalid');
+			throw appError('invalid-response', { message: 'hidden-collection-reference-invalid' });
 		}
 		registerHiddenCollectionAssets([
 			imageCollection(collectionId, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
 		]);
 	});
-	if (!hiddenCollectionAssetIndexComplete()) throw new Error('hidden-collection-index-unavailable');
+	if (!hiddenCollectionAssetIndexComplete())
+		throw appError('unavailable', { message: 'hidden-collection-index-unavailable' });
 }
 
 export async function loadCollections(
@@ -474,7 +477,7 @@ export async function loadCollections(
 		...collections.filter((item): item is Collection => Boolean(item)),
 		...discoveredCollections,
 	]);
-	if (!successes.some(Boolean) && !discoveredCollections.length) throw new Error('collection-indexes-unavailable');
+	if (!successes.some(Boolean) && !discoveredCollections.length) throw appError('collection-indexes-unavailable');
 	return {
 		collections: loaded,
 		unavailable: [
@@ -542,11 +545,12 @@ export async function discoverBazarCollections(
 			{ timeoutError: 'collection-discovery-timeout' }
 		);
 		const { response, body: payload } = request;
-		if (!response.ok) throw new Error(`collection-discovery-${response.status}`);
-		if (!payload || payload.errors?.length) throw new Error('collection-discovery-query');
+		if (!response.ok) throw httpStatusError('collection-discovery', response.status);
+		if (!payload || payload.errors?.length)
+			throw appError('unavailable', { message: 'collection-discovery-query' });
 		const connection: BazarCollectionConnection | undefined = payload.data?.transactions;
 		if (!connection || !Array.isArray(connection.edges) || typeof connection.pageInfo?.hasNextPage !== 'boolean') {
-			throw new Error('collection-discovery-schema');
+			throw appError('invalid-response', { message: 'collection-discovery-schema' });
 		}
 		const candidates: BazarCollectionCandidate[] = connection.edges.flatMap((edge: unknown) => {
 			try {
@@ -579,12 +583,12 @@ export async function discoverBazarCollections(
 		}
 		const next: unknown = (connection.edges.at(-1) as { cursor?: unknown } | undefined)?.cursor;
 		if (typeof next !== 'string' || !next || visited.has(next)) {
-			throw new Error('collection-discovery-pagination-stalled');
+			throw appError('invalid-response', { message: 'collection-discovery-pagination-stalled' });
 		}
 		visited.add(next);
 		cursor = next;
 	}
-	throw new Error('collection-discovery-pagination-limit');
+	throw appError('invalid-response', { message: 'collection-discovery-pagination-limit' });
 }
 
 function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
@@ -596,7 +600,7 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		!Number.isSafeInteger(edge.node?.block?.height) ||
 		!Number.isSafeInteger(edge.node?.block?.timestamp)
 	) {
-		throw new Error('collection-discovery-schema');
+		throw appError('invalid-response', { message: 'collection-discovery-schema' });
 	}
 	const tags = Object.fromEntries(
 		edge.node.tags.map((tag: any) => [String(tag?.name ?? '').toLowerCase(), String(tag?.value ?? '')])
@@ -613,7 +617,7 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		!scheduled ||
 		!isArweaveId(manifestId)
 	) {
-		throw new Error('collection-discovery-schema');
+		throw appError('invalid-response', { message: 'collection-discovery-schema' });
 	}
 	return {
 		id: edge.node.id,
@@ -631,7 +635,7 @@ async function loadDiscoveredImageCollection(
 	let manifestId = candidate.manifestId;
 	if (candidate.scheduled) {
 		manifestId = (await liveCarrierManifestId(candidate.id, signal)) ?? '';
-		if (!manifestId) throw new Error('collection-reference-unavailable');
+		if (!manifestId) throw appError('unavailable', { message: 'collection-reference-unavailable' });
 	}
 	return imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal));
 }
@@ -838,7 +842,7 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 	const page = await loadFungibleTokenPage(collection.cursor, signal);
 	const cursorHistory = collection.cursorHistory ?? (collection.cursor ? [collection.cursor] : []);
 	if (page.cursor && (cursorHistory.includes(page.cursor) || cursorHistory.length >= MAX_INDEX_PAGES)) {
-		throw new Error('fungible-index-pagination-stalled');
+		throw appError('invalid-response', { message: 'fungible-index-pagination-stalled' });
 	}
 	const replacements = new Map(page.assets.map((asset) => [asset.id, asset]));
 	const seen = new Set(collection.assets.map((asset) => asset.id));
@@ -927,9 +931,9 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	);
 	const response = result.response;
 	const payload: any = result.body;
-	if (!response.ok) throw new Error(`fungible-index-${response.status}`);
-	if (!payload) throw new Error('fungible-index-empty');
-	if (payload.errors?.length) throw new Error('fungible-index-query');
+	if (!response.ok) throw httpStatusError('fungible-index', response.status);
+	if (!payload) throw appError('invalid-response', { message: 'fungible-index-empty' });
+	if (payload.errors?.length) throw appError('unavailable', { message: 'fungible-index-query' });
 	const connection = payload.data?.transactions as FungibleTokenConnection | undefined;
 	const count = collectionCount(connection?.count);
 	if (
@@ -948,7 +952,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 				edge.node.tags.some((tag: any) => !tag || typeof tag.name !== 'string' || typeof tag.value !== 'string')
 		)
 	)
-		throw new Error('fungible-index-schema');
+		throw appError('invalid-response', { message: 'fungible-index-schema' });
 	const contentGateway = permanentContentGatewayFromLocation();
 	const assets = new Map<string, AssetSummary>();
 	let hiddenIndexedAssets = 0;
@@ -968,7 +972,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	}
 	const cursor = connection.edges.at(-1)?.cursor;
 	if (connection.pageInfo.hasNextPage && (!cursor || cursor === after)) {
-		throw new Error('fungible-index-pagination-stalled');
+		throw appError('invalid-response', { message: 'fungible-index-pagination-stalled' });
 	}
 	const legacyAssets = new Map<string, AssetSummary>();
 	for (const [key, expectedTag] of [
@@ -994,8 +998,9 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 					)
 			)
 		)
-			throw new Error('fungible-index-schema');
-		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
+			throw appError('invalid-response', { message: 'fungible-index-schema' });
+		if (legacy.pageInfo.hasNextPage)
+			throw appError('invalid-response', { message: 'fungible-index-legacy-pagination-stalled' });
 		for (const { node } of legacy.edges) {
 			if (node.bundledIn || !isVisibleAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
@@ -1081,11 +1086,11 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 
 export async function loadMoreCarrierNames(collection: Collection, signal?: AbortSignal): Promise<Collection> {
 	if (collection.kind !== 'names' || !collection.hasMore) return collection;
-	if (!collection.namespace) throw new Error('carrier-namespace-missing');
+	if (!collection.namespace) throw appError('invalid-response', { message: 'carrier-namespace-missing' });
 	const page = await loadCarrierPage(collection.cursor, signal);
 	const cursorHistory = collection.cursorHistory ?? (collection.cursor ? [collection.cursor] : []);
 	if (page.cursor && (cursorHistory.includes(page.cursor) || cursorHistory.length >= MAX_INDEX_PAGES)) {
-		throw new Error('carrier-index-pagination-stalled');
+		throw appError('invalid-response', { message: 'carrier-index-pagination-stalled' });
 	}
 	const seen = new Set(collection.assets.map((asset) => asset.id));
 	const additions = carrierAssets(page, collection.namespace).filter(
@@ -1132,12 +1137,12 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<Ca
 			timeoutError: 'carrier-index-timeout',
 		}
 	);
-	if (!response.ok) throw new Error(`carrier-index-${response.status}`);
-	if (!payload) throw new Error('carrier-index-empty');
-	if (payload.errors?.length) throw new Error('carrier-index-query');
+	if (!response.ok) throw httpStatusError('carrier-index', response.status);
+	if (!payload) throw appError('invalid-response', { message: 'carrier-index-empty' });
+	if (payload.errors?.length) throw appError('unavailable', { message: 'carrier-index-query' });
 	const connection = payload?.data?.transactions;
 	if (!connection || !Array.isArray(connection.edges) || typeof connection.pageInfo?.hasNextPage !== 'boolean')
-		throw new Error('carrier-index-schema');
+		throw appError('invalid-response', { message: 'carrier-index-schema' });
 	const edges: Array<{
 		cursor: string;
 		node: { id: string; tags: Array<{ name: string; value: string }> };
@@ -1148,10 +1153,10 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<Ca
 				typeof cursor !== 'string' || !cursor || !isArweaveId(node?.id) || !Array.isArray(node?.tags)
 		)
 	)
-		throw new Error('carrier-index-schema');
+		throw appError('invalid-response', { message: 'carrier-index-schema' });
 	const cursor = edges.at(-1)?.cursor;
 	if (connection.pageInfo.hasNextPage && (!cursor || cursor === after)) {
-		throw new Error('carrier-index-pagination-stalled');
+		throw appError('invalid-response', { message: 'carrier-index-pagination-stalled' });
 	}
 	return {
 		edges,
@@ -1174,7 +1179,7 @@ async function loadNamesNamespace(signal?: AbortSignal): Promise<NamesNamespaceI
 
 export function parseNamesNamespace(manifestId: string, value: unknown): NamesNamespaceIndex {
 	if (!isArweaveId(manifestId) || !value || typeof value !== 'object' || Array.isArray(value)) {
-		throw new Error('names-namespace-schema');
+		throw appError('invalid-response', { message: 'names-namespace-schema' });
 	}
 	const manifest = value as Record<string, unknown>;
 	if (
@@ -1184,10 +1189,10 @@ export function parseNamesNamespace(manifestId: string, value: unknown): NamesNa
 		typeof manifest.paths !== 'object' ||
 		Array.isArray(manifest.paths)
 	)
-		throw new Error('names-namespace-schema');
+		throw appError('invalid-response', { message: 'names-namespace-schema' });
 	const namesById: Record<string, string> = Object.create(null);
 	const paths = Object.entries(manifest.paths as Record<string, unknown>);
-	if (!paths.length) throw new Error('names-namespace-schema');
+	if (!paths.length) throw appError('invalid-response', { message: 'names-namespace-schema' });
 	for (const [name, entry] of paths) {
 		if (
 			!name.trim() ||
@@ -1196,9 +1201,9 @@ export function parseNamesNamespace(manifestId: string, value: unknown): NamesNa
 			Array.isArray(entry) ||
 			!isArweaveId((entry as { id?: unknown }).id as string)
 		)
-			throw new Error('names-namespace-schema');
+			throw appError('invalid-response', { message: 'names-namespace-schema' });
 		const id = (entry as { id: string }).id;
-		if (namesById[id] !== undefined) throw new Error('names-namespace-schema');
+		if (namesById[id] !== undefined) throw appError('invalid-response', { message: 'names-namespace-schema' });
 		namesById[id] = name;
 	}
 	return { manifestId, namesById };
@@ -1229,7 +1234,7 @@ export async function loadImageCollection(
 			}
 		}
 		if (!referencedManifest || !isArweaveId(referencedManifest)) {
-			throw new Error('collection-reference-invalid');
+			throw appError('invalid-response', { message: 'collection-reference-invalid' });
 		}
 		value = referencedManifest;
 	} catch {
@@ -1238,7 +1243,7 @@ export async function loadImageCollection(
 		// is readable, so retain that manifest as the explicit fallback.
 		indexSource = 'compiled-fallback';
 	}
-	if (!value || !isArweaveId(value)) throw new Error('collection-reference-unavailable');
+	if (!value || !isArweaveId(value)) throw appError('unavailable', { message: 'collection-reference-unavailable' });
 	try {
 		return imageCollection(referenceId, value, indexSource, await fetchJson<ImageManifest>(value, signal));
 	} catch (cause) {
@@ -1293,7 +1298,7 @@ function imageCollection(
 			);
 		})
 	)
-		throw new Error('collection-manifest-schema');
+		throw appError('invalid-response', { message: 'collection-manifest-schema' });
 	const contentGateway = permanentContentGatewayFromLocation();
 	return {
 		id: referenceId,
@@ -1328,10 +1333,10 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 				timeoutError: 'collection-data-timeout',
 			}
 		);
-		if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
+		if (!response.ok) throw httpStatusError('collection-fetch', response.status);
 		const body = (responseBody ?? '').trim();
 		if (!/^[A-Za-z0-9_-]+$/.test(body) || body === 'Accepted') {
-			throw new Error('collection-data-pending');
+			throw appError('not-indexed', { message: 'collection-data-pending' });
 		}
 		return JSON.parse(decodeBase64Url(body)) as T;
 	}
@@ -1344,8 +1349,8 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 			timeoutError: 'collection-fetch-timeout',
 		}
 	);
-	if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
-	if (body === undefined) throw new Error('collection-fetch-empty');
+	if (!response.ok) throw httpStatusError('collection-fetch', response.status);
+	if (body === undefined) throw appError('invalid-response', { message: 'collection-fetch-empty' });
 	return (process ? body : (body as any)?.data ?? body) as T;
 }
 

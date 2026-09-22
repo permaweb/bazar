@@ -47,13 +47,13 @@ import { TextArea } from 'components/atoms/TextArea';
 import { TextInput } from 'components/atoms/TextInput';
 import { TokenArtwork } from 'components/atoms/TokenArtwork';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/molecules/MintTransactionReceipt';
+import { appErrorMessage, toAppError } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDuration } from 'helpers/audio-metadata';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { formatBytes } from 'helpers/format';
-import { mintErrorMessage } from 'helpers/mint-error';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useOperationActivity } from 'providers/OperationActivityProvider';
 import { useWallet } from 'providers/WalletProvider';
@@ -487,7 +487,7 @@ export default function AssetCreator() {
 						if (!controller.signal.aborted) setEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(appErrorMessage(toAppError(cause, 'unknown')));
 					}
 				)
 				.finally(() => {
@@ -515,7 +515,7 @@ export default function AssetCreator() {
 						if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(appErrorMessage(toAppError(cause, 'unknown')));
 					}
 				)
 				.finally(() => {
@@ -543,7 +543,7 @@ export default function AssetCreator() {
 						if (!controller.signal.aborted) setFungibleEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(appErrorMessage(toAppError(cause, 'unknown')));
 					}
 				)
 				.finally(() => {
@@ -614,7 +614,7 @@ export default function AssetCreator() {
 				setLogo(null);
 				setLogoTxId('');
 				setFungibleEstimate(null);
-				setError(mintErrorMessage(cause));
+				setError(appErrorMessage(toAppError(cause, 'unknown')));
 				if (logoInput.current) logoInput.current.value = '';
 				return;
 			}
@@ -647,7 +647,7 @@ export default function AssetCreator() {
 				validateFungibleMintInput(fungibleInput);
 				if (logo) validateFungibleLogo(logo);
 			} catch (cause) {
-				return setError(mintErrorMessage(cause));
+				return setError(appErrorMessage(toAppError(cause, 'unknown')));
 			}
 			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
@@ -727,7 +727,7 @@ export default function AssetCreator() {
 			);
 			completeMint(minted.asset, uploadId);
 		} catch (cause) {
-			const message = mintErrorMessage(cause);
+			const message = appErrorMessage(toAppError(cause, 'unknown'));
 			setDraft(getMintDraft(wallet.address));
 			setPhase(null);
 			setCollectionPhase(null);
@@ -761,7 +761,7 @@ export default function AssetCreator() {
 			});
 			completeMint(minted.asset, uploadId);
 		} catch (cause) {
-			const message = mintErrorMessage(cause);
+			const message = appErrorMessage(toAppError(cause, 'unknown'));
 			setPhase(null);
 			setError(message);
 			failUpload(uploadId, message);

@@ -27,7 +27,7 @@ import {
 	newestCollectionActivity,
 	retainNewestCollectionActivity,
 } from 'features/Activity';
-import { marketplaceFailureKind, marketplaceRequestFailureMessage } from 'helpers/marketplace-error';
+import { requestFailureKind, requestFailureMessage } from 'helpers/app-error';
 import { assetGroupRevealComplete } from 'helpers/progressive-assets';
 import { useMarketProvider } from 'providers/MarketProvider';
 
@@ -172,7 +172,7 @@ export default function CollectionActivityFeed() {
 			},
 			(cause) => {
 				if (!controller.signal.aborted) {
-					setError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+					setError(requestFailureMessage('index', requestFailureKind(cause)));
 					setLoading(false);
 				}
 			}

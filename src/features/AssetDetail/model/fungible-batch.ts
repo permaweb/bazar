@@ -1,12 +1,14 @@
 import { type AssetState, filledOrder, liquidBalanceOf, type SwapOrder } from 'api/marketplace';
 import { hasRecoverablePurchase, purchaseRecoveryApprovalCount, storeWalletRecordOrThrow } from 'api/operations';
-import type {
-	PreparedPurchase,
-	PurchaseBatchPreparationEvent,
-	PurchaseSnapshot,
-	PurchaseState,
+import {
+	type PreparedPurchase,
+	type PurchaseBatchPreparationEvent,
+	type PurchaseSnapshot,
+	type PurchaseState,
+	purchaseStateFailure,
 } from 'api/transactions';
 
+import { appError, type AppErrorReason, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 
 import { BatchEntry, BatchResume } from './fungible-operation';
@@ -37,7 +39,7 @@ export function checkpointBatchPreparation(entries: BatchEntry[], event: Purchas
 			},
 		};
 	});
-	if (!matched) throw new Error('purchase-preparation-checkpoint-missing');
+	if (!matched) throw appError('invalid-input', { message: 'purchase-preparation-checkpoint-missing' });
 	return next;
 }
 
@@ -290,21 +292,18 @@ export async function waitForSettlementBatch(running: Promise<PurchaseState>[]):
 		(result) => result.status === 'rejected' || result.value.stage !== 'complete' || !result.value.success
 	);
 	if (failed.length) {
-		const reasons = [
+		const failureReasons = [
 			...new Set(
-				failed.flatMap((result) => {
-					if (result.status === 'rejected') {
-						return [result.reason instanceof Error ? result.reason.message : String(result.reason)];
-					}
-					return result.value.error?.message ? [result.value.error.message] : [];
+				failed.flatMap((result): AppErrorReason[] => {
+					if (result.status === 'rejected') return [toAppError(result.reason, 'unknown').reason];
+					const failure = purchaseStateFailure(result.value);
+					return failure ? [failure.reason] : [];
 				})
 			),
 		];
-		throw new Error(
-			`${failed.length} of ${settled.length} settlements need attention.${
-				reasons.length ? ` ${reasons.join(' ')}` : ''
-			}`
-		);
+		throw appError('purchase-settlement-incomplete', {
+			detail: { failedCount: failed.length, totalCount: settled.length, failureReasons },
+		});
 	}
 	return settled.map((result) => (result as PromiseFulfilledResult<PurchaseState>).value);
 }

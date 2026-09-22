@@ -38,6 +38,12 @@ Completed slices:
 9. Dialog shell: the `components/organisms/Dialog` organism owns the backdrop, dialog semantics, focus containment,
    Escape, and focus restoration for the operation, fungible operation, upload, mint, profile, append-collection,
    search, and wallet dialogs; `tests/architecture/dialog-shell.test.ts` rejects dialog semantics anywhere else.
+10. Error taxonomy: `helpers/app-error.ts` defines `AppError` (stable `code`, `reason`, `retryable`, safe `detail`) and
+    the single reason-keyed copy table. Adapters under `src/api` map HTTP status, transport, ao.js, wallet, and
+    weave-wrangler failures once (`api/network/errors`, `api/ao`, `api/wallet/errors`, `api/transactions/failure`);
+    UI layers normalize with `toAppError` and branch only on `code`/`reason`. `helpers/marketplace-error.ts` and
+    `helpers/mint-error.ts` are gone; `tests/architecture/error-taxonomy.test.ts` rejects raw error classification
+    outside `src/api`.
 
 ## Remaining slices
 
@@ -56,5 +62,3 @@ Work these as separate, behavior-preserving changes. Verify each in a real brows
    `CollectionMarket`, `AssetDetail`, `OperationDialog`, `FungibleOperationDialog`, `AssetCreator`, `MyAssets`. Extract
    data loading and state machines into feature `hooks/` and `model/` (discriminated async state) so organisms only
    compose UI.
-4. **Error taxonomy.** Map adapter failures to one application error type with stable codes (building on
-   `helpers/marketplace-error.ts`) so UI branches never inspect provider messages.

@@ -11,13 +11,13 @@ import {
 import type { AssetCandidate, CollectionActivityEvent, ResolvedAsset } from 'api/discovery';
 
 import { collectionActivityVersion, collectionAssetWindowDelta } from 'features/Activity';
+import type { RequestFailureKind, RequestFailureSource } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
-import type { MarketplaceFailureKind, MarketplaceRequestSource } from 'helpers/marketplace-error';
 
 export type HomeMarketSummary =
 	| { status: 'resolved'; value: string | null }
 	| { status: 'unindexed' }
-	| { status: 'unavailable'; source: MarketplaceRequestSource; kind: MarketplaceFailureKind };
+	| { status: 'unavailable'; source: RequestFailureSource; kind: RequestFailureKind };
 
 export function retryableHomeSummaryKeys(visibleKeys: string[], summaries: Record<string, HomeMarketSummary>) {
 	return visibleKeys.filter((key) => {
@@ -90,7 +90,7 @@ export type HomeFloorScan = {
 	scope: string;
 	candidates: Map<string, string>;
 	settled: Map<string, bigint | null>;
-	failures: Map<string, MarketplaceFailureKind>;
+	failures: Map<string, RequestFailureKind>;
 };
 
 export function reconcileHomeFloorScan(
@@ -133,7 +133,7 @@ export function commitHomeFloorResult(
 	scan: HomeFloorScan,
 	processId: string,
 	value: bigint | null,
-	failure?: MarketplaceFailureKind
+	failure?: RequestFailureKind
 ) {
 	if (!scan.candidates.has(processId)) throw new TypeError('home-floor-result-out-of-scope');
 	if (failure) {

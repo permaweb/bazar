@@ -18,6 +18,7 @@ import {
 	walletResolutionIsDeterminate,
 	walletResolutionShowsProgress,
 } from 'features/MyAssets/model/wallet-resolution';
+import { appError } from 'helpers/app-error';
 import {
 	assetGroupRevealAnnouncement,
 	assetGroupRevealComplete,
@@ -278,11 +279,16 @@ describe('My assets retry bookkeeping', () => {
 	it('reconciles changing rate-limit categories across retries', () => {
 		const rateLimits = new Set<string>();
 
-		trackRateLimitFailure(rateLimits, processId, new Error('asset-support-graphql-429'));
+		const rateLimited = appError('rate-limited', { message: 'asset-support-graphql-429' });
+		trackRateLimitFailure(rateLimits, processId, rateLimited);
 		expect(rateLimits.has(processId)).toBe(true);
-		trackRateLimitFailure(rateLimits, processId, new Error('asset-support-graphql-503'));
+		trackRateLimitFailure(rateLimits, processId, appError('unavailable', { message: 'asset-support-graphql-503' }));
 		expect(rateLimits.has(processId)).toBe(false);
+		trackRateLimitFailure(rateLimits, processId, rateLimited);
+		expect(rateLimits.has(processId)).toBe(true);
 		trackRateLimitFailure(rateLimits, processId, new Error('asset-support-graphql-429'));
+		expect(rateLimits.has(processId)).toBe(false);
+		trackRateLimitFailure(rateLimits, processId, rateLimited);
 		trackRateLimitFailure(rateLimits, processId);
 		expect(rateLimits.has(processId)).toBe(false);
 	});

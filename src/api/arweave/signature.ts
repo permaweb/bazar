@@ -3,6 +3,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import Arweave from 'arweave';
 import deepHash from 'arweave/web/lib/deepHash';
 
+import { appError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 
 const DECIMAL = /^\d+$/;
@@ -42,19 +43,19 @@ async function rsaTransactionSignerAddress(
 	verifier: SignedTransactionVerifier
 ): Promise<string> {
 	if (verifier.verifyRsa && !(await verifier.verifyRsa(transaction))) {
-		throw new Error('signed-transaction-signature-invalid');
+		throw invalidSignedTransaction('signed-transaction-signature-invalid');
 	}
 	return verifier.ownerToAddress(owner);
 }
 
 export async function ecdsaTransactionSignatureData(transaction: Record<string, unknown>): Promise<Uint8Array> {
 	if (String(transaction.format) !== '2' || String(transaction.owner ?? '') !== '') {
-		throw new Error('signed-transaction-ecdsa-format-invalid');
+		throw invalidSignedTransaction('signed-transaction-ecdsa-format-invalid');
 	}
 	const tags = transaction.tags;
-	if (!Array.isArray(tags)) throw new Error('signed-transaction-tags-invalid');
+	if (!Array.isArray(tags)) throw invalidSignedTransaction('signed-transaction-tags-invalid');
 	const tagList = tags.map((tag) => {
-		if (!tag || typeof tag !== 'object') throw new Error('signed-transaction-tags-invalid');
+		if (!tag || typeof tag !== 'object') throw invalidSignedTransaction('signed-transaction-tags-invalid');
 		const raw = tag as Record<string, unknown>;
 		return [decodeField(raw, 'name'), decodeField(raw, 'value')];
 	});
@@ -74,13 +75,13 @@ export async function ecdsaTransactionSignatureData(transaction: Record<string, 
 
 async function ecdsaTransactionSignerAddress(transaction: Record<string, unknown>): Promise<string> {
 	const id = textFieldValue(transaction, 'id');
-	if (!isArweaveId(id)) throw new Error('signed-transaction-id-invalid');
+	if (!isArweaveId(id)) throw invalidSignedTransaction('signed-transaction-id-invalid');
 	const signature = decodeField(transaction, 'signature');
 	if (signature.byteLength !== 65 || signature[64] > 3) {
-		throw new Error('signed-transaction-ecdsa-signature-invalid');
+		throw invalidSignedTransaction('signed-transaction-ecdsa-signature-invalid');
 	}
 	const expectedId = Arweave.utils.bufferTob64Url(await sha256(signature));
-	if (id !== expectedId) throw new Error('signed-transaction-signature-invalid');
+	if (id !== expectedId) throw invalidSignedTransaction('signed-transaction-signature-invalid');
 
 	const recoverableSignature = new Uint8Array(65);
 	recoverableSignature[0] = signature[64];
@@ -88,7 +89,7 @@ async function ecdsaTransactionSignerAddress(transaction: Record<string, unknown
 	const signatureData = await ecdsaTransactionSignatureData(transaction);
 	const recoveredPublicKey = secp256k1.recoverPublicKey(recoverableSignature, signatureData);
 	if (!secp256k1.verify(signature.subarray(0, 64), signatureData, recoveredPublicKey)) {
-		throw new Error('signed-transaction-signature-invalid');
+		throw invalidSignedTransaction('signed-transaction-signature-invalid');
 	}
 	const compressedPublicKey = secp256k1.Point.fromBytes(recoveredPublicKey).toBytes(true);
 	return Arweave.utils.bufferTob64Url(await sha256(compressedPublicKey));
@@ -105,21 +106,26 @@ function decodeField(value: Record<string, unknown>, field: string): Uint8Array 
 
 function decimalField(value: Record<string, unknown>, field: string): Uint8Array {
 	const raw = textFieldValue(value, field);
-	if (!DECIMAL.test(raw)) throw new Error(`signed-transaction-${field}-invalid`);
+	if (!DECIMAL.test(raw)) throw invalidSignedTransaction(`signed-transaction-${field}-invalid`);
 	return new TextEncoder().encode(raw);
 }
 
 function denominationField(value: unknown): Uint8Array | undefined {
 	if (value === undefined || value === null || value === '' || value === 0 || value === '0') return undefined;
 	const raw = String(value);
-	if (!DECIMAL.test(raw) || BigInt(raw) <= 0n) throw new Error('signed-transaction-denomination-invalid');
+	if (!DECIMAL.test(raw) || BigInt(raw) <= 0n)
+		throw invalidSignedTransaction('signed-transaction-denomination-invalid');
 	return new TextEncoder().encode(raw);
 }
 
 function textFieldValue(value: Record<string, unknown>, field: string): string {
 	const raw = value[field];
-	if (typeof raw !== 'string') throw new Error(`signed-transaction-${field}-invalid`);
+	if (typeof raw !== 'string') throw invalidSignedTransaction(`signed-transaction-${field}-invalid`);
 	return raw;
+}
+
+function invalidSignedTransaction(message: string) {
+	return appError('invalid-response', { message });
 }
 
 async function sha256(value: Uint8Array): Promise<Uint8Array> {

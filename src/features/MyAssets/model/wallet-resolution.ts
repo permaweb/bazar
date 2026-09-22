@@ -7,7 +7,7 @@ import {
 	type WalletCandidateScan,
 } from 'api/discovery';
 
-import { marketplaceFailureKind } from 'helpers/marketplace-error';
+import { requestFailureKind } from 'helpers/app-error';
 
 export type CandidateSupportFailure = { candidate: AssetCandidate; error: unknown };
 
@@ -37,7 +37,7 @@ export function refreshCandidateRetryMetadata(
 }
 
 export function trackRateLimitFailure(rateLimits: Set<string>, processId: string, error?: unknown) {
-	if (error && marketplaceFailureKind(error) === 'rate-limited') rateLimits.add(processId);
+	if (error && requestFailureKind(error) === 'rate-limited') rateLimits.add(processId);
 	else rateLimits.delete(processId);
 }
 

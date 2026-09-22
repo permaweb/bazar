@@ -6,7 +6,7 @@ import { ProfileClient } from 'api/profile';
 
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
-import { marketplaceErrorMessage as errorMessage } from 'helpers/marketplace-error';
+import { appError, appErrorMessage, toAppError } from 'helpers/app-error';
 
 export default function SetProfilePictureButton(props: {
 	assetId: string;
@@ -26,7 +26,7 @@ export default function SetProfilePictureButton(props: {
 				current.state.denomination > 0 ||
 				ownerOfAsset(current.state) !== props.owner
 			) {
-				throw new Error('This wallet no longer owns this unique asset.');
+				throw appError('profile-avatar-not-owned');
 			}
 			await new ProfileClient().setAvatar(props.owner, props.image, {
 				onPhase: (phase) => setStatus(phase),
@@ -34,7 +34,7 @@ export default function SetProfilePictureButton(props: {
 			setStatus('done');
 		} catch (cause) {
 			setStatus('idle');
-			setError(errorMessage(cause) || 'Profile picture could not be updated.');
+			setError(appErrorMessage(toAppError(cause, 'profile-update-failed')));
 		}
 	};
 	return (

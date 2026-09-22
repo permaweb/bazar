@@ -18,6 +18,7 @@ import {
 
 import { assetStateErrorMessage } from 'features/AssetDetail/model/asset-detail';
 import { alphabetBrowseIndex, alphabetFilterIndex } from 'features/Collection/model/collection-market';
+import { appError } from 'helpers/app-error';
 
 const collection: Collection = {
 	id: 'tokens',
@@ -45,7 +46,7 @@ describe('marketplace search ranking', () => {
 	});
 
 	it('turns compute rate limits into actionable recovery guidance', () => {
-		expect(assetStateErrorMessage(new Error('HTTP 429'))).toBe(
+		expect(assetStateErrorMessage(appError('rate-limited', { message: 'compute-429' }))).toBe(
 			'The configured AO peers are temporarily rate-limiting live-state requests. Wait briefly and retry, or review the AO Core settings in the header.'
 		);
 	});

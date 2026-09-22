@@ -5,6 +5,7 @@ import { fetchAudioBytes } from 'api/media';
 
 import { Button } from 'components/atoms/Button';
 import { RangeInput } from 'components/atoms/RangeInput';
+import { toAppError } from 'helpers/app-error';
 
 const WAVEFORM_PEAK_COUNT = 128;
 
@@ -85,7 +86,9 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 				setStatus('ready');
 			})
 			.catch((error) => {
-				if (!controller.signal.aborted && (error as Error)?.name !== 'AbortError') setStatus('unavailable');
+				if (!controller.signal.aborted && toAppError(error, 'unavailable').code !== 'cancelled') {
+					setStatus('unavailable');
+				}
 			})
 			.finally(() => void context?.close().catch(() => undefined));
 

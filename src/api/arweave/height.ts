@@ -1,5 +1,7 @@
 import { fetchJsonWithDeadline } from 'api/network/deadline';
+import { httpStatusError } from 'api/network/errors';
 
+import { appError } from 'helpers/app-error';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 
 const DEFAULT_MAX_AGE_MS = 10_000;
@@ -58,10 +60,14 @@ async function readHeight(gateway: string, fetcher: typeof fetch): Promise<numbe
 		{ cache: 'no-store' },
 		{ timeoutMs: REQUEST_TIMEOUT_MS, timeoutError: 'network-info-timeout' }
 	);
-	if (!response.ok) throw new Error(`network-info-${response.status}`);
-	if (body?.network !== undefined && body.network !== 'arweave.N.1') throw new Error('invalid-network');
+	if (!response.ok) throw httpStatusError('network-info', response.status);
+	if (body?.network !== undefined && body.network !== 'arweave.N.1') {
+		throw appError('invalid-response', { message: 'invalid-network' });
+	}
 	const height = Number(body?.height ?? body?.blocks);
-	if (!Number.isSafeInteger(height) || height < 0) throw new Error('invalid-network-height');
+	if (!Number.isSafeInteger(height) || height < 0) {
+		throw appError('invalid-response', { message: 'invalid-network-height' });
+	}
 	return height;
 }
 

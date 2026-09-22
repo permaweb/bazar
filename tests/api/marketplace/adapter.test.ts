@@ -22,6 +22,8 @@ import {
 	waitForAssetState,
 } from 'api/marketplace/adapter';
 
+import { toAppError } from 'helpers/app-error';
+
 const owner = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
 const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
 const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
@@ -1140,3 +1142,74 @@ function memoryCacheStorage(): CacheStorage {
 	} as unknown as Cache;
 	return { open: async () => cache } as unknown as CacheStorage;
 }
+
+describe('live-state failure mapping', () => {
+	it.each([
+		[429, 'rate-limited'],
+		[404, 'not-found'],
+		[502, 'unavailable'],
+		[503, 'unavailable'],
+	] as const)('maps an HTTP %i compute response to %s', async (status, code) => {
+		const fetcher = vi.fn(async () => new Response('provider detail', { status }));
+
+		// The diagnostic keeps only the status; the provider's response body never reaches the error.
+		await expect(readAssetState(processId, { fetch: fetcher as unknown as typeof fetch })).rejects.toMatchObject({
+			code,
+			message: `compute-${status}`,
+		});
+	});
+
+	it('stops retrying the schedule on the first rate limit', async () => {
+		const fetcher = vi.fn(async () => new Response(null, { status: 429 }));
+
+		await expect(
+			readProcessAssignments(processId, 1, 2, { fetch: fetcher as unknown as typeof fetch })
+		).rejects.toMatchObject({ code: 'rate-limited', message: 'process-schedule-429' });
+		expect(fetcher).toHaveBeenCalledOnce();
+	});
+
+	it('maps ao.js routing text and unreachable peers without exposing either', async () => {
+		const quorum = vi.fn(async () => {
+			throw new Error('ao.js-response-quorum-not-met');
+		});
+		await expect(readAssetState(processId, { fetch: quorum as unknown as typeof fetch })).rejects.toMatchObject({
+			code: 'unavailable',
+			message: 'compute-response-quorum-not-met',
+		});
+
+		const offline = vi.fn(async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		await expect(readAssetState(processId, { fetch: offline as unknown as typeof fetch })).rejects.toMatchObject({
+			code: 'offline',
+		});
+	});
+
+	it('keeps a caller abort as the caller’s own reason, which normalizes to cancelled', async () => {
+		const controller = new AbortController();
+		const fetcher = vi.fn(async () => {
+			controller.abort();
+			throw controller.signal.reason;
+		});
+
+		const failure = await readAssetState(processId, {
+			fetch: fetcher as unknown as typeof fetch,
+			signal: controller.signal,
+		}).catch((cause: unknown) => cause);
+
+		expect(failure).toBe(controller.signal.reason);
+		expect(toAppError(failure, 'unknown').code).toBe('cancelled');
+	});
+
+	it('reports a live-state wait that outlives its window as an unknown outcome', async () => {
+		const fetcher = vi.fn(async () => new Response(null, { status: 503 }));
+
+		await expect(
+			waitForAssetState(processId, () => true, {
+				fetch: fetcher as unknown as typeof fetch,
+				interval: 1,
+				timeout: 5,
+			})
+		).rejects.toMatchObject({ reason: 'asset-state-timeout', code: 'unknown-outcome', retryable: false });
+	});
+});

@@ -2,6 +2,7 @@ import type { WeaveNetworkOptions } from 'weave-wrangler';
 
 import { aoFetch } from 'api/ao/adapter';
 
+import { appError } from 'helpers/app-error';
 import { arweaveGatewayFromLocation, observerRelayFromLocation } from 'helpers/config';
 
 import { ArweaveObserverNetwork } from './network';
@@ -23,7 +24,7 @@ const sharedObserverNetworks = new Map<string, SharedObserverNetwork>();
 
 export function assetObserverNetworkOptions(location: Location = window.location): WeaveNetworkOptions {
 	const relay = observerRelayFromLocation(location);
-	if (!relay) throw new Error('No AO peer is configured.');
+	if (!relay) throw appError('ao-peer-missing');
 
 	return {
 		node: arweaveGatewayFromLocation(location),

@@ -1,5 +1,7 @@
 import { signedTransactionSignerAddress } from 'api/arweave/signature';
+import { httpStatusError, transportFailure } from 'api/network/errors';
 
+import { appError, isAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 
 export type AssetUploadData = string | Uint8Array;
@@ -73,7 +75,7 @@ export class AtomicAssetUploader {
 		this.#gateway = options.gateway.replace(/\/$/, '');
 		this.#maxUploadAttempts = options.maxUploadAttempts ?? 3;
 		if (!Number.isSafeInteger(this.#maxUploadAttempts) || this.#maxUploadAttempts < 1) {
-			throw new TypeError('upload-attempts-invalid');
+			throw appError('invalid-input', { message: 'upload-attempts-invalid' });
 		}
 	}
 
@@ -82,31 +84,35 @@ export class AtomicAssetUploader {
 	}
 
 	async price(bytes: number, signal?: AbortSignal, target?: string): Promise<bigint> {
-		if (!Number.isSafeInteger(bytes) || bytes < 0) throw new TypeError('upload-byte-length-invalid');
+		if (!Number.isSafeInteger(bytes) || bytes < 0) {
+			throw appError('invalid-input', { message: 'upload-byte-length-invalid' });
+		}
 		if (target) assertAddress(target, 'invalid-upload-target');
-		const response = await this.#fetch(`${this.#gateway}/price/${bytes}${target ? `/${target}` : ''}`, {
-			signal,
-		});
-		if (!response.ok) throw new Error(`mint-price-${response.status}`);
+		const response = await this.#read(
+			`${this.#gateway}/price/${bytes}${target ? `/${target}` : ''}`,
+			'mint-price',
+			signal
+		);
+		if (!response.ok) throw httpStatusError('mint-price', response.status);
 		const value = (await response.text()).trim();
-		if (!/^\d+$/.test(value)) throw new Error('mint-price-invalid');
+		if (!/^\d+$/.test(value)) throw appError('invalid-response', { message: 'mint-price-invalid' });
 		return BigInt(value);
 	}
 
 	async assertOwner(owner: string): Promise<void> {
 		assertAddress(owner, 'invalid-mint-owner');
 		if (this.#adapter.getActiveAddress && (await this.#adapter.getActiveAddress()) !== owner) {
-			throw new Error('wallet-account-changed');
+			throw appError('mint-wallet-account-changed');
 		}
 	}
 
 	async assertBalance(owner: string, required: bigint, signal?: AbortSignal): Promise<void> {
 		assertAddress(owner, 'invalid-mint-owner');
-		const response = await this.#fetch(`${this.#gateway}/wallet/${owner}/balance`, { signal });
-		if (!response.ok) throw new Error(`wallet-balance-${response.status}`);
+		const response = await this.#read(`${this.#gateway}/wallet/${owner}/balance`, 'wallet-balance', signal);
+		if (!response.ok) throw httpStatusError('wallet-balance', response.status);
 		const value = (await response.text()).trim();
-		if (!/^\d+$/.test(value)) throw new Error('wallet-balance-invalid');
-		if (BigInt(value) < required) throw new Error('mint-insufficient-balance');
+		if (!/^\d+$/.test(value)) throw appError('invalid-response', { message: 'wallet-balance-invalid' });
+		if (BigInt(value) < required) throw appError('mint-insufficient-balance');
 	}
 
 	async uploadAtomicAsset(
@@ -133,23 +139,44 @@ export class AtomicAssetUploader {
 		);
 		for (const [name, value] of Object.entries(tags)) transaction.addTag(name, value);
 		const signed = await this.#adapter.signTransaction(transaction, { owner, signal: options.signal });
-		if (!isArweaveId(signed?.id)) throw new Error('wallet-returned-unsigned-transaction');
+		if (!isArweaveId(signed?.id)) {
+			throw appError('wallet-response-invalid', { message: 'wallet-returned-unsigned-transaction' });
+		}
 		let signerAddress: string;
 		try {
 			signerAddress = await signedTransactionSignerAddress(signed, {
 				ownerToAddress: this.#adapter.ownerToAddress,
 				verifyRsa: this.#adapter.verifyTransaction,
 			});
-		} catch {
-			throw new Error('wallet-returned-invalid-signature');
+		} catch (cause) {
+			throw appError('wallet-response-invalid', { message: 'wallet-returned-invalid-signature', cause });
 		}
 		if (signerAddress !== owner) {
-			throw new Error('wallet-account-changed');
+			throw appError('mint-wallet-account-changed');
 		}
 		options.onTransaction?.(signed.id);
 		options.onPhase?.('uploading');
-		await this.#post(signed, options.signal);
+		try {
+			await this.#post(signed, options.signal);
+		} catch (cause) {
+			// The signed transaction may already have reached the gateway. Report it for reconciliation rather than
+			// inviting an automatic replacement.
+			if (options.signal?.aborted || isAppError(cause)) throw cause;
+			throw appError('unknown-outcome', {
+				message: 'mint-upload-unconfirmed',
+				cause,
+				detail: { transactionId: signed.id },
+			});
+		}
 		return signed.id;
+	}
+
+	async #read(url: string, operation: string, signal?: AbortSignal): Promise<Response> {
+		try {
+			return await this.#fetch(url, { signal });
+		} catch (cause) {
+			throw signal?.aborted ? cause : transportFailure(cause, operation);
+		}
 	}
 
 	async #post(transaction: any, signal?: AbortSignal): Promise<void> {
@@ -176,7 +203,9 @@ export class AtomicAssetUploader {
 				signal,
 			});
 			if ([200, 202, 208].includes(response.status)) return;
-			if (attempt === this.#maxUploadAttempts) throw new Error(`mint-upload-${response.status}`);
+			if (attempt === this.#maxUploadAttempts) {
+				throw httpStatusError('mint-upload', response.status, { submission: true });
+			}
 			await delay(attempt * 750, signal);
 		}
 	}
@@ -186,9 +215,9 @@ export function normalizeUploadTags(tags: Record<string, string>): Record<string
 	const normalized: Record<string, string> = {};
 	for (const [rawName, value] of Object.entries(tags)) {
 		const name = rawName.trim().toLowerCase();
-		if (!name) throw new TypeError('upload-tag-name-invalid');
+		if (!name) throw appError('invalid-input', { message: 'upload-tag-name-invalid' });
 		if (Object.prototype.hasOwnProperty.call(normalized, name)) {
-			throw new TypeError(`duplicate-upload-tag-${name}`);
+			throw appError('invalid-input', { message: `duplicate-upload-tag-${name}` });
 		}
 		normalized[name] = value;
 	}
@@ -204,12 +233,12 @@ export function assertAtomicAssetTags(tags: Record<string, string>): void {
 		!['fungible', 'non-fungible'].includes(normalized['hint-ui-style']) ||
 		!normalized['content-type']
 	) {
-		throw new TypeError('atomic-asset-tags-invalid');
+		throw appError('invalid-input', { message: 'atomic-asset-tags-invalid' });
 	}
 }
 
 function assertAddress(value: string, error: string): void {
-	if (!isArweaveId(value)) throw new TypeError(error);
+	if (!isArweaveId(value)) throw appError('invalid-input', { message: error });
 }
 
 function byteLength(value: AssetUploadData): number {

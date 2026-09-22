@@ -19,7 +19,9 @@ import {
 } from 'api/marketplace/adapter';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from 'api/mint/minted-assets';
 import { fetchJsonWithDeadline, operationWithDeadline } from 'api/network/deadline';
+import { batchFailure, httpStatusError } from 'api/network/errors';
 
+import { appError, isAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { WALLET_CANDIDATE_SCAN_STORAGE_PREFIX } from 'helpers/browser-storage';
 import { arweaveGraphqlEndpoint } from 'helpers/config';
@@ -606,7 +608,7 @@ export async function loadBazarAtomicAssetById(
 	processId: string,
 	options: AtomicAssetSearchOptions = {}
 ): Promise<{ asset: AssetSummary; collection: Collection } | null> {
-	if (!isArweaveId(processId)) throw new TypeError('invalid-asset-process-id');
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
 	if (!isVisibleAssetId(processId)) return null;
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
@@ -624,9 +626,9 @@ export async function loadBazarAtomicAssetById(
 			timeoutError: 'asset-index-graphql-timeout',
 		}
 	);
-	if (!response.ok) throw new Error(`asset-index-graphql-${response.status}`);
-	if (!payload) throw new Error('asset-index-graphql-empty');
-	if (payload.errors?.length) throw new Error('asset-index-graphql-error');
+	if (!response.ok) throw httpStatusError('asset-index-graphql', response.status);
+	if (!payload) throw appError('invalid-response', { message: 'asset-index-graphql-empty' });
+	if (payload.errors?.length) throw appError('unavailable', { message: 'asset-index-graphql-error' });
 	const node: unknown = payload.data?.transaction;
 	if (node === null) return null;
 	if (
@@ -636,7 +638,7 @@ export async function loadBazarAtomicAssetById(
 		!Array.isArray((node as GraphqlNode).tags) ||
 		(node as GraphqlNode).tags!.some((tag) => !tag || typeof tag.name !== 'string' || typeof tag.value !== 'string')
 	) {
-		throw new Error('asset-index-graphql-schema');
+		throw appError('invalid-response', { message: 'asset-index-graphql-schema' });
 	}
 	return bazarAtomicAssetFromNode(node as GraphqlNode);
 }
@@ -665,9 +667,9 @@ export async function searchBazarAtomicAssetsByName(
 			timeoutError: 'asset-search-graphql-timeout',
 		}
 	);
-	if (!response.ok) throw new Error(`asset-search-graphql-${response.status}`);
-	if (!payload) throw new Error('asset-search-graphql-empty');
-	if (payload?.errors?.length) throw new Error('asset-search-graphql-error');
+	if (!response.ok) throw httpStatusError('asset-search-graphql', response.status);
+	if (!payload) throw appError('invalid-response', { message: 'asset-search-graphql-empty' });
+	if (payload?.errors?.length) throw appError('unavailable', { message: 'asset-search-graphql-error' });
 	const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-search-graphql-schema');
 	return connection.edges.flatMap(({ node }) => {
 		const result = bazarAtomicAssetFromNode(node);
@@ -676,7 +678,7 @@ export async function searchBazarAtomicAssetsByName(
 }
 
 export function createWalletCandidateScan(address: string, graphql = arweaveGraphqlEndpoint()): WalletCandidateScan {
-	if (!isArweaveId(address)) throw new TypeError('invalid-wallet-address');
+	if (!isArweaveId(address)) throw appError('invalid-input', { message: 'invalid-wallet-address' });
 	return {
 		address,
 		graphql,
@@ -887,12 +889,12 @@ export async function discoverWalletAssetCandidates(
 	address: string,
 	options: WalletCandidateOptions = {}
 ): Promise<AssetCandidate[]> {
-	if (!isArweaveId(address)) throw new TypeError('invalid-wallet-address');
+	if (!isArweaveId(address)) throw appError('invalid-input', { message: 'invalid-wallet-address' });
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const scan = options.scan ?? createWalletCandidateScan(address, graphql);
 	if (scan.address !== address || scan.graphql !== graphql) {
-		throw new TypeError('wallet-candidate-scan-scope-mismatch');
+		throw appError('invalid-input', { message: 'wallet-candidate-scan-scope-mismatch' });
 	}
 	const requestPage = async (
 		active: Set<WalletCandidateAlias>,
@@ -930,9 +932,9 @@ export async function discoverWalletAssetCandidates(
 				timeoutError: 'asset-discovery-graphql-timeout',
 			}
 		);
-		if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
-		if (!payload) throw new Error('asset-discovery-graphql-empty');
-		if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
+		if (!response.ok) throw httpStatusError('asset-discovery-graphql', response.status);
+		if (!payload) throw appError('invalid-response', { message: 'asset-discovery-graphql-empty' });
+		if (payload?.errors?.length) throw appError('unavailable', { message: 'asset-discovery-graphql-error' });
 		return {
 			requestedAliases,
 			connections: new Map(
@@ -1029,7 +1031,7 @@ export async function discoverWalletAssetCandidates(
 			while (scan.catchUp.active.size) {
 				options.signal?.throwIfAborted();
 				if (pagesThisPass >= WALLET_HEAD_CATCH_UP_PAGES_PER_PASS) {
-					throw new Error('asset-discovery-head-catch-up-incomplete');
+					throw appError('not-indexed', { message: 'asset-discovery-head-catch-up-incomplete' });
 				}
 				pagesThisPass += 1;
 				const catchUp = scan.catchUp;
@@ -1051,7 +1053,7 @@ export async function discoverWalletAssetCandidates(
 					if (reachedWatermark || (watermark === null && !connection.pageInfo.hasNextPage)) {
 						nextActive.delete(alias);
 					} else if (!connection.pageInfo.hasNextPage) {
-						throw new Error('asset-discovery-head-watermark-missing');
+						throw appError('invalid-response', { message: 'asset-discovery-head-watermark-missing' });
 					} else {
 						nextCursors[alias] = advanceGraphqlCursor(
 							connection,
@@ -1122,9 +1124,9 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 				timeoutError: 'asset-activity-graphql-timeout',
 			}
 		);
-		if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
-		if (!payload) throw new Error('asset-activity-graphql-empty');
-		if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
+		if (!response.ok) throw httpStatusError('asset-activity-graphql', response.status);
+		if (!payload) throw appError('invalid-response', { message: 'asset-activity-graphql-empty' });
+		if (payload?.errors?.length) throw appError('unavailable', { message: 'asset-activity-graphql-error' });
 		const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-activity-graphql-schema');
 		const edges = connection.edges;
 		const pageCandidates = edges.flatMap((edge) => {
@@ -1175,10 +1177,7 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 	);
 	options.signal?.throwIfAborted();
 	if (failures.length) {
-		const messages = failures
-			.map((failure) => (failure instanceof Error ? failure.message : String(failure)))
-			.sort();
-		throw new AggregateError(failures, `asset-activity-batch-failed: ${messages.join('; ')}`);
+		throw batchFailure(failures, 'asset-activity');
 	}
 	return sortCandidates([...found.values()]);
 }
@@ -1228,9 +1227,9 @@ export async function discoverCollectionActivityPage(
 			timeoutError: 'collection-activity-graphql-timeout',
 		}
 	);
-	if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
-	if (!payload) throw new Error('collection-activity-graphql-empty');
-	if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
+	if (!response.ok) throw httpStatusError('collection-activity-graphql', response.status);
+	if (!payload) throw appError('invalid-response', { message: 'collection-activity-graphql-empty' });
+	if (payload?.errors?.length) throw appError('unavailable', { message: 'collection-activity-graphql-error' });
 	const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-graphql-schema');
 	let events = connection.edges.flatMap((edge) => {
 		const event = activityEventFromNode(edge.node);
@@ -1254,7 +1253,7 @@ export async function discoverCollectionActivityPage(
 		typeof parsedCount === 'number' && Number.isSafeInteger(parsedCount) && parsedCount >= 0 ? parsedCount : null;
 	const nextCursor = connection.pageInfo.hasNextPage ? connection.edges.at(-1)?.cursor ?? null : null;
 	if (connection.pageInfo.hasNextPage && !nextCursor) {
-		throw new Error('collection-activity-pagination-stalled');
+		throw appError('invalid-response', { message: 'collection-activity-pagination-stalled' });
 	}
 	return {
 		events,
@@ -1314,9 +1313,9 @@ export async function discoverCollectionActivity(
 				timeoutError: 'collection-activity-graphql-timeout',
 			}
 		);
-		if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
-		if (!payload) throw new Error('collection-activity-graphql-empty');
-		if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
+		if (!response.ok) throw httpStatusError('collection-activity-graphql', response.status);
+		if (!payload) throw appError('invalid-response', { message: 'collection-activity-graphql-empty' });
+		if (payload?.errors?.length) throw appError('unavailable', { message: 'collection-activity-graphql-error' });
 		const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-graphql-schema');
 		const edges = connection.edges;
 		let page = edges.flatMap((edge) => {
@@ -1390,7 +1389,7 @@ export async function discoverPendingAssetOffers(
 	state: AssetState,
 	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & { limit?: number } = {}
 ): Promise<PendingAssetOffer[]> {
-	if (!isArweaveId(processId)) throw new TypeError('invalid-asset-process-id');
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
 	const events = await discoverCollectionActivity({
 		...options,
 		recipients: [processId],
@@ -1438,10 +1437,7 @@ export async function discoverCollectionActivityBatched(
 	);
 	options.signal?.throwIfAborted();
 	if (failures.length) {
-		const messages = failures
-			.map((failure) => (failure instanceof Error ? failure.message : String(failure)))
-			.sort();
-		throw new AggregateError(failures, `collection-activity-batch-failed: ${messages.join('; ')}`);
+		throw batchFailure(failures, 'collection-activity');
 	}
 	return sortCollectionActivity([...found.values()]).slice(0, limit);
 }
@@ -1491,12 +1487,12 @@ export async function discoverAllCollectionActivityBatched(
 						});
 						if (!page.hasNextPage) break;
 						if (!page.cursor || visited.has(page.cursor)) {
-							throw new Error('collection-activity-pagination-stalled');
+							throw appError('invalid-response', { message: 'collection-activity-pagination-stalled' });
 						}
 						visited.add(page.cursor);
 						cursor = page.cursor;
 						if (pageIndex === MAX_GRAPHQL_PAGES - 1) {
-							throw new Error('collection-activity-pagination-limit');
+							throw appError('invalid-response', { message: 'collection-activity-pagination-limit' });
 						}
 					}
 				} catch (cause) {
@@ -1507,10 +1503,7 @@ export async function discoverAllCollectionActivityBatched(
 	);
 	options.signal?.throwIfAborted();
 	if (failures.length) {
-		const messages = failures
-			.map((failure) => (failure instanceof Error ? failure.message : String(failure)))
-			.sort();
-		throw new AggregateError(failures, `collection-activity-complete-batch-failed: ${messages.join('; ')}`);
+		throw batchFailure(failures, 'collection-activity-complete');
 	}
 	return sortCollectionActivity([...found.values()]);
 }
@@ -1527,7 +1520,7 @@ async function verifyProcessDevices(
 	options: Pick<CollectionActivityOptions, 'requestTimeoutMs' | 'signal'>
 ): Promise<Set<string>> {
 	if (!device.trim() || ids.some((id) => !isArweaveId(id))) {
-		throw new TypeError('invalid-collection-activity-device-filter');
+		throw appError('invalid-input', { message: 'invalid-collection-activity-device-filter' });
 	}
 	const verified = new Set<string>();
 	const graphqlHost = new URL(graphql).hostname;
@@ -1561,16 +1554,18 @@ async function verifyProcessDevices(
 					timeoutError: 'collection-activity-device-graphql-timeout',
 				}
 			);
-			if (!response.ok) throw new Error(`collection-activity-device-graphql-${response.status}`);
-			if (!payload) throw new Error('collection-activity-device-graphql-empty');
-			if (payload?.errors?.length) throw new Error('collection-activity-device-graphql-error');
+			if (!response.ok) throw httpStatusError('collection-activity-device-graphql', response.status);
+			if (!payload) throw appError('invalid-response', { message: 'collection-activity-device-graphql-empty' });
+			if (payload?.errors?.length)
+				throw appError('unavailable', { message: 'collection-activity-device-graphql-error' });
 			const connection = decodeGraphqlConnection(
 				payload,
 				'transactions',
 				'collection-activity-device-graphql-schema'
 			);
 			for (const edge of connection.edges) {
-				if (!requested.has(edge.node.id)) throw new Error('collection-activity-device-graphql-schema');
+				if (!requested.has(edge.node.id))
+					throw appError('invalid-response', { message: 'collection-activity-device-graphql-schema' });
 				verified.add(edge.node.id);
 			}
 			if (!connection.pageInfo.hasNextPage) break;
@@ -1597,14 +1592,16 @@ function decodeGraphqlConnection(payload: any, key: string, errorCode: string): 
 				!isArweaveId(edge.node.id)
 		)
 	) {
-		throw new Error(errorCode);
+		throw appError('invalid-response', { message: errorCode });
 	}
 	return connection as GraphqlConnection;
 }
 
 function advanceGraphqlCursor(connection: GraphqlConnection, visited: Set<string>, errorCode: string): string {
 	const cursor = connection.edges.at(-1)?.cursor;
-	if (!cursor || visited.has(cursor) || visited.size >= MAX_GRAPHQL_PAGES) throw new Error(errorCode);
+	if (!cursor || visited.has(cursor) || visited.size >= MAX_GRAPHQL_PAGES) {
+		throw appError('invalid-response', { message: errorCode });
+	}
 	visited.add(cursor);
 	return cursor;
 }
@@ -1698,7 +1695,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 	if (options.signal?.aborted) onAbort();
 	return {
 		enqueue(candidates: AssetCandidate[]) {
-			if (sealed) throw new Error('asset-candidate-resolver-finished');
+			if (sealed) throw appError('invalid-input', { message: 'asset-candidate-resolver-finished' });
 			if (failure !== undefined) throw failure;
 			pending.push(...candidates.filter((candidate) => isVisibleAssetId(candidate.processId)));
 			pending.sort(compareActivity);
@@ -1807,9 +1804,9 @@ export async function verifyAssetCandidateSupport(
 				timeoutError: 'asset-support-graphql-timeout',
 			}
 		);
-		if (!response.ok) throw new Error(`asset-support-graphql-${response.status}`);
-		if (!payload) throw new Error('asset-support-graphql-empty');
-		if (payload.errors?.length) throw new Error('asset-support-graphql-error');
+		if (!response.ok) throw httpStatusError('asset-support-graphql', response.status);
+		if (!payload) throw appError('invalid-response', { message: 'asset-support-graphql-empty' });
+		if (payload.errors?.length) throw appError('unavailable', { message: 'asset-support-graphql-error' });
 		// `transactions` keeps older callers and focused mocks compatible while deployed
 		// GraphQL responses use the two explicit contract aliases.
 		const fungible = decodeGraphqlConnection(
@@ -1828,15 +1825,16 @@ export async function verifyAssetCandidateSupport(
 			legacyFungible.some((connection) => connection.pageInfo.hasNextPage) ||
 			atomic.pageInfo.hasNextPage
 		) {
-			throw new Error('asset-support-pagination-stalled');
+			throw appError('invalid-response', { message: 'asset-support-pagination-stalled' });
 		}
 		for (const edge of [fungible, ...legacyFungible].flatMap((connection) => connection.edges)) {
-			if (!requested.has(edge.node.id)) throw new Error('asset-support-graphql-schema');
+			if (!requested.has(edge.node.id))
+				throw appError('invalid-response', { message: 'asset-support-graphql-schema' });
 			verifiedChunk.add(edge.node.id);
 		}
 		for (const edge of atomic.edges) {
 			if (!requested.has(edge.node.id) || !atomicProcessNode(edge.node)) {
-				throw new Error('asset-support-graphql-schema');
+				throw appError('invalid-response', { message: 'asset-support-graphql-schema' });
 			}
 			verifiedChunk.add(edge.node.id);
 		}
@@ -1883,10 +1881,7 @@ export async function verifyAssetCandidateSupport(
 }
 
 function assetSupportBatchCanBeIsolated(error: unknown): boolean {
-	return (
-		error instanceof Error &&
-		['asset-support-graphql-error', 'asset-support-graphql-schema'].includes(error.message)
-	);
+	return isAppError(error) && ['asset-support-graphql-error', 'asset-support-graphql-schema'].includes(error.message);
 }
 
 export function partitionAssetCandidateSupport(

@@ -13,11 +13,13 @@ import {
 	purchaseLifecycleStatus,
 	type PurchaseSnapshot,
 	type PurchaseState,
+	purchaseStateFailure,
 } from 'api/transactions';
 
 import { formatArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import type { TransactionDialogPhase } from 'components/molecules/TransactionDialogControl';
 import { type ArweaveSyncStep, quorumConfirmationDepth } from 'features/TransactionSync';
+import { type AppError, appErrorMessage, type AppErrorReason, appErrorReasonMessage } from 'helpers/app-error';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { short } from 'helpers/format';
@@ -87,21 +89,35 @@ export function restartFungibleOperationActivity(activity: FungibleOperationActi
 
 export const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
 
-const TERMINAL_PURCHASE_FAILURES = new Set(['asset-purchase-rejected', 'asset-purchase-proof-mismatch']);
-
-const TERMINAL_PURCHASE_FAILURE_MESSAGES = new Set(['asset purchase rejected', 'asset purchase proof mismatch']);
+const TERMINAL_PURCHASE_FAILURES = new Set<AppErrorReason>([
+	'asset-purchase-rejected',
+	'asset-purchase-proof-mismatch',
+]);
 
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
-	if (state?.stage !== 'failed' || !state.error) return false;
-	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
-	return TERMINAL_PURCHASE_FAILURE_MESSAGES.has(state.error.message.trim().toLowerCase());
+	if (state?.stage !== 'failed') return false;
+	const reason = purchaseStateFailure(state)?.reason;
+	return reason !== undefined && TERMINAL_PURCHASE_FAILURES.has(reason);
 }
 
-export function purchaseFailureMessageNeedsManualReview(message?: string) {
-	if (!message) return false;
-	const normalized = message.trim().toLowerCase();
-	if (TERMINAL_PURCHASE_FAILURE_MESSAGES.has(normalized)) return true;
-	return [...TERMINAL_PURCHASE_FAILURE_MESSAGES].some((failure) => normalized.endsWith(`. ${failure}`));
+/** Whether an operation failure, or any lot of a settlement batch, proves only manual review can resolve it. */
+export function operationFailureNeedsManualReview(error: AppError | null) {
+	if (!error) return false;
+	return [error.reason, ...(error.detail?.failureReasons ?? [])].some((reason) =>
+		TERMINAL_PURCHASE_FAILURES.has(reason)
+	);
+}
+
+/** Operation copy for an application error; a settlement batch lists each lot's distinct failure. */
+export function fungibleOperationFailureMessage(error: AppError): string {
+	const { failedCount, totalCount, failureReasons = [] } = error.detail ?? {};
+	if (error.reason !== 'purchase-settlement-incomplete' || failedCount === undefined || totalCount === undefined) {
+		return appErrorMessage(error);
+	}
+	return [
+		`${failedCount} of ${totalCount} settlements need attention.`,
+		...failureReasons.map(appErrorReasonMessage),
+	].join(' ');
 }
 
 export function fungibleActivityPhaseStatus(phase: TransactionDialogPhase) {
@@ -206,7 +222,7 @@ export function fungibleOperationStateError(
 	expectedOrders: SwapOrder[],
 	rawQuantity = '0',
 	expectedDenomination = state.denomination
-) {
+): AppErrorReason | '' {
 	if (!assetBalanceStateAvailable(state)) return ASSET_BALANCE_STATE_UNAVAILABLE;
 	if (state.denomination !== expectedDenomination) return 'market-state-changed';
 	if (kind === 'buy' || kind === 'cancel') {
@@ -232,12 +248,12 @@ export function fungibleOperationStateError(
 	}
 }
 
-export function fungibleTransferRecipientError(recipient: string, owner: string) {
+/** The `invalid-input` reason blocking this transfer recipient, or `null` when it is usable. */
+export function fungibleTransferRecipientError(recipient: string, owner: string): AppErrorReason | null {
 	const normalized = recipient.trim();
-	if (!isArweaveId(normalized)) return 'Enter a 43-character Arweave wallet address.';
-	if (normalized === owner)
-		return 'Choose a different wallet. Sending tokens to this wallet would not change its balance.';
-	return '';
+	if (!isArweaveId(normalized)) return 'fungible-recipient-invalid';
+	if (normalized === owner) return 'fungible-recipient-is-owner';
+	return null;
 }
 
 export function fungibleTransferSubmitLabel(

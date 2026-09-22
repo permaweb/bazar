@@ -8,8 +8,14 @@ import {
 	type SwapOrder,
 } from 'api/marketplace';
 import type { Operation } from 'api/operations';
-import { purchaseLifecycleStatus, type PurchaseSnapshot, type PurchaseState } from 'api/transactions';
+import {
+	purchaseLifecycleStatus,
+	type PurchaseSnapshot,
+	type PurchaseState,
+	purchaseStateFailure,
+} from 'api/transactions';
 
+import { type AppError, appError, appErrorMessage, type AppErrorReason } from 'helpers/app-error';
 import { arToWinston, winstonToAr } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
@@ -57,24 +63,24 @@ export function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'lengt
 	return false;
 }
 
-export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = '') {
+/** The `invalid-input` reason blocking this form, or `null` when it can be submitted. */
+export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = ''): AppErrorReason | null {
 	if (kind === 'sell') {
-		if (!value.trim()) return 'Enter the AR price for this asset.';
-		if (/^0(?:\.0*)?$/.test(value)) return 'Enter a price of at least 0.000000000001 AR.';
+		if (!value.trim()) return 'listing-price-required';
+		if (/^0(?:\.0*)?$/.test(value)) return 'listing-price-too-low';
 		try {
-			if (BigInt(arToWinston(value)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+			if (BigInt(arToWinston(value)) < 1n) return 'listing-price-too-low';
 		} catch {
-			return 'Enter a valid AR amount with no more than 12 decimal places.';
+			return 'listing-price-invalid';
 		}
 	}
 	if (kind === 'transfer') {
 		const recipient = value.trim();
-		if (!recipient) return 'Enter the recipient’s 43-character Arweave address.';
-		if (!isArweaveId(recipient)) return 'Enter a valid 43-character Arweave address.';
-		if (owner && recipient === owner)
-			return 'Choose a different wallet. An asset cannot be transferred to its current owner.';
+		if (!recipient) return 'transfer-recipient-required';
+		if (!isArweaveId(recipient)) return 'transfer-recipient-invalid';
+		if (owner && recipient === owner) return 'transfer-recipient-is-owner';
 	}
-	return '';
+	return null;
 }
 
 export function atomicOperationValue(kind: Operation['kind'], value: string) {
@@ -146,7 +152,7 @@ export function atomicOperationStateError(
 	state: AssetState,
 	owner: string,
 	expectedOrder: SwapOrder | null
-) {
+): AppErrorReason | '' {
 	if (!assetBalanceStateAvailable(state)) return ASSET_BALANCE_STATE_UNAVAILABLE;
 	const currentOrder = expectedOrder ? state.orders[expectedOrder.orderId] : null;
 	const orderUnchanged = Boolean(
@@ -168,7 +174,7 @@ export function atomicOperationStateError(
 	return liquidBalanceOf(state, owner) !== '1' || liveOrderOfAsset(state) ? 'market-state-changed' : '';
 }
 
-export function pendingListingMessage(offer: PendingAssetOffer, signer: string): string {
+export function pendingListingMessage(offer: Pick<PendingAssetOffer, 'id' | 'actor'>, signer: string): string {
 	const transaction = short(offer.id);
 	if (offer.actor === signer) {
 		return `You already submitted listing transaction ${transaction}; waiting for live asset state. No new wallet approval was requested.`;
@@ -176,6 +182,45 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 	return `Another wallet ${short(
 		offer.actor
 	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
+}
+
+export type OperationFailureKind = 'market-state-changed' | 'transaction-not-sent' | 'transaction-rejected' | 'other';
+
+/** Failures proving the signed action was refused, so its saved transaction must not be replayed. */
+const TRANSACTION_REJECTIONS = new Set<AppErrorReason>([
+	'fungible-transfer-rejected',
+	'asset-cancel-rejected',
+	'asset-purchase-rejected',
+	'asset-order-reservation-rejected',
+	'asset-order-reservation-expired',
+	'transaction-dispatch-rejected',
+	'registration-dispatch-rejected',
+	'payment-dispatch-rejected',
+]);
+
+/** How an operation dialog recovers from a failure: refresh the market, discard, or retry. */
+export function operationFailureKind(error: AppError): OperationFailureKind {
+	if (error.reason === 'market-state-changed') return 'market-state-changed';
+	if (error.detail?.stage === 'not-sent') return 'transaction-not-sent';
+	return TRANSACTION_REJECTIONS.has(error.reason) ? 'transaction-rejected' : 'other';
+}
+
+/** A pending listing found before signing, as the refusal the operation dialog reports. */
+export function pendingListingFailure(offer: PendingAssetOffer, signer: string): AppError {
+	return appError(offer.actor === signer ? 'asset-listing-pending-self' : 'asset-listing-pending-other', {
+		detail: { transactionId: offer.id, actor: offer.actor },
+	});
+}
+
+/** Operation copy for an application error, naming the exact pending listing when one blocked signing. */
+export function atomicOperationFailureMessage(error: AppError, signer: string): string {
+	const pendingListing =
+		(error.reason === 'asset-listing-pending-self' || error.reason === 'asset-listing-pending-other') &&
+		error.detail?.transactionId &&
+		error.detail.actor
+			? { id: error.detail.transactionId, actor: error.detail.actor }
+			: null;
+	return pendingListing ? pendingListingMessage(pendingListing, signer) : appErrorMessage(error);
 }
 
 export function atomicOperationActionLabel(operation: Operation, value: string) {
@@ -234,22 +279,22 @@ export function atomicPurchaseFailureStage(state: PurchaseState | null) {
 	return 'Before reservation';
 }
 
-export function atomicPurchaseFailureCode(state: PurchaseState | null) {
-	if (!state?.error?.code) return null;
-	return state.error.code === 'unexpected' ? state.error.message || state.error.code : state.error.code;
-}
+const TERMINAL_RESERVATION_FAILURES = new Set<AppErrorReason>([
+	'registration-dispatch-rejected',
+	'asset-order-reservation-rejected',
+	'asset-order-reservation-expired',
+]);
 
 export function atomicPurchaseHasTerminalReservationFailure(state: PurchaseState | null) {
-	return [
-		'registration-dispatch-rejected',
-		'asset-order-reservation-rejected',
-		'asset-order-reservation-expired',
-	].includes(atomicPurchaseFailureCode(state) ?? '');
+	const reason = purchaseStateFailure(state)?.reason;
+	return reason !== undefined && TERMINAL_RESERVATION_FAILURES.has(reason);
 }
 
 // The order an atomic buy or cancel operation acts on. Purchase callbacks run after the operation kind
 // was checked; this keeps that invariant explicit where TypeScript cannot carry the narrowing.
 export function purchaseOrderOf(operation: Operation): SwapOrder {
-	if (operation.kind !== 'buy' && operation.kind !== 'cancel') throw new Error('operation-order-unavailable');
+	if (operation.kind !== 'buy' && operation.kind !== 'cancel') {
+		throw appError('invalid-input', { message: 'operation-order-unavailable' });
+	}
 	return operation.order;
 }

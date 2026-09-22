@@ -1,5 +1,7 @@
 import { operationWithDeadline } from 'api/network/deadline';
+import { httpStatusError, transportFailure } from 'api/network/errors';
 
+import { appError, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 
@@ -96,14 +98,19 @@ export async function readWalletBalance(
 	address: string,
 	options: { fetch?: typeof fetch; gateway?: string; signal?: AbortSignal } = {}
 ) {
-	if (!isArweaveId(address)) throw new TypeError('invalid-wallet-address');
+	if (!isArweaveId(address)) throw appError('invalid-input', { message: 'invalid-wallet-address' });
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const response = await fetcher(`${options.gateway ?? arweaveGatewayFromLocation()}/wallet/${address}/balance`, {
-		signal: options.signal,
-	});
-	if (!response.ok) throw new Error(`wallet-balance-${response.status}`);
+	let response: Response;
+	try {
+		response = await fetcher(`${options.gateway ?? arweaveGatewayFromLocation()}/wallet/${address}/balance`, {
+			signal: options.signal,
+		});
+	} catch (cause) {
+		throw options.signal?.aborted ? cause : transportFailure(cause, 'wallet-balance');
+	}
+	if (!response.ok) throw httpStatusError('wallet-balance', response.status);
 	const value = (await response.text()).trim();
-	if (!/^\d+$/.test(value)) throw new Error('wallet-balance-invalid');
+	if (!/^\d+$/.test(value)) throw appError('invalid-response', { message: 'wallet-balance-invalid' });
 	return BigInt(value);
 }
 
@@ -158,7 +165,7 @@ export async function readPermawebOsBalances(
 		timeoutMs?: number;
 	} = {}
 ): Promise<{ ar?: VisibleWalletBalance; ao?: VisibleWalletBalance } | undefined> {
-	if (!isArweaveId(address)) throw new TypeError('invalid-wallet-address');
+	if (!isArweaveId(address)) throw appError('invalid-input', { message: 'invalid-wallet-address' });
 	const scope = options.scope ?? (typeof window === 'undefined' ? {} : window);
 	const provider = scope.permawebConnect;
 	if (!isBrowserWallet(provider) || scope.arweaveWallet !== provider || typeof provider.getBalances !== 'function') {
@@ -189,7 +196,7 @@ export async function readPermawebOsBalances(
 	if (balances === undefined) return undefined;
 	if (scope.permawebConnect !== provider || scope.arweaveWallet !== provider) return undefined;
 	if (!balances || typeof balances !== 'object' || Array.isArray(balances)) {
-		throw new Error('wallet-balances-invalid');
+		throw appError('invalid-response', { message: 'wallet-balances-invalid' });
 	}
 	const snapshot = balances as { version?: unknown; address?: unknown; balances?: unknown };
 	if (
@@ -198,7 +205,7 @@ export async function readPermawebOsBalances(
 		!Array.isArray(snapshot.balances) ||
 		snapshot.balances.length > 100
 	) {
-		throw new Error('wallet-balances-invalid');
+		throw appError('invalid-response', { message: 'wallet-balances-invalid' });
 	}
 	const recognized = snapshot.balances
 		.map(injectedWalletBalance)
@@ -255,7 +262,7 @@ export async function readVisibleWalletBalances(
 			ar: {
 				atomicBalance: null,
 				denomination: 12,
-				error: error instanceof Error ? error.message : 'wallet-balance-unavailable',
+				error: toAppError(error, 'unavailable').message,
 			},
 			...(injected?.ao ? { ao: injected.ao } : {}),
 		};

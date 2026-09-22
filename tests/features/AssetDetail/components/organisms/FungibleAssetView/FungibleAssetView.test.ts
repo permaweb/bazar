@@ -55,6 +55,7 @@ import {
 	fungibleListingAccessibleLabel,
 	type FungibleOperationActivity,
 	fungibleOperationActivityProgress,
+	fungibleOperationFailureMessage,
 	fungibleOperationStateError,
 	fungibleOperationWorkingStatus,
 	fungibleOrderActionLabel,
@@ -62,10 +63,11 @@ import {
 	fungiblePurchaseSequence,
 	fungibleTransferRecipientError,
 	fungibleTransferSubmitLabel,
-	purchaseFailureMessageNeedsManualReview,
+	operationFailureNeedsManualReview,
 	purchaseSettlementNeedsManualReview,
 	restartFungibleOperationActivity,
 } from 'features/AssetDetail/model/fungible-operation';
+import { appError, type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 
 describe('fungible operation activity progress', () => {
 	it('reports the active Arweave confirmation depth for a purchase', () => {
@@ -450,19 +452,13 @@ describe('fungible operation error semantics', () => {
 	});
 
 	it('recognizes a terminal failure reported only by the batch summary', () => {
-		expect(
-			purchaseFailureMessageNeedsManualReview('1 of 1 settlements need attention. asset purchase rejected')
-		).toBe(true);
-		expect(
-			purchaseFailureMessageNeedsManualReview(
-				'1 of 1 settlements need attention. observer timed out while checking transaction'
-			)
-		).toBe(false);
-		expect(
-			purchaseFailureMessageNeedsManualReview(
-				'1 of 1 settlements need attention. asset-balance-proof-unavailable'
-			)
-		).toBe(false);
+		const settlement = (failureReasons: AppErrorReason[]) =>
+			appError('purchase-settlement-incomplete', { detail: { failedCount: 1, totalCount: 1, failureReasons } });
+		expect(operationFailureNeedsManualReview(settlement(['asset-purchase-rejected']))).toBe(true);
+		expect(operationFailureNeedsManualReview(settlement(['unknown']))).toBe(false);
+		expect(operationFailureNeedsManualReview(settlement(['asset-balance-proof-unavailable']))).toBe(false);
+		expect(operationFailureNeedsManualReview(appError('asset-purchase-proof-mismatch'))).toBe(true);
+		expect(operationFailureNeedsManualReview(null)).toBe(false);
 	});
 
 	it('quotes a requested token amount from automatic partial fills', () => {
@@ -955,8 +951,37 @@ describe('fungible batch payment coordination', () => {
 		await Promise.resolve();
 		expect(reported).toBe(false);
 		resolveSibling({ stage: 'complete', success: true } as PurchaseState);
-		await expect(result).rejects.toThrow('1 of 2 settlements need attention. reservation failed');
+		await expect(result).rejects.toMatchObject({
+			reason: 'purchase-settlement-incomplete',
+			detail: { failedCount: 1, totalCount: 2, failureReasons: ['unknown'] },
+		});
 		expect(reported).toBe(true);
+	});
+
+	it('summarizes each lot failure through the shared copy instead of provider text', async () => {
+		const settlement = waitForSettlementBatch([
+			Promise.resolve({
+				stage: 'failed',
+				success: false,
+				error: { code: 'unexpected', message: 'asset-purchase-rejected' },
+			} as PurchaseState),
+			Promise.reject(new Error('gateway said: 502 <html>')),
+			Promise.resolve({ stage: 'complete', success: true } as PurchaseState),
+		]);
+		const failure = await settlement.then(
+			() => appError('unknown', { message: 'expected-settlement-failure' }),
+			(cause: unknown) => toAppError(cause, 'unknown')
+		);
+
+		expect(failure.detail?.failureReasons).toEqual(['asset-purchase-rejected', 'unknown']);
+		const message = fungibleOperationFailureMessage(failure);
+		expect(message).toBe(
+			`2 of 3 settlements need attention. ${appErrorReasonMessage(
+				'asset-purchase-rejected'
+			)} ${appErrorReasonMessage('unknown')}`
+		);
+		expect(message).not.toContain('502');
+		expect(operationFailureNeedsManualReview(failure)).toBe(true);
 	});
 
 	it('releases a mixed resumed batch after only its remaining reservation becomes ready', () => {
@@ -1412,16 +1437,18 @@ describe('fungible state revalidation', () => {
 
 describe('fungible transfer recipient validation', () => {
 	it('rejects malformed and same-wallet recipients before signing', () => {
-		expect(fungibleTransferRecipientError('not-an-address', BUYER)).toContain('43-character');
-		expect(fungibleTransferRecipientError('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F', BUYER)).toContain(
-			'43-character'
+		expect(fungibleTransferRecipientError('not-an-address', BUYER)).toBe('fungible-recipient-invalid');
+		expect(fungibleTransferRecipientError('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F', BUYER)).toBe(
+			'fungible-recipient-invalid'
 		);
-		expect(fungibleTransferRecipientError('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs', BUYER)).toContain(
-			'43-character'
+		expect(fungibleTransferRecipientError('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs', BUYER)).toBe(
+			'fungible-recipient-invalid'
 		);
-		expect(fungibleTransferRecipientError(BUYER, BUYER)).toContain('different wallet');
-		expect(fungibleTransferRecipientError('c'.repeat(43), BUYER)).toBe('');
-		expect(fungibleTransferRecipientError(`  ${'c'.repeat(43)}\n`, BUYER)).toBe('');
+		expect(appErrorReasonMessage('fungible-recipient-invalid')).toContain('43-character');
+		expect(fungibleTransferRecipientError(BUYER, BUYER)).toBe('fungible-recipient-is-owner');
+		expect(appErrorReasonMessage('fungible-recipient-is-owner')).toContain('different wallet');
+		expect(fungibleTransferRecipientError('c'.repeat(43), BUYER)).toBeNull();
+		expect(fungibleTransferRecipientError(`  ${'c'.repeat(43)}\n`, BUYER)).toBeNull();
 	});
 
 	it('names the exact recipient before an irreversible transfer', () => {

@@ -9,6 +9,7 @@ import {
 	restoreBrowserWalletAfterDisconnect,
 } from 'api/wallet/session';
 
+import { appErrorMessage, toAppError } from 'helpers/app-error';
 import { createLatestAddressCommitter } from 'providers/WalletProvider/WalletProvider';
 
 function deferred<T>() {
@@ -21,9 +22,25 @@ function deferred<T>() {
 
 describe('explicit wallet connection', () => {
 	it('reports the selected wallet when its provider is unavailable', async () => {
-		await expect(connectWallet(undefined, 'PermawebOS')).rejects.toThrow(
+		const failure = await connectWallet(undefined, 'permaweb-os').catch((cause: unknown) =>
+			toAppError(cause, 'unknown')
+		);
+		expect(failure).toMatchObject({ reason: 'permaweb-os-wallet-missing', code: 'unavailable' });
+		expect(appErrorMessage(toAppError(failure, 'unknown'))).toBe(
 			'Install the PermawebOS wallet extension to continue.'
 		);
+		await expect(connectWallet(undefined)).rejects.toMatchObject({ reason: 'wander-wallet-missing' });
+	});
+
+	it('reports a declined connection neutrally instead of the extension text', async () => {
+		const failure = await connectWallet({
+			connect: async () => {
+				throw new Error('User cancelled the AuthRequest');
+			},
+			sign: async (transaction) => transaction,
+		}).catch((cause: unknown) => toAppError(cause, 'unknown'));
+		expect(failure).toMatchObject({ reason: 'wallet-connection-rejected', code: 'rejected' });
+		expect(appErrorMessage(toAppError(failure, 'unknown'))).not.toContain('AuthRequest');
 	});
 
 	it('returns the active address only after the requested permissions are granted', async () => {
@@ -48,7 +65,7 @@ describe('explicit wallet connection', () => {
 				getActiveAddress: async () => address,
 				sign: async (transaction) => transaction,
 			},
-			'PermawebOS',
+			'permaweb-os',
 			PERMAWEB_OS_WALLET_PERMISSIONS
 		);
 
@@ -69,7 +86,7 @@ describe('explicit wallet connection', () => {
 				},
 				sign: async (transaction) => transaction,
 			})
-		).rejects.toThrow('active address could not be read');
+		).rejects.toMatchObject({ reason: 'wallet-address-unreadable' });
 	});
 
 	it('rejects a connection that returns no active address', async () => {
@@ -78,7 +95,7 @@ describe('explicit wallet connection', () => {
 				connect: async () => undefined,
 				sign: async (transaction) => transaction,
 			})
-		).rejects.toThrow('no valid active address');
+		).rejects.toMatchObject({ reason: 'wallet-address-invalid' });
 	});
 });
 

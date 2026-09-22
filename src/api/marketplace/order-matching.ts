@@ -1,3 +1,5 @@
+import { appError } from 'helpers/app-error';
+
 import { compareOrderUnitPrice, type SwapOrder } from './adapter';
 
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
@@ -21,9 +23,10 @@ export function parseTokenAmount(value: string, denomination: number): string {
 	assertDenomination(denomination);
 	const normalized = value.trim();
 	const match = HUMAN_AMOUNT.exec(normalized);
-	if (!match) throw new TypeError('invalid-token-amount');
+	if (!match) throw appError('invalid-input', { message: 'invalid-token-amount' });
 	const fraction = match[1] ?? '';
-	if (fraction.length > denomination) throw new TypeError('token-amount-exceeds-denomination');
+	if (fraction.length > denomination)
+		throw appError('invalid-input', { message: 'token-amount-exceeds-denomination' });
 
 	const [whole] = normalized.split('.');
 	const scale = 10n ** BigInt(denomination);
@@ -36,7 +39,7 @@ export function parseTokenAmount(value: string, denomination: number): string {
 /** Format atomic units exactly, omitting insignificant trailing fractional zeroes. */
 export function formatTokenAmount(value: string, denomination: number): string {
 	assertDenomination(denomination);
-	if (!UNSIGNED_INTEGER.test(value)) throw new TypeError('invalid-atomic-token-amount');
+	if (!UNSIGNED_INTEGER.test(value)) throw appError('invalid-input', { message: 'invalid-atomic-token-amount' });
 	if (denomination === 0) return value;
 
 	const padded = value.padStart(denomination + 1, '0');
@@ -63,7 +66,7 @@ function availableOrders(orders: Iterable<SwapOrder>): SwapOrder[] {
 	const available: SwapOrder[] = [];
 	for (const order of orders) {
 		if (order.status !== 'open') continue;
-		if (available.length === MAX_MATCH_ORDERS) throw new RangeError('order-match-search-limit');
+		if (available.length === MAX_MATCH_ORDERS) throw appError('order-match-search-limit');
 		available.push(order);
 	}
 	return available;
@@ -71,7 +74,7 @@ function availableOrders(orders: Iterable<SwapOrder>): SwapOrder[] {
 
 function fillSortedOrders(available: SwapOrder[], requestedQuantity: string): OrderFillMatch | null {
 	if (!UNSIGNED_INTEGER.test(requestedQuantity) || BigInt(requestedQuantity) < 1n) {
-		throw new TypeError('invalid-requested-quantity');
+		throw appError('invalid-input', { message: 'invalid-requested-quantity' });
 	}
 
 	const target = BigInt(requestedQuantity);
@@ -99,10 +102,11 @@ function fillSortedOrders(available: SwapOrder[], requestedQuantity: string): Or
 }
 
 export function filledOrder(order: SwapOrder, fillQuantity: string): SwapOrder {
-	if (!UNSIGNED_INTEGER.test(fillQuantity)) throw new TypeError('invalid-requested-quantity');
+	if (!UNSIGNED_INTEGER.test(fillQuantity))
+		throw appError('invalid-input', { message: 'invalid-requested-quantity' });
 	const part = BigInt(fillQuantity);
 	const whole = BigInt(order.quantity);
-	if (part < 1n || part > whole) throw new RangeError('fill-quantity-out-of-range');
+	if (part < 1n || part > whole) throw appError('invalid-input', { message: 'fill-quantity-out-of-range' });
 	const share = (value: string) => ((BigInt(value) * part + whole - 1n) / whole).toString();
 	return {
 		...order,
@@ -115,6 +119,6 @@ export function filledOrder(order: SwapOrder, fillQuantity: string): SwapOrder {
 
 function assertDenomination(denomination: number): void {
 	if (!Number.isSafeInteger(denomination) || denomination < 0 || denomination > 255) {
-		throw new TypeError('invalid-token-denomination');
+		throw appError('invalid-input', { message: 'invalid-token-denomination' });
 	}
 }

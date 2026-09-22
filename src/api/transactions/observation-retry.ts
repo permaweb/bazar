@@ -1,5 +1,7 @@
 import type { Consensus, PurchaseSnapshot, PurchaseState, PurchaseTransaction } from 'weave-wrangler';
 
+import { purchaseStateFailure } from './failure';
+
 export type PurchaseObservationRetryKind = 'registration' | 'payment';
 
 const PURCHASE_OBSERVATION_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 15_000, 30_000, 60_000] as const;
@@ -7,14 +9,9 @@ const PURCHASE_OBSERVATION_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 15_000, 30_00
 export function purchaseObservationRetryKind(
 	state: Pick<PurchaseState, 'error'> | null | undefined
 ): PurchaseObservationRetryKind | null {
-	const normalize = (value: string) => value.trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-');
-	const code = normalize(state?.error?.code ?? '');
-	if (code === 'registration-not-found') return 'registration';
-	if (code === 'payment-not-found') return 'payment';
-	if (code && code !== 'unexpected') return null;
-	const message = normalize(state?.error?.message ?? '');
-	if (message === 'registration-not-found') return 'registration';
-	if (message === 'payment-not-found') return 'payment';
+	const reason = purchaseStateFailure(state)?.reason;
+	if (reason === 'registration-not-found') return 'registration';
+	if (reason === 'payment-not-found') return 'payment';
 	return null;
 }
 

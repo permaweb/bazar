@@ -6,6 +6,7 @@ import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Tooltip } from 'components/atoms/Tooltip';
+import { appErrorMessage, toAppError } from 'helpers/app-error';
 import { useAccountProfileSummary } from 'hooks/useAccountProfileSummary';
 import { useTheme } from 'providers/ThemeProvider';
 import { useWallet } from 'providers/WalletProvider';
@@ -71,7 +72,7 @@ export default function WalletMenu() {
 			await wallet.disconnect();
 			setOpen(false);
 		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : 'Wallet could not be disconnected.');
+			setError(appErrorMessage(toAppError(cause, 'wallet-disconnect-failed')));
 		} finally {
 			setDisconnecting(false);
 		}

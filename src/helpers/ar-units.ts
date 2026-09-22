@@ -1,3 +1,5 @@
+import { appError } from './app-error';
+
 export function winstonToAr(value: string) {
 	const raw = BigInt(value);
 	const whole = raw / 1_000_000_000_000n;
@@ -6,8 +8,7 @@ export function winstonToAr(value: string) {
 }
 
 export function arToWinston(value: string) {
-	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)
-		throw new Error('Enter a positive AR amount.');
+	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0) throw appError('ar-amount-invalid');
 	const [whole, decimals = ''] = value.split('.');
 	return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
 }

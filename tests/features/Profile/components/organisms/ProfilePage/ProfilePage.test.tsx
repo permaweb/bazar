@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import ProfilePage from 'features/Profile/components/organisms/ProfilePage/ProfilePage';
+import ProfilePage, { profileUpdateError } from 'features/Profile/components/organisms/ProfilePage/ProfilePage';
+import { appError } from 'helpers/app-error';
 
 const profile = {
 	address: 'abcdefghijklmno0123456789ABCDEFGHIJKLMNOPQ',
@@ -40,5 +41,21 @@ describe('ProfileRoute', () => {
 
 		expect(markup).toContain('aria-label="Edit profile picture"');
 		expect(markup).toContain('aria-label="Edit profile"');
+	});
+});
+
+describe('profile update failures', () => {
+	it('explains profile-specific reasons and keeps general copy for everything else', () => {
+		expect(profileUpdateError(appError('profile-wallet-account-changed'))).toBe(
+			'The connected wallet changed. Return to your current wallet profile and try again.'
+		);
+		expect(profileUpdateError(appError('invalid-profile-avatar-size'))).toBe('Choose an image smaller than 10 MB.');
+		for (const cause of [
+			appError('unavailable', { message: 'profile-upload-503' }),
+			appError('wallet-request-rejected'),
+			new Error('profile-upload-500: gateway exploded'),
+		]) {
+			expect(profileUpdateError(cause)).toBe('Your profile could not be updated. Please try again.');
+		}
 	});
 });

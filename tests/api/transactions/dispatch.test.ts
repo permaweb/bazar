@@ -5,7 +5,7 @@ const control = vi.hoisted(() => ({
 	networkOptions: undefined as Record<string, unknown> | undefined,
 	networkStopped: false,
 	watcherStopped: false,
-	outcome: 'timeout' as 'timeout' | 'settled',
+	outcome: 'timeout' as 'timeout' | 'settled' | 'pending',
 	listeners: new Map<string, (...args: any[]) => void>(),
 }));
 
@@ -23,6 +23,7 @@ vi.mock('api/observers/network', () => ({
 				},
 				start() {
 					queueMicrotask(() => {
+						if (control.outcome === 'pending') return;
 						if (control.outcome === 'timeout') control.listeners.get('timeout')?.();
 						else {
 							const consensus = {
@@ -56,6 +57,8 @@ vi.mock('api/observers/network', () => ({
 		}
 	},
 }));
+
+import { TransactionDispatchRejectedError } from 'weave-wrangler';
 
 import { dispatchAndConfirm } from 'api/transactions/adapter';
 
@@ -147,5 +150,35 @@ describe('transaction dispatch observation', () => {
 			settled: true,
 		});
 		expect(progress).toEqual([{ confirmations: 5, propagated: true, seen: 3, eligible: 3 }]);
+	});
+
+	it('reports an unseen submitted transaction as an unknown outcome that keeps its ID', async () => {
+		const transaction = {
+			id: 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA',
+			dispatch: async () => undefined,
+		};
+
+		await expect(dispatchAndConfirm(transaction as any)).rejects.toMatchObject({
+			reason: 'transaction-propagation-timeout',
+			code: 'unknown-outcome',
+			retryable: false,
+			detail: { transactionId: transaction.id },
+		});
+	});
+
+	it('reports a definitive gateway refusal as a rejected dispatch of the exact signed transaction', async () => {
+		control.outcome = 'pending';
+		const transaction = {
+			id: 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA',
+			dispatch: async () => {
+				throw new TransactionDispatchRejectedError(400, 'transaction-dispatch-400');
+			},
+		};
+
+		await expect(dispatchAndConfirm(transaction as any)).rejects.toMatchObject({
+			reason: 'transaction-dispatch-rejected',
+			code: 'rejected',
+			detail: { transactionId: transaction.id },
+		});
 	});
 });

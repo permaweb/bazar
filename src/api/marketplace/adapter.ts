@@ -1,6 +1,14 @@
-import { aoCacheMetadata as cacheMetadata, type AoCacheStatus, aoFetch, aoPrimaryPeer } from 'api/ao/adapter';
+import {
+	aoCacheMetadata as cacheMetadata,
+	type AoCacheStatus,
+	aoFetch,
+	aoPrimaryPeer,
+	aoTransportFailure,
+} from 'api/ao/adapter';
 import { currentArweaveHeight } from 'api/arweave/height';
+import { httpStatusError } from 'api/network/errors';
 
+import { appError, type AppErrorReason } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { arweaveGatewayFromLocation, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
 
@@ -58,7 +66,7 @@ export type ComputeRetryProgress = {
 	delayMs: number;
 };
 
-export const ASSET_BALANCE_STATE_UNAVAILABLE = 'asset-balance-state-unavailable';
+export const ASSET_BALANCE_STATE_UNAVAILABLE = 'asset-balance-state-unavailable' satisfies AppErrorReason;
 
 export function assetBalanceStateAvailable(state: Pick<AssetState, 'holderBalancesAvailable'>): boolean {
 	return state.holderBalancesAvailable !== false;
@@ -173,7 +181,7 @@ export async function readAssetState(
 		heightGateway?: string;
 	} = {}
 ): Promise<ComputeResult> {
-	if (!isArweaveId(processId)) throw new TypeError('invalid-asset-process-id');
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
 	const provider = aoPrimaryPeer() || options.provider || '';
 	const fetcher = aoFetch(options.fetch);
 	const readReservationHeight = () =>
@@ -214,7 +222,7 @@ export async function readAssetStateAtSlot(
 	options: { fetch?: typeof fetch; signal?: AbortSignal } = {}
 ): Promise<ComputeResult> {
 	if (!isArweaveId(processId) || !Number.isSafeInteger(slot) || slot < 0) {
-		throw new TypeError('invalid-process-slot');
+		throw appError('invalid-input', { message: 'invalid-process-slot' });
 	}
 	const provider = aoPrimaryPeer();
 	const fetcher = aoFetch(options.fetch);
@@ -223,7 +231,9 @@ export async function readAssetStateAtSlot(
 		slot,
 		maxAge: 0,
 	});
-	if (assetStateSlot(read.state) !== slot) throw new Error('historical-state-slot-mismatch');
+	if (assetStateSlot(read.state) !== slot) {
+		throw appError('invalid-response', { message: 'historical-state-slot-mismatch' });
+	}
 	return {
 		state: read.state,
 		provider: read.provider,
@@ -248,7 +258,7 @@ export async function readProcessAssignments(
 		toSlot < fromSlot ||
 		toSlot - fromSlot >= 100
 	) {
-		throw new TypeError('invalid-process-schedule-window');
+		throw appError('invalid-input', { message: 'invalid-process-schedule-window' });
 	}
 	const fetcher = aoFetch(options.fetch);
 	const base = '/';
@@ -267,14 +277,15 @@ export async function readProcessAssignments(
 				},
 				signal: options.signal,
 			});
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			if (!response.ok) throw httpStatusError('process-schedule', response.status);
 			return parseProcessAssignments(parseLosslessJson(await response.text()), fromSlot, toSlot);
 		} catch (error) {
 			lastError = error;
-			if (error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message)) break;
+			if (options.signal?.aborted) break;
+			if (aoTransportFailure(error).code === 'rate-limited') break;
 		}
 	}
-	throw lastError instanceof Error ? lastError : new Error('process-schedule-provider-failed');
+	throw computeReadFailure(lastError, options.signal, 'process-schedule-provider-failed');
 }
 
 export function assetStateSlot(state: AssetState): number | null {
@@ -324,7 +335,7 @@ export async function waitForAssetState(
 		await delay(options.interval ?? 4000, options.signal);
 	}
 
-	throw new Error('asset-state-timeout');
+	throw appError('asset-state-timeout');
 }
 
 export function parseAssetState(value: unknown, reservationHeight?: number): AssetState {
@@ -351,7 +362,7 @@ function parseAssetStateValue(value: unknown): { state: AssetState; activeReserv
 		ticker === null ||
 		!balances
 	) {
-		throw new TypeError('invalid-asset-state');
+		throw appError('invalid-response', { message: 'invalid-asset-state' });
 	}
 
 	const orders: Record<string, SwapOrder> = {};
@@ -395,7 +406,9 @@ function orderWithoutExpiredReservation(order: SwapOrder, swapHeight: number): S
 }
 
 function normalizeAssetStateReservations(state: AssetState, height: number): AssetState {
-	if (!Number.isSafeInteger(height) || height < 0) throw new TypeError('invalid-reservation-height');
+	if (!Number.isSafeInteger(height) || height < 0) {
+		throw appError('invalid-response', { message: 'invalid-reservation-height' });
+	}
 	const reservationHeight = Math.max(state.swapHeight, height);
 	let orders = state.orders;
 	for (const [id, order] of Object.entries(state.orders)) {
@@ -600,7 +613,7 @@ async function readState(
 						}
 					}
 					response = await fetcher(path, requestInit);
-					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					if (!response.ok) throw httpStatusError('compute', response.status);
 					const state = await parseStateResponse(
 						response,
 						path,
@@ -636,7 +649,7 @@ async function readState(
 						continue;
 					}
 					lastError = error;
-					rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
+					rateLimited = !options.signal?.aborted && aoTransportFailure(error).code === 'rate-limited';
 				}
 				break;
 			}
@@ -649,7 +662,13 @@ async function readState(
 		await delay(delayMs, options.signal);
 	}
 
-	throw lastError instanceof Error ? lastError : new Error('compute-provider-failed');
+	throw computeReadFailure(lastError, options.signal, 'compute-provider-failed');
+}
+
+/** Preserve a caller's abort reason; map every other compute read failure into the application taxonomy. */
+function computeReadFailure(lastError: unknown, signal: AbortSignal | undefined, missing: string): unknown {
+	if (signal?.aborted) return lastError ?? signal.reason;
+	return lastError === undefined ? appError('unavailable', { message: missing }) : aoTransportFailure(lastError);
 }
 
 function statePaths(base: string, processId: string, endpoint: string): string[] {
@@ -670,7 +689,9 @@ async function parseStateResponse(
 			if (isRecord(raw[key])) return [];
 			const id = raw[`${key}+link`];
 			if (id === undefined) return [];
-			if (typeof id !== 'string' || !isArweaveId(id)) throw new TypeError('invalid-asset-state-link');
+			if (typeof id !== 'string' || !isArweaveId(id)) {
+				throw appError('invalid-response', { message: 'invalid-asset-state-link' });
+			}
 			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher)];
 		})
 	);
@@ -698,9 +719,11 @@ async function readLinkedStateTable(
 	const throwIfAborted = () => requestInit.signal?.throwIfAborted();
 	const messages = new Map<string, Promise<Record<string, unknown>>>();
 	const read = (messageId: string): Promise<Record<string, unknown>> => {
-		if (!isArweaveId(messageId)) return Promise.reject(new TypeError('invalid-asset-state-link'));
+		if (!isArweaveId(messageId)) {
+			return Promise.reject(appError('invalid-response', { message: 'invalid-asset-state-link' }));
+		}
 		if (messages.size >= 4096 && !messages.has(messageId)) {
-			return Promise.reject(new TypeError('asset-state-link-limit'));
+			return Promise.reject(appError('invalid-response', { message: 'asset-state-link-limit' }));
 		}
 		const existing = messages.get(messageId);
 		if (existing) return existing;
@@ -710,7 +733,7 @@ async function readLinkedStateTable(
 			signal: requestInit.signal,
 		}).then(async (response) => {
 			throwIfAborted();
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			if (!response.ok) throw httpStatusError('compute-linked-state', response.status);
 			if (serialized) {
 				const body = await response.text();
 				throwIfAborted();
@@ -728,7 +751,7 @@ async function readLinkedStateTable(
 			signal: requestInit.signal,
 		});
 		throwIfAborted();
-		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		if (!response.ok) throw httpStatusError('compute-linked-state', response.status);
 		const value = await response.text();
 		throwIfAborted();
 		return value;
@@ -902,7 +925,7 @@ async function flattenLinkedTrie(
 					return [];
 				}
 				if (typeof value !== 'string' || !isArweaveId(value) || ancestors.has(value)) {
-					throw new TypeError('invalid-asset-state-trie');
+					throw appError('invalid-response', { message: 'invalid-asset-state-trie' });
 				}
 				return [read(value).then((child) => visit(child, owner, new Set([...ancestors, value])))];
 			})
@@ -922,7 +945,7 @@ async function parseRevalidatedState(
 	retry = true
 ): Promise<{ state: AssetState; provider: string }> {
 	try {
-		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		if (!response.ok) throw httpStatusError('compute', response.status);
 		return {
 			state: await parseStateResponse(
 				response,
@@ -964,12 +987,12 @@ function responseProvider(response: Response, fallback: string): string {
 }
 
 function parseProcessAssignments(value: unknown, fromSlot: number, toSlot: number): ProcessAssignment[] {
-	if (!isRecord(value)) throw new TypeError('invalid-process-schedule');
+	if (!isRecord(value)) throw appError('invalid-response', { message: 'invalid-process-schedule' });
 	const assignments: ProcessAssignment[] = [];
 	for (let slot = fromSlot; slot <= toSlot; slot += 1) {
 		const raw = value[String(slot)];
 		if (!isRecord(raw) || integer(raw.slot) !== slot || !isRecord(raw.body)) {
-			throw new TypeError('incomplete-process-schedule');
+			throw appError('invalid-response', { message: 'incomplete-process-schedule' });
 		}
 		const blockHeight = integer(raw['block-height']);
 		const commitments = isRecord(raw.body.commitments) ? raw.body.commitments : {};
@@ -977,7 +1000,7 @@ function parseProcessAssignments(value: unknown, fromSlot: number, toSlot: numbe
 			isArweaveId(id) && isRecord(commitment) && commitment['commitment-device'] === 'tx@1.0' ? [id] : []
 		);
 		if (blockHeight === null || !transactionIds.length) {
-			throw new TypeError('invalid-process-assignment');
+			throw appError('invalid-response', { message: 'invalid-process-assignment' });
 		}
 		assignments.push({ slot, blockHeight, transactionIds, raw });
 	}
@@ -997,7 +1020,7 @@ function unwrapState(value: unknown): Record<string, unknown> {
 		}
 		break;
 	}
-	if (!isRecord(held)) throw new TypeError('invalid-asset-state');
+	if (!isRecord(held)) throw appError('invalid-response', { message: 'invalid-asset-state' });
 	return held;
 }
 

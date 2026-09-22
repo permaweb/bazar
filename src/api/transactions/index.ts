@@ -1,5 +1,6 @@
 export type { PreparedPurchase, PurchaseBatchPreparationEvent, PurchaseCostEstimate } from './adapter';
 export { AssetTransactionClient, confirmTransactionId, dispatchAndConfirm } from './adapter';
+export { purchaseStateFailure } from './failure';
 export type { PurchaseGatewayContext } from './lifecycle';
 export {
 	continuePaymentConfirmations,

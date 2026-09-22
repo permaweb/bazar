@@ -1,3 +1,7 @@
+import { httpStatusError, transportFailure } from 'api/network/errors';
+
+import { appError } from 'helpers/app-error';
+
 const MAX_DIFFICULTY = (1n << 256n) - 1n;
 // Draft 17 targets one accepted block every two minutes.
 const TARGET_BLOCK_SECONDS = 120;
@@ -216,14 +220,19 @@ export function expectedCandidatesForDifficulty(difficulty: string): number | un
 }
 
 export async function fetchCurrentBlockProof(origin: string, signal: AbortSignal): Promise<ArweaveAcceptedProof> {
-	const response = await fetch(`${origin.replace(/\/$/, '')}/block/current`, {
-		signal,
-		headers: { accept: 'application/json', 'x-block-format': '2' },
-	});
-	if (!response.ok) throw new Error(`current-block-${response.status}`);
+	const response = await telemetryRead(`${origin.replace(/\/$/, '')}/block/current`, 'current-block', signal);
+	if (!response.ok) throw httpStatusError('current-block', response.status);
 	const proof = parseAcceptedBlockProof(await response.json());
-	if (!proof) throw new Error('current-block-proof-missing');
+	if (!proof) throw appError('invalid-response', { message: 'current-block-proof-missing' });
 	return proof;
+}
+
+async function telemetryRead(url: string, operation: string, signal: AbortSignal): Promise<Response> {
+	try {
+		return await fetch(url, { signal, headers: { accept: 'application/json', 'x-block-format': '2' } });
+	} catch (cause) {
+		throw signal.aborted ? cause : transportFailure(cause, operation);
+	}
 }
 
 export async function enrichAcceptedBlockContent(
@@ -333,10 +342,10 @@ async function fetchRecallChunk(
 		signal,
 		headers: { accept: 'application/json' },
 	});
-	if (!response.ok) throw new Error(`recall-chunk-${response.status}`);
+	if (!response.ok) throw httpStatusError('recall-chunk', response.status);
 	const value = (await response.json()) as RecallChunk;
 	const encodedChunk = stringValue(value.chunk);
-	if (!encodedChunk) throw new Error('recall-chunk-missing');
+	if (!encodedChunk) throw appError('invalid-response', { message: 'recall-chunk-missing' });
 	const bytes = decodeBase64Url(encodedChunk);
 	return {
 		bytes,
@@ -376,13 +385,13 @@ function fetchBlockLocation(
 		signal,
 		headers: { accept: 'application/json', 'x-block-format': '2' },
 	}).then(async (response) => {
-		if (!response.ok) throw new Error(`recall-block-${response.status}`);
+		if (!response.ok) throw httpStatusError('recall-block', response.status);
 		const block = (await response.json()) as ArweaveBlock;
 		const blockHeight = finiteNumber(block.height);
 		const blockId = stringValue(block.indep_hash);
 		const weaveSize = finiteNumber(block.weave_size);
 		if (blockHeight === undefined || !blockId || weaveSize === undefined) {
-			throw new Error('recall-block-invalid');
+			throw appError('invalid-response', { message: 'recall-block-invalid' });
 		}
 		return {
 			height: blockHeight,

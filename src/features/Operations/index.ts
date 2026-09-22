@@ -10,4 +10,6 @@ export {
 	currentPurchaseGatewayContext,
 	externalReservationTransaction,
 	hasStoredSignedTransaction,
+	type OperationFailureKind,
+	operationFailureKind,
 } from './model/atomic-operation';

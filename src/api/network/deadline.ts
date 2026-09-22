@@ -1,8 +1,15 @@
+import { appError, type AppErrorReason } from 'helpers/app-error';
+
+import { transportFailure } from './errors';
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 type DeadlineOptions = {
 	timeoutMs?: number;
+	/** Diagnostic message of the timeout `AppError`. */
 	timeoutError: string;
+	/** Reason of the timeout `AppError`; defaults to `timeout`. */
+	timeoutReason?: AppErrorReason;
 };
 
 export async function operationWithDeadline<T>(
@@ -15,7 +22,10 @@ export async function operationWithDeadline<T>(
 	const timeoutMs = Math.max(1, Math.floor(options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
 	const forwardAbort = () => controller.abort(signal?.reason);
 	signal?.addEventListener('abort', forwardAbort, { once: true });
-	const timer = setTimeout(() => controller.abort(new Error(options.timeoutError)), timeoutMs);
+	const timer = setTimeout(
+		() => controller.abort(appError(options.timeoutReason ?? 'timeout', { message: options.timeoutError })),
+		timeoutMs
+	);
 	let rejectAbort!: (reason: unknown) => void;
 	const aborted = new Promise<never>((_resolve, reject) => {
 		rejectAbort = reject;
@@ -71,5 +81,16 @@ async function requestWithDeadline<T>(
 	options: DeadlineOptions,
 	read: (response: Response) => Promise<T>
 ): Promise<T> {
-	return operationWithDeadline((signal) => fetcher(input, { ...init, signal }).then(read), init.signal, options);
+	// Label transport failures after the request's timeout code, e.g. `asset-index-graphql-unreachable`.
+	const operation = options.timeoutError.replace(/-timeout$/, '');
+	return operationWithDeadline(
+		(signal) =>
+			fetcher(input, { ...init, signal })
+				.then(read)
+				.catch((cause: unknown) => {
+					throw signal.aborted ? cause : transportFailure(cause, operation);
+				}),
+		init.signal,
+		options
+	);
 }

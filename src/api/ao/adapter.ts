@@ -1,5 +1,8 @@
 import { ao, type AoCacheMetadata, type AoCacheStatus, type AoClient, cacheMetadata, createAo } from 'ao.js';
 
+import { transportFailure } from 'api/network/errors';
+
+import { type AppError, appError, isAppError } from 'helpers/app-error';
 import {
 	fallbackAoPeersFromLocation,
 	gatewaysFromLocation,
@@ -41,6 +44,21 @@ function directAoFetch(): BazarAoPeerFetch {
 		bazarTransport = { peers: signature, fetcher: createBazarAoFetch(peers) };
 	}
 	return bazarTransport.fetcher;
+}
+
+/**
+ * ao.js reports routing failures only as `ao.js-*` error messages (for example `ao.js-response-quorum-not-met` or
+ * `ao.js-no-route-candidates`) and a slow peer as a `TimeoutError`. This is the one place Bazar interprets that text;
+ * every other layer branches on the returned `AppError`.
+ */
+export function aoTransportFailure(cause: unknown): AppError {
+	if (isAppError(cause)) return cause;
+	const message = cause && typeof cause === 'object' ? (cause as { message?: unknown }).message : undefined;
+	if (typeof message === 'string' && message.startsWith('ao.js-')) {
+		const failure = message.slice('ao.js-'.length).split(':')[0];
+		return appError('unavailable', { cause, message: `compute-${failure}` });
+	}
+	return transportFailure(cause, 'compute-provider');
 }
 
 export function aoClient(nodes?: Nodes): AoClient {

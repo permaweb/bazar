@@ -194,7 +194,7 @@ describe('wallet-bound operation sessions', () => {
 			discardIds: [PAYMENT_ID],
 			snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } },
 		});
-		expect(repairRejectedPurchase(unsignedPair, 'registration-dispatch-failed')).toEqual({
+		expect(repairRejectedPurchase(unsignedPair, 'transaction-dispatch-not-sent')).toEqual({
 			discardIds: [],
 			snapshot: unsignedPair,
 		});

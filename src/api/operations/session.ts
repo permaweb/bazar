@@ -1,5 +1,6 @@
 import type { PurchaseSnapshot } from 'weave-wrangler';
 
+import { appError, type AppErrorReason } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
 
@@ -119,19 +120,19 @@ export function latestPurchaseSnapshot(
 
 export function repairRejectedPurchase(
 	snapshot: PurchaseSnapshot,
-	code: string | undefined
+	reason: AppErrorReason | undefined
 ): { discardIds: string[]; snapshot: PurchaseSnapshot | null } {
 	if (
-		code === 'registration-dispatch-rejected' ||
-		code === 'asset-order-reservation-rejected' ||
-		code === 'asset-order-reservation-expired'
+		reason === 'registration-dispatch-rejected' ||
+		reason === 'asset-order-reservation-rejected' ||
+		reason === 'asset-order-reservation-expired'
 	) {
 		return {
 			discardIds: [snapshot.registration?.id, snapshot.payment?.id].filter((id): id is string => Boolean(id)),
 			snapshot: null,
 		};
 	}
-	if (code === 'payment-dispatch-rejected' && snapshot.registration?.dispatched) {
+	if (reason === 'payment-dispatch-rejected' && snapshot.registration?.dispatched) {
 		return {
 			discardIds: snapshot.payment?.id ? [snapshot.payment.id] : [],
 			snapshot: { registration: snapshot.registration },
@@ -252,7 +253,7 @@ export function walletOperationStorageChange(
 
 export function assertWalletOperationAvailable(storage: Pick<Storage, 'getItem'>, keys: string[]) {
 	if (keys.some((key) => storage.getItem(key) !== null)) {
-		throw new Error('wallet-recovery-conflict');
+		throw appError('wallet-recovery-conflict');
 	}
 }
 
@@ -276,12 +277,12 @@ export async function acquireWalletOperationClaim(
 			try {
 				recovered = JSON.parse(storage.getItem(options.recovery.key) ?? 'null');
 			} catch {
-				throw new Error('wallet-recovery-conflict');
+				throw appError('wallet-recovery-conflict');
 			}
 			try {
-				if (!options.recovery.matches(recovered)) throw new Error('wallet-recovery-conflict');
+				if (!options.recovery.matches(recovered)) throw appError('wallet-recovery-conflict');
 			} catch {
-				throw new Error('wallet-recovery-conflict');
+				throw appError('wallet-recovery-conflict');
 			}
 		}
 		setCriticalStorageItem(storage, claimKey, JSON.stringify({ attemptId, createdAt: Date.now() }));
@@ -290,15 +291,15 @@ export async function acquireWalletOperationClaim(
 				(JSON.parse(storage.getItem(claimKey) ?? 'null') as { attemptId?: string } | null)?.attemptId !==
 				attemptId
 			) {
-				throw new Error('wallet-recovery-conflict');
+				throw appError('wallet-recovery-conflict');
 			}
 		} catch {
-			throw new Error('wallet-recovery-conflict');
+			throw appError('wallet-recovery-conflict');
 		}
 		return { key: claimKey, attemptId, releaseLock };
 	};
 
-	if (!locks) throw new Error('wallet-operation-lock-unavailable');
+	if (!locks) throw appError('wallet-operation-lock-unavailable');
 	let releaseHeldLock!: () => void;
 	let resolveAcquired!: (claim: WalletOperationClaim) => void;
 	let rejectAcquired!: (cause: unknown) => void;
@@ -309,7 +310,7 @@ export async function acquireWalletOperationClaim(
 	void locks
 		.request(claimKey, { mode: 'exclusive', ifAvailable: true }, async (lock) => {
 			if (!lock) {
-				rejectAcquired(new Error('wallet-recovery-conflict'));
+				rejectAcquired(appError('wallet-recovery-conflict'));
 				return;
 			}
 			let release!: () => void;
@@ -374,9 +375,9 @@ export function promoteWalletOperationClaim<T>(
 	try {
 		held = JSON.parse(storage.getItem(claim.key) ?? 'null') as { attemptId?: string } | null;
 	} catch {
-		throw new Error('wallet-recovery-conflict');
+		throw appError('wallet-recovery-conflict');
 	}
-	if (held?.attemptId !== claim.attemptId) throw new Error('wallet-recovery-conflict');
+	if (held?.attemptId !== claim.attemptId) throw appError('wallet-recovery-conflict');
 	storeWalletRecordOrThrow(storage, recoveryKey, record, matches, true);
 }
 
@@ -481,6 +482,6 @@ export function storeWalletRecordOrThrow<T>(
 	allowMissing = false
 ) {
 	if (!storeWalletRecordIf(storage, key, record, matches, allowMissing)) {
-		throw new Error('wallet-recovery-conflict');
+		throw appError('wallet-recovery-conflict');
 	}
 }

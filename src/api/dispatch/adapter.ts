@@ -7,14 +7,17 @@ import {
 	waitForAssetState,
 } from 'api/marketplace/adapter';
 import { parseTokenAmount } from 'api/marketplace/order-matching';
-import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from 'api/transactions/adapter';
+import { httpStatusError, transportFailure } from 'api/network/errors';
+import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX, signedDispatchFailure } from 'api/transactions/adapter';
 
+import { appError, type AppErrorReason } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 
 const QUANTITY = /^[1-9]\d*$/;
 
 export const DISPATCH_PLAN_PREFIX = 'bazar-fungible-dispatch:';
-export const DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED = 'dispatch-signed-transaction-recovery-required';
+export const DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED =
+	'dispatch-signed-transaction-recovery-required' satisfies AppErrorReason;
 export const DEFAULT_DISPATCH_BATCH_SIZE = 100;
 /** Above this total (0.1 AR) the UI collects confirmation before signing. */
 export const DISPATCH_COST_CONFIRMATION_WINSTON = 100_000_000_000n;
@@ -154,7 +157,7 @@ function collectRow(
 	let atomicAmount: string;
 	try {
 		atomicAmount = parseTokenAmount(humanAmount, denomination);
-		if (BigInt(atomicAmount) < 1n) throw new TypeError('invalid-token-amount');
+		if (BigInt(atomicAmount) < 1n) throw appError('invalid-input', { message: 'invalid-token-amount' });
 	} catch {
 		errors.push(
 			`${label}: quantity must be a positive token amount${
@@ -197,11 +200,16 @@ export async function fetchTransferReward(
 	fetchFn: typeof fetch = globalThis.fetch.bind(globalThis),
 	signal?: AbortSignal
 ): Promise<bigint> {
-	if (!isArweaveId(processId)) throw new TypeError('invalid-asset-process-id');
-	const response = await fetchFn(`${gateway}/price/0/${processId}`, { signal });
-	if (!response.ok) throw new Error(`transfer-price-${response.status}`);
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
+	let response: Response;
+	try {
+		response = await fetchFn(`${gateway}/price/0/${processId}`, { signal });
+	} catch (cause) {
+		throw signal?.aborted ? cause : transportFailure(cause, 'transfer-price');
+	}
+	if (!response.ok) throw httpStatusError('transfer-price', response.status);
 	const value = (await response.text()).trim();
-	if (!/^\d+$/.test(value)) throw new Error('transfer-price-invalid');
+	if (!/^\d+$/.test(value)) throw appError('invalid-response', { message: 'transfer-price-invalid' });
 	return BigInt(value);
 }
 
@@ -222,7 +230,7 @@ export function saveDispatchPlan(
 	plan: DispatchPlan,
 	storage: StorageLike | undefined = globalThis.window?.localStorage
 ): void {
-	if (!isDispatchPlan(plan)) throw new TypeError('invalid-dispatch-plan');
+	if (!isDispatchPlan(plan)) throw appError('invalid-input', { message: 'invalid-dispatch-plan' });
 	storage?.setItem(`${DISPATCH_PLAN_PREFIX}${plan.processId}`, JSON.stringify(plan));
 }
 
@@ -273,18 +281,18 @@ export async function createDispatchPlan(
 	rows: HolderRow[],
 	options: { signal?: AbortSignal; fetch?: typeof fetch } = {}
 ): Promise<DispatchPlan> {
-	if (!isArweaveId(processId)) throw new TypeError('invalid-asset-process-id');
-	if (!isArweaveId(sender)) throw new TypeError('invalid-dispatch-sender');
-	if (!rows.length) throw new TypeError('dispatch-rows-empty');
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
+	if (!isArweaveId(sender)) throw appError('invalid-input', { message: 'invalid-dispatch-sender' });
+	if (!rows.length) throw appError('invalid-input', { message: 'dispatch-rows-empty' });
 	if (rows.some((row) => row.address === sender)) {
 		// Balance-rise settlement is blind to self-sends; they are also no-ops.
-		throw new Error('dispatch-self-recipient');
+		throw appError('dispatch-self-recipient');
 	}
 	const { state } = await readAssetState(processId, { signal: options.signal, fetch: options.fetch, maxAge: 0 });
-	if (!assetBalanceStateAvailable(state)) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+	if (!assetBalanceStateAvailable(state)) throw appError(ASSET_BALANCE_STATE_UNAVAILABLE);
 	const { totalQuantity } = planTotals(rows);
 	if (BigInt(liquidBalanceOf(state, sender)) < totalQuantity) {
-		throw new Error('dispatch-insufficient-token-balance');
+		throw appError('dispatch-insufficient-token-balance');
 	}
 	const baseline: Record<string, string> = {};
 	for (const row of rows) baseline[row.address] = state.balances[row.address] ?? '0';
@@ -331,11 +339,12 @@ export type DispatchRunOptions = {
  * balance has risen by at least its quantity over the plan baseline.
  */
 export async function runDispatch(initial: DispatchPlan, options: DispatchRunOptions = {}): Promise<DispatchPlan> {
-	if (!isDispatchPlan(initial)) throw new TypeError('invalid-dispatch-plan');
+	if (!isDispatchPlan(initial)) throw appError('invalid-input', { message: 'invalid-dispatch-plan' });
 	const storage = options.storage ?? globalThis.window?.localStorage;
 	const client = options.client ?? new AssetTransactionClient({ storage });
 	const batchSize = options.batchSize ?? DEFAULT_DISPATCH_BATCH_SIZE;
-	if (!Number.isSafeInteger(batchSize) || batchSize < 1) throw new TypeError('invalid-dispatch-batch-size');
+	if (!Number.isSafeInteger(batchSize) || batchSize < 1)
+		throw appError('invalid-input', { message: 'invalid-dispatch-batch-size' });
 	const plan: DispatchPlan = { ...initial, rows: initial.rows.map((row) => ({ ...row })) };
 	const readCurrentState = options.readCurrentState ?? readAssetState;
 	let newSignaturesAuthorized = false;
@@ -358,7 +367,10 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 				try {
 					prepared = client.restore(row.transactionId, plan.sender);
 				} catch (cause) {
-					throw new Error(DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, { cause });
+					throw appError(DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, {
+						cause,
+						detail: { transactionId: row.transactionId },
+					});
 				}
 			}
 			if (!prepared) {
@@ -367,7 +379,7 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 						signal: options.signal,
 						maxAge: 0,
 					});
-					if (state.holderBalancesAvailable !== true) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+					if (state.holderBalancesAvailable !== true) throw appError(ASSET_BALANCE_STATE_UNAVAILABLE);
 					newSignaturesAuthorized = true;
 				}
 				prepared = await client.transferFungible(
@@ -385,7 +397,11 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 			}
 			// dispatch() throws on rejection; 'accepted' and 'duplicate' (208,
 			// e.g. a resumed re-post of an already-seen transfer) both succeed.
-			await prepared.dispatch(options.signal ?? new AbortController().signal);
+			try {
+				await prepared.dispatch(options.signal ?? new AbortController().signal);
+			} catch (cause) {
+				throw signedDispatchFailure(cause, prepared.id, options.signal);
+			}
 			row.status = 'posted';
 			persist();
 		}

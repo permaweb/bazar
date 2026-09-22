@@ -9,6 +9,7 @@ import {
 
 import { formatArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { unitPriceWinston } from 'features/Catalogue';
+import { appError, appErrorMessage, toAppError } from 'helpers/app-error';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { short } from 'helpers/format';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
@@ -64,11 +65,12 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 				  )} is currently available.`,
 		};
 	} catch (cause) {
+		const failure = toAppError(cause, 'invalid-input');
 		return {
 			match: null,
 			error:
-				cause instanceof RangeError
-					? 'This order book is too large to quote safely. Refresh and try again.'
+				failure.reason === 'order-match-search-limit'
+					? appErrorMessage(failure)
 					: `Enter a valid ${formatTickerLabel(state.ticker)} amount using no more than ${
 							state.denomination
 					  } decimal places.`,
@@ -154,7 +156,7 @@ export function formatGroupedTokenAmount(raw: string, denomination: number) {
 }
 
 function arToWinston(value: string) {
-	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || value === '0') throw new Error('Enter a positive AR amount.');
+	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || value === '0') throw appError('ar-amount-invalid');
 	const [whole, decimals = ''] = value.split('.');
 	return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
 }

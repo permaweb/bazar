@@ -13,7 +13,7 @@ Bazar is a browser-only Vite + React marketplace for Arweave-native assets: wall
 
 ## Adoption status
 
-`.permaweb-frontend.json` is `adopting`. The structural contract passes; the remaining slices (component styles, copy localization, orchestration hooks, error taxonomy) are mapped in `docs/architecture-migration.md`. Keep each requested change scoped: migrate a listed slice when the task touches that code or the user asks for it, never by expanding an unrelated change. Update the map as slices land, and set `status` to `compliant` (then delete the map) only when all of them are done and every gate passes.
+`.permaweb-frontend.json` is `adopting`. The structural contract passes; the remaining slices (component styles, copy localization, orchestration hooks) are mapped in `docs/architecture-migration.md`. Keep each requested change scoped: migrate a listed slice when the task touches that code or the user asks for it, never by expanding an unrelated change. Update the map as slices land, and set `status` to `compliant` (then delete the map) only when all of them are done and every gate passes.
 
 ## Verification
 
@@ -46,6 +46,7 @@ Features: `Activity`, `AssetDetail` (unique and fungible asset pages), `Catalogu
 -   Render every modal and transaction side panel through the `Dialog` organism (`components/organisms/Dialog`). It alone owns `role="dialog"`, `aria-modal`, focus containment, Escape, and focus restoration; use `isModalDialogOpen()` to check for an open modal.
 -   Validate Arweave identifiers with `isArweaveId` from `helpers/arweave-id`; never add another 43-character regex.
 -   Convert AR amounts with `helpers/ar-units` and token amounts with `parseTokenAmount`/`formatTokenAmount`; never use floating point for atomic units.
+-   Fail with `AppError` from `helpers/app-error`: adapters map provider, HTTP, wallet, and SDK failures once (`api/network/errors`, `api/wallet/errors`); UI code calls `toAppError(cause, fallbackReason)`, branches only on `code`/`reason`, and shows only `appErrorMessage`. Add a reason only for new copy, branching, or persisted recovery. `tests/architecture/error-taxonomy.test.ts` rejects raw error classification outside `src/api`.
 -   Keep large surfaces lazy: `features/TransactionSync` exports only lazy components and light model helpers; the fungible asset page loads through `loadFungibleAssetView`; mint code loads through `loadMintRuntime`. Check `npm run build` output when touching these boundaries.
 -   Most presentation still lives in `src/apps/bazar/styles.css`, driven by theme CSS variables. New or restyled components should own their rules in `styles.ts` with theme tokens; do not add raw colors outside `helpers/theme.ts`.
 -   Components read props through `props.name` (no destructuring); `tests/architecture/component-conventions.test.ts` enforces this. Use `omitProps` from `helpers/props` when forwarding remaining DOM attributes.

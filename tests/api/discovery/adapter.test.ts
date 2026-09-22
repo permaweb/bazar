@@ -1634,7 +1634,10 @@ describe('wallet candidate discovery', () => {
 					completed.push(batch);
 				},
 			})
-		).rejects.toThrow('activity window unavailable');
+		).rejects.toMatchObject({
+			code: 'unavailable',
+			message: expect.stringContaining('asset-activity-batch-failed'),
+		});
 
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(completed).toEqual([recipients.slice(0, 2), recipients.slice(4)]);
@@ -1647,7 +1650,7 @@ describe('wallet candidate discovery', () => {
 			const fetcher = vi.fn(async () => {
 				const current = request++;
 				await new Promise((resolve) => setTimeout(resolve, delays[current]));
-				throw new Error(current === 0 ? 'asset-activity-graphql-429' : 'asset-activity-graphql-503');
+				return new Response(null, { status: current === 0 ? 429 : 503 });
 			});
 			try {
 				await discoverMarketActivityBatched({
@@ -1659,7 +1662,8 @@ describe('wallet candidate discovery', () => {
 				throw new Error('expected activity failure');
 			} catch (cause) {
 				expect(fetcher).toHaveBeenCalledTimes(2);
-				return cause instanceof Error ? cause.message : String(cause);
+				expect(cause).toMatchObject({ code: 'rate-limited', reason: 'rate-limited' });
+				return (cause as Error).message;
 			}
 		};
 
@@ -2043,7 +2047,10 @@ describe('wallet candidate discovery', () => {
 					completed.push(batch);
 				},
 			})
-		).rejects.toThrow('activity window unavailable');
+		).rejects.toMatchObject({
+			code: 'unavailable',
+			message: expect.stringContaining('collection-activity-batch-failed'),
+		});
 
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(completed).toEqual([recipients.slice(0, 100), recipients.slice(200)]);

@@ -2,6 +2,7 @@ import type { JWKInterface } from 'arweave/web/lib/wallet';
 
 import { createArweaveClient } from 'api/arweave/client';
 
+import { appError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 
 import {
@@ -11,6 +12,7 @@ import {
 	resolveBrowserWallet,
 	restoreBrowserWalletConnection,
 } from './adapter';
+import { walletFailure } from './errors';
 
 export type WalletJwk = JWKInterface;
 
@@ -31,27 +33,22 @@ export let rememberedBrowserWallet: Window['arweaveWallet'];
 
 export async function connectWallet(
 	wallet: Window['arweaveWallet'],
-	walletName = 'Wander',
+	walletId: BrowserWalletId = 'wander',
 	permissions: readonly string[] = BROWSER_WALLET_PERMISSIONS
 ) {
-	if (!wallet) {
-		const installationName = `the ${walletName}`;
-		throw new Error(`Install ${installationName} wallet extension to continue.`);
+	if (!wallet) throw appError(walletId === 'permaweb-os' ? 'permaweb-os-wallet-missing' : 'wander-wallet-missing');
+	try {
+		await wallet.connect([...permissions]);
+	} catch (cause) {
+		throw walletFailure(cause, 'wallet-connection-failed', 'wallet-connection-rejected');
 	}
-	await wallet.connect([...permissions]);
 	let address: string | undefined;
 	try {
 		address = await wallet.getActiveAddress?.();
-	} catch {
-		throw new Error(
-			'The wallet connected, but its active address could not be read. Unlock or reconnect the wallet and try again.'
-		);
+	} catch (cause) {
+		throw appError('wallet-address-unreadable', { cause });
 	}
-	if (!address || !isArweaveId(address)) {
-		throw new Error(
-			'The wallet connected, but no valid active address was returned. Unlock or reconnect the wallet and try again.'
-		);
-	}
+	if (!address || !isArweaveId(address)) throw appError('wallet-address-invalid');
 	return address;
 }
 
@@ -177,7 +174,7 @@ function recoverPrimeFactors(n: bigint, e: bigint, d: bigint) {
 			value = squared;
 		}
 	}
-	throw new Error('Could not complete the private RSA keyfile.');
+	throw appError('wallet-keyfile-incomplete');
 }
 
 function modPow(base: bigint, exponent: bigint, modulus: bigint) {
@@ -275,7 +272,7 @@ export async function installDevelopmentWallet() {
 	if (!stored) return;
 	try {
 		const wallet = JSON.parse(stored);
-		if (!isValidWalletJwk(wallet)) throw new Error('invalid-wallet');
+		if (!isValidWalletJwk(wallet)) throw appError('wallet-keyfile-invalid', { message: 'invalid-wallet' });
 		const arweave = await createArweaveClient();
 		let address: string | undefined;
 		window.arweaveWallet = {
@@ -308,7 +305,7 @@ export async function connectBrowserWallet(walletId: BrowserWalletId): Promise<s
 	const wallet = browserWallet(walletId);
 	const address = await connectWallet(
 		wallet,
-		walletId === 'permaweb-os' ? 'PermawebOS' : 'Wander',
+		walletId,
 		walletId === 'permaweb-os' ? PERMAWEB_OS_WALLET_PERMISSIONS : BROWSER_WALLET_PERMISSIONS
 	);
 	clearLocalWallet();
@@ -324,7 +321,11 @@ export async function disconnectWalletSession(): Promise<void> {
 		clearLocalWallet();
 		restoreBrowserWallet();
 	} else {
-		await disconnectedWallet?.disconnect?.();
+		try {
+			await disconnectedWallet?.disconnect?.();
+		} catch (cause) {
+			throw walletFailure(cause, 'wallet-disconnect-failed');
+		}
 		restoreBrowserWalletAfterDisconnect(window, disconnectedWallet, permawebOs, rememberedBrowserWallet);
 	}
 	clearBrowserWalletPreference();
@@ -333,7 +334,7 @@ export async function disconnectWalletSession(): Promise<void> {
 export async function generateLocalWalletKey(): Promise<WalletJwk> {
 	const arweave = await createArweaveClient();
 	const jwk = (await arweave.wallets.generate()) as unknown as WalletJwk;
-	if (!isValidWalletJwk(jwk)) throw new Error('The generated Arweave keyfile was invalid.');
+	if (!isValidWalletJwk(jwk)) throw appError('wallet-keyfile-generation-failed');
 	storeLocalWallet(jwk);
 	return jwk;
 }
@@ -342,15 +343,20 @@ export async function readWalletKeyfile(file: File): Promise<WalletJwk> {
 	let jwk: unknown;
 	try {
 		jwk = JSON.parse(await file.text());
-	} catch {
-		throw new Error('Choose a valid Arweave JSON keyfile.');
+	} catch (cause) {
+		throw appError('wallet-keyfile-invalid', { cause });
 	}
-	if (!isValidWalletJwk(jwk)) throw new Error('Choose a valid Arweave JSON keyfile.');
+	if (!isValidWalletJwk(jwk)) throw appError('wallet-keyfile-invalid');
 	return jwk;
 }
 
 export async function stageDevelopmentWallet(file: File): Promise<void> {
-	const wallet = JSON.parse(await file.text());
-	if (!isValidWalletJwk(wallet)) throw new Error('Invalid Arweave JWK.');
+	let wallet: unknown;
+	try {
+		wallet = JSON.parse(await file.text());
+	} catch (cause) {
+		throw appError('wallet-keyfile-invalid', { cause });
+	}
+	if (!isValidWalletJwk(wallet)) throw appError('wallet-keyfile-invalid');
 	localStorage.setItem('bazar:e2e-wallet', JSON.stringify(wallet));
 }

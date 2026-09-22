@@ -61,15 +61,16 @@ import {
 } from 'features/Activity';
 import { AssetCard, orderPriceLabel } from 'features/Catalogue';
 import { createAnimationFrameBatch } from 'helpers/animation-frame-batch';
+import {
+	appErrorMessage,
+	type RequestFailureKind,
+	requestFailureKind,
+	requestFailureMessage,
+	type RequestFailureSource,
+	toAppError,
+} from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 import { short } from 'helpers/format';
-import {
-	marketplaceErrorMessage as errorMessage,
-	type MarketplaceFailureKind,
-	marketplaceFailureKind,
-	marketplaceRequestFailureMessage,
-	type MarketplaceRequestSource,
-} from 'helpers/marketplace-error';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { useProgressiveAssetPageSize } from 'hooks/useProgressiveAssetPageSize';
@@ -168,8 +169,8 @@ export default function CollectionMarket() {
 	const [cardPrices, setCardPrices] = React.useState<Record<string, CollectionCardPrice>>({});
 	const [cardPricesLoading, setCardPricesLoading] = React.useState(false);
 	const [cardPricesFailure, setCardPricesFailure] = React.useState<{
-		source: MarketplaceRequestSource;
-		kind: MarketplaceFailureKind;
+		source: RequestFailureSource;
+		kind: RequestFailureKind;
 	} | null>(null);
 	const [priceRetry, setPriceRetry] = React.useState(0);
 	const moreController = React.useRef<AbortController>();
@@ -251,7 +252,7 @@ export default function CollectionMarket() {
 					if (!controller.signal.aborted) setAppendEstimate(estimate);
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setAppendError(errorMessage(cause));
+					if (!controller.signal.aborted) setAppendError(appErrorMessage(toAppError(cause, 'unknown')));
 				}
 			)
 			.finally(() => {
@@ -302,7 +303,7 @@ export default function CollectionMarket() {
 			setAppendEstimate(null);
 			setAppendOpen(false);
 		} catch (cause) {
-			const message = errorMessage(cause);
+			const message = appErrorMessage(toAppError(cause, 'unknown'));
 			setAppendError(message);
 			failUpload(uploadId, message);
 		} finally {
@@ -503,7 +504,7 @@ export default function CollectionMarket() {
 					loading: false,
 					added: 0,
 					scanned: false,
-					error: marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)),
+					error: requestFailureMessage('index', requestFailureKind(cause)),
 				});
 			}
 		} finally {
@@ -584,7 +585,7 @@ export default function CollectionMarket() {
 									setCardPrices((current) => ({
 										...current,
 										[candidate.processId]: cause
-											? { status: 'unavailable', kind: marketplaceFailureKind(cause) }
+											? { status: 'unavailable', kind: requestFailureKind(cause) }
 											: {
 													status: 'resolved',
 													label:
@@ -613,7 +614,7 @@ export default function CollectionMarket() {
 				});
 			} catch (cause) {
 				if (!controller.signal.aborted) {
-					setCardPricesFailure({ source: 'index', kind: marketplaceFailureKind(cause) });
+					setCardPricesFailure({ source: 'index', kind: requestFailureKind(cause) });
 				}
 			} finally {
 				if (!controller.signal.aborted) setCardPricesLoading(false);
@@ -713,12 +714,12 @@ export default function CollectionMarket() {
 						resolvedPriceIds.current.add(candidate.processId);
 						const outcome: ListingResolutionOutcome & {
 							candidate: AssetCandidate;
-							failureKind?: MarketplaceFailureKind;
+							failureKind?: RequestFailureKind;
 						} = {
 							candidate,
 							processId: candidate.processId,
 							result,
-							...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
+							...(cause ? { failureKind: requestFailureKind(cause) } : {}),
 						};
 						settledListingCandidates.current.add(outcome.processId);
 						if (outcome.failureKind) {
@@ -854,11 +855,11 @@ export default function CollectionMarket() {
 				if (!controller.signal.aborted) {
 					publications.flush();
 					setCardPricesLoading(false);
-					setCardPricesFailure({ source: 'index', kind: marketplaceFailureKind(cause) });
+					setCardPricesFailure({ source: 'index', kind: requestFailureKind(cause) });
 					setActivityState((current) => ({
 						...current,
 						loading: false,
-						error: marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)),
+						error: requestFailureMessage('index', requestFailureKind(cause)),
 					}));
 				}
 			}
@@ -890,12 +891,12 @@ export default function CollectionMarket() {
 						if (controller.signal.aborted || listingActivityScope.current !== requestScope) return;
 						const outcome: ListingResolutionOutcome & {
 							candidate: AssetCandidate;
-							failureKind?: MarketplaceFailureKind;
+							failureKind?: RequestFailureKind;
 						} = {
 							candidate,
 							processId: candidate.processId,
 							result,
-							...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
+							...(cause ? { failureKind: requestFailureKind(cause) } : {}),
 						};
 						if (outcome.failureKind) {
 							failedListingCandidates.current.set(outcome.processId, {

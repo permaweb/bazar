@@ -44,15 +44,11 @@ import { collectionActivityVersion, collectionCandidateMembership } from 'featur
 import { DiscoveryAssetArtwork, homeListingShell, orderPriceLabel, unitPriceWinston } from 'features/Catalogue';
 import { ListingResolutionOutcome } from 'features/Collection';
 import { createAnimationFrameBatch } from 'helpers/animation-frame-batch';
+import { type RequestFailureKind, requestFailureKind, requestFailureMessage } from 'helpers/app-error';
 import { mapConcurrent } from 'helpers/concurrency';
 import { aoRoutingScopeFromLocation, arweaveGraphqlEndpoint } from 'helpers/config';
 import { short } from 'helpers/format';
 import { scheduleIdleTask } from 'helpers/idle';
-import {
-	type MarketplaceFailureKind,
-	marketplaceFailureKind,
-	marketplaceRequestFailureMessage,
-} from 'helpers/marketplace-error';
 import { useMarketProvider } from 'providers/MarketProvider';
 
 import {
@@ -431,7 +427,7 @@ export default function HomeMarket() {
 			setPortableHomeListingsFailure({
 				status: 'unavailable',
 				source: 'compute',
-				kind: marketplaceFailureKind(computeCircuit.failure),
+				kind: requestFailureKind(computeCircuit.failure),
 			});
 			return;
 		}
@@ -556,7 +552,7 @@ export default function HomeMarket() {
 						? {
 								status: 'unavailable',
 								source: discoveryFailure || indexFailure ? 'index' : 'compute',
-								kind: marketplaceFailureKind(failure),
+								kind: requestFailureKind(failure),
 						  }
 						: undefined
 				);
@@ -568,7 +564,7 @@ export default function HomeMarket() {
 							computeCircuitFailure === undefined && (discoveryFailure || indexFailure)
 								? 'index'
 								: 'compute',
-						kind: marketplaceFailureKind(computeCircuitFailure ?? cause),
+						kind: requestFailureKind(computeCircuitFailure ?? cause),
 					});
 				}
 			} finally {
@@ -685,7 +681,7 @@ export default function HomeMarket() {
 				if (!controller.signal.aborted) {
 					setAssetPrices((current) => ({
 						...current,
-						[asset.id]: { status: 'unavailable', source: 'compute', kind: marketplaceFailureKind(cause) },
+						[asset.id]: { status: 'unavailable', source: 'compute', kind: requestFailureKind(cause) },
 					}));
 				}
 			} finally {
@@ -765,7 +761,7 @@ export default function HomeMarket() {
 					const scheduled = new Set<string>();
 					const outcomes = new Map<
 						string,
-						{ candidate: AssetCandidate; asking: bigint | null; failure?: MarketplaceFailureKind }
+						{ candidate: AssetCandidate; asking: bigint | null; failure?: RequestFailureKind }
 					>();
 					let floorScan: HomeFloorScan | undefined;
 					const resolver = createAssetCandidateResolver([collection], {
@@ -789,7 +785,7 @@ export default function HomeMarket() {
 							const outcome = {
 								candidate,
 								asking: order && result ? unitPriceWinston(order, result.state.denomination) : null,
-								...(cause ? { failure: marketplaceFailureKind(cause) } : {}),
+								...(cause ? { failure: requestFailureKind(cause) } : {}),
 							};
 							if (
 								floorScan?.candidates.get(candidate.processId) ===
@@ -935,7 +931,7 @@ export default function HomeMarket() {
 							[collection.id]: {
 								status: 'unavailable',
 								source: 'index',
-								kind: marketplaceFailureKind(cause),
+								kind: requestFailureKind(cause),
 							},
 						}));
 						controller.abort(cause);
@@ -1238,7 +1234,7 @@ export default function HomeMarket() {
 							{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
 							{homeTab === 'discover' && portableHomeListingsFailure ? (
 								<ErrorPanel
-									message={marketplaceRequestFailureMessage(
+									message={requestFailureMessage(
 										portableHomeListingsFailure.source,
 										portableHomeListingsFailure.kind
 									)}

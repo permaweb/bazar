@@ -1,5 +1,6 @@
 import { operationWithDeadline } from 'api/network/deadline';
 
+import type { AppErrorReason } from 'helpers/app-error';
 import { aoRoutingScopeFromLocation } from 'helpers/config';
 
 import { type ComputeResult, readAssetState } from './adapter';
@@ -9,7 +10,7 @@ const MAX_STATE_ENTRIES = 256;
 const PREFETCH_CONCURRENCY = 2;
 
 export const DISPLAY_STATE_TIMEOUT_MS = 45_000;
-export const DISPLAY_STATE_TIMEOUT_ERROR = 'asset-state-read-timeout';
+export const DISPLAY_STATE_TIMEOUT_ERROR = 'asset-state-read-timeout' satisfies AppErrorReason;
 
 export const DISPLAY_STATE_CACHE = {
 	maxAge: 30,
@@ -63,6 +64,7 @@ export function readAssetStateWithDeadline(
 	return operationWithDeadline((signal) => readAssetState(processId, { ...options, signal }), options.signal, {
 		timeoutMs: DISPLAY_STATE_TIMEOUT_MS,
 		timeoutError: DISPLAY_STATE_TIMEOUT_ERROR,
+		timeoutReason: DISPLAY_STATE_TIMEOUT_ERROR,
 	});
 }
 
@@ -83,6 +85,7 @@ function sharedStateOperationWithDeadline<Result>(
 		{
 			timeoutMs: DISPLAY_STATE_TIMEOUT_MS,
 			timeoutError: DISPLAY_STATE_TIMEOUT_ERROR,
+			timeoutReason: DISPLAY_STATE_TIMEOUT_ERROR,
 		}
 	);
 }

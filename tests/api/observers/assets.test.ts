@@ -100,6 +100,8 @@ describe('assetObserverNetworkOptions', () => {
 		);
 		await loadPermawebOsNetworkPolicy();
 
-		expect(() => assetObserverNetworkOptions(location({}))).toThrow('No AO peer is configured.');
+		expect(() => assetObserverNetworkOptions(location({}))).toThrow(
+			expect.objectContaining({ reason: 'ao-peer-missing' })
+		);
 	});
 });

@@ -3,24 +3,32 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { liveOrderOfAsset, parseAssetState } from 'api/marketplace';
-import { purchaseObservationResumeState } from 'api/transactions';
+import { purchaseObservationResumeState, purchaseStateFailure } from 'api/transactions';
 
 import AtomicOperationErrorAlert from 'features/Operations/components/molecules/AtomicOperationErrorAlert/AtomicOperationErrorAlert';
 import AtomicPurchaseSequence from 'features/Operations/components/molecules/AtomicPurchaseSequence/AtomicPurchaseSequence';
 import {
+	atomicOperationFailureMessage,
 	atomicOperationFormError,
 	atomicOperationStateError,
 	atomicOperationValue,
 	atomicOrderCanBeBought,
-	atomicPurchaseFailureCode,
 	atomicPurchaseFailureStage,
 	atomicPurchaseHasTerminalReservationFailure,
 	atomicPurchaseRecoveryStatus,
 	atomicPurchaseSequence,
 	externalReservationTransaction,
+	operationFailureKind,
+	pendingListingFailure,
 	pendingListingMessage,
 	purchaseStatusMessage,
 } from 'features/Operations/model/atomic-operation';
+import { appError, appErrorReasonMessage } from 'helpers/app-error';
+
+function formError(...args: Parameters<typeof atomicOperationFormError>) {
+	const reason = atomicOperationFormError(...args);
+	return reason ? appErrorReasonMessage(reason) : '';
+}
 
 describe('atomic operation error semantics', () => {
 	it('reports the actual confirmation depth after continuing early', () => {
@@ -47,11 +55,8 @@ describe('atomic operation error semantics', () => {
 	it('distinguishes the connected signer from another pending listing signer', () => {
 		const signer = 'S'.repeat(43);
 		const transaction = 'T'.repeat(43);
-		const own = pendingListingMessage({ id: transaction, actor: signer, height: 12, timestamp: 1 }, signer);
-		const other = pendingListingMessage(
-			{ id: transaction, actor: 'O'.repeat(43), height: 12, timestamp: 1 },
-			signer
-		);
+		const own = pendingListingMessage({ id: transaction, actor: signer }, signer);
+		const other = pendingListingMessage({ id: transaction, actor: 'O'.repeat(43) }, signer);
 
 		expect(own).toBe(
 			'You already submitted listing transaction TTTTTT…TTTTT; waiting for live asset state. No new wallet approval was requested.'
@@ -60,25 +65,80 @@ describe('atomic operation error semantics', () => {
 			'Another wallet OOOOOO…OOOOO submitted pending listing transaction TTTTTT…TTTTT, but it has not been accepted by live asset state. No new wallet approval was requested.'
 		);
 	});
+
+	it('reports a pending listing as a typed refusal that keeps its exact identifiers', () => {
+		const signer = 'S'.repeat(43);
+		const offer = { id: 'T-'.repeat(21) + 'T', actor: signer, height: 12, timestamp: 1 };
+		const failure = pendingListingFailure(offer, signer);
+
+		expect(failure).toMatchObject({
+			reason: 'asset-listing-pending-self',
+			code: 'rejected',
+			retryable: false,
+			detail: { transactionId: offer.id, actor: signer },
+		});
+		expect(atomicOperationFailureMessage(failure, signer)).toBe(pendingListingMessage(offer, signer));
+		expect(pendingListingFailure({ ...offer, actor: 'O'.repeat(43) }, signer).reason).toBe(
+			'asset-listing-pending-other'
+		);
+	});
+
+	it('chooses the recovery action from the failure reason and dispatch stage', () => {
+		expect(operationFailureKind(appError('market-state-changed'))).toBe('market-state-changed');
+		for (const reason of [
+			'fungible-transfer-rejected',
+			'asset-cancel-rejected',
+			'asset-purchase-rejected',
+			'asset-order-reservation-rejected',
+			'asset-order-reservation-expired',
+			'transaction-dispatch-rejected',
+			'registration-dispatch-rejected',
+			'payment-dispatch-rejected',
+		] as const) {
+			expect(operationFailureKind(appError(reason))).toBe('transaction-rejected');
+		}
+		expect(
+			operationFailureKind(
+				appError('asset-purchase-insufficient-funds', {
+					detail: { transactionId: 'T'.repeat(43), stage: 'not-sent' },
+				})
+			)
+		).toBe('transaction-not-sent');
+		expect(operationFailureKind(appError('fungible-transfer-proof-mismatch'))).toBe('other');
+		expect(operationFailureKind(appError('asset-balance-proof-unavailable'))).toBe('other');
+		expect(operationFailureKind(appError('unknown'))).toBe('other');
+	});
+
+	it('explains ordinary failures with the shared copy', () => {
+		expect(atomicOperationFailureMessage(appError('asset-order-reservation-rejected'), 'S'.repeat(43))).toContain(
+			'may have lost a race'
+		);
+		expect(
+			atomicOperationFailureMessage(appError('asset-order-reservation-rejected'), 'S'.repeat(43))
+		).not.toContain('Another buyer claimed');
+	});
 });
 
 describe('atomic asset operation validation', () => {
 	it('requires a positive AR price with at most twelve decimals', () => {
-		expect(atomicOperationFormError('sell', '')).toContain('AR price');
-		expect(atomicOperationFormError('sell', '0')).toContain('at least');
-		expect(atomicOperationFormError('sell', '0.000000000001')).toBe('');
-		expect(atomicOperationFormError('sell', '0.0000000000001')).toContain('valid AR amount');
+		expect(formError('sell', '')).toBe('Enter the AR price for this asset.');
+		expect(formError('sell', '0')).toBe('Enter a price of at least 0.000000000001 AR.');
+		expect(formError('sell', '0.000000000001')).toBe('');
+		expect(formError('sell', '0.0000000000001')).toBe(
+			'Enter a valid AR amount with no more than 12 decimal places.'
+		);
+		expect(atomicOperationFormError('sell', '0')).toBe('listing-price-too-low');
 	});
 
 	it('requires an exact Arweave recipient before transfer', () => {
-		expect(atomicOperationFormError('transfer', '')).toContain('43-character');
-		expect(atomicOperationFormError('transfer', 'too-short')).toContain('valid');
-		expect(atomicOperationFormError('transfer', 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc')).toBe('');
+		expect(formError('transfer', '')).toContain('43-character');
+		expect(formError('transfer', 'too-short')).toContain('valid');
+		expect(formError('transfer', 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc')).toBe('');
 	});
 
 	it('rejects a transfer back to the current owner', () => {
 		const owner = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
-		expect(atomicOperationFormError('transfer', owner, owner)).toContain('different wallet');
+		expect(formError('transfer', owner, owner)).toContain('different wallet');
 	});
 
 	it('uses the normalized recipient for the transfer operation', () => {
@@ -88,8 +148,8 @@ describe('atomic asset operation validation', () => {
 	});
 
 	it('does not block buy or cancellation forms', () => {
-		expect(atomicOperationFormError('buy', '')).toBe('');
-		expect(atomicOperationFormError('cancel', '')).toBe('');
+		expect(atomicOperationFormError('buy', '')).toBeNull();
+		expect(atomicOperationFormError('cancel', '')).toBeNull();
 	});
 });
 
@@ -322,7 +382,7 @@ describe('atomic purchase failure trace', () => {
 			error: { code: 'payment-dispatch-rejected', message: 'invalid payment' },
 		} as any;
 
-		expect(atomicPurchaseFailureCode(expired)).toBe('asset-order-reservation-expired');
+		expect(purchaseStateFailure(expired)?.reason).toBe('asset-order-reservation-expired');
 		expect(atomicPurchaseHasTerminalReservationFailure(expired)).toBe(true);
 		expect(atomicPurchaseHasTerminalReservationFailure(paymentRejected)).toBe(false);
 	});

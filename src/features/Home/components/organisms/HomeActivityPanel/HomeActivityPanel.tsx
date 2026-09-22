@@ -30,7 +30,7 @@ import {
 	globalActivityWindowDescription,
 	newestCollectionActivity,
 } from 'features/Activity';
-import { marketplaceFailureKind, marketplaceRequestFailureMessage } from 'helpers/marketplace-error';
+import { requestFailureKind, requestFailureMessage } from 'helpers/app-error';
 import { assetGroupRevealComplete } from 'helpers/progressive-assets';
 
 export default function HomeActivityPanel(props: { collections: Collection[]; marketLoading: boolean }) {
@@ -229,10 +229,10 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 				// The live result remains available even when storage is unavailable.
 			}
 			if (historyFailures.length) {
-				const kind = historyFailures.some((cause) => marketplaceFailureKind(cause) === 'rate-limited')
+				const kind = historyFailures.some((cause) => requestFailureKind(cause) === 'rate-limited')
 					? 'rate-limited'
 					: 'unavailable';
-				setError(marketplaceRequestFailureMessage('index', kind));
+				setError(requestFailureMessage('index', kind));
 			}
 		})();
 		return () => {

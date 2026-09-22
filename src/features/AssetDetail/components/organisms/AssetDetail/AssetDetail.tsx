@@ -98,6 +98,7 @@ import {
 } from 'features/Operations';
 import { PausedRecoveryNotice } from 'features/Operations';
 import { preloadArweaveTransactionSync } from 'features/TransactionSync';
+import { requestFailureKind, requestFailureMessage } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { isAudioContentType, isHtmlContentType } from 'helpers/asset-media';
@@ -106,7 +107,6 @@ import { aoRoutingScopeFromLocation } from 'helpers/config';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
 import { scheduleIdleTask } from 'helpers/idle';
-import { marketplaceFailureKind, marketplaceRequestFailureMessage } from 'helpers/marketplace-error';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useOperationActivity } from 'providers/OperationActivityProvider';
 import { useWallet } from 'providers/WalletProvider';
@@ -500,7 +500,7 @@ export default function AssetDetail() {
 				},
 				(cause) => {
 					if (!controller.signal.aborted) {
-						setActivityError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+						setActivityError(requestFailureMessage('index', requestFailureKind(cause)));
 					}
 				}
 			)
@@ -549,13 +549,13 @@ export default function AssetDetail() {
 						}
 					} catch (cause) {
 						if (!controller.signal.aborted) {
-							setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+							setAskError(requestFailureMessage('index', requestFailureKind(cause)));
 						}
 					}
 				},
 				(cause) => {
 					if (!controller.signal.aborted) {
-						setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+						setAskError(requestFailureMessage('index', requestFailureKind(cause)));
 					}
 				}
 			)
@@ -584,7 +584,7 @@ export default function AssetDetail() {
 			setActivityHasNextPage(page.hasNextPage);
 		} catch (cause) {
 			if (!controller.signal.aborted) {
-				setActivityError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+				setActivityError(requestFailureMessage('index', requestFailureKind(cause)));
 			}
 		} finally {
 			if (!controller.signal.aborted) setActivityLoadingMore(false);
@@ -619,7 +619,7 @@ export default function AssetDetail() {
 			setAssetAskActivity((current) => mergeAssetActivityPages(current, confirmed));
 		} catch (cause) {
 			if (!controller.signal.aborted) {
-				setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+				setAskError(requestFailureMessage('index', requestFailureKind(cause)));
 			}
 		} finally {
 			if (!controller.signal.aborted) setAskLoadingMore(false);

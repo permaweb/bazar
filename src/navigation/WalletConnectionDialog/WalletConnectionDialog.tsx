@@ -8,6 +8,7 @@ import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { IconButton } from 'components/atoms/IconButton';
 import { Dialog } from 'components/organisms/Dialog';
+import { appErrorMessage, toAppError } from 'helpers/app-error';
 import { useWallet } from 'providers/WalletProvider';
 
 // Wallet connection, generation, and keyfile import dialog opened through the wallet provider.
@@ -241,5 +242,5 @@ export default function WalletConnectionDialog() {
 }
 
 function walletErrorMessage(cause: unknown) {
-	return cause instanceof Error && cause.message ? cause.message : 'The wallet connection failed. Try again.';
+	return appErrorMessage(toAppError(cause, 'wallet-connection-failed'));
 }

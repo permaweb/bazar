@@ -4,7 +4,10 @@ import {
 	FUNGIBLE_TOKEN_COLLECTION_ID,
 	FUNGIBLE_TOKEN_COLLECTION_NAME,
 } from 'api/collections/adapter';
+import { httpStatusError, transportFailure } from 'api/network/errors';
+import { signWithWallet } from 'api/wallet/errors';
 
+import { appError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import {
 	isAudioContentType,
@@ -275,9 +278,9 @@ export class AssetMintClient {
 				createTransaction: async (attributes) =>
 					(await getArweave()).createTransaction(attributes, 'use_wallet'),
 				signTransaction: async (transaction, { signal }) => {
-					if (!wallet?.sign) throw new Error('wallet-sign-unavailable');
+					if (!wallet?.sign) throw appError('wallet-sign-unavailable');
 					signal?.throwIfAborted();
-					const walletResult = (await wallet.sign(transaction)) ?? transaction;
+					const walletResult = await signWithWallet((unsigned) => wallet.sign(unsigned), transaction);
 					if (walletResult === transaction || typeof transaction?.setSignature !== 'function')
 						return walletResult;
 					transaction.setSignature({
@@ -338,7 +341,7 @@ export class AssetMintClient {
 		await this.#uploader.assertOwner(owner);
 		const estimate = await this.estimate(input, options.signal);
 		if (estimate.total > ORDINARY_MINT_COST_MAX_WINSTON && !options.allowHighCost)
-			throw new Error('mint-high-cost-confirmation-required');
+			throw appError('mint-high-cost-confirmation-required');
 		await this.#uploader.assertBalance(owner, estimate.total, options.signal);
 		const contentType = requiredFileContentType(input.file);
 
@@ -393,18 +396,28 @@ export class AssetMintClient {
 	): Promise<MintResult> {
 		validateMintDraft(draft);
 		assertAddress(owner, 'invalid-mint-owner');
-		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
+		if (draft.owner !== owner) throw appError('mint-draft-wallet-mismatch');
 		await this.#uploader.assertOwner(owner);
-		const response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#permanentContentGateway), {
-			signal: options.signal,
-		});
-		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
+		let response: Response;
+		try {
+			response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#permanentContentGateway), {
+				signal: options.signal,
+			});
+		} catch (cause) {
+			throw options.signal?.aborted ? cause : transportFailure(cause, 'mint-media');
+		}
+		if (!response.ok) {
+			throw appError('mint-media-unavailable', {
+				message: `mint-media-unavailable-${response.status}`,
+				cause: httpStatusError('mint-media', response.status),
+			});
+		}
 		const data = new Uint8Array(await response.arrayBuffer());
 		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
-		if (!data.byteLength || data.byteLength > maxBytes) throw new Error('mint-media-invalid');
+		if (!data.byteLength || data.byteLength > maxBytes) throw appError('mint-media-invalid');
 		const assetReward = await this.#uploader.price(data.byteLength, options.signal);
 		if (assetReward > ORDINARY_MINT_COST_MAX_WINSTON && !options.allowHighCost)
-			throw new Error('mint-high-cost-confirmation-required');
+			throw appError('mint-high-cost-confirmation-required');
 		await this.#uploader.assertBalance(owner, assetReward, options.signal);
 		const assetInput = {
 			name: draft.name,
@@ -666,7 +679,7 @@ export class CollectionMintClient {
 		validateCollectionMintInput(input);
 		const estimate = await this.estimate(input, options.signal);
 		if (isHighMintCost(estimate.total) && !options.allowHighCost) {
-			throw new Error('mint-high-cost-confirmation-required');
+			throw appError('mint-high-cost-confirmation-required');
 		}
 		const assets: MintedAsset[] = [];
 		for (const [index, file] of input.files.entries()) {
@@ -783,10 +796,10 @@ export class CollectionMintClient {
 		} = {}
 	): Promise<CollectionAppendResult> {
 		assertAddress(collection.id, 'invalid-collection-process-id');
-		if (collection.owner !== owner) throw new Error('collection-owner-mismatch');
+		if (collection.owner !== owner) throw appError('unauthorized', { message: 'collection-owner-mismatch' });
 		const estimate = await this.estimateAppend(collection, files, options.signal);
 		if (isHighMintCost(estimate.total) && !options.allowHighCost) {
-			throw new Error('mint-high-cost-confirmation-required');
+			throw appError('mint-high-cost-confirmation-required');
 		}
 		const additions: MintedAsset[] = [];
 		for (const [index, file] of files.entries()) {
@@ -854,43 +867,45 @@ export class CollectionMintClient {
 export function validateMintInput(input: MintInput): void {
 	const name = input.name.trim();
 	const description = input.description.trim();
-	if (!name || name.length > 80) throw new TypeError('mint-name-invalid');
-	if (description.length > 600) throw new TypeError('mint-description-invalid');
-	if (!(input.file instanceof File)) throw new TypeError('mint-file-required');
-	if (!normalizeAssetContentType(input.file.type, input.file.name)) throw new TypeError('mint-file-type-unsupported');
+	if (!name || name.length > 80) throw appError('mint-name-invalid');
+	if (description.length > 600) throw appError('mint-description-invalid');
+	if (!(input.file instanceof File)) throw appError('mint-file-required');
+	if (!normalizeAssetContentType(input.file.type, input.file.name)) throw appError('mint-file-type-unsupported');
 	const fileContentType = normalizeAssetContentType(input.file.type, input.file.name);
 	const maxFileBytes = isAudioContentType(fileContentType ?? undefined) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
-	if (!input.file.size || input.file.size > maxFileBytes) throw new TypeError('mint-file-size-invalid');
-	if (input.artist !== undefined && input.artist.trim().length > 160) throw new TypeError('mint-artist-invalid');
-	if (input.album !== undefined && input.album.trim().length > 160) throw new TypeError('mint-album-invalid');
+	if (!input.file.size || input.file.size > maxFileBytes) throw appError('mint-file-size-invalid');
+	if (input.artist !== undefined && input.artist.trim().length > 160)
+		throw appError('invalid-input', { message: 'mint-artist-invalid' });
+	if (input.album !== undefined && input.album.trim().length > 160)
+		throw appError('invalid-input', { message: 'mint-album-invalid' });
 	if (input.duration !== undefined && (!Number.isFinite(input.duration) || input.duration <= 0)) {
-		throw new TypeError('mint-duration-invalid');
+		throw appError('invalid-input', { message: 'mint-duration-invalid' });
 	}
 	if (input.artwork !== undefined) {
 		if (
 			!(input.artwork instanceof File) ||
 			!isImageContentType(normalizeAssetContentType(input.artwork.type, input.artwork.name) ?? undefined)
 		) {
-			throw new TypeError('mint-artwork-type-unsupported');
+			throw appError('mint-artwork-type-unsupported');
 		}
-		if (!input.artwork.size || input.artwork.size > MAX_IMAGE_BYTES)
-			throw new TypeError('mint-artwork-size-invalid');
+		if (!input.artwork.size || input.artwork.size > MAX_IMAGE_BYTES) throw appError('mint-artwork-size-invalid');
 		if (!isAudioContentType(normalizeAssetContentType(input.file.type, input.file.name) ?? undefined)) {
-			throw new TypeError('mint-artwork-audio-only');
+			throw appError('mint-artwork-audio-only');
 		}
 	}
 	validateUdlTerms(input.udl);
 }
 
 export function validateCollectionMintInput(input: CollectionMintInput): void {
-	if (!input.name.trim() || input.name.trim().length > 80) throw new TypeError('mint-collection-name-invalid');
-	if (input.description.trim().length > 600) throw new TypeError('mint-description-invalid');
+	if (!input.name.trim() || input.name.trim().length > 80)
+		throw appError('invalid-input', { message: 'mint-collection-name-invalid' });
+	if (input.description.trim().length > 600) throw appError('mint-description-invalid');
 	if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 10) {
-		throw new TypeError('mint-collection-size-invalid');
+		throw appError('invalid-input', { message: 'mint-collection-size-invalid' });
 	}
 	for (const file of input.files) {
 		if (!isImageContentType(normalizeAssetContentType(file.type, file.name) ?? undefined)) {
-			throw new TypeError('mint-file-type-unsupported');
+			throw appError('mint-file-type-unsupported');
 		}
 		validateMintInput({
 			name: fileAssetName(file, 0),
@@ -976,8 +991,8 @@ export function mintProcessTags(
 export function validateFungibleMintInput(input: FungibleMintInput): void {
 	const name = input.name.trim();
 	const description = input.description.trim();
-	if (!name || name.length > 80) throw new TypeError('mint-name-invalid');
-	if (description.length > 600) throw new TypeError('mint-description-invalid');
+	if (!name || name.length > 80) throw appError('mint-name-invalid');
+	if (description.length > 600) throw appError('mint-description-invalid');
 	if (
 		typeof input.ticker !== 'string' ||
 		input.ticker.length < 1 ||
@@ -985,7 +1000,7 @@ export function validateFungibleMintInput(input: FungibleMintInput): void {
 		input.ticker.trim() !== input.ticker ||
 		/[\u0000-\u001f\u007f-\u009f]/u.test(input.ticker)
 	) {
-		throw new TypeError('mint-ticker-invalid');
+		throw appError('mint-ticker-invalid');
 	}
 	fungibleAtomicSupply(input.wholeSupply, input.denomination);
 	if (input.logo !== undefined) assertAddress(input.logo, 'mint-logo-invalid');
@@ -994,25 +1009,25 @@ export function validateFungibleMintInput(input: FungibleMintInput): void {
 /** Convert a creator-entered whole-token count into the protocol's exact atomic integer. */
 export function fungibleAtomicSupply(wholeSupply: string, denomination: string): string {
 	if (typeof wholeSupply !== 'string' || !/^[1-9]\d*$/.test(wholeSupply)) {
-		throw new TypeError('mint-supply-invalid');
+		throw appError('mint-supply-invalid');
 	}
 	const whole = BigInt(wholeSupply);
-	if (whole > MAX_FUNGIBLE_WHOLE_SUPPLY) throw new TypeError('mint-supply-too-large');
+	if (whole > MAX_FUNGIBLE_WHOLE_SUPPLY) throw appError('mint-supply-too-large');
 	if (
 		typeof denomination !== 'string' ||
 		!/^(?:0|[1-9]\d*)$/.test(denomination) ||
 		Number(denomination) > MAX_FUNGIBLE_DENOMINATION
 	) {
-		throw new TypeError('mint-denomination-invalid');
+		throw appError('mint-denomination-invalid');
 	}
 	return (whole * 10n ** BigInt(denomination)).toString();
 }
 
 export function validateFungibleLogo(logo: File): void {
 	if (!(logo instanceof File) || !isImageContentType(normalizeAssetContentType(logo.type, logo.name) ?? undefined)) {
-		throw new TypeError('mint-logo-type-unsupported');
+		throw appError('mint-logo-type-unsupported');
 	}
-	if (!logo.size || logo.size > MAX_IMAGE_BYTES) throw new TypeError('mint-logo-size-invalid');
+	if (!logo.size || logo.size > MAX_IMAGE_BYTES) throw appError('mint-logo-size-invalid');
 }
 
 function fungibleMintData(input: FungibleMintInput): string {
@@ -1131,7 +1146,7 @@ export function isHighMintCost(total: bigint): boolean {
 }
 
 function validateMintDraft(value: unknown): asserts value is MintDraft {
-	if (!value || typeof value !== 'object') throw new TypeError('mint-draft-invalid');
+	if (!value || typeof value !== 'object') throw appError('invalid-input', { message: 'mint-draft-invalid' });
 	const draft = value as MintDraft;
 	if (
 		!isArweaveId(draft.owner) ||
@@ -1147,21 +1162,22 @@ function validateMintDraft(value: unknown): asserts value is MintDraft {
 		draft.description.length > 600 ||
 		!Number.isSafeInteger(draft.createdAt)
 	)
-		throw new TypeError('mint-draft-invalid');
+		throw appError('invalid-input', { message: 'mint-draft-invalid' });
 	validateUdlTerms(draft.udl);
 }
 
 function validateUdlTerms(terms?: UdlTerms): void {
 	if (terms === undefined) return;
-	if (!terms || typeof terms !== 'object' || Array.isArray(terms)) throw new TypeError('mint-udl-invalid');
+	if (!terms || typeof terms !== 'object' || Array.isArray(terms))
+		throw appError('invalid-input', { message: 'mint-udl-invalid' });
 	if (terms.licenseId !== undefined) {
 		if (typeof terms.licenseId !== 'string' || !isArweaveId(terms.licenseId)) {
-			throw new TypeError('mint-udl-license-id-invalid');
+			throw appError('mint-udl-license-id-invalid');
 		}
 		return;
 	}
 	if (terms.accessFee !== undefined && !isPositiveUdlAmount(terms.accessFee)) {
-		throw new TypeError('mint-udl-access-fee-invalid');
+		throw appError('mint-udl-access-fee-invalid');
 	}
 	validateUdlGrant(
 		terms.derivation,
@@ -1181,23 +1197,24 @@ function validateUdlTerms(terms?: UdlTerms): void {
 	);
 	validateUdlGrant(terms.dataModelTraining, new Set<UdlTrainingGrant>(['allowed', 'one-time', 'monthly']));
 	if (terms.unknownUsageRights !== undefined && terms.unknownUsageRights !== 'excluded') {
-		throw new TypeError('mint-udl-unknown-rights-invalid');
+		throw appError('invalid-input', { message: 'mint-udl-unknown-rights-invalid' });
 	}
 	if (terms.expiry !== undefined && !/^[1-9]\d*$/.test(terms.expiry)) {
-		throw new TypeError('mint-udl-expiry-invalid');
+		throw appError('mint-udl-expiry-invalid');
 	}
 }
 
 function validateUdlGrant<T extends string>(grant: { grant: T; value?: string } | undefined, allowed: Set<T>): void {
 	if (grant === undefined) return;
-	if (!grant || typeof grant !== 'object' || !allowed.has(grant.grant)) throw new TypeError('mint-udl-grant-invalid');
+	if (!grant || typeof grant !== 'object' || !allowed.has(grant.grant))
+		throw appError('invalid-input', { message: 'mint-udl-grant-invalid' });
 	if (['one-time', 'monthly'].includes(grant.grant)) {
-		if (!isPositiveUdlAmount(grant.value)) throw new TypeError('mint-udl-fee-invalid');
+		if (!isPositiveUdlAmount(grant.value)) throw appError('mint-udl-fee-invalid');
 	} else if (grant.grant === 'revenue-share') {
 		const percentage = Number(grant.value);
-		if (!isPositiveUdlAmount(grant.value) || percentage > 100) throw new TypeError('mint-udl-share-invalid');
+		if (!isPositiveUdlAmount(grant.value) || percentage > 100) throw appError('mint-udl-share-invalid');
 	} else if (grant.value !== undefined) {
-		throw new TypeError('mint-udl-value-unexpected');
+		throw appError('invalid-input', { message: 'mint-udl-value-unexpected' });
 	}
 }
 
@@ -1222,7 +1239,7 @@ function udlGrantValue(grant: { grant: string; value?: string }): string {
 		case 'monthly':
 			return `Allowed-With-Fee-Monthly-${grant.value}`;
 		default:
-			throw new TypeError('mint-udl-grant-invalid');
+			throw appError('invalid-input', { message: 'mint-udl-grant-invalid' });
 	}
 }
 
@@ -1251,12 +1268,12 @@ function fileAssetName(file: File, index: number): string {
 
 function requiredFileContentType(file: File): string {
 	const contentType = normalizeAssetContentType(file.type, file.name);
-	if (!contentType) throw new TypeError('mint-file-type-unsupported');
+	if (!contentType) throw appError('mint-file-type-unsupported');
 	return contentType;
 }
 
 function assertAddress(value: string, error: string): void {
-	if (!isArweaveId(value)) throw new TypeError(error);
+	if (!isArweaveId(value)) throw appError('invalid-input', { message: error });
 }
 
 function byteLength(value: string | Uint8Array): number {

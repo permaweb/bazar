@@ -1640,7 +1640,10 @@ describe('fungible asset transactions', () => {
 			network: { tip: () => 1000 } as any,
 		});
 
-		await expect(adapter.prepareBoth!(new AbortController().signal)).rejects.toThrow('wallet approval rejected');
+		await expect(adapter.prepareBoth!(new AbortController().signal)).rejects.toMatchObject({
+			reason: 'wallet-request-rejected',
+			code: 'rejected',
+		});
 		expect(subject.signatures()).toBe(2);
 		expect(subject.signedKeys()).toEqual([]);
 		expect(subject.client.findStoredRegistration(processId, order.orderId, seller)).toBeNull();
@@ -1663,7 +1666,7 @@ describe('fungible asset transactions', () => {
 					network: { tip: () => 1000 } as any,
 				}))
 			)
-		).rejects.toThrow('wallet approval rejected');
+		).rejects.toMatchObject({ reason: 'wallet-request-rejected', code: 'rejected' });
 
 		expect(subject.signatures()).toBe(rejectAt);
 		expect(subject.signedKeys()).toEqual([]);

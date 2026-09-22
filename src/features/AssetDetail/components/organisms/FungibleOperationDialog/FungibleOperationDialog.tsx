@@ -50,6 +50,7 @@ import {
 	purchaseObservationRetryMessage,
 	purchaseSkipKind,
 	type PurchaseState,
+	purchaseStateFailure,
 	SwapPurchase,
 	waitForPurchaseObservationRetry,
 	withContinuingPaymentObservation,
@@ -79,17 +80,12 @@ import {
 } from 'components/molecules/TransactionDialogControl';
 import { Dialog } from 'components/organisms/Dialog';
 import { WalletAddress } from 'components/organisms/WalletAddress';
-import { currentPurchaseGatewayContext } from 'features/Operations';
+import { currentPurchaseGatewayContext, operationFailureKind } from 'features/Operations';
 import { type ArweaveSyncStep, postConfirmationPendingLabel, quorumConfirmationDepth } from 'features/TransactionSync';
+import { type AppError, appError, appErrorMessage, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
-import {
-	marketplaceCodedError,
-	marketplaceErrorMessage as errorMessage,
-	type MarketplaceOperationFailure,
-	marketplaceOperationFailure,
-} from 'helpers/marketplace-error';
 import { formatTickerLabel } from 'helpers/token-display';
 
 import {
@@ -117,13 +113,14 @@ import {
 	batchStageLabel,
 	FungibleOperation,
 	fungibleOperationActivityProgress,
+	fungibleOperationFailureMessage,
 	fungibleOperationStateError,
 	fungibleOperationWorkingStatus,
 	fungiblePurchaseResumeOf,
 	fungibleTransferRecipientError,
 	fungibleTransferSubmitLabel,
+	operationFailureNeedsManualReview,
 	operationLabel,
-	purchaseFailureMessageNeedsManualReview,
 	purchaseSettlementNeedsManualReview,
 	SETTLEMENT_ERROR_PANEL_ID,
 } from '../../../model/fungible-operation';
@@ -196,7 +193,7 @@ export default function FungibleOperationDialog(props: {
 			: 'form'
 	);
 	const [message, setMessage] = React.useState('');
-	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
+	const [failure, setFailure] = React.useState<AppError | null>(null);
 	const [views, setViews] = React.useState<ObserverView[]>([]);
 	const [confirmations, setConfirmations] = React.useState(0);
 	const [consensus, setConsensus] = React.useState<Consensus | null>(null);
@@ -263,8 +260,8 @@ export default function FungibleOperationDialog(props: {
 			return {
 				match: null,
 				error:
-					cause instanceof RangeError
-						? 'This order book is too large to quote safely. Refresh and try again.'
+					toAppError(cause, 'invalid-input').reason === 'order-match-search-limit'
+						? appErrorReasonMessage('order-match-search-limit')
 						: quantity
 						? `Enter a valid ${tickerDisplay} amount using no more than ${props.state.denomination} decimal places.`
 						: '',
@@ -285,7 +282,7 @@ export default function FungibleOperationDialog(props: {
 	const transferRecipient =
 		props.operation.kind === 'transfer' ? (props.operation.recipient ?? recipient).trim() : recipient.trim();
 	const recipientError =
-		props.operation.kind === 'transfer' ? fungibleTransferRecipientError(transferRecipient, props.owner) : '';
+		props.operation.kind === 'transfer' ? fungibleTransferRecipientError(transferRecipient, props.owner) : null;
 	const sellValid =
 		props.operation.kind === 'sell' &&
 		enteredQuantity !== null &&
@@ -392,7 +389,7 @@ export default function FungibleOperationDialog(props: {
 	async function submit() {
 		submittedAtRef.current ??= Date.now();
 		setMessage('');
-		setFailureKind(null);
+		setFailure(null);
 		setPhase('working');
 		let attemptedTransactionId =
 			props.operation.kind === 'buy' ? undefined : props.operation.resumeId ?? transaction?.id;
@@ -458,11 +455,11 @@ export default function FungibleOperationDialog(props: {
 					rawQuantity,
 					props.state.denomination
 				);
-				if (stateError) throw new Error(stateError);
+				if (stateError) throw appError(stateError);
 				if (props.operation.kind === 'cancel' || props.operation.kind === 'transfer') {
 					const startingSlot = Number(freshState.raw['at-slot']);
 					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
+						throw appError('asset-action-starting-slot-unavailable');
 					}
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
@@ -470,8 +467,7 @@ export default function FungibleOperationDialog(props: {
 			}
 			const client = new AssetTransactionClient();
 			if (props.operation.kind === 'buy') {
-				if (!props.operation.resume && !matchedFills.length)
-					throw new Error('Enter an amount available from the order book.');
+				if (!props.operation.resume && !matchedFills.length) throw appError('operation-amount-unavailable');
 				await runPurchaseBatch(
 					client,
 					fungiblePurchaseResumeOf(props.operation)?.entries ??
@@ -497,7 +493,7 @@ export default function FungibleOperationDialog(props: {
 			let asking = '';
 			if (props.operation.kind === 'transfer') {
 				const transferError = fungibleTransferRecipientError(transferRecipient, props.owner);
-				if (transferError) throw new Error(transferError);
+				if (transferError) throw appError(transferError);
 			}
 			if (transaction) prepared = transaction;
 			else if (props.operation.resumeId) prepared = client.restore(props.operation.resumeId, props.owner);
@@ -507,7 +503,7 @@ export default function FungibleOperationDialog(props: {
 					BigInt(rawQuantity) < 1n ||
 					BigInt(rawQuantity) > BigInt(liquidBalanceOf(props.state, props.owner))
 				) {
-					throw new Error('Enter a quantity within your liquid balance.');
+					throw appError('operation-quantity-exceeds-balance');
 				}
 				asking = lotAsking(rawQuantity, unitPrice, props.state.denomination);
 				prepared = await client.makeOffer(
@@ -524,7 +520,7 @@ export default function FungibleOperationDialog(props: {
 					BigInt(rawQuantity) < 1n ||
 					BigInt(rawQuantity) > BigInt(liquidBalanceOf(props.state, props.owner))
 				) {
-					throw new Error('Enter a quantity within your liquid balance.');
+					throw appError('operation-quantity-exceeds-balance');
 				}
 				prepared = await client.transferFungible(
 					props.asset.id,
@@ -541,7 +537,7 @@ export default function FungibleOperationDialog(props: {
 			attemptedTransactionId = prepared.id;
 			setTransaction(prepared);
 			if ((props.operation.kind === 'cancel' || props.operation.kind === 'transfer') && !exactActionBaseline) {
-				throw new Error('asset-action-recovery-baseline-missing');
+				throw appError('asset-action-recovery-baseline-missing');
 			}
 			const operationRecord = {
 				txId: prepared.id,
@@ -626,7 +622,7 @@ export default function FungibleOperationDialog(props: {
 			} else {
 				const expectedQuantity =
 					rawQuantity || parseTokenAmount(props.operation.quantity ?? quantity, props.state.denomination);
-				if (!exactActionBaseline) throw new Error('asset-action-recovery-baseline-missing');
+				if (!exactActionBaseline) throw appError('asset-action-recovery-baseline-missing');
 				await client.waitForFungibleTransfer(
 					props.asset.id,
 					prepared.id,
@@ -657,9 +653,10 @@ export default function FungibleOperationDialog(props: {
 			networkRef.current?.release();
 			networkRef.current = null;
 			if (attemptRef.current.signal.aborted) return;
+			const nextFailure = toAppError(cause, 'unknown');
 			if (
-				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				(nextFailure.reason === 'asset-cancel-rejected' ||
+					nextFailure.reason === 'fungible-transfer-rejected') &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(
@@ -670,8 +667,8 @@ export default function FungibleOperationDialog(props: {
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
 			}
-			setFailureKind(marketplaceOperationFailure(cause));
-			setMessage(errorMessage(cause));
+			setFailure(nextFailure);
+			setMessage(fungibleOperationFailureMessage(nextFailure));
 			setPhase('error');
 		}
 	}
@@ -793,7 +790,9 @@ export default function FungibleOperationDialog(props: {
 				});
 				try {
 					if (!current.snapshot.registration?.id) {
-						if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
+						if (!adapter.prepareBoth) {
+							throw appError('unavailable', { message: 'purchase-presign-unavailable' });
+						}
 						await adapter.prepareBoth(signal);
 					} else if (!current.snapshot.payment?.id) {
 						if (!current.snapshot.registration.dispatched) {
@@ -825,10 +824,10 @@ export default function FungibleOperationDialog(props: {
 		});
 		void paymentGate.catch(() => undefined);
 		const totalPaymentCost = barrierState.pendingPaymentCost;
-		let recoveryConflict: Error | null = null;
+		let recoveryConflict: AppError | null = null;
 		const failRecovery = (cause: unknown) => {
 			if (recoveryConflict) return;
-			recoveryConflict = cause instanceof Error ? cause : new Error(String(cause));
+			recoveryConflict = toAppError(cause, 'unknown');
 			rejectPayments(recoveryConflict);
 			for (const purchase of purchasesRef.current.values()) purchase.abandon();
 		};
@@ -879,9 +878,7 @@ export default function FungibleOperationDialog(props: {
 							recoveryBuffer.flush();
 							if (recoveryConflict) throw recoveryConflict;
 							if ((await client.walletBalance(props.owner, signal)) < totalPaymentCost) {
-								throw new Error(
-									'The wallet no longer has enough AR to pay every reserved listing. No seller payment was sent.'
-								);
+								throw appError('purchase-batch-insufficient-funds');
 							}
 							recoveryBuffer.flush(true);
 							if (recoveryConflict) throw recoveryConflict;
@@ -919,19 +916,15 @@ export default function FungibleOperationDialog(props: {
 					const retryKind = purchaseObservationRetryKind(purchaseState);
 					if (!retryKind) {
 						rejectPayments(
-							new Error(
-								purchaseState.error?.message ??
-									'A reservation could not complete. No remaining seller payment was sent.'
-							)
+							purchaseStateFailure(purchaseState) ?? appError('purchase-reservation-incomplete')
 						);
 					}
 					update(purchaseState);
 					if (retryKind) return;
-					const failureCode =
-						purchaseState.error?.code === 'unexpected'
-							? purchaseState.error.message
-							: purchaseState.error?.code;
-					const repaired = repairRejectedPurchase(entry.snapshot, failureCode);
+					const repaired = repairRejectedPurchase(
+						entry.snapshot,
+						purchaseStateFailure(purchaseState)?.reason
+					);
 					for (const id of repaired.discardIds) {
 						localStorage.removeItem(`bazar-signed-transaction:${id}`);
 					}
@@ -972,7 +965,7 @@ export default function FungibleOperationDialog(props: {
 				purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseObservationPendingState(finalState));
 				purchaseStateBufferRef.current!.flush();
 				recoveryBuffer.flush();
-				setFailureKind(null);
+				setFailure(null);
 				setMessage(purchaseObservationRetryMessage(finalState, delay));
 				await waitForPurchaseObservationRetry(delay, signal);
 				setMessage(purchaseObservationCheckingMessage(retryKind));
@@ -1018,6 +1011,8 @@ export default function FungibleOperationDialog(props: {
 	const visibleOrders = visibleFills.map((fill) => fill.order);
 	const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
 	const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
+	const activePurchaseFailure = purchaseStateFailure(activePurchase);
+	const failureKind = failure ? operationFailureKind(failure) : null;
 	const workingStatus = fungibleOperationWorkingStatus(props.operation.kind, message, activePurchase);
 	const observedOrderId = activeOrder?.orderId;
 	React.useEffect(() => {
@@ -1065,7 +1060,7 @@ export default function FungibleOperationDialog(props: {
 	const incompletePurchases = visibleOrders.length - settlementSummary.settled;
 	const purchaseNeedsManualReview =
 		visibleOrders.some((order) => purchaseSettlementNeedsManualReview(purchaseStates[order.orderId])) ||
-		purchaseFailureMessageNeedsManualReview(message);
+		operationFailureNeedsManualReview(failure);
 	const signedWork = Boolean(transaction || recoverableBatch);
 	React.useEffect(() => {
 		if (props.operation.kind !== 'buy' || phase !== 'working') return;
@@ -1157,7 +1152,7 @@ export default function FungibleOperationDialog(props: {
 	const restartPurchase = () => {
 		if (!recoverableBatch) {
 			setMessage('');
-			setFailureKind(null);
+			setFailure(null);
 			setPhase('form');
 			return;
 		}
@@ -1406,7 +1401,7 @@ export default function FungibleOperationDialog(props: {
 								</label>
 								{recipient && recipientError ? (
 									<p id={recipientGuidanceId} className="trade-guidance" role="alert">
-										{recipientError}
+										{appErrorReasonMessage(recipientError)}
 									</p>
 								) : null}
 								{recipient && !recipientError ? (
@@ -1869,13 +1864,8 @@ export default function FungibleOperationDialog(props: {
 										</Tooltip>
 									</div>
 									<p>
-										{activePurchase?.error
-											? errorMessage(
-													marketplaceCodedError(
-														activePurchase.error.code,
-														activePurchase.error.message || activePurchase.error.code
-													)
-											  )
+										{activePurchaseFailure
+											? appErrorMessage(activePurchaseFailure)
 											: activePurchase?.stage === 'complete'
 											? 'This listing settled successfully.'
 											: 'This incomplete listing has saved transaction details and can be continued with the same wallet.'}
@@ -2003,7 +1993,7 @@ export default function FungibleOperationDialog(props: {
 							data-dialog-initial
 							size="custom"
 							onClick={() => {
-								setFailureKind(null);
+								setFailure(null);
 								setMessage('');
 								setPhase('form');
 							}}

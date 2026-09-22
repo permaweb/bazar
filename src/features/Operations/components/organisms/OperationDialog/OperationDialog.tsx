@@ -46,6 +46,7 @@ import {
 	purchaseSkipKind,
 	type PurchaseSnapshot,
 	type PurchaseState,
+	purchaseStateFailure,
 	type SwapPurchase,
 	waitForPurchaseObservationRetry,
 	withContinuingPaymentObservation,
@@ -79,27 +80,24 @@ import {
 	postConfirmationPendingLabel,
 	quorumConfirmationDepth,
 } from 'features/TransactionSync';
+import { type AppError, appError, appErrorMessage, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 import { arToWinston, winstonToAr } from 'helpers/ar-units';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
-import {
-	marketplaceCodedError,
-	marketplaceErrorMessage as errorMessage,
-	type MarketplaceOperationFailure,
-	marketplaceOperationFailure,
-} from 'helpers/marketplace-error';
 import { OperationActivity } from 'providers/OperationActivityProvider';
 
 import {
 	atomicOperationActionLabel,
+	atomicOperationFailureMessage,
 	atomicOperationFormError,
 	atomicOperationResult,
 	atomicOperationStateError,
 	atomicOperationValue,
-	atomicPurchaseFailureCode,
 	atomicPurchaseFailureStage,
 	atomicPurchaseHasTerminalReservationFailure,
-	pendingListingMessage,
+	type OperationFailureKind,
+	operationFailureKind,
+	pendingListingFailure,
 	purchaseGatewayForRecovery,
 	purchaseOrderOf,
 	purchaseSnapshot,
@@ -147,7 +145,7 @@ export default function OperationDialog(props: {
 			: 'form'
 	);
 	const [message, setMessage] = React.useState('');
-	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
+	const [failureKind, setFailureKind] = React.useState<OperationFailureKind | null>(null);
 	const [views, setViews] = React.useState<ObserverView[]>([]);
 	const [confirmations, setConfirmations] = React.useState(0);
 	const [consensus, setConsensus] = React.useState<Consensus | null>(null);
@@ -232,7 +230,7 @@ export default function OperationDialog(props: {
 					}
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setQuoteError(errorMessage(cause));
+					if (!controller.signal.aborted) setQuoteError(appErrorMessage(toAppError(cause, 'unknown')));
 				}
 			);
 		return () => controller.abort();
@@ -256,7 +254,7 @@ export default function OperationDialog(props: {
 	async function submit() {
 		const validation = atomicOperationFormError(props.operation.kind, operationValue, props.owner);
 		if (validation) {
-			setMessage(validation);
+			setMessage(appErrorReasonMessage(validation));
 			return;
 		}
 		submittedAtRef.current ??= Date.now();
@@ -317,32 +315,22 @@ export default function OperationDialog(props: {
 					props.owner,
 					'order' in props.operation ? purchaseOrderOf(props.operation) : null
 				);
-				if (stateError) throw new Error(stateError);
+				if (stateError) throw appError(stateError);
 				if (props.operation.kind === 'sell') {
 					let pendingOffers: PendingAssetOffer[];
 					try {
 						pendingOffers = await discoverPendingAssetOffers(props.asset.id, freshState, { signal });
 					} catch (cause) {
 						if (signal.aborted) throw cause;
-						throw marketplaceCodedError(
-							'asset-pending-listing-check-unavailable',
-							'asset-pending-listing-check-unavailable'
-						);
+						throw appError('asset-pending-listing-check-unavailable', { cause });
 					}
 					const pendingOffer = pendingOffers.find((offer) => offer.actor === props.owner) ?? pendingOffers[0];
-					if (pendingOffer) {
-						throw marketplaceCodedError(
-							pendingOffer.actor === props.owner
-								? 'asset-listing-pending-self'
-								: 'asset-listing-pending-other',
-							pendingListingMessage(pendingOffer, props.owner)
-						);
-					}
+					if (pendingOffer) throw pendingListingFailure(pendingOffer, props.owner);
 				}
 				if (props.operation.kind === 'cancel' || props.operation.kind === 'transfer') {
 					const startingSlot = Number(freshState.raw['at-slot']);
 					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
+						throw appError('asset-action-starting-slot-unavailable');
 					}
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
@@ -437,7 +425,7 @@ export default function OperationDialog(props: {
 						}
 					);
 					purchaseRef.current = purchase;
-					let recoveryConflict: Error | null = null;
+					let recoveryConflict: AppError | null = null;
 					const update = (state: PurchaseState) => {
 						if (signal.aborted || recoveryConflict) return;
 						setPurchaseState(state);
@@ -446,7 +434,7 @@ export default function OperationDialog(props: {
 							try {
 								persistPurchaseSnapshot(snapshot);
 							} catch (cause) {
-								recoveryConflict = cause instanceof Error ? cause : new Error(String(cause));
+								recoveryConflict = toAppError(cause, 'unknown');
 								purchase.abandon();
 							}
 						}
@@ -471,9 +459,11 @@ export default function OperationDialog(props: {
 						continue;
 					}
 					if (finalState.stage !== 'complete' || !finalState.success) {
-						const code = atomicPurchaseFailureCode(finalState) ?? 'asset-purchase-failed';
+						const failure =
+							purchaseStateFailure(finalState) ??
+							appError('unknown', { message: 'asset-purchase-failed' });
 						const snapshot = purchase.snapshot();
-						const repaired = repairRejectedPurchase(snapshot, code);
+						const repaired = repairRejectedPurchase(snapshot, failure.reason);
 						for (const id of repaired.discardIds) {
 							localStorage.removeItem(`bazar-signed-transaction:${id}`);
 						}
@@ -508,7 +498,7 @@ export default function OperationDialog(props: {
 							);
 							setPurchaseState({ ...finalState, payment: undefined });
 						}
-						throw marketplaceCodedError(code, finalState.error?.message ?? code);
+						throw failure;
 					}
 					completedSnapshot = purchase.snapshot();
 				}
@@ -554,10 +544,10 @@ export default function OperationDialog(props: {
 			} else if (props.operation.kind === 'transfer') {
 				prepared = await client.transfer(props.asset.id, operationValue, '1', props.owner, signal);
 				newlyPrepared = true;
-			} else throw new Error('invalid-operation');
+			} else throw appError('invalid-input', { message: 'invalid-operation' });
 			attemptedTransactionId = prepared.id;
 			if ((props.operation.kind === 'cancel' || props.operation.kind === 'transfer') && !exactActionBaseline) {
-				throw new Error('asset-action-recovery-baseline-missing');
+				throw appError('asset-action-recovery-baseline-missing');
 			}
 			if (discardNewlyPreparedTransactionIfAborted(localStorage, prepared.id, newlyPrepared, signal)) {
 				throw signal.reason;
@@ -685,9 +675,9 @@ export default function OperationDialog(props: {
 			networkRef.current?.release();
 			networkRef.current = null;
 			if (attemptRef.current.signal.aborted) return;
+			const failure = toAppError(cause, 'unknown');
 			if (
-				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				(failure.reason === 'asset-cancel-rejected' || failure.reason === 'fungible-transfer-rejected') &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(
@@ -698,8 +688,8 @@ export default function OperationDialog(props: {
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
 			}
-			setFailureKind(marketplaceOperationFailure(cause));
-			setMessage(errorMessage(cause));
+			setFailureKind(operationFailureKind(failure));
+			setMessage(atomicOperationFailureMessage(failure, props.owner));
 			setPhase('error');
 		}
 	}
@@ -745,9 +735,8 @@ export default function OperationDialog(props: {
 	const activityConfirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
 	const visiblePhase =
 		props.operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;
-	const visibleMessage =
-		message ||
-		(purchaseState?.error ? errorMessage(new Error(purchaseState.error.message || purchaseState.error.code)) : '');
+	const purchaseFailure = purchaseStateFailure(purchaseState);
+	const visibleMessage = message || (purchaseFailure ? appErrorMessage(purchaseFailure) : '');
 	const workingStatus = message || purchaseStatusMessage(purchaseState);
 	const pendingAfterConfirmation =
 		purchaseState?.stage === 'registration-accepting'
@@ -1145,7 +1134,7 @@ export default function OperationDialog(props: {
 								className={value && formError ? 'field-help field-help-error' : 'field-help'}
 								role={value && formError ? 'alert' : undefined}
 							>
-								{formError ? <ArCurrencyText>{formError}</ArCurrencyText> : null}
+								{formError ? <ArCurrencyText>{appErrorReasonMessage(formError)}</ArCurrencyText> : null}
 							</p>
 						) : null}
 						<p className="operation-disclosure">
@@ -1421,7 +1410,7 @@ export default function OperationDialog(props: {
 									) : null}
 								</div>
 							</div>
-							{atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
+							{purchaseFailure?.reason === 'registration-dispatch-rejected' ? (
 								<Button data-dialog-initial onClick={() => props.onClose(false)} size="custom">
 									View current listing
 								</Button>
@@ -1429,7 +1418,7 @@ export default function OperationDialog(props: {
 								<Button data-dialog-initial onClick={startFreshPurchase} size="custom">
 									Start a new purchase
 								</Button>
-							) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
+							) : purchaseFailure?.reason === 'payment-dispatch-rejected' ? (
 								<Button data-dialog-initial onClick={() => void submit()} size="custom">
 									Sign a replacement seller payment
 								</Button>

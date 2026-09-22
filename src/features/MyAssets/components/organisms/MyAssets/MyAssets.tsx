@@ -37,12 +37,8 @@ import { RetryNotice } from 'components/molecules/RetryNotice';
 import { RouteState } from 'components/molecules/RouteState';
 import { ConnectWalletButton } from 'components/organisms/ConnectWalletButton';
 import { AssetCard, orderPriceLabel, tokenBalanceLabel } from 'features/Catalogue';
+import { appErrorMessage, requestFailureKind, requestFailureMessage, toAppError } from 'helpers/app-error';
 import { scheduleIdleTask } from 'helpers/idle';
-import {
-	marketplaceErrorMessage as errorMessage,
-	marketplaceFailureKind,
-	marketplaceRequestFailureMessage,
-} from 'helpers/marketplace-error';
 import {
 	assetGroupRevealAnnouncement,
 	assetGroupRevealComplete,
@@ -190,8 +186,7 @@ export default function MyAssets(
 							resolved: current.resolved + 1,
 							failures: current.failures + (error ? 1 : 0),
 							rateLimited:
-								current.rateLimited +
-								(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
+								current.rateLimited + (error && requestFailureKind(error) === 'rate-limited' ? 1 : 0),
 						}));
 						if (!error && updateWalletResolvedAsset(session, result, latest, walletAddress))
 							scheduleResults();
@@ -212,8 +207,7 @@ export default function MyAssets(
 							revalidated: (current.revalidated ?? 0) + 1,
 							failures: current.failures + (error ? 1 : 0),
 							rateLimited:
-								current.rateLimited +
-								(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
+								current.rateLimited + (error && requestFailureKind(error) === 'rate-limited' ? 1 : 0),
 						}));
 					},
 				});
@@ -309,7 +303,7 @@ export default function MyAssets(
 							}
 							const checkedWithoutCompute = unverified.length - verification.supported.length;
 							const rateLimited = verification.unavailable.filter(
-								(failure) => marketplaceFailureKind(failure.error) === 'rate-limited'
+								(failure) => requestFailureKind(failure.error) === 'rate-limited'
 							).length;
 							if (checkedWithoutCompute && active()) {
 								for (const candidate of unverified) {
@@ -390,7 +384,7 @@ export default function MyAssets(
 					setStatus((current) => ({
 						...current,
 						phase: 'error',
-						error: marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)),
+						error: requestFailureMessage('index', requestFailureKind(cause)),
 					}));
 				}
 			}
@@ -448,7 +442,7 @@ export default function MyAssets(
 						resolved: current.resolved + 1,
 						failures: current.failures + (error ? 1 : 0),
 						rateLimited:
-							current.rateLimited + (error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
+							current.rateLimited + (error && requestFailureKind(error) === 'rate-limited' ? 1 : 0),
 					}));
 				},
 			});
@@ -468,7 +462,7 @@ export default function MyAssets(
 			}
 			const checkedWithoutCompute = unverified.length - verification.supported.length;
 			const rateLimited = verification.unavailable.filter(
-				(failure) => marketplaceFailureKind(failure.error) === 'rate-limited'
+				(failure) => requestFailureKind(failure.error) === 'rate-limited'
 			).length;
 			if (checkedWithoutCompute && active()) {
 				setStatus((current) => ({
@@ -501,7 +495,11 @@ export default function MyAssets(
 			},
 			(cause) => {
 				if (active()) {
-					setStatus((current) => ({ ...current, phase: 'error', error: errorMessage(cause) }));
+					setStatus((current) => ({
+						...current,
+						phase: 'error',
+						error: appErrorMessage(toAppError(cause, 'unknown')),
+					}));
 				}
 			}
 		);
@@ -561,11 +559,9 @@ export default function MyAssets(
 	const computeFailures = status.failures - status.indexFailures;
 	const aggregateFailureMessage = [
 		status.indexFailures
-			? marketplaceRequestFailureMessage('index', status.indexRateLimited ? 'rate-limited' : 'unavailable')
+			? requestFailureMessage('index', status.indexRateLimited ? 'rate-limited' : 'unavailable')
 			: '',
-		computeFailures
-			? marketplaceRequestFailureMessage('compute', computeRateLimited ? 'rate-limited' : 'unavailable')
-			: '',
+		computeFailures ? requestFailureMessage('compute', computeRateLimited ? 'rate-limited' : 'unavailable') : '',
 	]
 		.filter(Boolean)
 		.join(' ');

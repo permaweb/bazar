@@ -26,14 +26,17 @@ import {
 	waitForAssetState,
 } from 'api/marketplace/adapter';
 import { filledOrder } from 'api/marketplace/order-matching';
+import { httpStatusError, transportFailure } from 'api/network/errors';
 import { acquireAssetObserverNetwork } from 'api/observers/assets';
+import { signWithWallet } from 'api/wallet/errors';
 
+import { appError, type AppErrorReason, isAppError, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
 import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
 
 export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
-export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable';
+export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable' satisfies AppErrorReason;
 /** New listings impose no reservation reward floor; Arweave network rewards still apply. */
 export const DEFAULT_REGISTRATION_FEE = 0n;
 export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
@@ -223,18 +226,19 @@ export class AssetTransactionClient {
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
 		this.#reservationInclusionMargin = options.reservationInclusionMargin ?? DEFAULT_RESERVATION_INCLUSION_MARGIN;
 		if (!Number.isSafeInteger(this.#reservationInclusionMargin) || this.#reservationInclusionMargin < 1) {
-			throw new TypeError('invalid-reservation-inclusion-margin');
+			throw appError('invalid-input', { message: 'invalid-reservation-inclusion-margin' });
 		}
 	}
 
 	async makeOffer(input: OfferInput, signal?: AbortSignal): Promise<PreparedTransaction> {
-		if (!isArweaveId(input.processId)) throw new TypeError('invalid-asset-process-id');
+		if (!isArweaveId(input.processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
 		assertTokenQuantity(input.quantity);
 		assertSafeOfferAsking(input.asking);
-		if (input.seller && !isArweaveId(input.seller)) throw new TypeError('invalid-asset-offer-seller');
+		if (input.seller && !isArweaveId(input.seller))
+			throw appError('invalid-input', { message: 'invalid-asset-offer-seller' });
 		const deadline = input.deadline ?? DEFAULT_OFFER_DEADLINE;
 		if (!Number.isSafeInteger(deadline) || deadline < 1) {
-			throw new TypeError('invalid-offer-deadline');
+			throw appError('invalid-input', { message: 'invalid-offer-deadline' });
 		}
 		return this.#prepare(
 			{
@@ -300,7 +304,7 @@ export class AssetTransactionClient {
 		signal?: AbortSignal
 	): Promise<PreparedTransaction> {
 		if (!isArweaveId(processId) || !isArweaveId(recipient)) {
-			throw new TypeError('invalid-asset-transfer');
+			throw appError('invalid-input', { message: 'invalid-asset-transfer' });
 		}
 		assertTokenQuantity(quantity);
 		return this.#prepare(
@@ -371,7 +375,7 @@ export class AssetTransactionClient {
 				!/^\d+$/.test(fees[0]) ||
 				fees.some((fee) => fee !== fees[0])
 			) {
-				throw new Error('invalid-saved-offer-fee');
+				throw appError('invalid-response', { message: 'invalid-saved-offer-fee' });
 			}
 			minimumFee = fees[0];
 		}
@@ -403,11 +407,11 @@ export class AssetTransactionClient {
 		signal?: AbortSignal
 	): Promise<AssetState> {
 		if (![processId, transactionId, seller, expected.orderId].every((value) => isArweaveId(value))) {
-			throw new TypeError('invalid-asset-cancellation-verification');
+			throw appError('invalid-input', { message: 'invalid-asset-cancellation-verification' });
 		}
 		assertTokenQuantity(expected.quantity);
 		if (expected.creator !== seller || expected.status !== 'open') {
-			throw new TypeError('invalid-asset-cancellation-order');
+			throw appError('invalid-input', { message: 'invalid-asset-cancellation-order' });
 		}
 		return this.#waitForExactScheduledAction(
 			processId,
@@ -438,11 +442,11 @@ export class AssetTransactionClient {
 			![processId, transactionId, sender, recipient].every((value) => isArweaveId(value)) ||
 			sender === recipient
 		) {
-			throw new TypeError('invalid-fungible-transfer-verification');
+			throw appError('invalid-input', { message: 'invalid-fungible-transfer-verification' });
 		}
 		assertTokenQuantity(quantity);
 		if (!Number.isSafeInteger(baseline.startingSlot) || baseline.startingSlot < 0) {
-			throw new TypeError('invalid-fungible-transfer-baseline');
+			throw appError('invalid-input', { message: 'invalid-fungible-transfer-baseline' });
 		}
 		return this.#waitForExactScheduledAction(
 			processId,
@@ -474,13 +478,13 @@ export class AssetTransactionClient {
 			assignment: ProcessAssignment,
 			before?: AssetState
 		) => ExactScheduledActionResult | Promise<ExactScheduledActionResult>,
-		proofMismatchCode: string,
-		rejectionCode: string,
+		proofMismatchCode: AppErrorReason,
+		rejectionCode: AppErrorReason,
 		signal?: AbortSignal,
 		readPreviousState = false
 	): Promise<AssetState> {
 		if (!Number.isSafeInteger(baseline.startingSlot) || baseline.startingSlot < 0) {
-			throw new TypeError('invalid-scheduled-action-baseline');
+			throw appError('invalid-input', { message: 'invalid-scheduled-action-baseline' });
 		}
 		let transactionHeight: number | null = null;
 		const assignmentCache = new Map<number, ProcessAssignment>();
@@ -497,7 +501,7 @@ export class AssetTransactionClient {
 				assignmentCache.clear();
 				const currentSlot = assetStateSlot(current);
 				if (currentSlot === null || currentSlot < baseline.startingSlot) {
-					throw new Error('invalid-current-process-slot');
+					throw appError('invalid-response', { message: 'invalid-current-process-slot' });
 				}
 				if (currentSlot === baseline.startingSlot) return false;
 				transactionHeight ??= await this.#transactionBlockHeight(transactionId, signal);
@@ -543,7 +547,7 @@ export class AssetTransactionClient {
 						try {
 							assertAssignment(assignment);
 						} catch (error) {
-							if (error instanceof Error && error.message === proofMismatchCode) {
+							if (isAppError(error) && error.reason === proofMismatchCode) {
 								proofMismatch = true;
 								return true;
 							}
@@ -578,10 +582,11 @@ export class AssetTransactionClient {
 			},
 			{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
 		);
-		if (proofMismatch) throw new Error(proofMismatchCode);
-		if (balanceProofUnavailable) throw new Error(ASSET_BALANCE_PROOF_UNAVAILABLE);
-		if (rejected) throw new Error(rejectionCode);
-		if (!exactState) throw new Error('scheduled-action-state-missing');
+		const detail = { transactionId };
+		if (proofMismatch) throw appError(proofMismatchCode, { detail });
+		if (balanceProofUnavailable) throw appError(ASSET_BALANCE_PROOF_UNAVAILABLE, { detail });
+		if (rejected) throw appError(rejectionCode, { detail });
+		if (!exactState) throw appError('unknown-outcome', { message: 'scheduled-action-state-missing', detail });
 		return exactState;
 	}
 
@@ -776,12 +781,12 @@ export class AssetTransactionClient {
 							reportProvider(report, provider, attempt, total, 'checking-reservation'),
 					}
 				);
-				if (rejected) throw new Error('asset-order-reservation-rejected');
-				if (expired) throw new Error('asset-order-reservation-expired');
+				if (rejected) throw appError('asset-order-reservation-rejected');
+				if (expired) throw appError('asset-order-reservation-expired');
 			},
 			verifyOwnership: async ({ paymentId, signal, report }) => {
 				if (!paymentId || !isArweaveId(paymentId)) {
-					throw new Error('asset-payment-id-missing');
+					throw appError('asset-payment-id-missing');
 				}
 				report({ code: 'checking-ownership' });
 				await this.#waitForExactScheduledAction(
@@ -814,13 +819,13 @@ export class AssetTransactionClient {
 		signal?: AbortSignal,
 		onPreparation?: (event: PurchaseBatchPreparationEvent) => void
 	): Promise<PreparedPurchase[]> {
-		if (!inputs.length) throw new TypeError('empty-purchase-batch');
+		if (!inputs.length) throw appError('invalid-input', { message: 'empty-purchase-batch' });
 		const buyer = inputs[0].buyer;
 		if (!isArweaveId(buyer) || inputs.some((input) => input.buyer !== buyer)) {
-			throw new TypeError('invalid-purchase-batch-buyer');
+			throw appError('invalid-input', { message: 'invalid-purchase-batch-buyer' });
 		}
 		if (new Set(inputs.map((input) => input.order.orderId)).size !== inputs.length) {
-			throw new TypeError('duplicate-purchase-batch-order');
+			throw appError('invalid-input', { message: 'duplicate-purchase-batch-order' });
 		}
 		await this.#assertActiveSigner(buyer);
 		const estimates = await this.estimatePurchaseBatchCosts(
@@ -855,7 +860,7 @@ export class AssetTransactionClient {
 						onPreparation?.({ type: 'signed', ...event });
 					},
 				});
-				if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
+				if (!adapter.prepareBoth) throw appError('unavailable', { message: 'purchase-presign-unavailable' });
 				const pair = await adapter.prepareBoth(signal ?? new AbortController().signal);
 				const registration = pair.registration as SafePreparedTransaction;
 				const payment = pair.payment as SafePreparedTransaction;
@@ -892,18 +897,18 @@ export class AssetTransactionClient {
 		expectedSigner?: string,
 		options: { preserveExpiry?: boolean; processId?: string } = {}
 	): PreparedTransaction {
-		if (!isArweaveId(id)) throw new TypeError('invalid-signed-transaction-id');
+		if (!isArweaveId(id)) throw appError('invalid-input', { message: 'invalid-signed-transaction-id' });
 		const held = this.#storage?.getItem(`${SIGNED_TRANSACTION_PREFIX}${id}`);
-		if (!held) throw new Error('signed-transaction-not-found');
+		if (!held) throw appError('not-found', { message: 'signed-transaction-not-found' });
 		const stored = JSON.parse(held);
 		const transaction = stored.transaction ?? stored;
-		if (transaction.id !== id) throw new Error('signed-transaction-id-mismatch');
+		if (transaction.id !== id) throw appError('invalid-response', { message: 'signed-transaction-id-mismatch' });
 		assertZeroDataTransaction(transaction);
 		assertTransactionIntent(transaction, stored.intent);
 		const processId = options.processId ?? stored.processId;
 		if (processId) assertProcessInteractionRouting(transaction, processId);
 		if (stored.expectedSigner && expectedSigner && stored.expectedSigner !== expectedSigner) {
-			throw new Error('signed-transaction-signer-mismatch');
+			throw appError('unauthorized', { message: 'signed-transaction-signer-mismatch' });
 		}
 		return this.#prepared(
 			transaction,
@@ -917,7 +922,7 @@ export class AssetTransactionClient {
 
 	findStoredRegistration(processId: string, orderId: string, expectedSigner: string): string | null {
 		if (![processId, orderId, expectedSigner].every((value) => isArweaveId(value))) {
-			throw new TypeError('invalid-stored-registration-lookup');
+			throw appError('invalid-input', { message: 'invalid-stored-registration-lookup' });
 		}
 		if (!this.#storage?.key || typeof this.#storage.length !== 'number') return null;
 		for (let index = 0; index < this.#storage.length; index += 1) {
@@ -954,7 +959,7 @@ export class AssetTransactionClient {
 			![recipient, processId, orderId, expectedSigner].every((value) => isArweaveId(value)) ||
 			!/^[1-9]\d*$/.test(asking)
 		) {
-			throw new TypeError('invalid-stored-payment-lookup');
+			throw appError('invalid-input', { message: 'invalid-stored-payment-lookup' });
 		}
 		if (!this.#storage?.key || typeof this.#storage.length !== 'number') return null;
 		for (let index = this.#storage.length - 1; index >= 0; index -= 1) {
@@ -1027,16 +1032,23 @@ export class AssetTransactionClient {
 	}
 
 	async walletBalance(address: string, signal?: AbortSignal): Promise<bigint> {
-		const response = await this.#fetch(`${this.#gateway}/wallet/${address}/balance`, { signal });
-		if (!response.ok) throw new Error(`wallet-balance-${response.status}`);
-		const value = (await response.text()).trim();
-		return BigInt(value);
+		const response = await this.#read(`${this.#gateway}/wallet/${address}/balance`, 'wallet-balance', signal);
+		if (!response.ok) throw httpStatusError('wallet-balance', response.status);
+		return gatewayInteger(await response.text(), 'wallet-balance-invalid');
 	}
 
 	async #price(target: string, signal?: AbortSignal): Promise<bigint> {
-		const response = await this.#fetch(`${this.#gateway}/price/0/${target}`, { signal });
-		if (!response.ok) throw new Error(`transaction-price-${response.status}`);
-		return BigInt((await response.text()).trim());
+		const response = await this.#read(`${this.#gateway}/price/0/${target}`, 'transaction-price', signal);
+		if (!response.ok) throw httpStatusError('transaction-price', response.status);
+		return gatewayInteger(await response.text(), 'transaction-price-invalid');
+	}
+
+	async #read(url: string, operation: string, signal?: AbortSignal, init: RequestInit = {}): Promise<Response> {
+		try {
+			return await this.#fetch(url, { ...init, signal });
+		} catch (cause) {
+			throw signal?.aborted ? cause : transportFailure(cause, operation);
+		}
 	}
 
 	async #prepare(
@@ -1045,7 +1057,7 @@ export class AssetTransactionClient {
 		validUntilHeight?: number,
 		expectedSigner?: string
 	): Promise<SafePreparedTransaction> {
-		if (!this.#wallet?.sign) throw new Error('wallet-sign-unavailable');
+		if (!this.#wallet?.sign) throw appError('wallet-sign-unavailable');
 		if (signal?.aborted) throw signal.reason;
 		if (expectedSigner) await this.#assertActiveSigner(expectedSigner);
 		const arweave = await this.#getArweave();
@@ -1070,7 +1082,7 @@ export class AssetTransactionClient {
 			tags,
 		};
 
-		const walletResult = (await this.#wallet.sign(transaction)) ?? transaction;
+		const walletResult = await signWithWallet((unsigned) => this.#wallet.sign(unsigned), transaction);
 		let signed = walletResult;
 		if (walletResult !== transaction && typeof transaction?.setSignature === 'function') {
 			transaction.setSignature({
@@ -1083,13 +1095,15 @@ export class AssetTransactionClient {
 			signed = transaction;
 		}
 		if (signal?.aborted) throw signal.reason;
-		if (!isArweaveId(signed.id)) throw new Error('wallet-returned-unsigned-transaction');
+		if (!isArweaveId(signed.id)) {
+			throw appError('wallet-response-invalid', { message: 'wallet-returned-unsigned-transaction' });
+		}
 		const serializable = typeof signed.toJSON === 'function' ? signed.toJSON() : JSON.parse(JSON.stringify(signed));
 		serializable.id = signed.id;
 		assertZeroDataTransaction(serializable);
 		const signedReward = serializable.reward;
 		if (typeof signedReward !== 'string' || !/^\d+$/.test(signedReward)) {
-			throw new Error('wallet-modified-transaction-fields');
+			throw appError('wallet-response-invalid', { message: 'wallet-modified-transaction-fields' });
 		}
 		// Wander finalizes the network reward as part of the signed fields it
 		// returns. Keep the business intent strict, then make that exact signed
@@ -1101,11 +1115,11 @@ export class AssetTransactionClient {
 				ownerToAddress: (owner) => arweave.wallets.ownerToAddress(owner),
 				verifyRsa: (candidate) => arweave.transactions.verify(candidate),
 			});
-		} catch {
-			throw new Error('wallet-returned-invalid-signature');
+		} catch (cause) {
+			throw appError('wallet-response-invalid', { message: 'wallet-returned-invalid-signature', cause });
 		}
 		assertTransactionIntent(serializable, intent);
-		if (expectedSigner && signerAddress !== expectedSigner) throw new Error('wallet-account-changed');
+		if (expectedSigner && signerAddress !== expectedSigner) throw appError('wallet-account-changed');
 		if (signal?.aborted) throw signal.reason;
 		const requiredBalance = transactionCost(serializable);
 		if (this.#storage) {
@@ -1168,7 +1182,10 @@ export class AssetTransactionClient {
 					}
 				} catch (cause) {
 					if (signal.aborted) throw cause;
-					throw new TransactionDispatchNotSentError(cause instanceof Error ? cause.message : String(cause));
+					// weave-wrangler carries only this message into the purchase state; keep it a stable reason.
+					throw new TransactionDispatchNotSentError(
+						toAppError(cause, 'transaction-dispatch-not-sent').reason
+					);
 				}
 				const response = await this.#fetch(`${this.#gateway}/tx`, {
 					method: 'POST',
@@ -1182,14 +1199,13 @@ export class AssetTransactionClient {
 				if (response.status === 208) {
 					return { status: 'duplicate', httpStatus: response.status, observer: this.#gateway };
 				}
-				const detail = (await response.text()).slice(0, 240);
 				if (response.status === 400 || response.status === 422) {
 					throw new TransactionDispatchRejectedError(
 						response.status,
-						`transaction-dispatch-${response.status}: ${detail}`
+						`transaction-dispatch-${response.status}`
 					);
 				}
-				throw new Error(`transaction-dispatch-${response.status}: ${detail}`);
+				throw httpStatusError('transaction-dispatch', response.status, { submission: true });
 			},
 		};
 	}
@@ -1197,18 +1213,18 @@ export class AssetTransactionClient {
 	async #assertSigner(transaction: Record<string, unknown>, expectedSigner: string): Promise<void> {
 		const arweave = await this.#getArweave();
 		if (!arweave.wallets?.ownerToAddress) {
-			throw new Error('signed-transaction-owner-unavailable');
+			throw appError('invalid-response', { message: 'signed-transaction-owner-unavailable' });
 		}
 		let signerAddress: string;
 		try {
 			signerAddress = await signedTransactionSignerAddress(transaction, {
 				ownerToAddress: (owner) => arweave.wallets.ownerToAddress(owner),
 			});
-		} catch {
-			throw new Error('signed-transaction-owner-unavailable');
+		} catch (cause) {
+			throw appError('invalid-response', { message: 'signed-transaction-owner-unavailable', cause });
 		}
 		if (signerAddress !== expectedSigner) {
-			throw new Error('wallet-account-changed');
+			throw appError('wallet-account-changed');
 		}
 	}
 
@@ -1219,7 +1235,7 @@ export class AssetTransactionClient {
 
 	async #assertActiveSigner(expectedSigner: string): Promise<void> {
 		if (this.#wallet.getActiveAddress && (await this.#wallet.getActiveAddress()) !== expectedSigner) {
-			throw new Error('wallet-account-changed');
+			throw appError('wallet-account-changed');
 		}
 	}
 
@@ -1227,7 +1243,7 @@ export class AssetTransactionClient {
 		const balance = await this.walletBalance(address, signal);
 		signal?.throwIfAborted();
 		if (balance < required) {
-			throw new Error('asset-purchase-insufficient-funds');
+			throw appError('asset-purchase-insufficient-funds');
 		}
 	}
 
@@ -1245,14 +1261,18 @@ export class AssetTransactionClient {
 	async #transactionBlockHeight(transactionId: string, signal?: AbortSignal): Promise<number> {
 		const request = requestDeadline(signal, 12_000);
 		try {
-			const response = await this.#fetch(`${this.#gateway}/tx/${transactionId}/status`, {
-				cache: 'no-store',
-				signal: request.signal,
-			});
-			if (!response.ok) throw new Error(`transaction-status-${response.status}`);
+			const response = await this.#read(
+				`${this.#gateway}/tx/${transactionId}/status`,
+				'transaction-status',
+				request.signal,
+				{
+					cache: 'no-store',
+				}
+			);
+			if (!response.ok) throw httpStatusError('transaction-status', response.status);
 			const height = Number((await response.json()).block_height);
 			if (!Number.isSafeInteger(height) || height < 0) {
-				throw new Error('invalid-transaction-block-height');
+				throw appError('invalid-response', { message: 'invalid-transaction-block-height' });
 			}
 			return height;
 		} finally {
@@ -1267,6 +1287,8 @@ export class AssetTransactionClient {
 		signal?: AbortSignal,
 		currentHeight?: number
 	): Promise<void> {
+		const unmet = (cause?: unknown) =>
+			appError('rejected', { message: errorCode, ...(cause === undefined ? {} : { cause }) });
 		try {
 			const { state } = await readAssetState(processId, {
 				fetch: this.#peerFetch,
@@ -1276,10 +1298,10 @@ export class AssetTransactionClient {
 				heightFetch: this.#fetch,
 				heightGateway: this.#gateway,
 			});
-			if (!accept(state)) throw new Error(errorCode);
+			if (!accept(state)) throw unmet();
 		} catch (error) {
 			if (signal?.aborted) throw error;
-			throw new Error(errorCode);
+			throw unmet(error);
 		}
 	}
 }
@@ -1347,7 +1369,7 @@ export function assertExactPurchaseAssignment(
 		commitment['field-target'] !== expected.recipient ||
 		!['order-id', 'quantity', 'target'].every((field) => committed.has(field))
 	)
-		throw new Error('asset-purchase-proof-mismatch');
+		throw appError('asset-purchase-proof-mismatch');
 }
 
 export function hasExactPurchaseTransition(
@@ -1394,7 +1416,7 @@ export function assertExactCancelAssignment(
 		commitment['field-target'] !== processId ||
 		!['action', 'order-id', 'target'].every((field) => committed.has(field))
 	)
-		throw new Error('asset-cancel-proof-mismatch');
+		throw appError('asset-cancel-proof-mismatch');
 }
 
 export function hasExactCancelTransition(
@@ -1450,7 +1472,7 @@ export function assertExactFungibleTransferAssignment(
 		commitment['field-target'] !== processId ||
 		!['action', 'recipient', 'quantity', 'target'].every((field) => committed.has(field))
 	)
-		throw new Error('fungible-transfer-proof-mismatch');
+		throw appError('fungible-transfer-proof-mismatch');
 }
 
 function uniqueOriginalTagValue(originalTags: unknown, expectedName: string): unknown {
@@ -1519,7 +1541,8 @@ async function firstSlotAtOrAboveBlockHeight(
 		let assignment = cache.get(slot);
 		if (!assignment) {
 			[assignment] = await readProcessAssignments(processId, slot, slot, { fetch: fetcher, signal });
-			if (!assignment || assignment.slot !== slot) throw new Error('process-schedule-slot-missing');
+			if (!assignment || assignment.slot !== slot)
+				throw appError('invalid-response', { message: 'process-schedule-slot-missing' });
 			cache.set(slot, assignment);
 		}
 		if (assignment.blockHeight >= blockHeight) {
@@ -1537,7 +1560,10 @@ function requestDeadline(parent: AbortSignal | undefined, timeout: number) {
 	const abort = () => controller.abort(parent?.reason);
 	if (parent?.aborted) abort();
 	else parent?.addEventListener('abort', abort, { once: true });
-	const timer = setTimeout(() => controller.abort(new Error('transaction-status-timeout')), timeout);
+	const timer = setTimeout(
+		() => controller.abort(appError('timeout', { message: 'transaction-status-timeout' })),
+		timeout
+	);
 	return {
 		signal: controller.signal,
 		cleanup: () => {
@@ -1592,7 +1618,9 @@ async function withTransactionWatcher<T>(
 				});
 			});
 			watcher.on('settled', () => resolve());
-			watcher.on('timeout', () => reject(new Error('transaction-propagation-timeout')));
+			watcher.on('timeout', () =>
+				reject(appError('transaction-propagation-timeout', { detail: { transactionId: txId } }))
+			);
 		});
 		void settlement.catch(() => undefined);
 		watcher.start();
@@ -1648,7 +1676,7 @@ export async function dispatchAndConfirm(
 						if (!isAmbiguousDispatchError(error)) break;
 					}
 				}
-				if (dispatchError) throw dispatchError;
+				if (dispatchError) throw signedDispatchFailure(dispatchError, transaction.id, options.signal);
 			})();
 			void dispatch.catch(() => undefined);
 			await Promise.race([dispatch, settlement]);
@@ -1660,6 +1688,36 @@ export async function dispatchAndConfirm(
 			options.signal?.removeEventListener('abort', abortDispatch);
 		}
 	});
+}
+
+/**
+ * The outcome of a signed transaction whose dispatch failed. weave-wrangler's terminal errors prove nothing reached
+ * Arweave (`not-sent`) or that the gateway definitively refused it; any other failure after retries leaves the
+ * outcome unknown, so the signed transaction must be reconciled rather than replaced.
+ */
+export function signedDispatchFailure(error: unknown, transactionId: string, signal?: AbortSignal): unknown {
+	if (signal?.aborted) return error;
+	if (error instanceof TransactionDispatchRejectedError) {
+		return appError('transaction-dispatch-rejected', { cause: error, detail: { transactionId } });
+	}
+	if (error instanceof TransactionDispatchNotSentError) {
+		return appError(toAppError(error.message, 'transaction-dispatch-not-sent').reason, {
+			message: 'transaction-dispatch-not-sent',
+			cause: error,
+			detail: { transactionId, stage: 'not-sent' },
+		});
+	}
+	return appError('unknown-outcome', {
+		message: 'transaction-dispatch-unconfirmed',
+		cause: error,
+		detail: { transactionId },
+	});
+}
+
+function gatewayInteger(body: string, invalid: string): bigint {
+	const value = body.trim();
+	if (!/^\d+$/.test(value)) throw appError('invalid-response', { message: invalid });
+	return BigInt(value);
 }
 
 function reportProvider(
@@ -1689,39 +1747,40 @@ export function purchaseOrderSafetyError(order: SwapOrder): string | null {
 
 export function assertSafePurchaseOrder(order: SwapOrder): void {
 	const error = purchaseOrderSafetyError(order);
-	if (error) throw new Error(error);
+	if (error) throw appError('invalid-input', { message: error });
 }
 
 function assertSafeOfferAsking(value: string): void {
-	if (!/^[1-9]\d*$/.test(value)) throw new TypeError('invalid-asset-offer-asking');
-	if (BigInt(value) > MAXIMUM_ASSET_OFFER_PRICE) throw new TypeError('asset-offer-asking-too-high');
+	if (!/^[1-9]\d*$/.test(value)) throw appError('invalid-input', { message: 'invalid-asset-offer-asking' });
+	if (BigInt(value) > MAXIMUM_ASSET_OFFER_PRICE)
+		throw appError('invalid-input', { message: 'asset-offer-asking-too-high' });
 }
 
 function assertTokenQuantity(value: string, allowZero = false): void {
 	if (!/^(?:0|[1-9]\d*)$/.test(value) || (!allowZero && value === '0')) {
-		throw new TypeError('invalid-token-quantity');
+		throw appError('invalid-input', { message: 'invalid-token-quantity' });
 	}
 }
 
 function assertZeroDataTransaction(transaction: Record<string, unknown>): void {
 	if (transaction.data !== '' && transaction.data !== undefined) {
-		throw new Error('wallet-modified-transaction-data');
+		throw appError('wallet-response-invalid', { message: 'wallet-modified-transaction-data' });
 	}
 	if (transaction.data_size !== undefined && String(transaction.data_size) !== '0') {
-		throw new Error('wallet-modified-transaction-data');
+		throw appError('wallet-response-invalid', { message: 'wallet-modified-transaction-data' });
 	}
 	if (transaction.data_root !== undefined && transaction.data_root !== '') {
-		throw new Error('wallet-modified-transaction-data');
+		throw appError('wallet-response-invalid', { message: 'wallet-modified-transaction-data' });
 	}
 }
 
 function processInteractionTags(fields: TransactionFields): TransactionFields['tags'] {
 	if (!isArweaveId(fields.processId) || !isArweaveId(fields.target)) {
-		throw new TypeError('invalid-process-interaction-routing');
+		throw appError('invalid-input', { message: 'invalid-process-interaction-routing' });
 	}
 	const assignmentTags = fields.tags.filter((tag) => tag.name === 'assign-to');
 	if (assignmentTags.some((tag) => tag.value !== fields.processId)) {
-		throw new TypeError('invalid-process-interaction-routing');
+		throw appError('invalid-input', { message: 'invalid-process-interaction-routing' });
 	}
 	if (fields.target === fields.processId || assignmentTags.length) return fields.tags;
 	return [...fields.tags, { name: 'assign-to', value: fields.processId }];
@@ -1729,7 +1788,7 @@ function processInteractionTags(fields: TransactionFields): TransactionFields['t
 
 function assertProcessInteractionRouting(transaction: Record<string, unknown>, processId: string): void {
 	if (!processInteractionRoutesTo(transaction, processId)) {
-		throw new Error('signed-transaction-process-routing-mismatch');
+		throw appError('invalid-response', { message: 'signed-transaction-process-routing-mismatch' });
 	}
 }
 
@@ -1742,7 +1801,7 @@ function processInteractionRoutesTo(transaction: Record<string, unknown>, proces
 
 function assertTransactionIntent(transaction: Record<string, unknown>, expected: unknown): void {
 	if (!expected || typeof expected !== 'object' || Array.isArray(expected)) {
-		throw new Error('signed-transaction-intent-unavailable');
+		throw appError('invalid-response', { message: 'signed-transaction-intent-unavailable' });
 	}
 	const intent = expected as TransactionIntent;
 	if (
@@ -1751,7 +1810,7 @@ function assertTransactionIntent(transaction: Record<string, unknown>, expected:
 		typeof intent.reward !== 'string' ||
 		!Array.isArray(intent.tags)
 	) {
-		throw new Error('signed-transaction-intent-unavailable');
+		throw appError('invalid-response', { message: 'signed-transaction-intent-unavailable' });
 	}
 	if (
 		typeof transaction.target !== 'string' ||
@@ -1762,7 +1821,7 @@ function assertTransactionIntent(transaction: Record<string, unknown>, expected:
 		transaction.reward !== intent.reward ||
 		!transactionTagsEqual(transaction.tags, intent.tags)
 	) {
-		throw new Error('wallet-modified-transaction-fields');
+		throw appError('wallet-response-invalid', { message: 'wallet-modified-transaction-fields' });
 	}
 }
 

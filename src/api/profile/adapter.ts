@@ -1,7 +1,10 @@
 import { createArweaveClient } from 'api/arweave/client';
 import { signedTransactionSignerAddress } from 'api/arweave/signature';
 import { type AssetUploadData, type AssetUploadOptions } from 'api/mint/uploader';
+import { httpStatusError, transportFailure } from 'api/network/errors';
+import { signWithWallet } from 'api/wallet/errors';
 
+import { appError, isAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
 
@@ -149,16 +152,16 @@ export class ProfileClient {
 			return arweave;
 		};
 		this.#publish = async (data, tags, owner, uploadOptions) => {
-			if (!wallet?.sign) throw new Error('wallet-sign-unavailable');
+			if (!wallet?.sign) throw appError('wallet-sign-unavailable');
 			if (wallet.getActiveAddress && (await wallet.getActiveAddress()) !== owner) {
-				throw new Error('wallet-account-changed');
+				throw appError('profile-wallet-account-changed');
 			}
 			uploadOptions.signal?.throwIfAborted();
 			uploadOptions.onPhase?.('signing');
 			const arweaveClient = await getArweave();
 			const transaction = await arweaveClient.createTransaction({ data }, 'use_wallet');
 			for (const tag of tags) transaction.addTag(tag.name, tag.value);
-			const walletResult = (await wallet.sign(transaction)) ?? transaction;
+			const walletResult = await signWithWallet((unsigned) => wallet.sign(unsigned), transaction);
 			if (walletResult !== transaction && typeof transaction.setSignature === 'function') {
 				transaction.setSignature({
 					id: walletResult.id,
@@ -168,7 +171,9 @@ export class ProfileClient {
 					signature: walletResult.signature,
 				});
 			}
-			if (!isArweaveId(transaction.id)) throw new Error('wallet-returned-unsigned-transaction');
+			if (!isArweaveId(transaction.id)) {
+				throw appError('wallet-response-invalid', { message: 'wallet-returned-unsigned-transaction' });
+			}
 			let signerAddress: string;
 			try {
 				const verifyRsa = arweaveClient.transactions?.verify;
@@ -179,11 +184,11 @@ export class ProfileClient {
 							? (candidate) => verifyRsa.call(arweaveClient.transactions, candidate)
 							: undefined,
 				});
-			} catch {
-				throw new Error('wallet-returned-invalid-signature');
+			} catch (cause) {
+				throw appError('wallet-response-invalid', { message: 'wallet-returned-invalid-signature', cause });
 			}
 			if (signerAddress !== owner) {
-				throw new Error('wallet-account-changed');
+				throw appError('profile-wallet-account-changed');
 			}
 			uploadOptions.onTransaction?.(transaction.id);
 			uploadOptions.onPhase?.('uploading');
@@ -192,13 +197,26 @@ export class ProfileClient {
 					? transaction.toJSON()
 					: JSON.parse(JSON.stringify(transaction));
 			serializable.id = transaction.id;
-			const response = await this.#fetch(`${this.#gateway}/tx`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(serializable),
-				signal: uploadOptions.signal,
-			});
-			if (![200, 202, 208].includes(response.status)) throw new Error(`profile-upload-${response.status}`);
+			let response: Response;
+			try {
+				response = await this.#fetch(`${this.#gateway}/tx`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(serializable),
+					signal: uploadOptions.signal,
+				});
+			} catch (cause) {
+				// The signed profile may already have reached the gateway; never report it as definitely unsent.
+				if (uploadOptions.signal?.aborted || isAppError(cause)) throw cause;
+				throw appError('unknown-outcome', {
+					message: 'profile-upload-unconfirmed',
+					cause,
+					detail: { transactionId: transaction.id },
+				});
+			}
+			if (![200, 202, 208].includes(response.status)) {
+				throw httpStatusError('profile-upload', response.status, { submission: true });
+			}
 			return transaction.id;
 		};
 	}
@@ -215,10 +233,10 @@ export class ProfileClient {
 	): Promise<string> {
 		assertId(owner, 'invalid-profile-address');
 		if (!PROFILE_AVATAR_CONTENT_TYPES.includes(contentType)) {
-			throw new TypeError('invalid-profile-avatar-type');
+			throw appError('invalid-profile-avatar-type');
 		}
 		if (!data.byteLength || data.byteLength > PROFILE_AVATAR_MAX_BYTES) {
-			throw new TypeError('invalid-profile-avatar-size');
+			throw appError('invalid-profile-avatar-size');
 		}
 		return this.#publish(
 			data,
@@ -235,7 +253,7 @@ export class ProfileClient {
 	async update(owner: string, update: ProfileUpdate, options: AssetUploadOptions = {}): Promise<AccountProfile> {
 		assertId(owner, 'invalid-profile-address');
 		if (update.displayName === undefined && update.avatar === undefined) {
-			throw new TypeError('empty-profile-update');
+			throw appError('invalid-input', { message: 'empty-profile-update' });
 		}
 		const existing = await limitedProfileRead(() =>
 			fetchAccountProfile(owner, {
@@ -310,13 +328,13 @@ function normalizeAvatar(value: string): string {
 	} catch {
 		// Invalid values fail closed below.
 	}
-	throw new TypeError('invalid-profile-avatar');
+	throw appError('invalid-profile-avatar');
 }
 
 async function fetchAccountProfile(address: string, options: ProfileReadOptions): Promise<AccountProfile | null> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const gateway = options.gateway ?? arweaveGatewayFromLocation();
-	const response = await fetcher(`${gateway}/graphql`, {
+	const response = await profileRead(fetcher, `${gateway}/graphql`, options.signal, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
@@ -327,15 +345,14 @@ async function fetchAccountProfile(address: string, options: ProfileReadOptions)
 			}`,
 			variables: { owners: [address] },
 		}),
-		signal: options.signal,
 	});
-	if (!response.ok) throw new Error(`profile-index-${response.status}`);
+	if (!response.ok) throw httpStatusError('profile-index', response.status);
 	const payload = await response.json();
 	const transactionId = payload?.data?.transactions?.edges?.[0]?.node?.id;
 	if (!transactionId) return null;
 	assertId(transactionId, 'invalid-profile-transaction');
-	const data = await fetcher(arweaveDataUrl(transactionId, gateway), { signal: options.signal });
-	if (!data.ok) throw new Error(`profile-data-${data.status}`);
+	const data = await profileRead(fetcher, arweaveDataUrl(transactionId, gateway), options.signal);
+	if (!data.ok) throw httpStatusError('profile-data', data.status);
 	const body = await data.json();
 	return {
 		address,
@@ -347,10 +364,23 @@ async function fetchAccountProfile(address: string, options: ProfileReadOptions)
 	};
 }
 
+async function profileRead(
+	fetcher: typeof fetch,
+	url: string,
+	signal: AbortSignal | undefined,
+	init: RequestInit = {}
+): Promise<Response> {
+	try {
+		return await fetcher(url, { ...init, signal });
+	} catch (cause) {
+		throw signal?.aborted ? cause : transportFailure(cause, 'profile-read');
+	}
+}
+
 function stringField(value: unknown): string {
 	return typeof value === 'string' ? value : '';
 }
 
 function assertId(value: string, error: string): void {
-	if (!isArweaveId(value)) throw new TypeError(error);
+	if (!isArweaveId(value)) throw appError('invalid-input', { message: error });
 }

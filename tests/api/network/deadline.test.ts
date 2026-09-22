@@ -133,4 +133,44 @@ describe('fetchWithDeadline', () => {
 		expect(result.body).toEqual({ ok: true });
 		expect(vi.getTimerCount()).toBe(0);
 	});
+
+	it('reports its deadline as an application timeout with an optional specific reason', async () => {
+		vi.useFakeTimers();
+		const fetcher = vi.fn(() => new Promise<Response>(() => undefined));
+		const request = fetchWithDeadline(
+			fetcher as typeof fetch,
+			'/state',
+			{},
+			{ timeoutMs: 50, timeoutError: 'asset-state-read-timeout', timeoutReason: 'asset-state-read-timeout' }
+		);
+		const rejection = expect(request).rejects.toMatchObject({
+			reason: 'asset-state-read-timeout',
+			code: 'timeout',
+			retryable: true,
+		});
+
+		await vi.advanceTimersByTimeAsync(50);
+		await rejection;
+	});
+
+	it('maps an unreachable host and an unreadable body into the application taxonomy', async () => {
+		await expect(
+			fetchWithDeadline(
+				async () => {
+					throw new TypeError('Failed to fetch');
+				},
+				'/graphql',
+				{},
+				{ timeoutError: 'asset-index-graphql-timeout' }
+			)
+		).rejects.toMatchObject({ code: 'offline', message: 'asset-index-graphql-unreachable' });
+		await expect(
+			fetchJsonWithDeadline(
+				async () => new Response('<html>'),
+				'/graphql',
+				{},
+				{ timeoutError: 'graphql-timeout' }
+			)
+		).rejects.toMatchObject({ code: 'invalid-response', message: 'graphql-invalid-json' });
+	});
 });
