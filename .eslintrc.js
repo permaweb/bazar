@@ -1,4 +1,5 @@
 module.exports = {
+	root: true,
 	parser: '@typescript-eslint/parser',
 	plugins: ['import', '@typescript-eslint', 'simple-import-sort', 'react-hooks'],
 	extends: [],
