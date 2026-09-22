@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CollectionActivityEvent } from 'api/asset-discovery';
-
 import { createGlobalActivityPager } from './global-activity';
 
 const asset = 'A'.repeat(43);
@@ -41,7 +39,7 @@ describe('global activity native pagination', () => {
 		expect(page.events.map((event) => event.id)).toEqual(['a'.repeat(43)]);
 		expect(page).toMatchObject({ cursor: 'raw-tail', hasNextPage: true, loaded: true });
 		expect(requests).toHaveLength(1);
-		expect(requests[0].url).toBe('https://arweave.net/~query@1.0/graphql');
+		expect(requests[0].url).toBe('https://arweave.net/graphql');
 		expect(requests[0].query).toContain('sort: HEIGHT_DESC');
 		expect(requests[0].query).toContain('after: $cursor');
 		expect(requests[0].query).not.toContain('count');
@@ -158,22 +156,13 @@ describe('global activity native pagination', () => {
 		expect(pager.get('all')).toMatchObject({ loaded: false, events: [] });
 	});
 
-	it('shares verified proofs across filters and refresh without confirming a registration alone', async () => {
+	it('returns registration submissions with one GraphQL request and no purchase verification', async () => {
 		const registration = edge('r', 'registration', asset, 'register-interest');
-		const { pager } = setup([
-			response([registration], false),
-			response([registration], false),
-			response([registration], false),
-		]);
-		await pager.load('all');
-		expect(pager.get('all').events[0].purchaseProof).toBeUndefined();
-		const proof = { transactionId: 'P'.repeat(43), height: 11 };
-		pager.confirm({ ...pager.get('all').events[0], purchaseProof: proof });
-		await pager.load('register-interest');
-		expect(pager.get('register-interest').events[0].purchaseProof).toEqual(proof);
-		await pager.load('all', { refresh: true });
-		expect(pager.get('all').events[0].purchaseProof).toEqual(proof);
-		pager.confirm({ id: 'another', purchaseProof: proof } as CollectionActivityEvent);
-		expect(pager.get('all').events).toHaveLength(1);
+		const { pager, requests, fetcher } = setup([response([registration], false)]);
+		const page = await pager.load('all');
+		expect(page.events).toMatchObject([{ id: 'r'.repeat(43), action: 'register-interest' }]);
+		expect(page.events[0].purchaseProof).toBeUndefined();
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(requests[0].url).toBe('https://arweave.net/graphql');
 	});
 });

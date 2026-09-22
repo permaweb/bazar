@@ -4,7 +4,7 @@ import {
 	discoverCollectionActivityPage,
 } from 'api/asset-discovery';
 
-export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
+export type GlobalActivityFilter = 'all' | Exclude<CollectionActivityEvent['action'], 'register-interest'>;
 export const GLOBAL_ACTIVITY_PAGE_SIZE = 100;
 
 export type GlobalActivityPageState = {
@@ -39,7 +39,6 @@ export function createGlobalActivityPager(
 ) {
 	const streams = new Map<GlobalActivityFilter, GlobalActivityPageState>();
 	const visited = new Map<GlobalActivityFilter, Set<string>>();
-	const proofs = new Map<string, NonNullable<CollectionActivityEvent['purchaseProof']>>();
 	const get = (filter: GlobalActivityFilter) => streams.get(filter) ?? emptyPage();
 	return {
 		get,
@@ -65,11 +64,7 @@ export function createGlobalActivityPager(
 			if (page.cursor) cursors.add(page.cursor);
 			const events = new Map((refresh ? [] : previous.events).map((event) => [event.id, event]));
 			for (const event of page.events) {
-				const proof = proofs.get(event.id);
-				events.set(
-					event.id,
-					mergeIndexedActivityEvent(events.get(event.id), proof ? { ...event, purchaseProof: proof } : event)
-				);
+				events.set(event.id, mergeIndexedActivityEvent(events.get(event.id), event));
 			}
 			// Preserve the gateway's descending order, including pending transactions at the head.
 			const next = {
@@ -81,21 +76,6 @@ export function createGlobalActivityPager(
 			streams.set(filter, next);
 			visited.set(filter, cursors);
 			return next;
-		},
-		confirm(event: CollectionActivityEvent) {
-			if (!event.purchaseProof) return;
-			for (const [id, proof] of proofs) {
-				if (id !== event.id && proof.transactionId === event.purchaseProof.transactionId) return;
-			}
-			proofs.set(event.id, event.purchaseProof);
-			for (const [filter, state] of streams) {
-				streams.set(filter, {
-					...state,
-					events: state.events.map((previous) =>
-						previous.id === event.id ? { ...previous, purchaseProof: event.purchaseProof } : previous
-					),
-				});
-			}
 		},
 	};
 }

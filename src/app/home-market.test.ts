@@ -1087,14 +1087,13 @@ describe('Home market summary retries', () => {
 	it('filters global activity by submitted market action', () => {
 		const events = [
 			{ id: 'listing', action: 'make-offer' },
-			{ id: 'purchase', action: 'register-interest', purchaseProof: { transactionId: 'proof', height: 1 } },
+			{ id: 'registration', action: 'register-interest' },
 			{ id: 'transfer', action: 'transfer' },
 			{ id: 'cancel', action: 'cancel-order' },
 		] as CollectionActivityEvent[];
 
 		expect(filterGlobalActivity(events, 'all')).toEqual(events);
 		expect(filterGlobalActivity(events, 'make-offer').map((event) => event.id)).toEqual(['listing']);
-		expect(filterGlobalActivity(events, 'register-interest').map((event) => event.id)).toEqual(['purchase']);
 		expect(filterGlobalActivity(events, 'transfer').map((event) => event.id)).toEqual(['transfer']);
 		expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
 	});

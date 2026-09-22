@@ -48,7 +48,6 @@ import {
 	type AssetCandidate,
 	bazarAtomicAssetFromState,
 	type CollectionActivityEvent,
-	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverCollectionActivity,
@@ -117,7 +116,6 @@ import {
 	replaceHiddenCollectionAssetIndex,
 	withVisibleCollectionAssets,
 } from 'api/collections';
-import { operationWithDeadline } from 'api/fetch-with-deadline';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -4286,7 +4284,7 @@ function Home() {
 												: 'Browse fungible tokens and Uniques on the permaweb.'
 											: homeTab === 'collections'
 											? 'Browse NFT and name collections.'
-											: 'Recent indexed listings, purchases, and transfers. Load older activity to explore more.'}
+											: 'Recent indexed listings, reservations, and transfers. Load older activity to explore more.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
@@ -4626,9 +4624,7 @@ export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
 
 export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
 	if (filter === 'all') return events;
-	return events.filter(
-		(event) => event.action === filter && (filter !== 'register-interest' || Boolean(event.purchaseProof))
-	);
+	return events.filter((event) => event.action === filter);
 }
 
 export function globalActivityRevealDescription(
@@ -4652,8 +4648,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
 	const [hasNextPage, setHasNextPage] = React.useState(true);
 	const [loading, setLoading] = React.useState(true);
-	const [verifyingPurchases, setVerifyingPurchases] = React.useState(false);
-	const [verificationIncomplete, setVerificationIncomplete] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
 	const [announcement, setAnnouncement] = React.useState('');
 	const activityListId = React.useId();
@@ -4676,8 +4670,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setEvents(cached.events);
 		setHasNextPage(cached.hasNextPage);
 		setError(null);
-		setVerifyingPurchases(false);
-		setVerificationIncomplete(false);
 		setLoading(true);
 		if (marketLoading) return () => controller.abort();
 		if (!activityRecipients.length) {
@@ -4705,36 +4697,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				return;
 			}
 			setLoading(false);
-			// Verification is optional enrichment. Its separate budget never delays a page or Load older.
-			const candidates = current.events
-				.filter((event) => event.action === 'register-interest' && !event.purchaseProof)
-				.slice(-GLOBAL_ACTIVITY_WINDOW_SIZE);
-			if (!candidates.length) return;
-			setVerifyingPurchases(true);
-			try {
-				await operationWithDeadline(
-					(signal) =>
-						confirmPurchaseActivity(candidates, {
-							signal,
-							verificationTimeoutMs: 15_000,
-							onFailure: () => {
-								if (!controller.signal.aborted) setVerificationIncomplete(true);
-							},
-							onProof: (event) => {
-								if (controller.signal.aborted) return;
-								pager.confirm(event);
-								setEvents(pager.get(activityFilter).events);
-							},
-							readCurrent: (processId, signal) =>
-								readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-						}),
-					controller.signal,
-					{ timeoutMs: 45_000, timeoutError: 'purchase-proof-verification-budget-exhausted' }
-				);
-			} catch {
-				if (!controller.signal.aborted) setVerificationIncomplete(true);
-			}
-			if (!controller.signal.aborted) setVerifyingPurchases(false);
 		})();
 		return () => controller.abort();
 	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
@@ -4783,11 +4745,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					<Loading label={events.length ? 'Loading activity…' : 'Loading recent activity…'} />
 				</div>
 			) : null}
-			{verifyingPurchases ? (
-				<p className="activity-window-description" role="status">
-					Checking purchase confirmations. Activity is ready to browse.
-				</p>
-			) : null}
 			{error ? (
 				events.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
@@ -4804,20 +4761,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						onRetry={() => requestPage(request.kind)}
 					/>
 				)
-			) : null}
-			{verificationIncomplete ? (
-				<div className="collection-source-notice home-activity-partial-notice retry-notice">
-					<span role="status">
-						Some purchase confirmations are unavailable. Activity is still available to browse.
-					</span>
-					<Button
-						disabled={loading || verifyingPurchases}
-						onClick={() => requestPage('initial')}
-						size="small"
-					>
-						Retry verification
-					</Button>
-				</div>
 			) : null}
 			<MarketActivityList
 				ariaLabel={`Global market activity, ${
@@ -4837,7 +4780,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			</p>
 			{!loading && !error && !filteredEvents.length ? (
 				<div className="empty-state">
-					<h3>{verifyingPurchases ? 'Checking purchases' : 'No matching activity loaded'}</h3>
+					<h3>No matching activity loaded</h3>
 					<p>
 						{hasNextPage
 							? 'Check older activity for more results.'
@@ -9000,26 +8943,11 @@ function AssetView() {
 			signal: controller.signal,
 		})
 			.then(
-				async (page) => {
+				(page) => {
 					if (controller.signal.aborted) return;
 					setAssetAskActivity(page.events);
 					setAskCursor(page.cursor);
 					setAskHasNextPage(page.hasNextPage);
-					try {
-						const confirmed = await confirmPurchaseActivity(page.events, {
-							signal: controller.signal,
-							verificationTimeoutMs: 15_000,
-							readCurrent: (processId, readSignal) =>
-								readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
-						});
-						if (!controller.signal.aborted && askAssetRef.current === assetId) {
-							setAssetAskActivity(confirmed);
-						}
-					} catch (cause) {
-						if (!controller.signal.aborted) {
-							setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
-						}
-					}
 				},
 				(cause) => {
 					if (!controller.signal.aborted) {
@@ -9077,14 +9005,6 @@ function AssetView() {
 			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
 			setAskCursor(page.cursor);
 			setAskHasNextPage(page.hasNextPage);
-			const confirmed = await confirmPurchaseActivity(page.events, {
-				signal: controller.signal,
-				verificationTimeoutMs: 15_000,
-				readCurrent: (processId, readSignal) =>
-					readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
-			});
-			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
-			setAssetAskActivity((current) => mergeAssetActivityPages(current, confirmed));
 		} catch (cause) {
 			if (!controller.signal.aborted) {
 				setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));

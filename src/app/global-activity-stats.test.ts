@@ -38,7 +38,7 @@ describe('independent global stats scan', () => {
 		const bodies: any[] = [];
 		const pages = [page('a', 'first', true), page('a', 'second', true), page('b', 'third', false)];
 		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-			expect(String(input)).toBe('https://arweave.net/~query@1.0/graphql');
+			expect(String(input)).toBe('https://arweave.net/graphql');
 			bodies.push(JSON.parse(String(init?.body)));
 			return pages.shift()!;
 		});

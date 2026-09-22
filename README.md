@@ -53,11 +53,11 @@ starts with an immutable JSON manifest and lets its holder publish a signed
 `set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
 GraphQL and paged in the browser.
 
-All GraphQL searches use `POST <selected-Arweave-gateway>/~query@1.0/graphql`,
-matching Molecule's native query-device route. Deployed builds use the serving
-gateway; local development defaults to `https://arweave.net`. An explicit
-`arweave-node` override selects another Arweave gateway independently of AO
-compute peers. There is no fallback to `/graphql` or Goldsky.
+All GraphQL searches use `POST <selected-Arweave-gateway>/graphql`, including
+collection discovery, asset search, wallet candidates, profiles, and activity.
+Local development defaults to `https://arweave.net/graphql`; deployed builds use
+the serving gateway. An explicit `arweave-node` override selects another Arweave
+gateway independently of AO compute peers. There is no Goldsky fallback.
 
 ## Wallet inventory
 
@@ -77,7 +77,9 @@ their current order state without computing every asset in the collection.
 
 Each collection also exposes a backend-free activity view. It queries recent
 signed market actions scoped to that collection's process IDs and links each
-event to its permanent transaction. The activity feed is historical context;
+event to its permanent transaction. Activity and price history do not run
+background purchase verification. Registrations remain submissions rather than
+being inferred as completed sales. The activity feed is historical context;
 ownership, availability, and the order book still come exclusively from live
 process state.
 

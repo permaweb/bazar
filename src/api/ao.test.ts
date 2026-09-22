@@ -308,9 +308,9 @@ describe('Bazar AO.js routing', () => {
 			fetcher as typeof fetch
 		);
 
-		await routed('https://arweave.net/~query@1.0/graphql');
+		await routed('https://arweave.net/graphql');
 
-		expect(requested.at(-1)).toBe('https://arweave.net/~query@1.0/graphql');
+		expect(requested.at(-1)).toBe('https://arweave.net/graphql');
 	});
 
 	it('can return a not-found response for an optional AO path', async () => {

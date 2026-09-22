@@ -132,7 +132,7 @@ export function arweaveGraphqlEndpoint(
 	location: GatewayLocation | string | undefined = typeof window === 'undefined' ? undefined : window.location
 ): string {
 	const gateway = typeof location === 'string' ? location.replace(/\/+$/, '') : arweaveGatewayFromLocation(location);
-	return `${gateway}/~query@1.0/graphql`;
+	return `${gateway}/graphql`;
 }
 
 /** Address an Arweave item through the gateway's ordinary HTTPSig resource route. */
