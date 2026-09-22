@@ -2423,6 +2423,59 @@ describe('live candidate resolution', () => {
 		);
 	});
 
+	it('keeps incomplete wallet balance reads retryable while resolving healthy candidates', async () => {
+		const candidates: AssetCandidate[] = [assetA, assetB].map((processId) => ({
+			processId,
+			height: 1,
+			timestamp: 0,
+			sources: ['initial-holder'],
+		}));
+		const onSettled = vi.fn();
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+		const results = await resolveAssetCandidates(candidates, collections, {
+			requireHolderBalances: true,
+			read: async (id) => ({
+				provider: 'https://compute.example',
+				state: id === assetA ? { ...state, balances: {}, holderBalancesAvailable: false } : state,
+			}),
+			onSettled,
+		});
+		expect(results.map((result) => result.asset.id)).toEqual([assetB]);
+		expect(onSettled).toHaveBeenCalledWith(null, candidates[0], new Error('asset-balance-state-unavailable'));
+		expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ state }), candidates[1]);
+	});
+
+	it('reports incomplete wallet balances from revalidation as a failure instead of an empty holding', async () => {
+		const candidate: AssetCandidate = { processId: assetA, height: 1, timestamp: 0, sources: ['initial-holder'] };
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+		const onRevalidated = vi.fn();
+		await resolveAssetCandidates([candidate], collections, {
+			requireHolderBalances: true,
+			read: async () => ({
+				provider: 'https://compute.example',
+				state,
+				revalidation: Promise.resolve({
+					provider: 'https://compute.example',
+					state: { ...state, balances: {}, holderBalancesAvailable: false },
+				}),
+			}),
+			onRevalidated,
+		});
+		await vi.waitFor(() =>
+			expect(onRevalidated).toHaveBeenCalledWith(null, candidate, new Error('asset-balance-state-unavailable'))
+		);
+	});
+
 	it('publishes a persistent stale result and its fresh replacement separately', async () => {
 		const candidate: AssetCandidate = {
 			processId: assetA,
@@ -2722,6 +2775,60 @@ describe('live candidate resolution', () => {
 				collection: { id: 'created-assets', name: 'Portable collection' },
 			},
 		]);
+	});
+
+	it('excludes unsupported indexed media without reporting an index failure or retrying healthy candidates', async () => {
+		const supportedId = 'U'.repeat(43);
+		const unsupportedId = 'S'.repeat(43);
+		const candidates: AssetCandidate[] = [supportedId, unsupportedId].map((processId) => ({
+			processId,
+			height: 10,
+			timestamp: 20,
+			sources: ['market-action'],
+		}));
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const tags = {
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			'initial-holder': wallet,
+			'total-supply': '1',
+			denomination: '0',
+			ticker: 'ASSET',
+			name: 'Indexed asset',
+		};
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+					atomic: {
+						pageInfo: { hasNextPage: false },
+						edges: candidates.map(({ processId }) => ({
+							cursor: processId,
+							node: {
+								id: processId,
+								tags: Object.entries({
+									...tags,
+									'content-type': processId === unsupportedId ? 'image/svg+xml' : 'image/png',
+								}).map(([name, value]) => ({ name, value })),
+							},
+						})),
+					},
+				},
+			})
+		);
+		const result = await verifyAssetCandidateSupport(candidates, [tokenCollection], { fetch: fetcher });
+		expect(result).toEqual({ supported: [candidates[0]], unavailable: [] });
+		expect(fetcher).toHaveBeenCalledOnce();
 	});
 
 	it('batch-rejects unindexed transfer spam with Arweave-compatible GraphQL batches before any live compute read', async () => {

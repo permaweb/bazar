@@ -168,6 +168,7 @@ export default function MyAssetsRoute({
 				};
 				const resolver = createAssetCandidateResolver(market.collections, {
 					signal: controller.signal,
+					requireHolderBalances: true,
 					read: readWalletState,
 					onSettled: (result, candidate, error) => {
 						if (!active()) return;
@@ -429,6 +430,7 @@ export default function MyAssetsRoute({
 		const resolveFailed = (failed: AssetCandidate[]) =>
 			resolveAssetCandidates(failed, market.collections, {
 				signal: controller.signal,
+				requireHolderBalances: true,
 				onSettled: (result, candidate, error) => {
 					if (!active()) return;
 					if (error) failedCandidates.current.set(candidate.processId, candidate);
@@ -600,7 +602,7 @@ export default function MyAssetsRoute({
 			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
 				<div className="my-assets-heading-status retry-notice">
 					<span role="status">
-						Compute hasn’t completed yet. Please try again. {status.failures.toLocaleString()}{' '}
+						{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
 						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
 						remain visible.
 					</span>
@@ -622,7 +624,7 @@ export default function MyAssetsRoute({
 			) : null}
 			{status.error ? (
 				<div className="inline-error retry-notice">
-					<span role="status">Compute hasn’t completed yet. Please try again.</span>
+					<span role="status">{status.error}</span>
 					<Button className="with-icon" onClick={retryDiscovery} size="custom">
 						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 					</Button>
@@ -659,7 +661,7 @@ export default function MyAssetsRoute({
 					</h3>
 					<p>
 						{status.failures
-							? `Compute hasn’t completed yet. Please try again. ${status.failures} of ${status.total} candidates still need to be checked.`
+							? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates still need to be checked.`
 							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this profile opens; live state remains authoritative for every candidate found.'}
 					</p>
 					{status.failures ? (

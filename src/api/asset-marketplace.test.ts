@@ -453,6 +453,39 @@ describe('asset state', () => {
 		}
 	});
 
+	it('preserves numeric non-wallet accounts without hiding legacy token holders', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const result = await readAssetState(processId, {
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse(
+						`{"device":"json@1.0","deviceAA":7,"deviceBB":7,"${owner}":80135,"${buyer}":20000000000000001}`
+					);
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '30000000000000000',
+					},
+				});
+			},
+		});
+
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(result.state.balances).toEqual({
+			deviceAA: '7',
+			deviceBB: '7',
+			[owner]: '80135',
+			[buyer]: '20000000000000001',
+		});
+		expect(liquidBalanceOf(result.state, owner)).toBe('80135');
+		expect(liquidBalanceOf(result.state, 'deviceAA')).toBe('0');
+		expect(isBalanceIdentity('deviceAA')).toBe(false);
+	});
+
 	it('recovers a direct JSON balance link when a public-beta style routed probe rejects its 404', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const requested: string[] = [];

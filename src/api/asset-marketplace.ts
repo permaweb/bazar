@@ -787,7 +787,10 @@ function strictDirectJsonBalances(message: Record<string, unknown>): Record<stri
 	for (const [name, value] of Object.entries(message)) {
 		if (name.endsWith('+link')) return null;
 		if (DIRECT_JSON_BALANCE_METADATA.has(name)) continue;
-		if (!isBalanceIdentity(name)) return null;
+		// Legacy token ledgers can contain numeric accounts that are not wallet
+		// addresses (for example deviceAA/deviceBB). Preserve those entries just
+		// like an inline balance table; wallet lookups still validate addresses.
+		if (!name) return null;
 		const balance = amount(value);
 		if (balance === null) return null;
 		balances[name] = balance;
