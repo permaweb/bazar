@@ -38,6 +38,7 @@ type CachedReadOptions = {
 	cacheTtlMs?: number;
 	fetch?: typeof fetch;
 	force?: boolean;
+	includeBalances?: boolean;
 	maxAge?: number;
 	maxAttempts?: number;
 	onRevalidated?: (result: ComputeResult) => void;
@@ -110,12 +111,12 @@ function rememberResult(key: string, result: ComputeResult, cacheTtlMs: number) 
 	while (results.size > MAX_STATE_ENTRIES) results.delete(results.keys().next().value!);
 }
 
-function cacheKey(processId: string) {
+function cacheKey(processId: string, includeBalances = true) {
 	const routingScope =
 		typeof window !== 'undefined' && ['http:', 'https:'].includes(window.location.protocol)
 			? aoRoutingScopeFromLocation(window.location)
 			: '';
-	return `${routingScope}:${processId}`;
+	return `${routingScope}:${processId}${includeBalances ? '' : ':orders'}`;
 }
 
 function requestKey(key: string, options: CachedReadOptions) {
@@ -166,8 +167,13 @@ export function cachedAssetState(processId: string): ComputeResult | undefined {
 
 export async function readAssetStateCached(processId: string, options: CachedReadOptions = {}): Promise<ComputeResult> {
 	options.signal?.throwIfAborted();
-	const key = cacheKey(processId);
-	const cached = results.get(key);
+	const key = cacheKey(processId, options.includeBalances);
+	let cached = results.get(key);
+	// Full state can satisfy a market read, but market-only state must never
+	// satisfy a wallet or asset-detail balance read.
+	if (options.includeBalances === false && (!cached || cached.expiresAt <= Date.now())) {
+		cached = results.get(cacheKey(processId));
+	}
 	if (!options.force && cached && cached.expiresAt > Date.now()) {
 		results.delete(key);
 		results.set(key, cached);
@@ -183,6 +189,7 @@ export async function readAssetStateCached(processId: string, options: CachedRea
 			(signal) =>
 				readAssetState(processId, {
 					fetch: options.fetch,
+					includeBalances: options.includeBalances,
 					maxAge: options.maxAge ?? 60,
 					maxAttempts: options.maxAttempts,
 					retryBaseDelay: options.retryBaseDelay,
@@ -217,10 +224,10 @@ function observeRevalidation(result: ComputeResult, options: CachedReadOptions) 
 }
 
 export function invalidateAssetState(processId: string) {
-	const key = cacheKey(processId);
-	results.delete(key);
+	const keys = new Set([cacheKey(processId), cacheKey(processId, false)]);
+	for (const key of keys) results.delete(key);
 	for (const [controller, activeKey] of activeRevalidations) {
-		if (activeKey === key) controller.abort();
+		if (keys.has(activeKey)) controller.abort();
 	}
 }
 

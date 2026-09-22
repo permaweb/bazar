@@ -168,6 +168,7 @@ export async function readAssetState(
 		maxAttempts?: number;
 		maxAge?: number;
 		staleWhileRevalidate?: number;
+		includeBalances?: boolean;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 		currentHeight?: number;
@@ -544,6 +545,7 @@ async function readState(
 		maxAttempts?: number;
 		maxAge?: number;
 		staleWhileRevalidate?: number;
+		includeBalances?: boolean;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 		slot?: number;
@@ -609,7 +611,8 @@ async function readState(
 						base,
 						requestInit,
 						fetcher,
-						options.readReservationHeight
+						options.readReservationHeight,
+						options.includeBalances
 					);
 					const cached = cacheMetadata(response);
 					return {
@@ -625,7 +628,9 @@ async function readState(
 											requestInit,
 											fetcher,
 											servingNode,
-											options.readReservationHeight
+											options.readReservationHeight,
+											true,
+											options.includeBalances
 										)
 									),
 							  }
@@ -664,11 +669,13 @@ async function parseStateResponse(
 	base: string,
 	requestInit: RequestInit,
 	fetcher: typeof fetch,
-	readReservationHeight?: () => Promise<number>
+	readReservationHeight?: () => Promise<number>,
+	includeBalances = true
 ): Promise<AssetState> {
 	const raw = await responseMessage(response);
 	const linked = await Promise.all(
 		LINKED_STATE_TABLES.flatMap((key) => {
+			if (key === 'balances' && !includeBalances) return [];
 			if (isRecord(raw[key])) return [];
 			const id = raw[`${key}+link`];
 			if (id === undefined) return [];
@@ -678,11 +685,11 @@ async function parseStateResponse(
 	);
 	const parsed = parseAssetStateValue({
 		...raw,
+		...(!includeBalances ? { balances: {} } : {}),
 		...Object.fromEntries(linked.map(([key, value]) => [key, value])),
 	});
-	const holderBalancesAvailable = !linked.some(
-		([key, _value, available]) => key === 'balances' && available === false
-	);
+	const holderBalancesAvailable =
+		includeBalances && !linked.some(([key, _value, available]) => key === 'balances' && available === false);
 	parsed.state.holderBalancesAvailable = holderBalancesAvailable;
 	return parsed.activeReservation && readReservationHeight
 		? normalizeAssetStateReservations(parsed.state, await readReservationHeight())
@@ -787,7 +794,10 @@ function strictDirectJsonBalances(message: Record<string, unknown>): Record<stri
 	for (const [name, value] of Object.entries(message)) {
 		if (name.endsWith('+link')) return null;
 		if (DIRECT_JSON_BALANCE_METADATA.has(name)) continue;
-		if (!isBalanceIdentity(name)) return null;
+		// Legacy token ledgers can contain numeric accounts that are not wallet
+		// addresses (for example deviceAA/deviceBB). Preserve those entries just
+		// like an inline balance table; wallet lookups still validate addresses.
+		if (!name) return null;
 		const balance = amount(value);
 		if (balance === null) return null;
 		balances[name] = balance;
@@ -936,7 +946,8 @@ async function parseRevalidatedState(
 	fetcher: typeof fetch,
 	servingNode: string,
 	readReservationHeight?: () => Promise<number>,
-	retry = true
+	retry = true,
+	includeBalances = true
 ): Promise<{ state: AssetState; provider: string }> {
 	try {
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -947,7 +958,8 @@ async function parseRevalidatedState(
 				servingNode ? `${servingNode}/` : '/',
 				requestInit,
 				fetcher,
-				readReservationHeight
+				readReservationHeight,
+				includeBalances
 			),
 			provider: responseProvider(response, cacheMetadata(response)?.origin ?? servingNode),
 		};
@@ -967,7 +979,8 @@ async function parseRevalidatedState(
 			fetcher,
 			servingNode,
 			readReservationHeight,
-			false
+			false,
+			includeBalances
 		);
 	}
 }

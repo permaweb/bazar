@@ -823,10 +823,13 @@ describe('Home market summary retries', () => {
 
 		expect(
 			homeDiscoveryAssets([collection], { images: [other, resolved] }, 1, [{ asset: placeholder, collection }])
-		).toEqual([{ asset: resolved, collection }]);
+		).toEqual([
+			{ asset: resolved, collection },
+			{ asset: other, collection },
+		]);
 	});
 
-	it('caps portable listings by indexed activity rather than compute completion', () => {
+	it('keeps all verified listings ordered by activity when the fallback budget is full', () => {
 		const collection: Collection = {
 			id: 'images',
 			name: 'Images',
@@ -842,7 +845,40 @@ describe('Home market summary retries', () => {
 				{ asset: older, collection, activity: { processId: older.id, height: 1, timestamp: 1 } },
 				{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } },
 			])
-		).toEqual([{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } }]);
+		).toEqual([
+			{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } },
+			{ asset: older, collection, activity: { processId: older.id, height: 1, timestamp: 1 } },
+		]);
+	});
+
+	it('checks every indexed token even beyond the mixed discovery fallback budget', () => {
+		const tokens: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: Array.from({ length: 50 }, (_, index) => ({
+				id: `token${index}`.padEnd(43, 't'),
+				name: `Token ${index}`,
+			})),
+		};
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: Array.from({ length: 80 }, (_, index) => ({
+				id: `image${index}`.padEnd(43, 'i'),
+				name: `Image ${index}`,
+				image: 'https://example.com/image',
+			})),
+		};
+		const candidates = homeDiscoveryAssets([images, tokens], {}, 36);
+		const tokenCandidates = candidates.filter(({ collection }) => homeAssetTypeMatches(collection, 'tokens'));
+		expect(tokenCandidates.map(({ asset }) => asset.id)).toEqual(tokens.assets.map(({ id }) => id));
+		expect(homeAssetPage(tokenCandidates, 6).items.map(({ asset }) => asset.id)).toContain(tokens.assets[49].id);
+		expect(candidates.filter(({ collection }) => collection.kind !== 'tokens').length).toBeLessThanOrEqual(36);
+		expect(new Set(candidates.map(({ asset }) => asset.id)).size).toBe(candidates.length);
 	});
 
 	it('uses indexed collection assets before listings-only additions for the All assets view', () => {
@@ -1666,6 +1702,16 @@ describe('Collection live listing truth', () => {
 		const previous = { asset: { id: 'a' } } as any;
 		const current = liveListing('a');
 		expect(mergeResolvedListingBatch([previous], [{ processId: 'a', result: current }])).toEqual([current]);
+	});
+
+	it('admits a fresh listing when its cached state had no orders, then removes it when closed', () => {
+		const stale = { asset: { id: 'a' }, state: { orders: {} } } as any;
+		const initial = mergeResolvedListingBatch([], [{ processId: 'a', result: stale }]);
+		expect(initial).toEqual([]);
+		const fresh = liveListing('a');
+		const refreshed = mergeResolvedListingBatch(initial, [{ processId: 'a', result: fresh }]);
+		expect(refreshed).toEqual([fresh]);
+		expect(mergeResolvedListingBatch(refreshed, [{ processId: 'a', result: stale }])).toEqual([]);
 	});
 
 	it('consumes a 10,000-listing resolution iterable exactly once', () => {

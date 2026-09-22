@@ -1118,6 +1118,55 @@ describe('collection index loading', () => {
 	});
 
 	it.each([null, { id: '' }])(
+		'accepts unbundled tokens with bundledIn=%j across all token indexes',
+		async (bundledIn) => {
+			const ids = ['A'.repeat(43), 'L'.repeat(43), 'M'.repeat(43)];
+			const sources = ['transactions', 'legacyHintStyle', 'legacyAssetType'];
+			const tags = ['hint-ui-style', 'hint-style', 'asset-type'];
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async () =>
+					Response.json({
+						data: Object.fromEntries(
+							sources.map((source, index) => [
+								source,
+								{
+									count: 1,
+									pageInfo: { hasNextPage: false },
+									edges: [
+										{
+											cursor: `token-${index}`,
+											node: {
+												id: ids[index],
+												bundledIn,
+												tags: [
+													{ name: tags[index], value: 'fungible' },
+													{ name: 'name', value: `Token ${index}` },
+												],
+											},
+										},
+									],
+								},
+							])
+						),
+					})
+				)
+			);
+			const tokens = await loadMoreFungibleTokens({
+				id: 'fungible-tokens',
+				name: 'Tokens',
+				description: '',
+				kind: 'tokens',
+				assets: [],
+				hasMore: true,
+			});
+			expect(tokens.assets.map(({ id }) => id)).toEqual(ids);
+			expect(tokens.total).toBe(3);
+			expect(tokens.hasMore).toBe(false);
+		}
+	);
+
+	it.each([null, { id: '' }])(
 		'keeps unbundled tokens (%j) and excludes bundled discovery results',
 		async (unbundled) => {
 			const l1Id = 'A'.repeat(43);

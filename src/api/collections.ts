@@ -953,7 +953,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	const assets = new Map<string, AssetSummary>();
 	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
-		// Native query@1.0 represents an unbundled transaction as { id: '' }.
+		// Some gateways represent an unbundled transaction as { id: "" }.
 		if (node.bundledIn?.id || !isVisibleAssetId(node.id)) {
 			hiddenIndexedAssets += 1;
 			continue;
