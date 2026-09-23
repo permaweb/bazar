@@ -10,7 +10,10 @@ import {
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	marketplaceAssetMatchesSearch,
+	type SearchAsset,
+	searchAssetMatchesScope,
 	searchResultScore,
+	type SearchScope,
 } from 'api/collections';
 import { searchBazarAtomicAssetsByName } from 'api/discovery';
 import { prefetchAssetPage } from 'api/marketplace';
@@ -23,9 +26,9 @@ const INDEX_SEARCH_DEBOUNCE_MS = 250;
 const COLLECTION_RESULT_LIMIT = 6;
 const ASSET_RESULT_LIMIT = 8;
 
-export type MarketplaceSearchScope = 'all' | 'collections' | 'tokens' | 'assets' | 'names';
+export type MarketplaceSearchScope = SearchScope;
 
-export type MarketplaceSearchResult = { asset: AssetSummary; collection: Collection };
+export type MarketplaceSearchResult = SearchAsset;
 
 export type MarketplaceCollectionResult = { collection: Collection; kindLabel: string };
 
@@ -146,9 +149,25 @@ export function useMarketplaceSearch(options: {
 		() => rankedLocalAssetResults(searchableCollections, localMatches, deferredNormalizedQuery),
 		[deferredNormalizedQuery, localMatches, searchableCollections]
 	);
+	// Assets already seen on Discover or an asset page stay searchable without any catalogue-wide fetch.
+	const encounteredAssetResults = React.useMemo(
+		() =>
+			market.searchAssets.filter(
+				(result) =>
+					searchAssetMatchesScope(result, options.scope) &&
+					(!deferredNormalizedQuery ||
+						marketplaceAssetMatchesSearch(result.asset, result.collection, deferredNormalizedQuery))
+			),
+		[deferredNormalizedQuery, market.searchAssets, options.scope]
+	);
 	const assetResults = React.useMemo(
-		() => mergedAssetResults(localAssetResults, indexResults ?? [], deferredNormalizedQuery),
-		[deferredNormalizedQuery, indexResults, localAssetResults]
+		() =>
+			mergedAssetResults(
+				[...localAssetResults, ...encounteredAssetResults],
+				indexResults ?? [],
+				deferredNormalizedQuery
+			),
+		[deferredNormalizedQuery, encounteredAssetResults, indexResults, localAssetResults]
 	);
 	const tokenScope = options.scope !== 'collections' && options.scope !== 'assets' && options.scope !== 'names';
 	const directTokenCollection = tokenScope

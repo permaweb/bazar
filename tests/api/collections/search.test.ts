@@ -13,6 +13,8 @@ import {
 	directTokenSearchCollection,
 	interleaveCollectionAssets,
 	marketplaceAssetMatchesSearch,
+	mergeSearchAssets,
+	searchAssetMatchesScope,
 	searchResultScore,
 } from 'api/collections/search';
 
@@ -35,6 +37,44 @@ afterEach(() => replaceHiddenCollectionAssetIndex({}));
 function score(asset: AssetSummary, query: string) {
 	return searchResultScore({ asset, collection }, query);
 }
+
+describe('assets encountered outside the collection catalogue', () => {
+	const discovered = {
+		asset: { id: 'A'.repeat(43), name: 'Unreachable, Confirmed', image: 'https://arweave.net/art' },
+		collection: { ...collection, id: 'created-assets', kind: 'images' as const, name: 'Created on Bazar' },
+	};
+
+	it('makes a Discover card searchable by partial name even without a collection index entry', () => {
+		const results = mergeSearchAssets([], [discovered]);
+		expect(
+			results.filter(({ asset, collection }) => marketplaceAssetMatchesSearch(asset, collection, 'unreachable'))
+		).toEqual([discovered]);
+		expect(
+			results.filter(({ asset, collection }) =>
+				marketplaceAssetMatchesSearch(asset, collection, discovered.asset.id.toLowerCase())
+			)
+		).toEqual([discovered]);
+	});
+
+	it('keeps encountered Uniques out of token, name, and collection-only results', () => {
+		expect(searchAssetMatchesScope(discovered, 'all')).toBe(true);
+		expect(searchAssetMatchesScope(discovered, 'assets')).toBe(true);
+		for (const scope of ['tokens', 'names', 'collections'] as const)
+			expect(searchAssetMatchesScope(discovered, scope)).toBe(false);
+	});
+
+	it('updates metadata without duplicate results and bounds retained discovery', () => {
+		const other = { ...discovered, asset: { ...discovered.asset, id: 'B'.repeat(43) } };
+		const updated = { ...discovered, asset: { ...discovered.asset, name: 'Resolved artwork title' } };
+		expect(mergeSearchAssets([discovered, other], [updated], 2)).toEqual([other, updated]);
+		expect(mergeSearchAssets([other], [updated], 1)).toEqual([updated]);
+	});
+
+	it('does not reintroduce assets from a hidden collection through the shared search index', () => {
+		const hidden = { ...discovered, collection: { ...discovered.collection, id: HIDDEN_COLLECTION_IDS[0] } };
+		expect(mergeSearchAssets([hidden], [hidden])).toEqual([]);
+	});
+});
 
 describe('marketplace search ranking', () => {
 	it('stops collecting related assets at the visible limit', () => {

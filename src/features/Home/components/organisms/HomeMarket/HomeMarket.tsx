@@ -95,7 +95,7 @@ export default function HomeMarket() {
 												: 'Browse fungible tokens and Uniques on the permaweb.'
 											: homeTab === 'collections'
 											? 'Browse NFT and name collections.'
-											: 'Latest indexed purchases, listings, and transfers across every marketplace collection.'}
+											: 'Recent indexed listings, reservations, and transfers. Load older activity to explore more.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (

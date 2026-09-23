@@ -6,6 +6,7 @@ import {
 	type HomeListingShell,
 	isVisibleAssetId,
 	isVisibleCollectionId,
+	type SearchAsset,
 } from 'api/collections';
 import type { ResolvedAsset } from 'api/discovery';
 
@@ -176,6 +177,8 @@ export function homeLoadedAssetLimit(collections: Collection[], displayListingCo
 export function homeAssetCandidates(input: {
 	collections: Collection[];
 	displayListings: HomeDisplayListing[];
+	/** Assets already encountered elsewhere in the app, so a Discover card stays findable from Home's search. */
+	searchAssets: SearchAsset[];
 	verifiedListings: Record<string, AssetSummary[]>;
 	normalizedQuery: string;
 	assetView: HomeAssetView;
@@ -185,9 +188,9 @@ export function homeAssetCandidates(input: {
 	if (input.normalizedQuery) {
 		return homeSearchAssets(
 			input.collections,
-			input.displayListings,
+			[...input.displayListings, ...input.searchAssets],
 			input.normalizedQuery,
-			input.assetView === 'all' ? input.loadedAssetLimit : HOME_LISTING_ASSET_LIMIT,
+			input.loadedAssetLimit,
 			input.searchMatches ?? undefined
 		);
 	}
@@ -285,6 +288,16 @@ export function homeDiscoverSelection(input: {
 			: [];
 	const summaryAssets =
 		input.assetView === 'all' ? (input.assetType === 'all' ? overview : assetPagination.items) : input.candidates;
+	// Read what the visitor is looking at first: the current page, then this type's matches, then the rest.
+	const summaryPriorityKey = [
+		...new Set(
+			[
+				...(input.assetType === 'all' ? overview : assetPagination.items),
+				...summaryAssets.filter(({ collection }) => homeAssetTypeMatches(collection, input.assetType)),
+				...summaryAssets,
+			].map(({ asset }) => asset.id)
+		),
+	].join(',');
 	return {
 		tokens,
 		collectibles,
@@ -292,6 +305,7 @@ export function homeDiscoverSelection(input: {
 		assetPagination,
 		visibleTokenKey: visibleTokens.map(({ asset }) => asset.id).join(','),
 		summaryAssets,
+		summaryPriorityKey,
 	};
 }
 

@@ -29,7 +29,6 @@ import {
 	globalActivityCollection,
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
-	globalActivityWindowDescription,
 	newestCollectionActivity,
 	retainNewestCollectionActivity,
 } from 'features/Activity/model/activity-window';
@@ -830,10 +829,13 @@ describe('Home market summary retries', () => {
 
 		expect(
 			homeDiscoveryAssets([collection], { images: [other, resolved] }, 1, [{ asset: placeholder, collection }])
-		).toEqual([{ asset: resolved, collection }]);
+		).toEqual([
+			{ asset: resolved, collection },
+			{ asset: other, collection },
+		]);
 	});
 
-	it('caps portable listings by indexed activity rather than compute completion', () => {
+	it('keeps all verified listings ordered by activity when the fallback budget is full', () => {
 		const collection: Collection = {
 			id: 'images',
 			name: 'Images',
@@ -849,7 +851,40 @@ describe('Home market summary retries', () => {
 				{ asset: older, collection, activity: { processId: older.id, height: 1, timestamp: 1 } },
 				{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } },
 			])
-		).toEqual([{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } }]);
+		).toEqual([
+			{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } },
+			{ asset: older, collection, activity: { processId: older.id, height: 1, timestamp: 1 } },
+		]);
+	});
+
+	it('checks every indexed token even beyond the mixed discovery fallback budget', () => {
+		const tokens: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: Array.from({ length: 50 }, (_, index) => ({
+				id: `token${index}`.padEnd(43, 't'),
+				name: `Token ${index}`,
+			})),
+		};
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: Array.from({ length: 80 }, (_, index) => ({
+				id: `image${index}`.padEnd(43, 'i'),
+				name: `Image ${index}`,
+				image: 'https://example.com/image',
+			})),
+		};
+		const candidates = homeDiscoveryAssets([images, tokens], {}, 36);
+		const tokenCandidates = candidates.filter(({ collection }) => homeAssetTypeMatches(collection, 'tokens'));
+		expect(tokenCandidates.map(({ asset }) => asset.id)).toEqual(tokens.assets.map(({ id }) => id));
+		expect(homeAssetPage(tokenCandidates, 6).items.map(({ asset }) => asset.id)).toContain(tokens.assets[49].id);
+		expect(candidates.filter(({ collection }) => collection.kind !== 'tokens').length).toBeLessThanOrEqual(36);
+		expect(new Set(candidates.map(({ asset }) => asset.id)).size).toBe(candidates.length);
 	});
 
 	it('uses indexed collection assets before listings-only additions for the All assets view', () => {
@@ -1094,35 +1129,21 @@ describe('Home market summary retries', () => {
 	it('filters global activity by submitted market action', () => {
 		const events = [
 			{ id: 'listing', action: 'make-offer' },
-			{ id: 'purchase', action: 'register-interest', purchaseProof: { transactionId: 'proof', height: 1 } },
+			{ id: 'registration', action: 'register-interest' },
 			{ id: 'transfer', action: 'transfer' },
 			{ id: 'cancel', action: 'cancel-order' },
 		] as CollectionActivityEvent[];
 
 		expect(filterGlobalActivity(events, 'all')).toEqual(events);
 		expect(filterGlobalActivity(events, 'make-offer').map((event) => event.id)).toEqual(['listing']);
-		expect(filterGlobalActivity(events, 'register-interest').map((event) => event.id)).toEqual(['purchase']);
 		expect(filterGlobalActivity(events, 'transfer').map((event) => event.id)).toEqual(['transfer']);
 		expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
 	});
 
-	it('describes a complete progressive scan without claiming unloaded collection assets', () => {
-		expect(globalActivityWindowDescription(42, 12, true)).toBe(
-			'Reading complete indexed history for 12 marketplace assets. 42 events found so far.'
-		);
-		expect(globalActivityWindowDescription(1, 1)).toBe(
-			'All 1 indexed event found for 1 marketplace asset is loaded.'
-		);
-		expect(globalActivityWindowDescription(200, 50, false, true)).toBe(
-			'All 200 indexed events found for the currently loaded 50 marketplace assets are loaded. More assets remain in paged collections.'
-		);
-	});
-
-	it('describes progressive reveal within the complete loaded history', () => {
-		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 indexed events.');
-		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('All 100 indexed events are shown.');
-		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('All 90 matching indexed events are shown.');
-		expect(globalActivityRevealDescription(1, 1, 18, true)).toBe('All 1 matching indexed event is shown.');
+	it('keeps reveal counts explicitly scoped to loaded events', () => {
+		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 loaded events.');
+		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('Showing 100 of 100 loaded events.');
+		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('Showing 90 of 90 loaded matching events.');
 	});
 
 	it('checks exact collection membership without rescanning loaded assets', () => {
@@ -1687,6 +1708,16 @@ describe('Collection live listing truth', () => {
 		const previous = { asset: { id: 'a' } } as any;
 		const current = liveListing('a');
 		expect(mergeResolvedListingBatch([previous], [{ processId: 'a', result: current }])).toEqual([current]);
+	});
+
+	it('admits a fresh listing when its cached state had no orders, then removes it when closed', () => {
+		const stale = { asset: { id: 'a' }, state: { orders: {} } } as any;
+		const initial = mergeResolvedListingBatch([], [{ processId: 'a', result: stale }]);
+		expect(initial).toEqual([]);
+		const fresh = liveListing('a');
+		const refreshed = mergeResolvedListingBatch(initial, [{ processId: 'a', result: fresh }]);
+		expect(refreshed).toEqual([fresh]);
+		expect(mergeResolvedListingBatch(refreshed, [{ processId: 'a', result: stale }])).toEqual([]);
 	});
 
 	it('consumes a 10,000-listing resolution iterable exactly once', () => {

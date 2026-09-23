@@ -234,6 +234,7 @@ export default function Header() {
 										to="/create"
 									>
 										<Icon icon={Upload} size="sm" />
+										<span className="create-link-label">Create</span>
 									</Link>
 								)}
 							</Tooltip>
@@ -534,7 +535,7 @@ export default function Header() {
 										? 'More token records remain available from the token collection.'
 										: atomicIndexSearchFailed
 										? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-										: 'Try another token, Unique, collection, or Arweave name.'}
+										: 'Try the full asset name or process ID. Newly created assets may take time to appear in search.'}
 								</span>
 							</div>
 						) : null}

@@ -46,6 +46,7 @@ vi.mock('api/marketplace', async (importOriginal) => {
 
 const market = vi.hoisted(() => ({
 	collections: [] as Collection[],
+	searchAssets: [] as Array<{ asset: AssetSummary; collection: Collection }>,
 	visibilityReady: true,
 }));
 
@@ -154,6 +155,7 @@ describe('useMarketplaceSearch', () => {
 		root = createRoot(document.createElement('div'));
 		search = undefined;
 		market.collections = [artwork, tokens, names];
+		market.searchAssets = [];
 		market.visibilityReady = true;
 		control.search = undefined;
 		control.queries = [];
@@ -163,6 +165,23 @@ describe('useMarketplaceSearch', () => {
 
 	afterEach(() => {
 		React.act(() => root.unmount());
+	});
+
+	it('finds an asset encountered elsewhere that no catalogue index lists', async () => {
+		const encountered = {
+			asset: asset('E'.repeat(43), 'Sun temple, Confirmed'),
+			collection: { ...artwork, id: 'created-assets', name: 'Created on Bazar' },
+		};
+		market.searchAssets = [encountered];
+		control.search = async () => [];
+
+		render('sun temple');
+		expect(current().collectibleResults.map((result) => result.asset.id)).toEqual([encountered.asset.id]);
+
+		render('sun temple', 'tokens');
+		expect(current().collectibleResults).toEqual([]);
+		expect(current().tokenResults).toEqual([]);
+		await settleSearch();
 	});
 
 	it('matches the loaded catalogue before the index answers', async () => {

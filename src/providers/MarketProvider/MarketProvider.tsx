@@ -9,6 +9,8 @@ import {
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	mergeSearchAssets,
+	type SearchAsset,
 	storeHiddenCollectionAssetIndex,
 	storeMarketShellSnapshot,
 } from 'api/collections';
@@ -32,6 +34,9 @@ import {
 
 export type MarketContextValue = {
 	collections: Collection[];
+	/** Assets encountered outside the catalogue indexes, shared with search so they stay findable. */
+	searchAssets: SearchAsset[];
+	rememberSearchAssets(assets: SearchAsset[]): void;
 	verifiedCollectionIds: ReadonlySet<string>;
 	visibilityReady: boolean;
 	loading: boolean;
@@ -47,6 +52,8 @@ export type MarketContextValue = {
 
 export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
+	searchAssets: [],
+	rememberSearchAssets: () => undefined,
 	verifiedCollectionIds: new Set(),
 	visibilityReady: false,
 	loading: true,
@@ -70,6 +77,8 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
+		searchAssets: [],
+		rememberSearchAssets: () => undefined,
 		verifiedCollectionIds: new Set(),
 		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
@@ -232,10 +241,23 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
 	}, []);
+	const rememberSearchAssets = React.useCallback((assets: SearchAsset[]) => {
+		if (!assets.length) return;
+		setMarket((current) => ({ ...current, searchAssets: mergeSearchAssets(current.searchAssets, assets) }));
+	}, []);
 	const retry = React.useCallback(() => setMarketRetry((current) => current + 1), []);
 	const value = React.useMemo(
-		() => ({ ...market, pageRefreshing, loadMore, addCreatedAsset, addCollection, setPageRefreshing, retry }),
-		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, retry]
+		() => ({
+			...market,
+			pageRefreshing,
+			loadMore,
+			addCreatedAsset,
+			addCollection,
+			rememberSearchAssets,
+			setPageRefreshing,
+			retry,
+		}),
+		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, rememberSearchAssets, retry]
 	);
 
 	return <MarketContext.Provider value={value}>{props.children}</MarketContext.Provider>;

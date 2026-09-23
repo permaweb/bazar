@@ -149,6 +149,7 @@ export default function OperationDialog(props: {
 					operationValue={view.value}
 					quote={purchaseQuoteView(quote.state)}
 					quoteStatusId={quoteStatusId}
+					reservationMinimum={view.reservationMinimum}
 					seller={view.order?.creator ?? ''}
 					sellerPrice={view.sellerPrice}
 					value={value}

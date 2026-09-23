@@ -34,37 +34,20 @@ export function globalActivityRecipientIds(collections: Collection[]) {
 	return [...ids];
 }
 
-export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
+/**
+ * The global feed's filters. Registrations are submissions, never inferred sales, so they have no filter of their
+ * own; they still appear under `all`.
+ */
+export type GlobalActivityFilter = 'all' | Exclude<CollectionActivityEvent['action'], 'register-interest'>;
 
 export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
 
 export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
 	if (filter === 'all') return events;
-	return events.filter(
-		(event) => event.action === filter && (filter !== 'register-interest' || Boolean(event.purchaseProof))
-	);
+	return events.filter((event) => event.action === filter);
 }
 
-export function globalActivityWindowDescription(
-	eventCount: number,
-	assetCount = 0,
-	loading = false,
-	hasMoreAssets = false
-) {
-	const count = Math.max(0, Math.floor(eventCount));
-	const assets = Math.max(0, Math.floor(assetCount));
-	if (loading) {
-		return `Reading complete indexed history for ${assets.toLocaleString()} marketplace ${
-			assets === 1 ? 'asset' : 'assets'
-		}. ${count.toLocaleString()} ${count === 1 ? 'event' : 'events'} found so far.`;
-	}
-	return `All ${count.toLocaleString()} indexed ${count === 1 ? 'event' : 'events'} found for ${
-		hasMoreAssets ? 'the currently loaded ' : ''
-	}${assets.toLocaleString()} marketplace ${assets === 1 ? 'asset is' : 'assets are'} loaded.${
-		hasMoreAssets ? ' More assets remain in paged collections.' : ''
-	}`;
-}
-
+/** Reveal counts describe the events loaded so far, never the whole indexed history. */
 export function globalActivityRevealDescription(
 	shownCount: number,
 	matchingCount: number,
@@ -74,13 +57,9 @@ export function globalActivityRevealDescription(
 ) {
 	const shown = Math.max(0, Math.floor(shownCount));
 	const matching = Math.max(0, Math.floor(matchingCount));
-	const qualifier = filtered ? ' matching' : '';
-	if (shown < matching) {
-		return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()}${qualifier} indexed events.`;
-	}
-	const eventLabel = matching === 1 ? 'event' : 'events';
-	const verb = matching === 1 ? 'is' : 'are';
-	return `All ${matching.toLocaleString()}${qualifier} indexed ${eventLabel} ${verb} shown.`;
+	return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()} loaded${
+		filtered ? ' matching' : ''
+	} events.`;
 }
 
 export function collectionActivityVersion(collection: Collection) {

@@ -199,17 +199,6 @@ export default function AssetDetail() {
 								<strong>{view.balanceStateAvailable ? 'Unassigned' : 'Ownership unavailable'}</strong>
 							)}
 						</div>
-						<div className="asset-token-tags" aria-label="Asset protocol details">
-							<span>{state.device || 'token@1.0'}</span>
-							<span>Arweave</span>
-							<span>Supply 1</span>
-						</div>
-						<StateVerification
-							provider={live.provider}
-							verifiedAt={live.verifiedAt}
-							refreshing={live.loading}
-							failed={Boolean(live.error)}
-						/>
 						{live.loading ? <Loading label="Computing current state…" /> : null}
 						{live.error ? (
 							<ErrorPanel
@@ -244,6 +233,10 @@ export default function AssetDetail() {
 						activity={activity.activity}
 						asks={activity.asks}
 						askPricePoints={activity.askPricePoints}
+						provider={live.provider}
+						verifiedAt={live.verifiedAt}
+						stateRefreshing={live.loading}
+						stateFailed={Boolean(live.error)}
 						onChange={handleSectionChange}
 						onActivityRetry={() => activity.retryActivity()}
 						onActivityLoadMore={() => void activity.loadOlderActivity()}

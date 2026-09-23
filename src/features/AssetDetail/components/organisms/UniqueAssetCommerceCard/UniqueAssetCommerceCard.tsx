@@ -28,31 +28,16 @@ export default function UniqueAssetCommerceCard(props: {
 	return (
 		<section aria-busy={props.view.operationIsBusy} className="asset-commerce-card">
 			<AssetBalanceStateNotice state={props.state} />
-			<div className="asset-market-stats">
-				<div>
-					<span>Current ask</span>
+			{/* One price leads the card; supply, order status, and protocol details live under Blockchain. */}
+			<div className="asset-purchase-summary">
+				<div className="asset-buy-summary">
+					<span>{order?.status === 'reserved' ? 'Reserved at' : order ? 'Price' : 'Market status'}</span>
 					<strong>
 						{order ? <ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText> : 'Not listed'}
 					</strong>
+					{order ? <small>Network fees are shown before you approve.</small> : null}
 				</div>
-				<div>
-					<span>Supply</span>
-					<strong>1 / 1</strong>
-				</div>
-				<div>
-					<span>Order status</span>
-					<strong>{order ? order.status : 'None'}</strong>
-				</div>
-				<div>
-					<span>License terms</span>
-					<strong>{props.view.license.length || 'None'}</strong>
-				</div>
-			</div>
-			<div className="asset-buy-summary">
-				<span>{order?.status === 'reserved' ? 'Reserved at' : order ? 'Buy for' : 'Market status'}</span>
-				<strong>
-					{order ? <ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText> : 'Not listed'}
-				</strong>
+				<span className="asset-edition">1 of 1</span>
 			</div>
 			{props.operationActivity ? (
 				<AssetOperationStatus

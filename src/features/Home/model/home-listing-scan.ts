@@ -1,15 +1,13 @@
 import type { HomeListingShell } from 'api/collections';
 import { isLiveListing, type ResolvedAsset } from 'api/discovery';
-import type { AssetState } from 'api/marketplace';
 
 import type { HomeMarketSummary } from './home-market';
 
 export type HomeListingFailure = Extract<HomeMarketSummary, { status: 'unavailable' }>;
 
-// One resolved listing candidate, or a background revalidation of an already published listing.
-export type HomeListingPublication =
-	| { processId: string; result: ResolvedAsset | null }
-	| { processId: string; state: AssetState; provider: string; refresh: true };
+// One settled listing candidate: its live result, or `null` when it resolved to no live listing.
+// A background revalidation publishes the same shape, so a refreshed listing replaces or removes its entry.
+export type HomeListingPublication = { processId: string; result: ResolvedAsset | null };
 
 export type HomeListingScanStatus =
 	| { status: 'idle' }
@@ -85,20 +83,9 @@ function settleCachedListings(cached: HomeListingShell[], batch: HomeListingPubl
 
 export function mergeHomeListingPublications(current: ResolvedAsset[], batch: HomeListingPublication[]) {
 	const results = new Map(current.map((result) => [result.asset.id, result]));
-	for (const publication of batch) {
-		if ('refresh' in publication) {
-			const previous = results.get(publication.processId);
-			if (previous) {
-				const updated = { ...previous, state: publication.state, provider: publication.provider };
-				if (isLiveListing(updated)) results.set(publication.processId, updated);
-				else results.delete(publication.processId);
-			}
-		} else {
-			results.delete(publication.processId);
-			if (publication.result && isLiveListing(publication.result)) {
-				results.set(publication.processId, publication.result);
-			}
-		}
+	for (const { processId, result } of batch) {
+		results.delete(processId);
+		if (result && isLiveListing(result)) results.set(processId, result);
 	}
 	return [...results.values()];
 }

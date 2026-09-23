@@ -76,6 +76,54 @@ describe('servingNodeOrigin', () => {
 });
 
 describe('asset state', () => {
+	it('reads live market orders without requesting a slow holder table', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url === `/${ordersLink}`) return jsonResponse({ [orderId]: order(orderId) });
+			if (!url.includes('~process@1.0/')) throw new Error('unexpected holder request');
+			if (url.endsWith('/balances/device')) throw new Error('unexpected holder probe');
+			return new Response(null, {
+				headers: {
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					'balances+link': balancesLink,
+					'orders+link': ordersLink,
+				},
+			});
+		});
+		const result = await readAssetState(processId, { fetch: fetcher, includeBalances: false });
+		expect(bestAskOfAsset(result.state)?.orderId).toBe(orderId);
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps market revalidation independent of holder tables', async () => {
+		const stale = jsonResponse({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			orders: {},
+			'balances+link': 'B'.repeat(43),
+		});
+		const fresh = jsonResponse({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			orders: { [orderId]: order(orderId) },
+			'balances+link': 'C'.repeat(43),
+		});
+		window.aoFetch!.cacheMetadata = (response) =>
+			response === stale ? { status: 'stale', age: 60, revalidation: Promise.resolve(fresh) } : undefined;
+		const fetcher = vi.fn(async () => stale);
+		const initial = await readAssetState(processId, { fetch: fetcher, includeBalances: false });
+		expect(bestAskOfAsset(initial.state)).toBeNull();
+		const refreshed = await initial.revalidation!;
+		expect(bestAskOfAsset(refreshed.state)?.orderId).toBe(orderId);
+		expect(refreshed.state.holderBalancesAvailable).toBe(false);
+		expect(fetcher).toHaveBeenCalledOnce();
+	});
+
 	it('recognizes legacy balance identities without relaxing arbitrary keys', () => {
 		expect(isBalanceIdentity(owner)).toBe(true);
 		expect(isBalanceIdentity('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs')).toBe(true);
@@ -319,6 +367,34 @@ describe('asset state', () => {
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
 	});
 
+	it.each(['A work — kept forever', 'Café · 東京', '🎨 Permanent art', 'Legacy café'])(
+		'decodes display metadata from HTTP header octets: %s',
+		async (description) => {
+			const header = description.startsWith('Legacy')
+				? description
+				: Array.from(new TextEncoder().encode(description), (byte) => String.fromCharCode(byte)).join('');
+			const result = await readAssetState(processId, {
+				provider: 'https://compute.example',
+				fetch: async (input) => {
+					if (String(input).endsWith('/balances/device')) return new Response('message@1.0');
+					if (String(input).includes('serialize~json@1.0')) {
+						return jsonResponse({ device: 'json@1.0', [owner]: '1' });
+					}
+					return new Response(null, {
+						headers: {
+							device: 'process@1.0',
+							'execution-device': 'token@1.0',
+							'total-supply': '1',
+							'balances+link': 'B'.repeat(43),
+							description: header,
+						},
+					});
+				},
+			});
+			expect(result.state.raw.description).toBe(description);
+		}
+	);
+
 	it('skips a linked balance trie instead of downloading every message', async () => {
 		const rootId = 'R'.repeat(43);
 		const requests: Array<{ url: string; init: RequestInit }> = [];
@@ -452,6 +528,39 @@ describe('asset state', () => {
 			expect(ownerOfAsset(result.state)).toBeNull();
 			expect(requested.every((url) => !url.includes(childLink))).toBe(true);
 		}
+	});
+
+	it('preserves numeric non-wallet accounts without hiding legacy token holders', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const result = await readAssetState(processId, {
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse(
+						`{"device":"json@1.0","deviceAA":7,"deviceBB":7,"${owner}":80135,"${buyer}":20000000000000001}`
+					);
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '30000000000000000',
+					},
+				});
+			},
+		});
+
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(result.state.balances).toEqual({
+			deviceAA: '7',
+			deviceBB: '7',
+			[owner]: '80135',
+			[buyer]: '20000000000000001',
+		});
+		expect(liquidBalanceOf(result.state, owner)).toBe('80135');
+		expect(liquidBalanceOf(result.state, 'deviceAA')).toBe('0');
+		expect(isBalanceIdentity('deviceAA')).toBe(false);
 	});
 
 	it('recovers a direct JSON balance link when a public-beta style routed probe rejects its 404', async () => {

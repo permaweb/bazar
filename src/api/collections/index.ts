@@ -17,6 +17,7 @@ export {
 } from './adapter';
 export { collectionDisplayName, collectionEyebrow, collectionKindLabel } from './labels';
 export { HIDDEN_COLLECTION_IDS } from './policy';
+export type { SearchAsset, SearchScope } from './search';
 export {
 	assetMatchesCollectionQuery,
 	collectionMoreAssets,
@@ -24,6 +25,8 @@ export {
 	directTokenSearchCollection,
 	interleaveCollectionAssets,
 	marketplaceAssetMatchesSearch,
+	mergeSearchAssets,
+	searchAssetMatchesScope,
 	searchResultScore,
 } from './search';
 export type { HomeListingShell } from './shell-snapshot';

@@ -48,6 +48,8 @@ export type WalletAssetDiscovery = {
 	results: ResolvedAsset[];
 	status: WalletResolutionStatus;
 	/** Progress heading and live-region announcement, throttled to bounded milestones. */
+	/** Which service left candidates unavailable: the transaction index, AO compute, or both. */
+	failureMessage: string;
 	resolutionCopy: { heading: string; announcement: string };
 	/** Restart discovery from nothing, bypassing cached asset state. */
 	refresh(): void;
@@ -152,6 +154,8 @@ export function useWalletAssetDiscovery(address: string): WalletAssetDiscovery {
 				};
 				const resolver = createAssetCandidateResolver(market.collections, {
 					signal: controller.signal,
+					// A wallet inventory is ownership: an unreadable holder table is a failure, not an empty holding.
+					requireHolderBalances: true,
 					read: readWalletState,
 					onSettled: (result, candidate, error) => {
 						if (!active()) return;
@@ -373,6 +377,7 @@ export function useWalletAssetDiscovery(address: string): WalletAssetDiscovery {
 		const resolveFailed = (failed: AssetCandidate[]) =>
 			resolveAssetCandidates(failed, market.collections, {
 				signal: controller.signal,
+				requireHolderBalances: true,
 				onSettled: (result, candidate, error) => {
 					if (!active()) return;
 					if (error) failedCandidates.current.set(candidate.processId, candidate);
@@ -434,19 +439,21 @@ export function useWalletAssetDiscovery(address: string): WalletAssetDiscovery {
 		status,
 		requestedSessionScope
 	);
+	const failureMessage = walletResolutionFailureMessage(status);
 	const resolutionCopy = walletResolutionCopy(
 		{
 			...status,
 			discovered: walletAnnouncementProgress.current.discovered,
 			revalidated: walletAnnouncementProgress.current.revalidated,
 		},
-		walletResolutionFailureMessage(status)
+		failureMessage
 	);
 
 	return {
 		gateway,
 		results: visibleResults,
 		status,
+		failureMessage,
 		resolutionCopy,
 		refresh,
 		retryDiscovery,

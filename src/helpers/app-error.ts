@@ -88,6 +88,11 @@ const APP_ERROR_REASONS = {
 	'asset-state-timeout': { code: 'unknown-outcome', retryable: false },
 	'asset-purchase-insufficient-funds': { code: 'rejected', retryable: false },
 	'asset-purchase-insufficient-funds-after-signing': { code: 'rejected', retryable: false },
+	'asset-purchase-registration-fee-too-high': { code: 'rejected', retryable: false },
+	'asset-purchase-invalid-registration-fee': { code: 'rejected', retryable: false },
+	'purchase-quote-balance-unavailable': { code: 'unavailable', retryable: true },
+	'purchase-quote-network-fee-unavailable': { code: 'unavailable', retryable: true },
+	'purchase-quote-unavailable': { code: 'unavailable', retryable: true },
 	'asset-order-reservation-expired': { code: 'rejected', retryable: false },
 	'asset-order-reservation-rejected': { code: 'rejected', retryable: false },
 	'asset-payment-id-missing': { code: 'unknown-outcome', retryable: false },
@@ -351,6 +356,15 @@ const APP_ERROR_MESSAGES: Record<AppErrorCode, string> & Partial<Record<AppError
 		'This wallet does not have enough AR for the network reward. No transaction was submitted.',
 	'asset-purchase-insufficient-funds-after-signing':
 		'This wallet does not have enough AR for the transaction and network fee. Add AR, then continue the transaction saved in this browser with the same wallet.',
+	'asset-purchase-registration-fee-too-high':
+		'This listing requires a reservation fee above Bazar’s purchase limit. The seller needs to relist the asset with a lower fee.',
+	'asset-purchase-invalid-registration-fee':
+		'This listing has an invalid reservation fee. The seller needs to correct the listing before it can be purchased.',
+	'purchase-quote-balance-unavailable': 'Your AR balance could not be checked. Retry the cost check before buying.',
+	'purchase-quote-network-fee-unavailable':
+		'Arweave network fees are unavailable. Retry the cost check before buying.',
+	'purchase-quote-unavailable':
+		'Purchase costs could not be checked. Check your connection and try again. No payment has been sent.',
 	'asset-order-reservation-expired':
 		'The reservation window passed before the seller payment was dispatched. No seller payment was sent. The stale recovery has been cleared; start a new purchase if the listing is still available.',
 	'asset-order-reservation-rejected':

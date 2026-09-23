@@ -2,13 +2,13 @@ export { loadMarketActivity, saveMarketActivity } from './activity-storage';
 export type {
 	AssetCandidate,
 	CollectionActivityEvent,
+	CollectionActivityPageOptions,
 	PendingAssetOffer,
 	ResolvedAsset,
 	WalletCandidateScan,
 } from './adapter';
 export {
 	bazarAtomicAssetFromState,
-	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverAllCollectionActivityBatched,

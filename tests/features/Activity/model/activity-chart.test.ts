@@ -55,6 +55,16 @@ describe('global activity chart statistics', () => {
 		expect(milliseconds.buckets).toEqual(seconds.buckets);
 	});
 
+	it('keeps pending events in totals without giving the chart a 1970 start date', () => {
+		expect(globalActivityChartStats([event('pending', 'make-offer', 'wallet', 0)])).toMatchObject({
+			events: 1,
+			listings: 1,
+			participants: 1,
+			buckets: [],
+			period: 'No dated activity',
+		});
+	});
+
 	it('maps pointer positions to the nearest bounded chart bucket', () => {
 		expect(chartHoverIndex(100, 100, 300, 3)).toBe(0);
 		expect(chartHoverIndex(250, 100, 300, 3)).toBe(1);

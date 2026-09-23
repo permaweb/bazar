@@ -78,20 +78,31 @@ describe('home listing scan', () => {
 		expect(settled.cached).toEqual([]);
 	});
 
-	it('applies revalidated state only to published listings and removes listings that closed', () => {
+	it('replaces a published listing from its revalidation and removes listings that closed', () => {
 		const listed = mergeHomeListingPublications([], [{ processId: first.id, result: listedFirst }]);
-		const repriced = uniqueAssetState('3000000000000');
+		const repriced = {
+			...listedFirst,
+			state: uniqueAssetState('3000000000000'),
+			provider: 'https://other.example',
+		};
 
-		const refreshed = mergeHomeListingPublications(listed, [
-			{ processId: first.id, state: repriced, provider: 'https://other.example', refresh: true },
-			{ processId: second.id, state: repriced, provider: 'https://other.example', refresh: true },
-		]);
-		expect(refreshed).toEqual([{ ...listedFirst, state: repriced, provider: 'https://other.example' }]);
+		const refreshed = mergeHomeListingPublications(listed, [{ processId: first.id, result: repriced }]);
+		expect(refreshed).toEqual([repriced]);
 
 		const closed = mergeHomeListingPublications(refreshed, [
-			{ processId: first.id, state: uniqueAssetState(), provider: 'https://other.example', refresh: true },
+			{ processId: first.id, result: { ...repriced, state: uniqueAssetState() } },
 		]);
 		expect(closed).toEqual([]);
+	});
+
+	it('admits a listing whose earlier state had no orders once its revalidation resolves one', () => {
+		const stale = { ...listedFirst, state: uniqueAssetState() };
+		const initial = mergeHomeListingPublications([], [{ processId: first.id, result: stale }]);
+		expect(initial).toEqual([]);
+
+		const fresh = mergeHomeListingPublications(initial, [{ processId: first.id, result: listedFirst }]);
+		expect(fresh).toEqual([listedFirst]);
+		expect(mergeHomeListingPublications(fresh, [{ processId: first.id, result: stale }])).toEqual([]);
 	});
 
 	it('completes or fails the current scan and keeps accepting its late revalidations', () => {

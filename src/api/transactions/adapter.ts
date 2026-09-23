@@ -1734,7 +1734,11 @@ function maxBigInt(left: bigint, right: bigint): bigint {
 	return left > right ? left : right;
 }
 
-export function purchaseOrderSafetyError(order: SwapOrder): string | null {
+/**
+ * Why this listing cannot be bought: the seller's reservation fee is above Bazar's limit, or is not a valid amount.
+ * Both are the seller's to correct, so neither is a retryable network failure.
+ */
+export function purchaseOrderSafetyError(order: SwapOrder): AppErrorReason | null {
 	try {
 		if (BigInt(order.minimumFee) > MAXIMUM_REGISTRATION_FEE) {
 			return 'asset-purchase-registration-fee-too-high';
@@ -1746,8 +1750,8 @@ export function purchaseOrderSafetyError(order: SwapOrder): string | null {
 }
 
 export function assertSafePurchaseOrder(order: SwapOrder): void {
-	const error = purchaseOrderSafetyError(order);
-	if (error) throw appError('invalid-input', { message: error });
+	const reason = purchaseOrderSafetyError(order);
+	if (reason) throw appError(reason);
 }
 
 function assertSafeOfferAsking(value: string): void {

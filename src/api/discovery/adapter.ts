@@ -6,19 +6,17 @@ import {
 	isVisibleAssetId,
 } from 'api/collections/adapter';
 import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
 	type AssetState,
-	assetStateSlot,
 	type ComputeResult,
 	liquidBalanceOf,
 	listedBalanceOf,
 	liveOrderOfAsset,
-	type ProcessAssignment,
 	readAssetState,
-	readAssetStateAtSlot,
-	readProcessAssignments,
 } from 'api/marketplace/adapter';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from 'api/mint/minted-assets';
-import { fetchJsonWithDeadline, operationWithDeadline } from 'api/network/deadline';
+import { fetchJsonWithDeadline } from 'api/network/deadline';
 import { batchFailure, httpStatusError } from 'api/network/errors';
 
 import { appError, isAppError } from 'helpers/app-error';
@@ -79,173 +77,6 @@ export type CollectionActivityEvent = {
 		height: number;
 	};
 };
-
-type PurchaseProofOptions = {
-	signal?: AbortSignal;
-	maxScheduleSlots?: number;
-	verificationTimeoutMs?: number;
-	onFailure?: (processId: string, cause: unknown) => void;
-	onProof?: (event: CollectionActivityEvent) => void;
-	readCurrent?: (processId: string, signal?: AbortSignal) => Promise<ComputeResult>;
-	readAssignments?: (
-		processId: string,
-		fromSlot: number,
-		toSlot: number,
-		options?: { signal?: AbortSignal }
-	) => Promise<ProcessAssignment[]>;
-	readAtSlot?: (processId: string, slot: number, options?: { signal?: AbortSignal }) => Promise<ComputeResult>;
-};
-
-export async function confirmPurchaseActivity(
-	events: CollectionActivityEvent[],
-	options: PurchaseProofOptions = {}
-): Promise<CollectionActivityEvent[]> {
-	const purchases = events.filter(
-		(event) =>
-			event.action === 'register-interest' &&
-			!event.purchaseProof &&
-			isArweaveId(event.actor) &&
-			isArweaveId(event.orderId ?? '')
-	);
-	if (!purchases.length) return events;
-	const readCurrent = options.readCurrent ?? ((processId, signal) => readAssetState(processId, { signal }));
-	const readAssignments = options.readAssignments ?? readProcessAssignments;
-	const readAtSlot = options.readAtSlot ?? readAssetStateAtSlot;
-	const maxScheduleSlots = Math.max(100, Math.floor(options.maxScheduleSlots ?? 1_000));
-	const { purchaseAppliedAtSlot } = await import('api/transactions/adapter');
-	const proofs = new Map<string, CollectionActivityEvent['purchaseProof']>();
-	const proofPaymentIds = new Set(
-		events.flatMap((event) => (event.purchaseProof?.transactionId ? [event.purchaseProof.transactionId] : []))
-	);
-	const groups = new Map<string, CollectionActivityEvent[]>();
-	for (const event of purchases) groups.set(event.processId, [...(groups.get(event.processId) ?? []), event]);
-
-	const pendingGroups = [...groups.entries()];
-	const verifyGroup = async (processId: string, processEvents: CollectionActivityEvent[], signal?: AbortSignal) => {
-		signal?.throwIfAborted();
-		const current = await readCurrent(processId, signal);
-		const currentSlot = assetStateSlot(current.state);
-		if (currentSlot === null) return;
-		const firstSlot = Math.max(0, currentSlot - maxScheduleSlots + 1);
-		const assignments: ProcessAssignment[] = [];
-		const earliestRegistrationHeight = Math.min(
-			...processEvents.map((event) => event.height).filter((height) => height > 0)
-		);
-		for (let toSlot = currentSlot; toSlot >= firstSlot; toSlot -= 100) {
-			const fromSlot = Math.max(firstSlot, toSlot - 99);
-			const window = await readAssignments(processId, fromSlot, toSlot, {
-				signal,
-			});
-			assignments.unshift(...window);
-			if (
-				Number.isFinite(earliestRegistrationHeight) &&
-				window.some((assignment) => assignment.blockHeight <= earliestRegistrationHeight)
-			)
-				break;
-		}
-		const stateReads = new Map<number, Promise<ComputeResult>>();
-		const readSlot = (slot: number) => {
-			let reading = stateReads.get(slot);
-			if (!reading) {
-				reading = readAtSlot(processId, slot, { signal }).catch((cause) => {
-					stateReads.delete(slot);
-					throw cause;
-				});
-				stateReads.set(slot, reading);
-			}
-			return reading;
-		};
-		for (const event of processEvents) {
-			try {
-				const candidates = assignments.filter((assignment) => {
-					const body = assignment.raw.body as Record<string, unknown> | undefined;
-					if (assignment.raw.process !== processId || body?.['order-id'] !== event.orderId) return false;
-					return assignment.transactionIds.some((transactionId) => {
-						if (transactionId === event.id) return false;
-						const commitment = (body?.commitments as Record<string, Record<string, unknown>> | undefined)?.[
-							transactionId
-						];
-						return commitment?.['commitment-device'] === 'tx@1.0' && commitment.committer === event.actor;
-					});
-				});
-				for (const assignment of candidates) {
-					if (assignment.slot < 1) continue;
-					const [before, after] = await Promise.all([
-						readSlot(assignment.slot - 1),
-						readSlot(assignment.slot),
-					]);
-					const expected = before.state.orders[event.orderId!];
-					if (!expected) continue;
-					const paymentId = assignment.transactionIds.find((transactionId) => transactionId !== event.id)!;
-					try {
-						if (
-							purchaseAppliedAtSlot(
-								before.state,
-								after.state,
-								assignment,
-								processId,
-								paymentId,
-								event.actor,
-								expected
-							)
-						) {
-							if (proofPaymentIds.has(paymentId)) break;
-							const purchaseProof = { transactionId: paymentId, height: assignment.blockHeight };
-							proofPaymentIds.add(paymentId);
-							proofs.set(event.id, purchaseProof);
-							options.onProof?.({ ...event, purchaseProof });
-							break;
-						}
-					} catch {
-						// A schedule record that does not prove this exact transition remains a submission only.
-					}
-				}
-			} catch (cause) {
-				if (signal?.aborted) throw cause;
-				// A transient historical-state failure for one registration must not
-				// prevent later purchases for the same asset from being verified.
-				options.onFailure?.(processId, cause);
-			}
-		}
-	};
-	const verificationTimeoutMs = options.verificationTimeoutMs ?? 30_000;
-	const verifyGroupSafely = async (group: [string, CollectionActivityEvent[]], timeoutMs = verificationTimeoutMs) => {
-		try {
-			await operationWithDeadline((signal) => verifyGroup(...group, signal), options.signal, {
-				timeoutMs,
-				timeoutError: 'purchase-proof-verification-timeout',
-			});
-		} catch (cause) {
-			if (options.signal?.aborted) throw cause;
-			// One unavailable process must not discard proofs already established for
-			// other marketplace assets. The caller can surface the partial failure.
-			options.onFailure?.(group[0], cause);
-		}
-	};
-	// Give the asset containing the newest registration an uncontended first pass.
-	// Older or unavailable assets can then share the bounded worker pool.
-	const newestGroup = pendingGroups.shift();
-	if (newestGroup) await verifyGroupSafely(newestGroup, Math.max(30_000, verificationTimeoutMs));
-	let nextGroup = 0;
-	await Promise.all(
-		Array.from({ length: Math.min(3, pendingGroups.length) }, async () => {
-			while (nextGroup < pendingGroups.length) {
-				const group = pendingGroups[nextGroup++];
-				await verifyGroupSafely(group);
-			}
-		})
-	);
-	const seenPayments = new Set<string>();
-	return events
-		.map((event) => (proofs.has(event.id) ? { ...event, purchaseProof: proofs.get(event.id) } : event))
-		.filter((event) => {
-			const paymentId = event.purchaseProof?.transactionId;
-			if (!paymentId) return true;
-			if (seenPayments.has(paymentId)) return false;
-			seenPayments.add(paymentId);
-			return true;
-		});
-}
 
 export type PendingAssetOffer = Pick<
 	CollectionActivityEvent,
@@ -342,6 +173,9 @@ export type CollectionActivityPage = {
 export type CollectionActivityPageOptions = Omit<CollectionActivityOptions, 'limit' | 'onPage'> & {
 	cursor?: string | null;
 	pageSize?: number;
+	/** Omit the gateway-specific count extension for portable native GraphQL paging. */
+	includeCount?: boolean;
+	priority?: RequestPriority;
 };
 
 type BatchedCollectionActivityOptions = Omit<CollectionActivityOptions, 'onPage' | 'recipients'> & {
@@ -372,6 +206,7 @@ export type CompleteBatchedCollectionActivityOptions = Omit<CollectionActivityPa
 type ResolutionOptions = {
 	signal?: AbortSignal;
 	concurrency?: number;
+	requireHolderBalances?: boolean;
 	read?: (processId: string, signal?: AbortSignal) => Promise<ComputeResult>;
 	onSettled?: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
 	onRevalidated?: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
@@ -469,7 +304,7 @@ const COLLECTION_ACTIVITY_PAGE_QUERY = `query CollectionActivityPage(
 }`;
 
 const COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY = `query CollectionActivityCursorPage(
-	$cursor: String!
+	$cursor: String
 	$first: Int!
 	$recipients: [String!]
 	$tags: [TagFilter!]!
@@ -1204,12 +1039,13 @@ export async function discoverCollectionActivityPage(
 	if (!actions.length) return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
 
 	options.signal?.throwIfAborted();
-	const includeCount = !cursor;
+	const includeCount = !cursor && options.includeCount !== false;
 	const { response, body: payload } = await fetchJsonWithDeadline<any>(
 		fetcher,
 		graphql,
 		{
 			method: 'POST',
+			priority: options.priority,
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
 				query: includeCount ? COLLECTION_ACTIVITY_PAGE_QUERY : COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
@@ -1231,9 +1067,16 @@ export async function discoverCollectionActivityPage(
 	if (!payload) throw appError('invalid-response', { message: 'collection-activity-graphql-empty' });
 	if (payload?.errors?.length) throw appError('unavailable', { message: 'collection-activity-graphql-error' });
 	const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-graphql-schema');
+	const requestedRecipients = options.recipients === undefined ? null : new Set<string>(recipients);
 	let events = connection.edges.flatMap((edge) => {
 		const event = activityEventFromNode(edge.node);
-		if (!event || (options.acceptProcessId && !options.acceptProcessId(event.processId))) return [];
+		if (
+			!event ||
+			!actions.includes(event.action) ||
+			(requestedRecipients && !requestedRecipients.has(event.processId)) ||
+			(options.acceptProcessId && !options.acceptProcessId(event.processId))
+		)
+			return [];
 		return [event];
 	});
 	if (options.requiredExecutionDevice && events.length) {
@@ -1252,7 +1095,7 @@ export async function discoverCollectionActivityPage(
 	const totalCount =
 		typeof parsedCount === 'number' && Number.isSafeInteger(parsedCount) && parsedCount >= 0 ? parsedCount : null;
 	const nextCursor = connection.pageInfo.hasNextPage ? connection.edges.at(-1)?.cursor ?? null : null;
-	if (connection.pageInfo.hasNextPage && !nextCursor) {
+	if (connection.pageInfo.hasNextPage && (!nextCursor || nextCursor === cursor)) {
 		throw appError('invalid-response', { message: 'collection-activity-pagination-stalled' });
 	}
 	return {
@@ -1621,6 +1464,12 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 	const resolved: ResolvedAsset[] = [];
 	const concurrency = Math.max(1, Math.min(16, Math.floor(options.concurrency ?? ASSET_RESOLUTION_CONCURRENCY)));
 	const read = options.read ?? ((processId: string, signal?: AbortSignal) => readAssetState(processId, { signal }));
+	const resolveComputed = (candidate: AssetCandidate, computed: ComputeResult) => {
+		if (options.requireHolderBalances && !assetBalanceStateAvailable(computed.state)) {
+			throw appError(ASSET_BALANCE_STATE_UNAVAILABLE);
+		}
+		return supportedAsset(candidate, computed, collections);
+	};
 	let active = 0;
 	let sealed = false;
 	let failure: unknown;
@@ -1657,7 +1506,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		try {
 			computed = await read(candidate.processId, options.signal);
 			options.signal?.throwIfAborted();
-			result = supportedAsset(candidate, computed, collections);
+			result = resolveComputed(candidate, computed);
 		} catch (error) {
 			if (options.signal?.aborted) throw options.signal.reason ?? error;
 			options.onSettled?.(null, candidate, error);
@@ -1669,7 +1518,14 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 			void computed.revalidation.then(
 				(fresh) => {
 					if (!options.signal?.aborted && isVisibleAssetId(candidate.processId)) {
-						options.onRevalidated?.(supportedAsset(candidate, fresh, collections), candidate);
+						let refreshed: ResolvedAsset | null;
+						try {
+							refreshed = resolveComputed(candidate, fresh);
+						} catch (error) {
+							options.onRevalidated?.(null, candidate, error);
+							return;
+						}
+						options.onRevalidated?.(refreshed, candidate);
 					}
 				},
 				(error) => {
@@ -1833,10 +1689,16 @@ export async function verifyAssetCandidateSupport(
 			verifiedChunk.add(edge.node.id);
 		}
 		for (const edge of atomic.edges) {
-			if (!requested.has(edge.node.id) || !atomicProcessNode(edge.node)) {
+			if (
+				!requested.has(edge.node.id) ||
+				!Array.isArray(edge.node.tags) ||
+				edge.node.tags.some((tag) => !tag || typeof tag.name !== 'string' || typeof tag.value !== 'string')
+			) {
 				throw appError('invalid-response', { message: 'asset-support-graphql-schema' });
 			}
-			verifiedChunk.add(edge.node.id);
+			// A well-formed indexed process can still use unsupported media or
+			// metadata. Exclude it without retrying the batch as an index failure.
+			if (atomicProcessNode(edge.node)) verifiedChunk.add(edge.node.id);
 		}
 		for (const processId of verifiedChunk) verified.add(processId);
 		return restrictAssetCandidates(

@@ -79,6 +79,10 @@ function markup(active: UniqueAssetSection, activity: AssetActivityFeedView = em
 			activity={activity}
 			asks={emptyFeed}
 			askPricePoints={[]}
+			provider="https://compute.example"
+			verifiedAt={1_700_000_000_000}
+			stateRefreshing={false}
+			stateFailed={false}
 			onChange={() => undefined}
 			onActivityRetry={() => undefined}
 			onActivityLoadMore={() => undefined}
@@ -98,13 +102,14 @@ describe('unique asset sections', () => {
 		expect(html).toContain('id="asset-about"');
 	});
 
-	it('shows the asset facts on the about panel', () => {
+	it('shows the asset facts on the about panel without repeating owner and collection', () => {
 		const html = markup('about');
 		expect(html).toContain('Permanent artwork');
-		expect(html).toContain('Created on Bazar');
 		expect(html).toContain('image/png');
 		expect(html).toContain('Ada');
 		expect(html).toContain('1:30');
+		expect(html).not.toContain('Created on Bazar');
+		expect(html).not.toContain('<span>Owner</span>');
 	});
 
 	it('reports an empty indexed history and how much of it is loaded', () => {
@@ -140,6 +145,14 @@ describe('unique asset sections', () => {
 		const blockchain = markup('blockchain');
 		expect(blockchain).toContain('asset-blockchain-details');
 		expect(blockchain).toContain('token@1.0');
+	});
+
+	it('keeps the protocol tags and state verification under blockchain', () => {
+		const blockchain = markup('blockchain');
+		expect(blockchain).toContain('asset-token-tags');
+		expect(blockchain).toContain('Supply 1');
+		expect(blockchain).toContain('compute.example');
+		expect(markup('about')).not.toContain('asset-token-tags');
 	});
 
 	it('links related assets from the collection', () => {

@@ -6,7 +6,6 @@ import {
 	bazarAtomicAssetFromState,
 	clearCompletedWalletCandidateScan,
 	type CollectionActivityEvent,
-	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverAllCollectionActivityBatched,
@@ -256,310 +255,6 @@ describe('Bazar atomic asset search', () => {
 
 		await expect(searchBazarAtomicAssetsByName('   ', { fetch: fetcher as typeof fetch })).resolves.toEqual([]);
 		expect(fetcher).not.toHaveBeenCalled();
-	});
-});
-
-describe('purchase activity confirmation', () => {
-	it('marks only an exact scheduled balance transition as a confirmed purchase', async () => {
-		const processId = 'P'.repeat(43);
-		const registrationId = 'R'.repeat(43);
-		const paymentId = 'Y'.repeat(43);
-		const orderId = 'O'.repeat(43);
-		const seller = 'S'.repeat(43);
-		const buyer = 'B'.repeat(43);
-		const order = {
-			'order-id': orderId,
-			creator: seller,
-			recipient: seller,
-			asking: '2000000',
-			deposit: '0',
-			'minimum-fee': '100000000',
-			deadline: 20,
-			'created-at': 1,
-			quantity: '1',
-			status: 'reserved' as const,
-			buyer,
-			'reserved-until': 200,
-		};
-		const before = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { [seller]: '0', [buyer]: '0' },
-			orders: { [orderId]: order },
-			'at-slot': 4,
-		});
-		const after = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { [buyer]: '1' },
-			orders: {},
-			'at-slot': 5,
-		});
-		const assignment = {
-			slot: 5,
-			blockHeight: 123,
-			transactionIds: [paymentId],
-			raw: {
-				process: processId,
-				body: {
-					target: seller,
-					'order-id': orderId,
-					quantity: '2000000',
-					commitments: {
-						[paymentId]: {
-							'commitment-device': 'tx@1.0',
-							committer: buyer,
-							'field-target': seller,
-							committed: ['order-id', 'quantity', 'target'],
-						},
-					},
-				},
-			},
-		};
-		const event = {
-			id: registrationId,
-			processId,
-			action: 'register-interest' as const,
-			actor: buyer,
-			height: 100,
-			timestamp: 1,
-			orderId,
-		};
-
-		const [confirmed] = await confirmPurchaseActivity([event], {
-			readCurrent: async () => ({ state: after, provider: 'test' }),
-			readAssignments: async () => [assignment],
-			readAtSlot: async (_id, slot) => ({ state: slot === 4 ? before : after, provider: 'test' }),
-		});
-
-		expect(confirmed.purchaseProof).toEqual({ transactionId: paymentId, height: 123 });
-	});
-
-	it('keeps proofs from healthy assets when another asset cannot be verified', async () => {
-		const processId = 'P'.repeat(43);
-		const unavailableProcessId = 'Q'.repeat(43);
-		const registrationId = 'R'.repeat(43);
-		const paymentId = 'Y'.repeat(43);
-		const orderId = 'O'.repeat(43);
-		const seller = 'S'.repeat(43);
-		const buyer = 'B'.repeat(43);
-		const order = {
-			'order-id': orderId,
-			creator: seller,
-			recipient: seller,
-			asking: '2000000',
-			deposit: '0',
-			'minimum-fee': '100000000',
-			deadline: 20,
-			'created-at': 1,
-			quantity: '1',
-			status: 'reserved' as const,
-			buyer,
-			'reserved-until': 200,
-		};
-		const before = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { [seller]: '0', [buyer]: '0' },
-			orders: { [orderId]: order },
-			'at-slot': 4,
-		});
-		const after = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { [buyer]: '1' },
-			orders: {},
-			'at-slot': 5,
-		});
-		const assignment = {
-			slot: 5,
-			blockHeight: 123,
-			transactionIds: [paymentId],
-			raw: {
-				process: processId,
-				body: {
-					target: seller,
-					'order-id': orderId,
-					quantity: '2000000',
-					commitments: {
-						[paymentId]: {
-							'commitment-device': 'tx@1.0',
-							committer: buyer,
-							'field-target': seller,
-							committed: ['order-id', 'quantity', 'target'],
-						},
-					},
-				},
-			},
-		};
-		const healthyEvent = {
-			id: registrationId,
-			processId,
-			action: 'register-interest' as const,
-			actor: buyer,
-			height: 100,
-			timestamp: 1,
-			orderId,
-		};
-		const unavailableEvent = {
-			...healthyEvent,
-			id: 'U'.repeat(43),
-			processId: unavailableProcessId,
-			orderId: 'Z'.repeat(43),
-		};
-		const unavailable = new Error('process unavailable');
-		const onFailure = vi.fn();
-		const onProof = vi.fn();
-
-		const [confirmed, unconfirmed] = await confirmPurchaseActivity([healthyEvent, unavailableEvent], {
-			onFailure,
-			onProof,
-			readCurrent: async (id) => {
-				if (id === unavailableProcessId) throw unavailable;
-				return { state: after, provider: 'test' };
-			},
-			readAssignments: async () => [assignment],
-			readAtSlot: async (_id, slot) => ({ state: slot === 4 ? before : after, provider: 'test' }),
-		});
-
-		expect(confirmed.purchaseProof).toEqual({ transactionId: paymentId, height: 123 });
-		expect(unconfirmed.purchaseProof).toBeUndefined();
-		expect(onProof).toHaveBeenCalledWith(confirmed);
-		expect(onFailure).toHaveBeenCalledWith(unavailableProcessId, unavailable);
-	});
-
-	it('continues with later registrations when one historical state read fails', async () => {
-		const processId = 'P'.repeat(43);
-		const registrationId = 'R'.repeat(43);
-		const paymentId = 'Y'.repeat(43);
-		const failedPaymentId = 'F'.repeat(43);
-		const orderId = 'O'.repeat(43);
-		const failedOrderId = 'Z'.repeat(43);
-		const seller = 'S'.repeat(43);
-		const buyer = 'B'.repeat(43);
-		const order = {
-			'order-id': orderId,
-			creator: seller,
-			recipient: seller,
-			asking: '2000000',
-			deposit: '0',
-			'minimum-fee': '100000000',
-			deadline: 20,
-			'created-at': 1,
-			quantity: '1',
-			status: 'reserved' as const,
-			buyer,
-			'reserved-until': 200,
-		};
-		const before = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { [seller]: '0', [buyer]: '0' },
-			orders: { [orderId]: order },
-			'at-slot': 4,
-		});
-		const after = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { [buyer]: '1' },
-			orders: {},
-			'at-slot': 5,
-		});
-		const assignment = (slot: number, heldOrderId: string, heldPaymentId: string) => ({
-			slot,
-			blockHeight: 123,
-			transactionIds: [heldPaymentId],
-			raw: {
-				process: processId,
-				body: {
-					target: seller,
-					'order-id': heldOrderId,
-					quantity: '2000000',
-					commitments: {
-						[heldPaymentId]: {
-							'commitment-device': 'tx@1.0',
-							committer: buyer,
-							'field-target': seller,
-							committed: ['order-id', 'quantity', 'target'],
-						},
-					},
-				},
-			},
-		});
-		const event = (id: string, heldOrderId: string) => ({
-			id,
-			processId,
-			action: 'register-interest' as const,
-			actor: buyer,
-			height: 100,
-			timestamp: 1,
-			orderId: heldOrderId,
-		});
-		const historicalFailure = new Error('historical state unavailable');
-		const onFailure = vi.fn();
-
-		const [unconfirmed, confirmed] = await confirmPurchaseActivity(
-			[event('U'.repeat(43), failedOrderId), event(registrationId, orderId)],
-			{
-				onFailure,
-				readCurrent: async () => ({ state: after, provider: 'test' }),
-				readAssignments: async () => [
-					assignment(3, failedOrderId, failedPaymentId),
-					assignment(5, orderId, paymentId),
-				],
-				readAtSlot: async (_id, slot) => {
-					if (slot === 2) throw historicalFailure;
-					return { state: slot === 4 ? before : after, provider: 'test' };
-				},
-			}
-		);
-
-		expect(unconfirmed.purchaseProof).toBeUndefined();
-		expect(confirmed.purchaseProof).toEqual({ transactionId: paymentId, height: 123 });
-		expect(onFailure).toHaveBeenCalledWith(processId, historicalFailure);
-	});
-
-	it('leaves an unproved registration labeled as a submission', async () => {
-		const event = {
-			id: 'R'.repeat(43),
-			processId: 'P'.repeat(43),
-			action: 'register-interest' as const,
-			actor: 'B'.repeat(43),
-			height: 100,
-			timestamp: 1,
-			orderId: 'O'.repeat(43),
-		};
-		const state = parseAssetState({
-			'execution-device': 'token@1.0',
-			'total-supply': '1',
-			balances: { ['B'.repeat(43)]: '1' },
-			orders: {},
-			'at-slot': 5,
-		});
-
-		await expect(
-			confirmPurchaseActivity([event], {
-				readCurrent: async () => ({ state, provider: 'test' }),
-				readAssignments: async () => [],
-			})
-		).resolves.toEqual([event]);
-	});
-
-	it('does not recompute a purchase proof that was already verified', async () => {
-		const event = {
-			id: 'R'.repeat(43),
-			processId: 'P'.repeat(43),
-			action: 'register-interest' as const,
-			actor: 'B'.repeat(43),
-			height: 100,
-			timestamp: 1,
-			orderId: 'O'.repeat(43),
-			purchaseProof: { transactionId: 'T'.repeat(43), height: 123 },
-		};
-		const readCurrent = vi.fn();
-
-		await expect(confirmPurchaseActivity([event], { readCurrent })).resolves.toEqual([event]);
-		expect(readCurrent).not.toHaveBeenCalled();
 	});
 });
 
@@ -2430,6 +2125,67 @@ describe('live candidate resolution', () => {
 		);
 	});
 
+	it('keeps incomplete wallet balance reads retryable while resolving healthy candidates', async () => {
+		const candidates: AssetCandidate[] = [assetA, assetB].map((processId) => ({
+			processId,
+			height: 1,
+			timestamp: 0,
+			sources: ['initial-holder'],
+		}));
+		const onSettled = vi.fn();
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+		const results = await resolveAssetCandidates(candidates, collections, {
+			requireHolderBalances: true,
+			read: async (id) => ({
+				provider: 'https://compute.example',
+				state: id === assetA ? { ...state, balances: {}, holderBalancesAvailable: false } : state,
+			}),
+			onSettled,
+		});
+		expect(results.map((result) => result.asset.id)).toEqual([assetB]);
+		expect(onSettled).toHaveBeenCalledWith(
+			null,
+			candidates[0],
+			expect.objectContaining({ reason: 'asset-balance-state-unavailable', retryable: true })
+		);
+		expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ state }), candidates[1]);
+	});
+
+	it('reports incomplete wallet balances from revalidation as a failure instead of an empty holding', async () => {
+		const candidate: AssetCandidate = { processId: assetA, height: 1, timestamp: 0, sources: ['initial-holder'] };
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+		const onRevalidated = vi.fn();
+		await resolveAssetCandidates([candidate], collections, {
+			requireHolderBalances: true,
+			read: async () => ({
+				provider: 'https://compute.example',
+				state,
+				revalidation: Promise.resolve({
+					provider: 'https://compute.example',
+					state: { ...state, balances: {}, holderBalancesAvailable: false },
+				}),
+			}),
+			onRevalidated,
+		});
+		await vi.waitFor(() =>
+			expect(onRevalidated).toHaveBeenCalledWith(
+				null,
+				candidate,
+				expect.objectContaining({ reason: 'asset-balance-state-unavailable', retryable: true })
+			)
+		);
+	});
+
 	it('publishes a persistent stale result and its fresh replacement separately', async () => {
 		const candidate: AssetCandidate = {
 			processId: assetA,
@@ -2729,6 +2485,60 @@ describe('live candidate resolution', () => {
 				collection: { id: 'created-assets', name: 'Portable collection' },
 			},
 		]);
+	});
+
+	it('excludes unsupported indexed media without reporting an index failure or retrying healthy candidates', async () => {
+		const supportedId = 'U'.repeat(43);
+		const unsupportedId = 'S'.repeat(43);
+		const candidates: AssetCandidate[] = [supportedId, unsupportedId].map((processId) => ({
+			processId,
+			height: 10,
+			timestamp: 20,
+			sources: ['market-action'],
+		}));
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const tags = {
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			'initial-holder': wallet,
+			'total-supply': '1',
+			denomination: '0',
+			ticker: 'ASSET',
+			name: 'Indexed asset',
+		};
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+					atomic: {
+						pageInfo: { hasNextPage: false },
+						edges: candidates.map(({ processId }) => ({
+							cursor: processId,
+							node: {
+								id: processId,
+								tags: Object.entries({
+									...tags,
+									'content-type': processId === unsupportedId ? 'image/svg+xml' : 'image/png',
+								}).map(([name, value]) => ({ name, value })),
+							},
+						})),
+					},
+				},
+			})
+		);
+		const result = await verifyAssetCandidateSupport(candidates, [tokenCollection], { fetch: fetcher });
+		expect(result).toEqual({ supported: [candidates[0]], unavailable: [] });
+		expect(fetcher).toHaveBeenCalledOnce();
 	});
 
 	it('batch-rejects unindexed transfer spam with Arweave-compatible GraphQL batches before any live compute read', async () => {

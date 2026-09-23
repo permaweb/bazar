@@ -85,6 +85,33 @@ export function collectionMatchesSearch(collection: Collection, query: string): 
 	);
 }
 
+/** Which catalogue kinds a marketplace search accepts. */
+export type SearchScope = 'all' | 'collections' | 'tokens' | 'assets' | 'names';
+
+/** An asset encountered outside the collection catalogue, kept searchable with the collection it belongs to. */
+export type SearchAsset = { asset: AssetSummary; collection: Collection };
+
+// Share metadata already encountered in Discover or an asset page without fetching the whole catalogue.
+export function mergeSearchAssets(current: SearchAsset[], incoming: SearchAsset[], limit = 200): SearchAsset[] {
+	const merged = new Map(current.map((result) => [result.asset.id, result]));
+	for (const result of incoming) {
+		if (!isVisibleAssetId(result.asset.id) || !isVisibleCollectionId(result.collection.id)) continue;
+		merged.delete(result.asset.id);
+		merged.set(result.asset.id, result);
+	}
+	return [...merged.values()]
+		.filter(({ asset, collection }) => isVisibleAssetId(asset.id) && isVisibleCollectionId(collection.id))
+		.slice(-limit);
+}
+
+export function searchAssetMatchesScope(result: SearchAsset, scope: SearchScope): boolean {
+	if (scope === 'collections') return false;
+	if (scope === 'tokens') return result.collection.kind === 'tokens';
+	if (scope === 'names') return result.collection.kind === 'names';
+	if (scope === 'assets') return result.collection.kind !== 'tokens';
+	return true;
+}
+
 export function interleaveCollectionAssets(
 	collections: Collection[],
 	limit: number,
