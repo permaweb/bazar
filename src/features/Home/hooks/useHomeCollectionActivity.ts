@@ -28,6 +28,8 @@ export function useHomeCollectionActivity(options: {
 		if (!options.active) return;
 		const controller = new AbortController();
 		void mapConcurrent(collectionsRef.current, 2, async (collection) => {
+			// An abort leaves the remaining collections unread; teardown settles without rejecting the scan.
+			if (controller.signal.aborted) return;
 			try {
 				const events = await discoverCollectionActivityBatched({
 					limit: 1,
@@ -38,7 +40,6 @@ export function useHomeCollectionActivity(options: {
 				if (!latest || controller.signal.aborted) return;
 				onActivity({ collectionId: collection.id, activity: latest });
 			} catch {
-				controller.signal.throwIfAborted();
 				// Creation time remains a truthful fallback when activity indexing is unavailable.
 			}
 		});
