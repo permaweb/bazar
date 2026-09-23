@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAudioWaveformPlayer } from 'features/AssetDetail/hooks/useAudioWaveformPlayer';
 
-import { renderHook, settle } from './render-hook';
+import { renderHook, settle } from '../../../test-utils/render-hook';
 
 const src: string = 'https://arweave.net/audio-one';
 const otherSrc: string = 'https://arweave.net/audio-two';

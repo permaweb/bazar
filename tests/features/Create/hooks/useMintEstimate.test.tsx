@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MINT_ESTIMATE_DEBOUNCE_MS, useMintEstimate } from 'features/Create/hooks/useMintEstimate';
 import type { AppError } from 'helpers/app-error';
 
-import { renderHook } from '../../../test-utils/hook-renderer';
+import { renderHook } from '../../../test-utils/render-hook';
 
 type Request = { id: string };
 

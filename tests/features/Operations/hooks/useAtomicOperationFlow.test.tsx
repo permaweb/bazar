@@ -6,7 +6,7 @@ import type { Operation } from 'api/operations';
 import { useAtomicOperationFlow } from 'features/Operations/hooks/useAtomicOperationFlow';
 import { appError } from 'helpers/app-error';
 
-import { renderHook } from './renderHook';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const mocks = vi.hoisted(() => ({
 	readAssetState: vi.fn(),
@@ -172,13 +172,13 @@ describe('atomic operation flow', () => {
 
 		expect(mocks.acquireClaim).not.toHaveBeenCalled();
 		expect(mocks.makeOffer).not.toHaveBeenCalled();
-		expect(hook.result.current.view.phase).toBe('form');
+		expect(hook.current().view.phase).toBe('form');
 		hook.unmount();
 	});
 
 	it('runs a listing through live-state checks, recovery, and confirmations', async () => {
 		const hook = flowHook({ operation: { kind: 'sell' }, value: '1.5' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
 		expect(mocks.readAssetState).toHaveBeenCalledWith(ASSET.id, expect.objectContaining({ maxAge: 0 }));
@@ -191,7 +191,7 @@ describe('atomic operation flow', () => {
 			expect.objectContaining({ target: 5 })
 		);
 		expect(onOperation).toHaveBeenCalledWith({ kind: 'sell', resumeId: TRANSACTION, value: '1.5' });
-		expect(hook.result.current.view.phase).toBe('done');
+		expect(hook.current().view.phase).toBe('done');
 		expect(localStorage.getItem(operationKey)).toBeNull();
 		expect(mocks.releaseClaim).toHaveBeenCalledTimes(1);
 		hook.unmount();
@@ -203,7 +203,7 @@ describe('atomic operation flow', () => {
 			saved = localStorage.getItem(operationKey);
 		});
 		const hook = flowHook({ operation: { kind: 'sell' }, value: '2' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
 		expect(JSON.parse(saved ?? 'null')).toMatchObject({
@@ -221,35 +221,35 @@ describe('atomic operation flow', () => {
 	it('refuses a listing while live state shows a pending one', async () => {
 		mocks.discoverPendingAssetOffers.mockResolvedValue([{ id: TRANSACTION, actor: OWNER }]);
 		const hook = flowHook({ operation: { kind: 'sell' }, value: '2' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
 		expect(mocks.makeOffer).not.toHaveBeenCalled();
-		expect(hook.result.current.view.phase).toBe('error');
-		expect(hook.result.current.view.message).toContain('You already submitted listing transaction');
+		expect(hook.current().view.phase).toBe('error');
+		expect(hook.current().view.message).toContain('You already submitted listing transaction');
 		hook.unmount();
 	});
 
 	it('reports invalid details without signing or leaving the form', async () => {
 		const hook = flowHook({ operation: { kind: 'transfer' }, value: 'not-an-address' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush(2);
 
 		expect(mocks.acquireClaim).not.toHaveBeenCalled();
-		expect(hook.result.current.view.phase).toBe('form');
-		expect(hook.result.current.view.message).toContain('43-character Arweave address');
+		expect(hook.current().view.phase).toBe('form');
+		expect(hook.current().view.message).toContain('43-character Arweave address');
 		hook.unmount();
 	});
 
 	it('stops when another attempt already holds the wallet operation claim', async () => {
 		mocks.acquireClaim.mockRejectedValue(appError('wallet-recovery-conflict'));
 		const hook = flowHook({ operation: { kind: 'sell' }, value: '2' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
 		expect(mocks.makeOffer).not.toHaveBeenCalled();
-		expect(hook.result.current.view.phase).toBe('error');
-		expect(hook.result.current.failureKind).toBe('other');
+		expect(hook.current().view.phase).toBe('error');
+		expect(hook.current().failureKind).toBe('other');
 		hook.unmount();
 	});
 
@@ -257,11 +257,11 @@ describe('atomic operation flow', () => {
 		localStorage.setItem(`bazar-signed-transaction:${TRANSACTION}`, '{}');
 		mocks.dispatchAndConfirm.mockRejectedValue(appError('fungible-transfer-rejected'));
 		const hook = flowHook({ operation: { kind: 'transfer' }, value: RECIPIENT });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
-		expect(hook.result.current.view.phase).toBe('error');
-		expect(hook.result.current.transactionId).toBeNull();
+		expect(hook.current().view.phase).toBe('error');
+		expect(hook.current().transactionId).toBeNull();
 		expect(localStorage.getItem(operationKey)).toBeNull();
 		expect(localStorage.getItem(`bazar-signed-transaction:${TRANSACTION}`)).toBeNull();
 		hook.unmount();
@@ -271,10 +271,10 @@ describe('atomic operation flow', () => {
 		mocks.transfer.mockResolvedValue({ id: TRANSACTION });
 		mocks.dispatchAndConfirm.mockRejectedValue(appError('timeout'));
 		const hook = flowHook({ operation: { kind: 'transfer' }, value: RECIPIENT });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
-		expect(hook.result.current.transactionId).toBe(TRANSACTION);
+		expect(hook.current().transactionId).toBe(TRANSACTION);
 		expect(JSON.parse(localStorage.getItem(operationKey) ?? 'null')).toMatchObject({
 			txId: TRANSACTION,
 			startingSlot: 42,
@@ -285,11 +285,11 @@ describe('atomic operation flow', () => {
 	it('refuses to sign a transfer whose live starting slot is unreadable', async () => {
 		mocks.readAssetState.mockResolvedValue({ state: { balances: { [OWNER]: '1' }, orders: {}, raw: {} } });
 		const hook = flowHook({ operation: { kind: 'transfer' }, value: RECIPIENT });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
 		expect(mocks.transfer).not.toHaveBeenCalled();
-		expect(hook.result.current.view.phase).toBe('error');
+		expect(hook.current().view.phase).toBe('error');
 		hook.unmount();
 	});
 
@@ -303,7 +303,7 @@ describe('atomic operation flow', () => {
 		expect(mocks.restore).toHaveBeenCalledWith(TRANSACTION, OWNER);
 		expect(mocks.makeOffer).not.toHaveBeenCalled();
 		expect(mocks.readAssetState).not.toHaveBeenCalled();
-		expect(hook.result.current.view.phase).toBe('done');
+		expect(hook.current().view.phase).toBe('done');
 		hook.unmount();
 	});
 
@@ -340,7 +340,7 @@ describe('atomic operation flow', () => {
 			[operationKey, purchaseKey],
 			expect.objectContaining({ recovery: expect.objectContaining({ key: purchaseKey }) })
 		);
-		expect(hook.result.current.view.phase).toBe('done');
+		expect(hook.current().view.phase).toBe('done');
 		expect(localStorage.getItem(purchaseKey)).toBeNull();
 		expect(localStorage.getItem(`bazar-signed-transaction:${PAYMENT}`)).toBeNull();
 		hook.unmount();
@@ -354,12 +354,12 @@ describe('atomic operation flow', () => {
 		mocks.purchaseRun.mockResolvedValue({ ...failed, error: { code: 'unexpected', message: 'timeout' } });
 
 		const hook = flowHook({ operation: { kind: 'buy', order: ORDER, resume: snapshot }, value: '' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
-		expect(hook.result.current.view.phase).toBe('error');
+		expect(hook.current().view.phase).toBe('error');
 
 		localStorage.removeItem(purchaseKey);
-		hook.act(() => hook.result.current.restartPurchase());
+		hook.act(() => hook.current().restartPurchase());
 		expect(JSON.parse(localStorage.getItem(purchaseKey) ?? 'null')).toMatchObject({ buyer: OWNER, snapshot });
 		expect(onClose).toHaveBeenCalledWith(false);
 		expect(mocks.abandon).toHaveBeenCalled();
@@ -377,11 +377,11 @@ describe('atomic operation flow', () => {
 		const hook = flowHook({ operation: { kind: 'buy', order: ORDER, resume: snapshot }, value: '' });
 		await hook.flush(2);
 
-		hook.act(() => hook.result.current.startFreshPurchase());
+		hook.act(() => hook.current().startFreshPurchase());
 		expect(localStorage.getItem(purchaseKey)).toBeNull();
 		expect(localStorage.getItem(`bazar-signed-transaction:${REGISTRATION}`)).toBeNull();
 		expect(onOperation).toHaveBeenCalledWith({ kind: 'buy', order: ORDER });
-		expect(hook.result.current.view.phase).toBe('form');
+		expect(hook.current().view.phase).toBe('form');
 		hook.unmount();
 	});
 
@@ -389,12 +389,12 @@ describe('atomic operation flow', () => {
 		mocks.dispatchAndConfirm.mockRejectedValue(appError('transaction-dispatch-rejected'));
 		localStorage.setItem(`bazar-signed-transaction:${TRANSACTION}`, '{}');
 		const hook = flowHook({ operation: { kind: 'transfer' }, value: RECIPIENT });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
-		expect(hook.result.current.failureKind).toBe('transaction-rejected');
+		expect(hook.current().failureKind).toBe('transaction-rejected');
 		expect(localStorage.getItem(operationKey)).not.toBeNull();
 
-		hook.act(() => hook.result.current.discardRejectedSignature());
+		hook.act(() => hook.current().discardRejectedSignature());
 		expect(localStorage.getItem(operationKey)).toBeNull();
 		expect(localStorage.getItem(`bazar-signed-transaction:${TRANSACTION}`)).toBeNull();
 		expect(onClose).toHaveBeenCalledWith(false);
@@ -403,7 +403,7 @@ describe('atomic operation flow', () => {
 
 	it('reports every stage to the operation activity provider', async () => {
 		const hook = flowHook({ operation: { kind: 'sell' }, value: '1.5' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
 
 		const phases = onUpdate.mock.calls.map(([, patch]) => patch.phase);
@@ -424,9 +424,9 @@ describe('atomic operation flow', () => {
 				})
 		);
 		const hook = flowHook({ operation: { kind: 'sell' }, value: '2' });
-		hook.act(() => hook.result.current.submit());
+		hook.act(() => hook.current().submit());
 		await hook.flush();
-		expect(hook.result.current.view.phase).toBe('working');
+		expect(hook.current().view.phase).toBe('working');
 
 		hook.unmount();
 		await new Promise((resolve) => setTimeout(resolve, 0));

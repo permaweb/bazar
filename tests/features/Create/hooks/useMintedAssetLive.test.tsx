@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { useMintedAssetLive } from 'features/Create/hooks/useMintedAssetLive';
 
-import { renderHook } from '../../../test-utils/hook-renderer';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const ASSET = 'A'.repeat(43);
 const OTHER = 'B'.repeat(43);

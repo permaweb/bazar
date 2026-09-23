@@ -6,7 +6,7 @@ import type { AssetState } from 'api/marketplace';
 
 import { useAssetDetailLiveState } from 'features/AssetDetail/hooks/useAssetDetailLiveState';
 
-import { renderHook, settle } from './render-hook';
+import { renderHook, settle } from '../../../test-utils/render-hook';
 
 const assetId = 'A'.repeat(43);
 const otherAssetId = 'B'.repeat(43);

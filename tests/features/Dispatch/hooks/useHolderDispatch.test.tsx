@@ -9,7 +9,7 @@ import { useHolderDispatch } from 'features/Dispatch/hooks/useHolderDispatch';
 import { holderDispatchQuote } from 'features/Dispatch/model/dispatch';
 import { appError } from 'helpers/app-error';
 
-import { flushPromises, renderHook } from '../../../test-utils/hook-renderer';
+import { flushPromises, renderHook } from '../../../test-utils/render-hook';
 
 const mocks = vi.hoisted(() => ({
 	wallet: { address: null as string | null, openConnectDialog: vi.fn() },

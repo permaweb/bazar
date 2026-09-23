@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ProfileEditSaveHandler, useProfileEditForm } from 'features/Profile/hooks/useProfileEditForm';
 import { appError } from 'helpers/app-error';
 
-import { renderHook } from '../../../test-utils/hook-renderer';
+import { renderHook } from '../../../test-utils/render-hook';
 
 type Props = { open: boolean; displayName?: string; avatar?: string; onSave: ProfileEditSaveHandler };
 

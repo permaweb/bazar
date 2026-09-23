@@ -6,7 +6,7 @@ import type { AccountProfile } from 'api/profile';
 
 import { useAccountProfile } from 'features/Profile/hooks/useAccountProfile';
 
-import { flushPromises, renderHook } from '../../../test-utils/hook-renderer';
+import { flushPromises, renderHook } from '../../../test-utils/render-hook';
 
 const api = vi.hoisted(() => ({
 	readAccountProfile: vi.fn(),

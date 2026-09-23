@@ -6,7 +6,7 @@ import { CREATED_COLLECTION_ID, type MintActivity, type MintedAsset } from 'api/
 
 import { usePendingAssetMint } from 'features/AssetDetail/hooks/usePendingAssetMint';
 
-import { renderHook, settle } from './render-hook';
+import { renderHook, settle } from '../../../test-utils/render-hook';
 
 const assetId = 'A'.repeat(43);
 const owner = 'W'.repeat(43);

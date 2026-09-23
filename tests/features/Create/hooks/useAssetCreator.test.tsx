@@ -7,7 +7,7 @@ import type { MintDraft, MintedAsset } from 'api/mint';
 import { useAssetCreator } from 'features/Create/hooks/useAssetCreator';
 import { MINT_ESTIMATE_DEBOUNCE_MS } from 'features/Create/hooks/useMintEstimate';
 
-import { renderHook } from '../../../test-utils/hook-renderer';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const mocks = vi.hoisted(() => ({
 	wallet: { address: null as string | null, openConnectDialog: vi.fn() },

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRANSACTION_DIALOG_HIDE_DURATION_MS } from 'components/molecules/TransactionDialogControl';
 import { useTransactionDialogHide } from 'features/Operations/hooks/useTransactionDialogHide';
 
-import { renderHook } from './renderHook';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const onHide = vi.fn();
 
@@ -30,10 +30,10 @@ describe('transaction dialog hiding', () => {
 		document.body.append(trigger);
 		const hook = hideHook();
 		const panel = document.createElement('div');
-		hook.result.current.panelRef.current = panel;
+		hook.current().panelRef.current = panel;
 
-		hook.act(() => hook.result.current.hide());
-		expect(hook.result.current.hiding).toBe(true);
+		hook.act(() => hook.current().hide());
+		expect(hook.current().hiding).toBe(true);
 		expect(panel.style.getPropertyValue('--dialog-hide-scale')).not.toBe('');
 		expect(onHide).not.toHaveBeenCalled();
 
@@ -44,8 +44,8 @@ describe('transaction dialog hiding', () => {
 
 	it('ignores a second hide while one is running', () => {
 		const hook = hideHook();
-		hook.act(() => hook.result.current.hide());
-		hook.act(() => hook.result.current.hide());
+		hook.act(() => hook.current().hide());
+		hook.act(() => hook.current().hide());
 		hook.act(() => vi.advanceTimersByTime(TRANSACTION_DIALOG_HIDE_DURATION_MS * 2));
 
 		expect(onHide).toHaveBeenCalledTimes(1);
@@ -54,18 +54,18 @@ describe('transaction dialog hiding', () => {
 
 	it('clears the hiding state when the panel is shown again', () => {
 		const hook = hideHook(true);
-		hook.act(() => hook.result.current.hide());
+		hook.act(() => hook.current().hide());
 		hook.rerender({ visible: false });
-		expect(hook.result.current.hiding).toBe(true);
+		expect(hook.current().hiding).toBe(true);
 
 		hook.rerender({ visible: true });
-		expect(hook.result.current.hiding).toBe(false);
+		expect(hook.current().hiding).toBe(false);
 		hook.unmount();
 	});
 
 	it('does not hide a panel that was closed before the animation finished', () => {
 		const hook = hideHook();
-		hook.act(() => hook.result.current.hide());
+		hook.act(() => hook.current().hide());
 		hook.unmount();
 		vi.advanceTimersByTime(TRANSACTION_DIALOG_HIDE_DURATION_MS * 2);
 

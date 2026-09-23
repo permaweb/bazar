@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDispatchToken } from 'features/Dispatch/hooks/useDispatchToken';
 
-import { flushPromises, renderHook } from '../../../test-utils/hook-renderer';
+import { flushPromises, renderHook } from '../../../test-utils/render-hook';
 
 const api = vi.hoisted(() => ({
 	readAssetStateWithDeadline: vi.fn(),

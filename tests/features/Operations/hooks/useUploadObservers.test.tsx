@@ -5,7 +5,7 @@ import type { MintUploadTransaction } from 'api/mint';
 
 import { useUploadObservers } from 'features/Operations/hooks/useUploadObservers';
 
-import { renderHook } from './renderHook';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const mocks = vi.hoisted(() => ({
 	loadRuntime: vi.fn(),
@@ -102,11 +102,11 @@ describe('upload observers', () => {
 		expect(mocks.watchers.every((instance) => instance.started)).toBe(true);
 
 		hook.act(() => mocks.watchers[0].emit('view'));
-		expect(hook.result.current[FIRST]).toMatchObject({ consensus: { confirmations: 1 } });
-		expect(hook.result.current[SECOND]).toBeUndefined();
+		expect(hook.current()[FIRST]).toMatchObject({ consensus: { confirmations: 1 } });
+		expect(hook.current()[SECOND]).toBeUndefined();
 
 		hook.act(() => mocks.watchers[1].emit('consensus', { state: 'confirming', confirmations: 2 }));
-		expect(hook.result.current[SECOND]).toMatchObject({ consensus: { confirmations: 2 } });
+		expect(hook.current()[SECOND]).toMatchObject({ consensus: { confirmations: 2 } });
 		hook.unmount();
 	});
 

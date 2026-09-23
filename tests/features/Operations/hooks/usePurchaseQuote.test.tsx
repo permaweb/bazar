@@ -6,7 +6,7 @@ import type { Operation } from 'api/operations';
 import { usePurchaseQuote } from 'features/Operations/hooks/usePurchaseQuote';
 import { appError } from 'helpers/app-error';
 
-import { renderHook } from './renderHook';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const mocks = vi.hoisted(() => ({
 	estimate: vi.fn(),
@@ -74,10 +74,10 @@ afterEach(() => {
 describe('purchase quote', () => {
 	it('checks the exact cost and wallet balance for a new purchase', async () => {
 		const hook = quoteHook({ kind: 'buy', order: ORDER });
-		expect(hook.result.current.state.status).toBe('loading');
+		expect(hook.current().state.status).toBe('loading');
 
 		await hook.flush();
-		expect(hook.result.current.state).toEqual({ status: 'success', data: { estimate: ESTIMATE, balance: 500n } });
+		expect(hook.current().state).toEqual({ status: 'success', data: { estimate: ESTIMATE, balance: 500n } });
 		expect(mocks.estimate).toHaveBeenCalledWith(ORDER, ASSET_ID, expect.any(AbortSignal));
 		expect(mocks.balance).toHaveBeenCalledWith(OWNER, expect.any(AbortSignal));
 		hook.unmount();
@@ -90,12 +90,12 @@ describe('purchase quote', () => {
 			resume: { registration: { id: 'G'.repeat(43), dispatched: true } },
 		});
 		await resuming.flush(2);
-		expect(resuming.result.current.state.status).toBe('idle');
+		expect(resuming.current().state.status).toBe('idle');
 		resuming.unmount();
 
 		const listing = quoteHook({ kind: 'sell' });
 		await listing.flush(2);
-		expect(listing.result.current.state.status).toBe('idle');
+		expect(listing.current().state.status).toBe('idle');
 		expect(mocks.estimate).not.toHaveBeenCalled();
 		listing.unmount();
 	});
@@ -105,25 +105,24 @@ describe('purchase quote', () => {
 		const hook = quoteHook({ kind: 'buy', order: ORDER });
 		await hook.flush();
 
-		expect(hook.result.current.state).toMatchObject({ status: 'error' });
-		expect(hook.result.current.state.status === 'error' && hook.result.current.state.error.reason).toBe(
-			'compute-unavailable'
-		);
+		const failed = hook.current().state;
+		expect(failed).toMatchObject({ status: 'error' });
+		expect(failed.status === 'error' && failed.error.reason).toBe('compute-unavailable');
 		hook.unmount();
 	});
 
 	it('re-checks only after a finished check, from a clean slate', async () => {
 		const hook = quoteHook({ kind: 'buy', order: ORDER });
-		hook.act(() => hook.result.current.retry());
-		expect(hook.result.current.state.status).toBe('loading');
+		hook.act(() => hook.current().retry());
+		expect(hook.current().state.status).toBe('loading');
 
 		await hook.flush();
 		expect(mocks.estimate).toHaveBeenCalledTimes(1);
-		hook.act(() => hook.result.current.retry());
-		expect(hook.result.current.state.status).toBe('loading');
+		hook.act(() => hook.current().retry());
+		expect(hook.current().state.status).toBe('loading');
 		await hook.flush();
 		expect(mocks.estimate).toHaveBeenCalledTimes(2);
-		expect(hook.result.current.state.status).toBe('success');
+		expect(hook.current().state.status).toBe('success');
 		hook.unmount();
 	});
 
@@ -141,7 +140,7 @@ describe('purchase quote', () => {
 
 		first.resolve({ ...ESTIMATE, total: '111' });
 		await hook.flush();
-		expect(hook.result.current.state).toMatchObject({ status: 'success', data: { estimate: { total: '900' } } });
+		expect(hook.current().state).toMatchObject({ status: 'success', data: { estimate: { total: '900' } } });
 		hook.unmount();
 	});
 

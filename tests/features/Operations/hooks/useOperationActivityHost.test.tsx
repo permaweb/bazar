@@ -7,7 +7,7 @@ import type { MintActivity } from 'api/mint';
 
 import { useOperationActivityHost } from 'features/Operations/hooks/useOperationActivityHost';
 
-import { renderHook } from './renderHook';
+import { renderHook } from '../../../test-utils/render-hook';
 
 const mocks = vi.hoisted(() => ({ context: null as any }));
 
@@ -124,12 +124,12 @@ describe('operation activity host', () => {
 	it('pairs uploads with their mint activities and keeps restored mints separate', () => {
 		const hook = hostHook();
 
-		expect(hook.result.current.uploads).toHaveLength(1);
-		expect(hook.result.current.uploads[0].relatedMintActivities.map((activity) => activity.id)).toEqual([
+		expect(hook.current().uploads).toHaveLength(1);
+		expect(hook.current().uploads[0].relatedMintActivities.map((activity) => activity.id)).toEqual([
 			`mint:${OWNER}:${ASSET_ID}`,
 		]);
-		expect(hook.result.current.mintUploads).toHaveLength(1);
-		expect(hook.result.current.mintUploads[0].activity).toMatchObject({
+		expect(hook.current().mintUploads).toHaveLength(1);
+		expect(hook.current().mintUploads[0].activity).toMatchObject({
 			id: 'mint-2',
 			kind: 'asset',
 			phase: 'tracking',
@@ -140,11 +140,11 @@ describe('operation activity host', () => {
 
 	it('keeps the restored mint panel stable across unrelated renders', () => {
 		const hook = hostHook();
-		const first = hook.result.current.mintUploads[0].activity;
+		const first = hook.current().mintUploads[0].activity;
 		hook.rerender(undefined);
 
-		expect(hook.result.current.mintUploads[0].activity).toBe(first);
-		expect(hook.result.current.mintUploads[0].activity.transactions).toBe(first.transactions);
+		expect(hook.current().mintUploads[0].activity).toBe(first);
+		expect(hook.current().mintUploads[0].activity.transactions).toBe(first.transactions);
 		hook.unmount();
 	});
 
@@ -155,11 +155,11 @@ describe('operation activity host', () => {
 		const listener = (event: Event) => refreshed.push((event as CustomEvent<string>).detail);
 		window.addEventListener('bazar:asset-operation-finished', listener);
 
-		hook.act(() => hook.result.current.closeOperation(activity, false, true));
+		hook.act(() => hook.current().closeOperation(activity, false, true));
 		expect(refreshed).toEqual([ASSET_ID]);
 		expect(remove).toHaveBeenCalledWith('activity-1');
 
-		hook.act(() => hook.result.current.closeOperation(activity, true, false));
+		hook.act(() => hook.current().closeOperation(activity, true, false));
 		expect(refreshed).toEqual([ASSET_ID]);
 		expect(hideOperation).toHaveBeenCalledTimes(1);
 
@@ -169,7 +169,7 @@ describe('operation activity host', () => {
 
 	it('dismisses the mint notice when its asset is opened', () => {
 		const hook = hostHook();
-		hook.act(() => hook.result.current.viewMintNoticeAsset());
+		hook.act(() => hook.current().viewMintNoticeAsset());
 
 		expect(dismissMintNotice).toHaveBeenCalledTimes(1);
 		hook.unmount();
@@ -177,7 +177,7 @@ describe('operation activity host', () => {
 
 	it('removes an operation activity when its asset is opened', () => {
 		const hook = hostHook();
-		hook.act(() => hook.result.current.viewOperationAsset(mocks.context.activities[0]));
+		hook.act(() => hook.current().viewOperationAsset(mocks.context.activities[0]));
 
 		expect(remove).toHaveBeenCalledWith('activity-1');
 		hook.unmount();

@@ -14,7 +14,7 @@ import {
 
 import { useUniqueAssetOperations } from 'features/AssetDetail/hooks/useUniqueAssetOperations';
 
-import { renderHook, settle } from './render-hook';
+import { renderHook, settle } from '../../../test-utils/render-hook';
 
 const assetId = 'A'.repeat(43);
 const collectionId = 'created-on-bazar';
