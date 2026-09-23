@@ -1,12 +1,9 @@
-import React from 'react';
 import { UserRound } from 'lucide-react';
-
-import { ownerOfAsset, readAssetStateWithDeadline } from 'api/marketplace';
-import { ProfileClient } from 'api/profile';
 
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
-import { appError, appErrorMessage, toAppError } from 'helpers/app-error';
+
+import { useProfilePictureUpdate } from '../../../hooks/useProfilePictureUpdate';
 
 export default function SetProfilePictureButton(props: {
 	assetId: string;
@@ -14,52 +11,30 @@ export default function SetProfilePictureButton(props: {
 	image: string;
 	owner: string;
 }) {
-	const [status, setStatus] = React.useState<'idle' | 'checking' | 'signing' | 'uploading' | 'done'>('idle');
-	const [error, setError] = React.useState('');
-	const apply = async () => {
-		setError('');
-		setStatus('checking');
-		try {
-			const current = await readAssetStateWithDeadline(props.assetId, { maxAge: 0 });
-			if (
-				current.state.totalSupply !== '1' ||
-				current.state.denomination > 0 ||
-				ownerOfAsset(current.state) !== props.owner
-			) {
-				throw appError('profile-avatar-not-owned');
-			}
-			await new ProfileClient().setAvatar(props.owner, props.image, {
-				onPhase: (phase) => setStatus(phase),
-			});
-			setStatus('done');
-		} catch (cause) {
-			setStatus('idle');
-			setError(appErrorMessage(toAppError(cause, 'profile-update-failed')));
-		}
-	};
+	const update = useProfilePictureUpdate({ assetId: props.assetId, owner: props.owner, image: props.image });
 	return (
 		<>
 			<Button
 				className="with-icon"
-				disabled={props.disabled || status !== 'idle'}
-				onClick={() => void apply()}
+				disabled={props.disabled || update.status !== 'idle'}
+				onClick={() => void update.apply()}
 				size="custom"
 				type="button"
 			>
 				<Icon icon={UserRound} size="sm" />
-				{status === 'checking'
+				{update.status === 'checking'
 					? 'Checking ownership…'
-					: status === 'signing'
+					: update.status === 'signing'
 					? 'Approve profile…'
-					: status === 'uploading'
+					: update.status === 'uploading'
 					? 'Publishing profile…'
-					: status === 'done'
+					: update.status === 'done'
 					? 'Profile picture set'
 					: 'Set as profile picture'}
 			</Button>
-			{error ? (
+			{update.error ? (
 				<small className="profile-picture-error" role="alert">
-					{error}
+					{update.error}
 				</small>
 			) : null}
 		</>

@@ -1,13 +1,25 @@
-import type { AssetSummary } from 'api/collections';
+import {
+	assetMatchesCollectionQuery,
+	type AssetSummary,
+	type Collection,
+	collectionDisplayName,
+	collectionEyebrow,
+	collectionSearchAssets,
+} from 'api/collections';
 import { type AssetCandidate, isLiveListing, type ResolvedAsset } from 'api/discovery';
+import { bestAskOfAsset, formatTokenAmount, liveOrdersOfAsset } from 'api/marketplace';
 import type { CollectionMintPhase } from 'api/mint';
 
-import type { RequestFailureKind } from 'helpers/app-error';
+import { orderPriceLabel } from 'features/Catalogue';
+import { type AppError, appError, type RequestFailureKind, requestFailureKind } from 'helpers/app-error';
+import { winstonToAr } from 'helpers/ar-units';
 
 export type CollectionCardPrice =
 	| { status: 'resolved'; label: string | null }
 	| { status: 'unindexed' }
 	| { status: 'unavailable'; kind: RequestFailureKind };
+
+export type CollectionCardPrices = Readonly<Record<string, CollectionCardPrice>>;
 
 export type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
 
@@ -22,6 +34,19 @@ export type CollectionLiveListingRow = {
 	quantityValue: number;
 	total: string;
 };
+
+export type CollectionIdentity = {
+	name: string;
+	eyebrow: string;
+	monogram: string;
+};
+
+export const COLLECTION_ALPHABET = ['all', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
+
+export function collectionIdentity(collection: Collection): CollectionIdentity {
+	const name = collectionDisplayName(collection);
+	return { name, eyebrow: collectionEyebrow(collection), monogram: name.slice(0, 1) };
+}
 
 export function collectionPriceValue(price?: CollectionCardPrice): number | null {
 	if (price?.status !== 'resolved' || !price.label) return null;
@@ -137,4 +162,140 @@ export function alphabetBrowseIndex(direction: 'previous' | 'next', visible: num
 	return direction === 'previous'
 		? Math.max(0, visible[0] - 5)
 		: Math.min(count - 1, visible[visible.length - 1] + 5);
+}
+
+/** The Arweave index failed: rate limiting versus any other unavailability, each with its own retry copy. */
+export function collectionIndexFailure(cause: unknown): AppError {
+	return appError(requestFailureKind(cause) === 'rate-limited' ? 'index-rate-limited' : 'index-unavailable', {
+		cause,
+	});
+}
+
+/** Identifies which loaded assets a window of listing or activity requests covers. */
+export function collectionAssetWindowVersion(assets: readonly AssetSummary[] | undefined): string {
+	return assets?.map((asset) => asset.id).join('.') ?? '';
+}
+
+/** The assets a view searches before filtering: live listings, a name-index search, or every loaded asset. */
+export function collectionSearchScope(
+	collection: Collection | undefined,
+	listed: ResolvedAsset[],
+	listedOnly: boolean,
+	query: string
+): AssetSummary[] {
+	if (listedOnly) return listed.map((result) => result.asset);
+	return collection && query.trim()
+		? collectionSearchAssets(collection, query.trim().toLowerCase())
+		: collection?.assets ?? [];
+}
+
+export function collectionCandidateIndex(candidates: AssetCandidate[]): ReadonlyMap<string, AssetCandidate> {
+	return new Map(candidates.map((candidate) => [candidate.processId, candidate]));
+}
+
+/** Loaded position of each asset; name collections sort alphabetically instead. */
+export function collectionDefaultOrder(collection: Collection | undefined): ReadonlyMap<string, number> | null {
+	return collection?.kind === 'names'
+		? null
+		: new Map((collection?.assets ?? []).map((asset, index) => [asset.id, index]));
+}
+
+export function filterCollectionAssets(
+	assets: AssetSummary[],
+	options: {
+		query: string;
+		initial: string;
+		sort: CollectionSort;
+		kind: Collection['kind'] | undefined;
+		prices: CollectionCardPrices;
+		candidates: ReadonlyMap<string, AssetCandidate>;
+		defaultOrder: ReadonlyMap<string, number> | null;
+	}
+): AssetSummary[] {
+	return assets
+		.filter(
+			(asset) =>
+				assetMatchesCollectionQuery(asset, options.query) &&
+				(options.initial === 'all' || asset.name.trim().toLowerCase().startsWith(options.initial.toLowerCase()))
+		)
+		.sort((a, b) => {
+			if (options.sort === 'name') return compareCollectionAssetNames(a, b);
+			if (options.sort === 'price-low' || options.sort === 'price-high') {
+				const priceA = collectionPriceValue(options.prices[a.id]);
+				const priceB = collectionPriceValue(options.prices[b.id]);
+				if (priceA !== null || priceB !== null) {
+					if (priceA === null) return 1;
+					if (priceB === null) return -1;
+					if (priceA !== priceB) return options.sort === 'price-low' ? priceA - priceB : priceB - priceA;
+				}
+			}
+			if (options.initial !== 'all') return compareCollectionAssetNames(a, b);
+			const activityA = options.candidates.get(a.id);
+			const activityB = options.candidates.get(b.id);
+			if (activityA || activityB) {
+				return (
+					(activityB?.height ?? 0) - (activityA?.height ?? 0) ||
+					(activityB?.timestamp ?? 0) - (activityA?.timestamp ?? 0) ||
+					compareCollectionAssetNames(a, b)
+				);
+			}
+			if (options.kind === 'names') return compareCollectionAssetNames(a, b);
+			return (
+				(options.defaultOrder?.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+					(options.defaultOrder?.get(b.id) ?? Number.MAX_SAFE_INTEGER) || compareCollectionAssetNames(a, b)
+			);
+		});
+}
+
+/** Every live order across the listed assets, cheapest first, with cumulative order-book depth. */
+export function collectionLiveListingRows(listed: ResolvedAsset[]): CollectionLiveListingRow[] {
+	const rows = listed
+		.flatMap((result) =>
+			liveOrdersOfAsset(result.state).map((order) => {
+				const price = orderPriceLabel(order, result.state);
+				const quantity = formatTokenAmount(order.quantity, result.state.denomination);
+				return {
+					asset: result.asset,
+					depth: 0,
+					price,
+					priceValue: Number.parseFloat(price.replace(/,/g, '')),
+					quantity,
+					quantityValue: Number.parseFloat(quantity.replace(/,/g, '')) || 0,
+					total: `${winstonToAr(order.asking)} AR`,
+				};
+			})
+		)
+		.sort((a, b) => a.priceValue - b.priceValue || a.asset.name.localeCompare(b.asset.name));
+	const depths = cumulativeCollectionDepth(rows.map((row) => row.quantityValue));
+	return rows.map((row, index) => ({ ...row, depth: depths[index] }));
+}
+
+/** A card's price from live asset state, or the failure that kept its state from being read. */
+export function collectionListingPrice(
+	result: ResolvedAsset | null,
+	failureKind?: RequestFailureKind
+): CollectionCardPrice {
+	if (failureKind) return { status: 'unavailable', kind: failureKind };
+	const order = result ? bestAskOfAsset(result.state) : null;
+	return { status: 'resolved', label: order && result ? orderPriceLabel(order, result.state) : null };
+}
+
+export function collectionCardPriceLabel(price: CollectionCardPrice | undefined, checkFailed: boolean): string {
+	if (price?.status === 'unavailable') return 'Unavailable';
+	if (price?.status === 'unindexed') return 'Unlisted';
+	if (price?.status === 'resolved') return price.label ?? 'Not listed';
+	return checkFailed ? 'Unavailable' : 'Checking…';
+}
+
+export function collectionCardPriceListed(price: CollectionCardPrice | undefined): boolean {
+	return price?.status === 'resolved' && Boolean(price.label);
+}
+
+export function collectionUnavailablePriceCount(assets: AssetSummary[], prices: CollectionCardPrices): number {
+	return assets.filter((asset) => prices[asset.id]?.status === 'unavailable').length;
+}
+
+/** Cards whose live state could not be read, which a price retry reads again. */
+export function unavailableCollectionPriceIds(prices: CollectionCardPrices): string[] {
+	return Object.entries(prices).flatMap(([processId, price]) => (price.status === 'unavailable' ? [processId] : []));
 }

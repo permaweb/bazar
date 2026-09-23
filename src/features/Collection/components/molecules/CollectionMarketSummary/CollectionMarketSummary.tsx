@@ -1,10 +1,11 @@
 import React from 'react';
 
-import { type Collection, collectionDisplayName, collectionEyebrow } from 'api/collections';
+import type { Collection } from 'api/collections';
 
 import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { Eyebrow } from 'components/atoms/Eyebrow';
 
+import { collectionIdentity } from '../../../model/collection-market';
 import { CollectionDescription } from '../CollectionDescription';
 
 type CollectionMarketStat = {
@@ -17,6 +18,7 @@ export default function CollectionMarketSummary(props: {
 	collection: Collection;
 	stats: CollectionMarketStat[];
 }) {
+	const identity = collectionIdentity(props.collection);
 	return (
 		<div className="collection-title collection-market-header">
 			<div className="collection-identity">
@@ -29,12 +31,12 @@ export default function CollectionMarketSummary(props: {
 							fetchPriority="high"
 						/>
 					) : (
-						<span>{collectionDisplayName(props.collection).slice(0, 1)}</span>
+						<span>{identity.monogram}</span>
 					)}
 				</div>
 				<div className="collection-heading-copy">
-					<Eyebrow>{collectionEyebrow(props.collection)}</Eyebrow>
-					<h1>{collectionDisplayName(props.collection)}</h1>
+					<Eyebrow>{identity.eyebrow}</Eyebrow>
+					<h1>{identity.name}</h1>
 					<CollectionDescription description={props.collection.description} />
 				</div>
 			</div>

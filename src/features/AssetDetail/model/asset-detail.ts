@@ -1,7 +1,14 @@
-import { type AssetSummary, type Collection, FUNGIBLE_TOKEN_COLLECTION_ID, isVisibleAssetId } from 'api/collections';
-import type { CollectionActivityEvent } from 'api/discovery';
+import {
+	type AssetSummary,
+	type Collection,
+	collectionAsset,
+	collectionDisplayName,
+	FUNGIBLE_TOKEN_COLLECTION_ID,
+	isVisibleAssetId,
+} from 'api/collections';
+import { bazarAtomicAssetFromState, type CollectionActivityEvent } from 'api/discovery';
 import { type AssetState, DISPLAY_STATE_TIMEOUT_ERROR, servingNodeOrigin } from 'api/marketplace';
-import { CREATED_COLLECTION_ID, type MintedAsset } from 'api/mint';
+import { CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME, type MintedAsset } from 'api/mint';
 
 import { appErrorMessage, requestFailureMessage, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
@@ -109,6 +116,28 @@ export function assetDetailLoadingPresentation(collection: Collection | undefine
 	return { kind, device: kind === 'names' ? 'carrier@1.0' : 'token@1.0' } as const;
 }
 
+export type AssetDetailLoadingShellView = ReturnType<typeof assetDetailLoadingPresentation> & {
+	detailClass: 'fungible-asset-page' | 'atomic-asset-page';
+	collectionName: string;
+};
+
+/** Everything the loading shell shows before live state arrives: layout kind, device tag, page class, and title. */
+export function assetDetailLoadingShellView(
+	collection: Collection | undefined,
+	collectionId: string
+): AssetDetailLoadingShellView {
+	const presentation = assetDetailLoadingPresentation(collection, collectionId);
+	const kind = presentation.kind;
+	const collectionName =
+		(collection ? (kind === 'tokens' ? collectionDisplayName(collection) : collection.name) : undefined) ??
+		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
+	return {
+		...presentation,
+		detailClass: kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page',
+		collectionName,
+	};
+}
+
 export function mergeAssetDetailMetadata(
 	primary: AssetSummary | undefined,
 	indexed: AssetSummary | undefined
@@ -170,4 +199,201 @@ export function assetStateErrorMessage(cause: unknown) {
 		return 'Live state could not be read through the configured AO peers. Retry shortly or review the AO Core settings in the header.';
 	}
 	return appErrorMessage(error);
+}
+
+export type IndexedAtomicAsset = { asset: AssetSummary; collection: Collection };
+
+/** Whether the route may look up an indexed Bazar atomic asset for richer metadata and direct membership. */
+export function assetDetailHasIndexedLookup(assetId: string, collectionId: string): boolean {
+	return (
+		isArweaveId(assetId) &&
+		isVisibleAssetId(assetId) &&
+		collectionId !== FUNGIBLE_TOKEN_COLLECTION_ID &&
+		collectionId !== 'arweave-names'
+	);
+}
+
+export type AssetDetailSources = {
+	indexedCollection: Collection | undefined;
+	indexedAsset: AssetSummary | undefined;
+	indexedAtomic: IndexedAtomicAsset | null;
+	cachedAsset: AssetSummary | undefined;
+	directAtomicRoute: boolean;
+	canResolveAsset: boolean;
+};
+
+/** What the route knows about an asset before its live state arrives: catalogue, cached shell, and index. */
+export function assetDetailSources(input: {
+	assetId: string;
+	collectionId: string;
+	collections: Collection[];
+	cachedAsset: AssetSummary | undefined;
+	indexedAtomic: IndexedAtomicAsset | null;
+}): AssetDetailSources {
+	const indexedCollection = input.collections.find((item) => item.id === input.collectionId);
+	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, input.assetId) : undefined;
+	const directAtomicRoute =
+		input.collectionId === CREATED_COLLECTION_ID && isArweaveId(input.assetId) && isVisibleAssetId(input.assetId);
+	const canResolveAsset = assetDetailCanResolve({
+		assetId: input.assetId,
+		cachedAsset: input.cachedAsset,
+		indexedAsset,
+		indexedMetadata: input.indexedAtomic?.asset,
+		indexedCollection,
+		directAtomicRoute,
+		directFungibleRoute:
+			input.collectionId === 'fungible-tokens' && isArweaveId(input.assetId) && isVisibleAssetId(input.assetId),
+	});
+	return {
+		indexedCollection,
+		indexedAsset,
+		indexedAtomic: input.indexedAtomic,
+		cachedAsset: input.cachedAsset,
+		directAtomicRoute,
+		canResolveAsset,
+	};
+}
+
+export type AssetDetailResolution = {
+	shellAsset: AssetSummary | undefined;
+	collection: Collection | undefined;
+	resolvedAsset: AssetSummary | undefined;
+	membershipVerified: boolean;
+	verifiedAsset: AssetSummary | null | undefined;
+};
+
+/** Combine the route's sources with live state into the collection and asset the page may present as verified. */
+export function resolveAssetDetail(
+	sources: AssetDetailSources,
+	input: { assetId: string; state: AssetState | null; verifiedCollectionIds: ReadonlySet<string> }
+): AssetDetailResolution {
+	const directAtomicAsset =
+		sources.directAtomicRoute && input.state ? bazarAtomicAssetFromState(input.assetId, input.state) : null;
+	const indexedMetadata = sources.indexedAtomic?.asset;
+	const shellAsset = mergeAssetDetailMetadata(sources.indexedAsset ?? sources.cachedAsset, indexedMetadata);
+	const collection =
+		sources.indexedCollection ??
+		directAtomicAsset?.collection ??
+		(sources.directAtomicRoute ? sources.indexedAtomic?.collection : undefined);
+	const resolvedAsset =
+		directAtomicAsset?.asset ??
+		mergeAssetDetailMetadata(
+			sources.indexedCollection && input.state
+				? collectionAsset(sources.indexedCollection, input.assetId, input.state)
+				: sources.indexedAsset ?? sources.cachedAsset,
+			indexedMetadata
+		);
+	const membershipVerified = assetDetailMembershipVerified(
+		sources.indexedCollection?.id,
+		input.verifiedCollectionIds,
+		Boolean(directAtomicAsset || (sources.directAtomicRoute && sources.indexedAtomic))
+	);
+	const verifiedAsset = membershipVerified
+		? verifiedAssetForDetail(collection, sources.indexedAsset, resolvedAsset, input.state)
+		: undefined;
+	return { shellAsset, collection, resolvedAsset, membershipVerified, verifiedAsset };
+}
+
+/** Which retry an error or loading screen offers: re-read live state, or reload the market catalogue. */
+export type AssetDetailRetry = 'state' | 'market';
+
+export type AssetDetailScreen =
+	| {
+			kind: 'loading';
+			asset: AssetSummary | undefined;
+			collection: Collection | undefined;
+			error: string | null;
+			retry: AssetDetailRetry;
+			/** Offer the Bazar-peer recovery action alongside the retry. */
+			recoverable: boolean;
+	  }
+	| {
+			kind: 'unavailable';
+			collection: Collection | undefined;
+			message: string;
+			retry: AssetDetailRetry;
+			recoverable: boolean;
+	  }
+	| { kind: 'collection-not-found' }
+	| { kind: 'asset-not-found'; collection: Collection }
+	| { kind: 'fungible'; asset: AssetSummary; collection: Collection; state: AssetState }
+	| { kind: 'unique'; asset: AssetSummary; collection: Collection; state: AssetState };
+
+/** Choose the asset route's screen from catalogue, resolution, and live-state progress. */
+export function assetDetailScreen(input: {
+	market: { loading: boolean; error: string | null; notice: string | null };
+	directAtomicRoute: boolean;
+	resolution: AssetDetailResolution;
+	live: { state: AssetState | null; loading: boolean; error: string | null };
+	detailError: string | null;
+}): AssetDetailScreen {
+	const { market, resolution, live, detailError } = input;
+	const collection = resolution.collection;
+	if (!collection && (market.loading || (input.directAtomicRoute && live.loading))) {
+		return {
+			kind: 'loading',
+			asset: resolution.shellAsset,
+			collection: undefined,
+			error: detailError,
+			retry: 'state',
+			recoverable: Boolean(detailError),
+		};
+	}
+	if (!collection && market.error) {
+		return {
+			kind: 'unavailable',
+			collection: undefined,
+			message: market.error,
+			retry: 'market',
+			recoverable: false,
+		};
+	}
+	if (!collection && input.directAtomicRoute && live.error) {
+		return {
+			kind: 'unavailable',
+			collection: undefined,
+			message: detailError ?? live.error,
+			retry: 'state',
+			recoverable: true,
+		};
+	}
+	if (!collection) return { kind: 'collection-not-found' };
+	if (!resolution.membershipVerified) {
+		return {
+			kind: 'loading',
+			asset: resolution.shellAsset,
+			collection,
+			error: market.loading
+				? detailError
+				: market.notice ?? 'Current collection membership could not be verified.',
+			retry: market.loading ? 'state' : 'market',
+			recoverable: market.loading && Boolean(detailError),
+		};
+	}
+	const asset = resolution.verifiedAsset;
+	if (!asset && live.error) {
+		return {
+			kind: 'unavailable',
+			collection,
+			message: detailError ?? live.error,
+			retry: 'state',
+			recoverable: true,
+		};
+	}
+	if (!asset && !live.loading) return { kind: 'asset-not-found', collection };
+	if (!asset) {
+		return {
+			kind: 'loading',
+			asset: resolution.shellAsset,
+			collection,
+			error: null,
+			retry: 'state',
+			recoverable: false,
+		};
+	}
+	if (!live.state) {
+		return { kind: 'loading', asset, collection, error: detailError, retry: 'state', recoverable: true };
+	}
+	const kind = live.state.totalSupply !== '1' || live.state.denomination > 0 ? 'fungible' : 'unique';
+	return { kind, asset, collection, state: live.state };
 }

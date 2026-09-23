@@ -2,15 +2,6 @@ import React from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 
-import { collectionAsset } from 'api/collections';
-import {
-	type CollectionActivityEvent,
-	discoverCollectionActivity,
-	discoverCollectionActivityBatched,
-	loadMarketActivity,
-	saveMarketActivity,
-} from 'api/discovery';
-
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { LiveRegion } from 'components/atoms/LiveRegion';
@@ -18,19 +9,12 @@ import { Loading } from 'components/atoms/Loading';
 import { EmptyState } from 'components/molecules/EmptyState';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { RouteState } from 'components/molecules/RouteState';
-import {
-	collectionActivityScanAnnouncement,
-	collectionActivityVersion,
-	collectionAssetWindowDelta,
-	collectionCandidateMembership,
-	DeferredMarketActivityList,
-	newestCollectionActivity,
-	retainNewestCollectionActivity,
-} from 'features/Activity';
-import { requestFailureKind, requestFailureMessage } from 'helpers/app-error';
+import { collectionActivityScanAnnouncement, DeferredMarketActivityList } from 'features/Activity';
+import { appErrorMessage } from 'helpers/app-error';
 import { assetGroupRevealComplete } from 'helpers/progressive-assets';
 import { useMarketProvider } from 'providers/MarketProvider';
 
+import { useCollectionActivity } from '../../../hooks/useCollectionActivity';
 import { CollectionActivityAnalytics } from '../../molecules/CollectionActivityAnalytics';
 import { CollectionIndexNotice } from '../../molecules/CollectionIndexNotice';
 import { CollectionMarketSummary } from '../../molecules/CollectionMarketSummary';
@@ -40,145 +24,19 @@ export default function CollectionActivityFeed() {
 	const { collectionId = '' } = useParams();
 	const market = useMarketProvider();
 	const collection = market.collections.find((item) => item.id === collectionId);
-	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
-	const [loading, setLoading] = React.useState(true);
-	const [error, setError] = React.useState<string | null>(null);
-	const [pages, setPages] = React.useState(0);
-	const [preservingEvents, setPreservingEvents] = React.useState(false);
-	const [retry, setRetry] = React.useState(0);
+	const activity = useCollectionActivity(collection);
+	const events = activity.events;
 	const [activityLimit, setActivityLimit] = React.useState(20);
 	const [activityRevealAnnouncement, setActivityRevealAnnouncement] = React.useState('');
-	const eventsRef = React.useRef<CollectionActivityEvent[]>([]);
-	const activityBatchEvents = React.useRef(new Map<string, CollectionActivityEvent>());
-	const activityLoadedAssetIds = React.useRef(new Set<string>());
-	const activityRunMode = React.useRef<'refresh' | 'retry'>('refresh');
-	const scopeRef = React.useRef('');
 	const activityListId = React.useId();
 	const activityRevealRef = React.useRef<HTMLParagraphElement>(null);
 	const eventCountRef = React.useRef(events.length);
 	eventCountRef.current = events.length;
-	const activityScope = React.useMemo(
-		() =>
-			collection
-				? `${collection.id}:${
-						collection.kind === 'names'
-							? collectionActivityVersion(collection)
-							: collection.manifestId ?? collection.id
-				  }`
-				: '',
-		[collection]
-	);
-	const activityWindowVersion = React.useMemo(
-		() => collection?.assets.map((asset) => asset.id).join('.') ?? '',
-		[collection?.assets]
-	);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
 		setActivityRevealAnnouncement('');
-	}, [activityScope]);
-
-	React.useEffect(() => {
-		if (!collection) return;
-		const controller = new AbortController();
-		const includesCollectionAsset = collectionCandidateMembership(collection);
-		const sameScope = scopeRef.current === activityScope;
-		let cachedEvents: CollectionActivityEvent[] = [];
-		if (!sameScope) {
-			try {
-				cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
-					includesCollectionAsset(event.processId)
-				);
-			} catch {
-				// Browser storage is optional; live Arweave discovery continues below.
-			}
-		}
-		const assetIds = collection.assets.map((asset) => asset.id);
-		const assetWindow = collectionAssetWindowDelta(activityLoadedAssetIds.current, assetIds);
-		const retryMissing =
-			collection.kind !== 'names' && sameScope && !assetWindow.reset && activityRunMode.current === 'retry';
-		const continueWindow =
-			collection.kind !== 'names' && sameScope && !assetWindow.reset && assetWindow.added.length > 0;
-		const incremental = retryMissing || continueWindow;
-		const initialEvents = sameScope && eventsRef.current.length ? eventsRef.current : cachedEvents;
-		const preserveEvents = initialEvents.length > 0;
-		let nextEvents = newestCollectionActivity(initialEvents);
-		scopeRef.current = activityScope;
-		activityRunMode.current = 'refresh';
-		if (!incremental) {
-			activityBatchEvents.current.clear();
-			activityLoadedAssetIds.current.clear();
-			retainNewestCollectionActivity(activityBatchEvents.current, initialEvents);
-		}
-		if (!preserveEvents) {
-			eventsRef.current = [];
-			setEvents([]);
-		} else if (!sameScope) {
-			eventsRef.current = initialEvents;
-			setEvents(initialEvents);
-		}
-		setPreservingEvents(preserveEvents);
-		setLoading(true);
-		setPages(0);
-		setError(null);
-		const discovery =
-			collection.kind === 'names'
-				? discoverCollectionActivity({
-						signal: controller.signal,
-						limit: 100,
-						acceptProcessId: includesCollectionAsset,
-						requiredExecutionDevice: 'carrier@1.0',
-						onPage: (page) => {
-							if (controller.signal.aborted) return;
-							nextEvents = newestCollectionActivity([...nextEvents, ...page]);
-							setPages((current) => current + 1);
-							eventsRef.current = nextEvents;
-							setEvents(eventsRef.current);
-						},
-				  })
-				: discoverCollectionActivityBatched({
-						signal: controller.signal,
-						limit: 100,
-						recipients: incremental
-							? assetIds.filter((assetId) => !activityLoadedAssetIds.current.has(assetId))
-							: assetIds,
-						onBatch: (batchEvents, completedRecipients) => {
-							if (controller.signal.aborted || scopeRef.current !== activityScope) return;
-							for (const assetId of completedRecipients) activityLoadedAssetIds.current.add(assetId);
-							setPages((current) => current + 1);
-							eventsRef.current = retainNewestCollectionActivity(
-								activityBatchEvents.current,
-								batchEvents
-							);
-							setEvents(eventsRef.current);
-						},
-				  });
-		void discovery.then(
-			() => {
-				if (!controller.signal.aborted) {
-					eventsRef.current =
-						collection.kind === 'names'
-							? newestCollectionActivity(nextEvents)
-							: newestCollectionActivity([...activityBatchEvents.current.values()]);
-					setEvents(eventsRef.current);
-					try {
-						saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
-					} catch {
-						// The live result remains available when storage is unavailable.
-					}
-					setLoading(false);
-					setPreservingEvents(false);
-				}
-			},
-			(cause) => {
-				if (!controller.signal.aborted) {
-					setError(requestFailureMessage('index', requestFailureKind(cause)));
-					setLoading(false);
-				}
-			}
-		);
-		return () => controller.abort();
-	}, [activityScope, activityWindowVersion, retry]);
+	}, [activity.scope]);
 
 	if (!collection && market.loading)
 		return (
@@ -199,11 +57,11 @@ export default function CollectionActivityFeed() {
 			</RouteState>
 		);
 	const activityScanAnnouncement = collectionActivityScanAnnouncement({
-		error: Boolean(error),
+		error: Boolean(activity.error),
 		events: events.length,
-		loading,
-		pages,
-		preservingEvents,
+		loading: activity.loading,
+		pages: activity.pages,
+		preservingEvents: activity.preserving,
 	});
 	return (
 		<section className="collection-page collection-marketplace-page collection-activity-page view-compact">
@@ -216,7 +74,7 @@ export default function CollectionActivityFeed() {
 					stats={[
 						{
 							label: 'Indexed events',
-							value: loading
+							value: activity.loading
 								? `${events.length.toLocaleString()} so far`
 								: events.length.toLocaleString(),
 						},
@@ -226,13 +84,13 @@ export default function CollectionActivityFeed() {
 								collection.total ?? collection.assets.length
 							).toLocaleString()}`,
 						},
-						{ label: 'Batches checked', value: pages.toLocaleString() },
+						{ label: 'Batches checked', value: activity.pages.toLocaleString() },
 						{
 							label: 'Activity status',
-							value: error
+							value: activity.error
 								? 'Needs retry'
-								: loading
-								? preservingEvents
+								: activity.loading
+								? activity.preserving
 									? 'Refreshing'
 									: 'Checking…'
 								: 'Current',
@@ -256,15 +114,14 @@ export default function CollectionActivityFeed() {
 					</Link>
 				</div>
 			) : null}
-			{error ? (
+			{activity.error ? (
 				<ErrorPanel
 					message={`Activity scanning was interrupted. ${
 						events.length ? `${events.length.toLocaleString()} existing events remain visible. ` : ''
-					}${error}`}
+					}${appErrorMessage(activity.error)}`}
 					onRetry={() => {
 						setActivityRevealAnnouncement('');
-						activityRunMode.current = 'retry';
-						setRetry((value) => value + 1);
+						activity.retry();
 					}}
 				/>
 			) : null}
@@ -273,8 +130,8 @@ export default function CollectionActivityFeed() {
 				collectionId={collection.id}
 				events={events.slice(0, activityLimit)}
 				id={activityListId}
-				loading={loading}
-				resolveAsset={(event) => collectionAsset(collection, event.processId)}
+				loading={activity.loading}
+				resolveAsset={activity.resolveAsset}
 			/>
 			<p
 				className={
@@ -311,17 +168,19 @@ export default function CollectionActivityFeed() {
 					Show {Math.min(20, events.length - activityLimit).toLocaleString()} more activity events
 				</Button>
 			) : null}
-			{loading && !events.length ? <Loading label="Reading indexed collection activity from Arweave…" /> : null}
-			{!loading && !error && !events.length ? (
+			{activity.loading && !events.length ? (
+				<Loading label="Reading indexed collection activity from Arweave…" />
+			) : null}
+			{!activity.loading && !activity.error && !events.length ? (
 				<EmptyState title="No indexed market activity yet">
 					This collection has no matching signed market actions in the current Arweave index.
 				</EmptyState>
 			) : null}
 			<CollectionActivityAnalytics
-				error={Boolean(error)}
+				error={Boolean(activity.error)}
 				events={events.length}
-				loading={loading}
-				pages={pages}
+				loading={activity.loading}
+				pages={activity.pages}
 			/>
 		</section>
 	);

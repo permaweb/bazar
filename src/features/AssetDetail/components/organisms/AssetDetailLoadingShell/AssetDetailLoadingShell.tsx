@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 
-import { type AssetSummary, type Collection, collectionDisplayName } from 'api/collections';
-import { CREATED_COLLECTION_NAME } from 'api/mint';
+import type { AssetSummary, Collection } from 'api/collections';
 
 import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { AudioArtwork } from 'components/atoms/AudioArtwork';
@@ -12,7 +11,7 @@ import { isAudioContentType } from 'helpers/asset-media';
 import { formatTickerLabel } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
-import { assetDetailLoadingPresentation } from '../../../model/asset-detail';
+import { assetDetailLoadingShellView } from '../../../model/asset-detail';
 
 export default function AssetDetailLoadingShell(props: {
 	asset?: AssetSummary;
@@ -23,15 +22,10 @@ export default function AssetDetailLoadingShell(props: {
 	secondaryAction?: ErrorPanelAction;
 }) {
 	const wallet = useWallet();
-	const { kind, device } = assetDetailLoadingPresentation(props.collection, props.collectionId);
-	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
-	const collectionName =
-		(props.collection
-			? kind === 'tokens'
-				? collectionDisplayName(props.collection)
-				: props.collection.name
-			: undefined) ??
-		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
+	const { kind, device, detailClass, collectionName } = assetDetailLoadingShellView(
+		props.collection,
+		props.collectionId
+	);
 
 	if (kind === 'tokens') {
 		return (

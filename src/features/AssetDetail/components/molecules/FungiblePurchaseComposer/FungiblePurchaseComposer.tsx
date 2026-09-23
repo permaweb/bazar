@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowDown } from 'lucide-react';
 
-import { type AssetState, matchOrderFills } from 'api/marketplace';
+import type { AssetState, matchOrderFills } from 'api/marketplace';
 
 import { ArCurrencyLabel } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';

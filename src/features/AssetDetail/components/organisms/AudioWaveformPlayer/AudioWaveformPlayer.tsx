@@ -1,180 +1,57 @@
 import React from 'react';
 import { Pause, Play } from 'lucide-react';
 
-import { fetchAudioBytes } from 'api/media';
-
 import { Button } from 'components/atoms/Button';
 import { RangeInput } from 'components/atoms/RangeInput';
-import { toAppError } from 'helpers/app-error';
 
-const WAVEFORM_PEAK_COUNT = 128;
-
-type WaveformStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
-
-export function formatAudioTime(value: number): string {
-	if (!Number.isFinite(value) || value < 0) return '0:00';
-	const seconds = Math.floor(value);
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const remainder = seconds % 60;
-	return hours
-		? `${hours}:${minutes.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`
-		: `${minutes}:${remainder.toString().padStart(2, '0')}`;
-}
-
-export function sampleWaveformPeaks(channels: Float32Array[], peakCount: number): number[] {
-	const samples = channels.filter((channel) => channel.length > 0).slice(0, 2);
-	const count = Math.max(1, Math.floor(peakCount));
-	if (!samples.length) return Array.from({ length: count }, () => 0.08);
-	const sampleCount = Math.min(...samples.map((channel) => channel.length));
-	const peaks = Array.from({ length: count }, (_, index) => {
-		const start = Math.floor((index * sampleCount) / count);
-		const end = Math.max(start + 1, Math.floor(((index + 1) * sampleCount) / count));
-		const stride = Math.max(1, Math.floor((end - start) / 96));
-		let peak = 0;
-		for (const channel of samples) {
-			for (let sample = start; sample < end; sample += stride)
-				peak = Math.max(peak, Math.abs(channel[sample] ?? 0));
-		}
-		return peak;
-	});
-	const maximum = Math.max(...peaks, 0.001);
-	return peaks.map((peak) => Math.max(0.08, Math.min(1, Math.sqrt(peak / maximum))));
-}
-
-function timelineTicks(duration: number): number[] {
-	if (!Number.isFinite(duration) || duration <= 0) return [];
-	return [0, duration / 2, duration];
-}
+import { useAudioWaveformPlayer } from '../../../hooks/useAudioWaveformPlayer';
+import { audioTimelineKeyTarget, formatAudioTime } from '../../../model/audio-waveform';
 
 export default function AudioWaveformPlayer(props: { name: string; src: string }) {
-	const audioRef = React.useRef<HTMLAudioElement>(null);
+	const player = useAudioWaveformPlayer(props.src);
 	const draggingRef = React.useRef(false);
-	const [status, setStatus] = React.useState<WaveformStatus>('idle');
-	const [peaks, setPeaks] = React.useState<number[]>([]);
-	const [waveformRequested, setWaveformRequested] = React.useState(false);
-	const [duration, setDuration] = React.useState(0);
-	const [currentTime, setCurrentTime] = React.useState(0);
-	const [playing, setPlaying] = React.useState(false);
 
-	React.useEffect(() => {
-		setStatus('idle');
-		setPeaks([]);
-		setWaveformRequested(false);
-		setCurrentTime(0);
-		setPlaying(false);
-	}, [props.src]);
-
-	React.useEffect(() => {
-		if (!waveformRequested) return;
-		const controller = new AbortController();
-		let context: AudioContext | null = null;
-		setStatus('loading');
-
-		void fetchAudioBytes(props.src, controller.signal)
-			.then(async (bytes) => {
-				if (controller.signal.aborted) return;
-				context = new AudioContext();
-				const buffer = await context.decodeAudioData(bytes);
-				if (controller.signal.aborted) return;
-				const decodedDuration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
-				const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) =>
-					buffer.getChannelData(index)
-				);
-				setDuration((current) => current || decodedDuration);
-				setPeaks(sampleWaveformPeaks(channels, WAVEFORM_PEAK_COUNT));
-				setStatus('ready');
-			})
-			.catch((error) => {
-				if (!controller.signal.aborted && toAppError(error, 'unavailable').code !== 'cancelled') {
-					setStatus('unavailable');
-				}
-			})
-			.finally(() => void context?.close().catch(() => undefined));
-
-		return () => {
-			controller.abort();
-			void context?.close().catch(() => undefined);
-		};
-	}, [props.src, waveformRequested]);
-
-	React.useEffect(() => {
-		if (!playing) return;
-		let frame = 0;
-		const update = () => {
-			if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
-			frame = window.requestAnimationFrame(update);
-		};
-		frame = window.requestAnimationFrame(update);
-		return () => window.cancelAnimationFrame(frame);
-	}, [playing]);
-
-	const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
-	const progress = safeDuration ? Math.min(1, currentTime / safeDuration) : 0;
-	const ticks = timelineTicks(safeDuration);
-	const togglePlayback = () => {
-		const audio = audioRef.current;
-		if (!audio) return;
-		if (audio.paused) {
-			setWaveformRequested(true);
-			void audio.play().catch(() => setPlaying(false));
-		} else audio.pause();
-	};
-	const seek = (value: number) => {
-		const audio = audioRef.current;
-		if (!audio || !safeDuration) return;
-		const next = Math.max(0, Math.min(safeDuration, value));
-		audio.currentTime = next;
-		setCurrentTime(next);
-	};
 	const seekFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
-		if (!safeDuration) return;
+		if (!player.duration) return;
 		const bounds = event.currentTarget.getBoundingClientRect();
 		if (!bounds.width) return;
-		seek(((event.clientX - bounds.left) / bounds.width) * safeDuration);
+		player.seek(((event.clientX - bounds.left) / bounds.width) * player.duration);
 	};
 	const seekFromClick = (event: React.MouseEvent<HTMLDivElement>) => {
-		if (!safeDuration) return;
+		if (!player.duration) return;
 		const bounds = event.currentTarget.getBoundingClientRect();
 		if (!bounds.width) return;
-		seek(((event.clientX - bounds.left) / bounds.width) * safeDuration);
+		player.seek(((event.clientX - bounds.left) / bounds.width) * player.duration);
 	};
 
 	return (
 		<div className="audio-waveform-player">
 			<audio
 				aria-hidden="true"
-				onDurationChange={(event) => {
-					const next = event.currentTarget.duration;
-					if (Number.isFinite(next) && next > 0) setDuration(next);
-				}}
-				onEnded={() => setPlaying(false)}
-				onPause={() => setPlaying(false)}
-				onPlay={() => setPlaying(true)}
-				onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+				{...player.mediaEvents}
 				preload="metadata"
-				ref={audioRef}
+				ref={player.audioRef}
 				src={props.src}
 			/>
 			<Button
-				aria-label={`${playing ? 'Pause' : 'Play'} ${props.name}`}
+				aria-label={`${player.playing ? 'Pause' : 'Play'} ${props.name}`}
 				className="audio-waveform-play"
-				onClick={togglePlayback}
+				onClick={player.togglePlayback}
 				size="custom"
 			>
-				{playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+				{player.playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
 			</Button>
 			<div className="audio-waveform-main">
 				<div className="audio-waveform-meta">
 					<span>
-						{formatAudioTime(currentTime)} / {formatAudioTime(safeDuration)}
+						{formatAudioTime(player.currentTime)} / {formatAudioTime(player.duration)}
 					</span>
 					<small aria-live="polite">
-						{status === 'idle'
+						{player.status === 'idle'
 							? 'Play to load waveform'
-							: status === 'loading'
+							: player.status === 'loading'
 							? 'Reading waveform…'
-							: status === 'unavailable'
+							: player.status === 'unavailable'
 							? 'Waveform unavailable'
 							: 'Drag to seek'}
 					</small>
@@ -184,7 +61,7 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 						className="audio-waveform-track"
 						onClick={seekFromClick}
 						onPointerDown={(event) => {
-							if (!safeDuration) return;
+							if (!player.duration) return;
 							draggingRef.current = true;
 							event.currentTarget.setPointerCapture(event.pointerId);
 							seekFromPointer(event);
@@ -199,65 +76,64 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 							}
 						}}
 					>
-						{status === 'ready' ? (
+						{player.status === 'ready' ? (
 							<>
 								<div aria-hidden="true" className="audio-waveform-bars">
-									{peaks.map((peak, index) => (
+									{player.peaks.map((peak, index) => (
 										<i key={index} style={{ height: `${Math.round(peak * 100)}%` }} />
 									))}
 								</div>
 								<div
 									aria-hidden="true"
 									className="audio-waveform-bars is-played"
-									style={{ clipPath: `inset(0 ${Math.max(0, (1 - progress) * 100)}% 0 0)` }}
+									style={{ clipPath: `inset(0 ${Math.max(0, (1 - player.progress) * 100)}% 0 0)` }}
 								>
-									{peaks.map((peak, index) => (
+									{player.peaks.map((peak, index) => (
 										<i key={index} style={{ height: `${Math.round(peak * 100)}%` }} />
 									))}
 								</div>
 							</>
 						) : (
-							<div aria-hidden="true" className={`audio-waveform-placeholder is-${status}`} />
+							<div aria-hidden="true" className={`audio-waveform-placeholder is-${player.status}`} />
 						)}
 						<span
 							aria-hidden="true"
 							className="audio-waveform-playhead"
-							style={{ left: `${progress * 100}%` }}
+							style={{ left: `${player.progress * 100}%` }}
 						/>
 						<RangeInput
 							aria-label={`${props.name} timeline`}
-							aria-valuetext={`${formatAudioTime(currentTime)} of ${formatAudioTime(safeDuration)}`}
+							aria-valuetext={`${formatAudioTime(player.currentTime)} of ${formatAudioTime(
+								player.duration
+							)}`}
 							className="audio-waveform-range"
-							disabled={!safeDuration}
-							max={safeDuration || 1}
+							disabled={!player.duration}
+							max={player.duration || 1}
 							min={0}
-							onChange={(event) => seek(Number(event.target.value))}
+							onChange={(event) => player.seek(Number(event.target.value))}
 							onMouseDown={(event) => {
 								const bounds = event.currentTarget.getBoundingClientRect();
-								if (bounds.width) seek(((event.clientX - bounds.left) / bounds.width) * safeDuration);
+								if (bounds.width) {
+									player.seek(((event.clientX - bounds.left) / bounds.width) * player.duration);
+								}
 							}}
 							onKeyDown={(event) => {
-								const smallStep = event.shiftKey ? 15 : 5;
-								const next = {
-									ArrowLeft: currentTime - smallStep,
-									ArrowDown: currentTime - smallStep,
-									ArrowRight: currentTime + smallStep,
-									ArrowUp: currentTime + smallStep,
-									Home: 0,
-									End: safeDuration,
-									PageDown: currentTime - 30,
-									PageUp: currentTime + 30,
-								}[event.key];
+								const next = audioTimelineKeyTarget({
+									key: event.key,
+									shiftKey: event.shiftKey,
+									currentTime: player.currentTime,
+									duration: player.duration,
+								});
 								if (next === undefined) return;
 								event.preventDefault();
-								seek(next);
+								player.seek(next);
 							}}
 							step="0.01"
-							value={Math.min(currentTime, safeDuration || 1)}
+							value={Math.min(player.currentTime, player.duration || 1)}
 						/>
 						<div aria-hidden="true" className="audio-waveform-ticks">
-							{ticks.map((tick) => (
-								<span key={tick} style={{ left: `${(tick / safeDuration) * 100}%` }}>
+							{player.ticks.map((tick) => (
+								<span key={tick} style={{ left: `${(tick / player.duration) * 100}%` }}>
 									{formatAudioTime(tick)}
 								</span>
 							))}

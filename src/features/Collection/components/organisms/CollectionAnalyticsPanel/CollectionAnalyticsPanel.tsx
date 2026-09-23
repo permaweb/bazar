@@ -7,7 +7,7 @@ import type { Collection } from 'api/collections';
 import { LiveRegion } from 'components/atoms/LiveRegion';
 import { VisuallyHidden } from 'components/atoms/VisuallyHidden';
 
-import { CollectionLiveListingRow } from '../../../model/collection-market';
+import type { CollectionLiveListingRow } from '../../../model/collection-market';
 
 export default function CollectionAnalyticsPanel(props: {
 	collection: Collection;

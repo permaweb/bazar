@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
 import { History } from 'lucide-react';
 
-import { type Collection, collectionDisplayName } from 'api/collections';
+import type { Collection } from 'api/collections';
 
 import { Icon } from 'components/atoms/Icon';
 import { Pressable } from 'components/atoms/Pressable';
+
+import { collectionIdentity } from '../../../model/collection-market';
 
 export default function CollectionTabs(props: {
 	collection: Collection;
@@ -13,7 +15,7 @@ export default function CollectionTabs(props: {
 	onSelectOffers?(): void;
 }) {
 	return (
-		<nav className="collection-tabs" aria-label={`${collectionDisplayName(props.collection)} views`}>
+		<nav className="collection-tabs" aria-label={`${collectionIdentity(props.collection).name} views`}>
 			{props.onSelectAssets ? (
 				<Pressable
 					aria-current={props.active === 'assets' ? 'page' : undefined}

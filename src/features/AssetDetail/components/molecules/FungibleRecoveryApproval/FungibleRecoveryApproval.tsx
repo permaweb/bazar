@@ -1,0 +1,59 @@
+import type { AssetState, OrderFill } from 'api/marketplace';
+
+import { ArCurrencyLabel } from 'components/atoms/ArCurrencyLabel';
+import { Button } from 'components/atoms/Button';
+import { winstonToArDecimal } from 'helpers/ar-units';
+
+import { batchPurchaseRecoveryApprovalCopy, batchPurchaseRecoveryApprovalCount } from '../../../model/fungible-batch';
+import type { BatchEntry } from '../../../model/fungible-operation';
+import { fungiblePurchaseTotals } from '../../../model/fungible-operation-view';
+import { PurchaseRoute } from '../PurchaseRoute';
+
+export default function FungibleRecoveryApproval(props: {
+	entries: BatchEntry[];
+	fills: OrderFill[];
+	state: AssetState;
+	onContinue(): void;
+}) {
+	const copy = batchPurchaseRecoveryApprovalCopy(props.entries);
+	const totals = fungiblePurchaseTotals(props.fills.map((fill) => fill.order));
+	return (
+		<div className="recovery-approval">
+			<div>
+				<h3>{copy.title}</h3>
+				<p>{copy.detail}</p>
+			</div>
+			<div className="batch-quote">
+				<div>
+					<span>Listings</span>
+					<strong>{props.fills.length}</strong>
+				</div>
+				<div>
+					<span>Sellers</span>
+					<strong>{totals.sellers}</strong>
+				</div>
+				<div>
+					<span>Seller subtotal</span>
+					<strong>
+						{winstonToArDecimal(totals.asking.toString())} <ArCurrencyLabel />
+					</strong>
+				</div>
+				<div>
+					<span>New approvals</span>
+					<strong>{batchPurchaseRecoveryApprovalCount(props.entries)}</strong>
+				</div>
+			</div>
+			<PurchaseRoute fills={props.fills} state={props.state} />
+			<Button
+				className="wide"
+				data-dialog-initial
+				onClick={() => props.onContinue()}
+				type="button"
+				size="custom"
+				variant="primary"
+			>
+				{copy.action}
+			</Button>
+		</div>
+	);
+}

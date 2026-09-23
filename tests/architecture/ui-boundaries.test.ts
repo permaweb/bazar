@@ -14,30 +14,6 @@ const PRESENTATION = [
 	/^src\/views\//,
 ];
 
-// Temporary: components whose orchestration has not moved into hooks yet. Delete each entry as it migrates; the
-// architecture migration is complete only when this list is empty.
-const PENDING_ORCHESTRATION_MIGRATION = [
-	'src/features/AssetDetail/components/molecules/FungiblePurchaseComposer/',
-
-	'src/features/AssetDetail/components/molecules/SetProfilePictureButton/',
-
-	'src/features/AssetDetail/components/organisms/AssetDetail/',
-
-	'src/features/AssetDetail/components/organisms/AssetDetailLoadingShell/',
-
-	'src/features/AssetDetail/components/organisms/AudioWaveformPlayer/',
-
-	'src/features/AssetDetail/components/organisms/FungibleAssetView/',
-
-	'src/features/AssetDetail/components/organisms/FungibleOperationDialog/',
-
-	'src/features/AssetDetail/components/organisms/PendingAssetDetail/',
-
-	'src/features/Collection/components/',
-
-
-];
-
 export function runtimeApiImports(fileName: string, sourceText: string): string[] {
 	const source = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 	const offenders: string[] = [];
@@ -82,7 +58,6 @@ describe('presentation boundaries', () => {
 		const offenders = sourceFiles().flatMap((file) => {
 			const relative = path.relative(process.cwd(), file).split(path.sep).join('/');
 			if (!PRESENTATION.some((pattern) => pattern.test(relative))) return [];
-			if (PENDING_ORCHESTRATION_MIGRATION.some((prefix) => relative.startsWith(prefix))) return [];
 			return runtimeApiImports(relative, readFileSync(file, 'utf8')).map(
 				(specifier) => `${relative} ${specifier}`
 			);
