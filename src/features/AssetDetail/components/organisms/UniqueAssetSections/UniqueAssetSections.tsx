@@ -20,7 +20,11 @@ import { isAudioContentType } from 'helpers/asset-media';
 import { formatAudioDuration } from 'helpers/audio-metadata';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
+import { audioArtworkLabel, stateVerificationCopy } from '../../../model/asset-detail';
 import type { AssetActivityFeedView } from '../../../model/asset-detail-activity';
 import type { UniqueAssetView } from '../../../model/unique-asset-view';
 import { type AssetDetailTab, AssetDetailTabs } from '../../molecules/AssetDetailTabs';
@@ -32,44 +36,46 @@ const UniquePriceChart = React.lazy(() =>
 	import('../TokenPriceChart').then(({ TokenPriceChart }) => ({ default: TokenPriceChart }))
 );
 
-const UNIQUE_ASSET_TABS: AssetDetailTab<UniqueAssetSection>[] = [
-	{
-		value: 'about',
-		label: 'About',
-		icon: <Icon icon={Info} />,
-		panelId: 'asset-about',
-	},
-	{
-		value: 'orders',
-		label: 'Orders',
-		icon: <Icon icon={Layers3} />,
-		panelId: 'asset-orders',
-	},
-	{
-		value: 'activity',
-		label: 'Activity',
-		icon: <Icon icon={BarChart3} />,
-		panelId: 'asset-activity',
-	},
-	{
-		value: 'rights',
-		label: 'Usage rights',
-		icon: <Icon icon={FileText} />,
-		panelId: 'asset-rights',
-	},
-	{
-		value: 'blockchain',
-		label: 'Blockchain',
-		icon: <Icon icon={Grid2X2} />,
-		panelId: 'asset-blockchain',
-	},
-	{
-		value: 'more',
-		label: 'More',
-		icon: <Icon icon={Images} />,
-		panelId: 'asset-more',
-	},
-];
+function uniqueAssetTabs(messages: AssetDetailMessages): AssetDetailTab<UniqueAssetSection>[] {
+	return [
+		{
+			value: 'about',
+			label: messages.uniqueTabAbout,
+			icon: <Icon icon={Info} />,
+			panelId: 'asset-about',
+		},
+		{
+			value: 'orders',
+			label: messages.uniqueTabOrders,
+			icon: <Icon icon={Layers3} />,
+			panelId: 'asset-orders',
+		},
+		{
+			value: 'activity',
+			label: messages.uniqueTabActivity,
+			icon: <Icon icon={BarChart3} />,
+			panelId: 'asset-activity',
+		},
+		{
+			value: 'rights',
+			label: messages.uniqueTabRights,
+			icon: <Icon icon={FileText} />,
+			panelId: 'asset-rights',
+		},
+		{
+			value: 'blockchain',
+			label: messages.uniqueTabBlockchain,
+			icon: <Icon icon={Grid2X2} />,
+			panelId: 'asset-blockchain',
+		},
+		{
+			value: 'more',
+			label: messages.uniqueTabMore,
+			icon: <Icon icon={Images} />,
+			panelId: 'asset-more',
+		},
+	];
+}
 
 export default function UniqueAssetSections(props: {
 	active: UniqueAssetSection;
@@ -92,15 +98,16 @@ export default function UniqueAssetSections(props: {
 	onAskLoadMore(): void;
 	onPrefetchAsset(assetId: string): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const order = props.view.order;
 	return (
 		<>
 			<AssetDetailTabs<UniqueAssetSection>
 				active={props.active}
-				ariaLabel="Asset detail sections"
+				ariaLabel={messages.uniqueSectionsAriaLabel}
 				idPrefix="asset"
 				onChange={props.onChange}
-				tabs={UNIQUE_ASSET_TABS}
+				tabs={uniqueAssetTabs(messages)}
 			/>
 			{props.active === 'about' ? (
 				<section
@@ -113,28 +120,30 @@ export default function UniqueAssetSections(props: {
 					<p className="asset-description">{props.view.description}</p>
 					<div className="asset-detail-facts">
 						<div>
-							<span>Asset type</span>
-							<strong>{props.asset.contentType ?? props.state.device ?? 'process'}</strong>
+							<span>{messages.uniqueFactAssetType}</span>
+							<strong>
+								{props.asset.contentType ?? props.state.device ?? messages.uniqueContentTypeProcess}
+							</strong>
 						</div>
 						<div>
-							<span>Supply</span>
+							<span>{messages.uniqueFactSupply}</span>
 							<strong>1</strong>
 						</div>
 						{props.asset.artist ? (
 							<div>
-								<span>Artist</span>
+								<span>{messages.uniqueFactArtist}</span>
 								<strong>{props.asset.artist}</strong>
 							</div>
 						) : null}
 						{props.asset.album ? (
 							<div>
-								<span>Album</span>
+								<span>{messages.uniqueFactAlbum}</span>
 								<strong>{props.asset.album}</strong>
 							</div>
 						) : null}
 						{props.asset.duration ? (
 							<div>
-								<span>Duration</span>
+								<span>{messages.uniqueFactDuration}</span>
 								<strong>{formatAudioDuration(props.asset.duration)}</strong>
 							</div>
 						) : null}
@@ -149,7 +158,7 @@ export default function UniqueAssetSections(props: {
 					role="tabpanel"
 					tabIndex={0}
 				>
-					<React.Suspense fallback={<Loading label="Preparing ask history…" />}>
+					<React.Suspense fallback={<Loading label={messages.uniquePreparingAskHistory} />}>
 						<UniquePriceChart
 							error={props.asks.error}
 							floorValue={props.view.floorValue}
@@ -163,40 +172,49 @@ export default function UniqueAssetSections(props: {
 							ticker={props.asset.name}
 						/>
 					</React.Suspense>
-					<div aria-label={`${props.asset.name} order book`} className="orderbook-table" role="table">
+					<div
+						aria-label={formatMessage(messages.uniqueOrderBookLabel, { name: props.asset.name })}
+						className="orderbook-table"
+						role="table"
+					>
 						<div className="orderbook-head" role="row">
-							<span role="columnheader">Price</span>
-							<span role="columnheader">Quantity</span>
-							<span role="columnheader">Seller</span>
-							<span role="columnheader">Status</span>
+							<span role="columnheader">{messages.uniqueOrderColumnPrice}</span>
+							<span role="columnheader">{messages.uniqueOrderColumnQuantity}</span>
+							<span role="columnheader">{messages.uniqueOrderColumnSeller}</span>
+							<span role="columnheader">{messages.uniqueOrderColumnStatus}</span>
 						</div>
 						{order ? (
 							<div className="orderbook-row" role="row">
-								<strong data-label="Price" role="cell">
+								<strong data-label={messages.uniqueOrderColumnPrice} role="cell">
 									{winstonToAr(order.asking)} <ArCurrencyLabel />
 								</strong>
-								<span data-label="Quantity" role="cell">
+								<span data-label={messages.uniqueOrderColumnQuantity} role="cell">
 									{order.quantity}
 								</span>
-								<span data-label="Seller" role="cell">
-									<WalletAddress address={order.creator} label="seller" />
+								<span data-label={messages.uniqueOrderColumnSeller} role="cell">
+									<WalletAddress
+										address={order.creator}
+										label={messages.assetDetailWalletLabelSeller}
+									/>
 								</span>
-								<span className={`order-status ${order.status}`} data-label="Status" role="cell">
+								<span
+									className={`order-status ${order.status}`}
+									data-label={messages.uniqueOrderColumnStatus}
+									role="cell"
+								>
 									{order.status}
 								</span>
 							</div>
 						) : (
 							<div className="orderbook-empty" role="row">
 								<div aria-colspan={4} className="orderbook-empty-cell" role="cell">
-									<strong>No open asks</strong>
-									<span>This asset is not currently listed.</span>
+									<strong>{messages.uniqueNoOpenAsks}</strong>
+									<span>{messages.uniqueNotCurrentlyListed}</span>
 								</div>
 							</div>
 						)}
 					</div>
-					<p className="market-note">
-						Computed from the last loaded asset process state through the selected AO transport.
-					</p>
+					<p className="market-note">{messages.uniqueOrdersNote}</p>
 				</section>
 			) : null}
 			{props.active === 'activity' ? (
@@ -209,7 +227,7 @@ export default function UniqueAssetSections(props: {
 				>
 					{order ? (
 						<div className="asset-history-current">
-							<span>Current ask</span>
+							<span>{messages.uniqueCurrentAsk}</span>
 							<strong>
 								{winstonToAr(order.asking)} <ArCurrencyLabel />
 							</strong>
@@ -219,20 +237,20 @@ export default function UniqueAssetSections(props: {
 						<Loading
 							label={
 								props.activity.events.length
-									? 'Refreshing market history…'
-									: 'Reading indexed market history…'
+									? messages.uniqueRefreshingHistory
+									: messages.uniqueReadingHistory
 							}
 						/>
 					) : null}
 					{props.activity.error ? (
-						<RetryNotice onRetry={props.onActivityRetry}>
-							Compute hasn’t completed yet. Please try again.{' '}
-							{props.activity.events.length ? 'Previously loaded events remain visible.' : ''}
+						<RetryNotice onRetry={props.onActivityRetry} retryLabel={messages.uniqueActivityRetryLabel}>
+							{messages.uniqueActivityRetry}{' '}
+							{props.activity.events.length ? messages.uniqueActivityRetryPrevious : ''}
 						</RetryNotice>
 					) : null}
 					{props.activity.events.length ? (
 						<DeferredMarketActivityList
-							ariaLabel={`${props.asset.name} market activity`}
+							ariaLabel={formatMessage(messages.uniqueMarketActivityLabel, { name: props.asset.name })}
 							collectionId={props.collection.id}
 							events={props.activity.events}
 							loading={props.activity.loading || props.activity.loadingMore}
@@ -241,14 +259,19 @@ export default function UniqueAssetSections(props: {
 						/>
 					) : null}
 					{!props.activity.loading && !props.activity.error && !props.activity.events.length ? (
-						<p className="asset-empty-copy">No indexed market events found.</p>
+						<p className="asset-empty-copy">{messages.uniqueNoMarketEvents}</p>
 					) : null}
 					<div className="asset-market-activity-footer">
 						<p className="market-note">
 							{props.activity.totalCount === null
-								? `${props.activity.events.length.toLocaleString()} indexed process submissions loaded.`
-								: `${props.activity.events.length.toLocaleString()} of ${props.activity.totalCount.toLocaleString()} indexed process submissions loaded.`}{' '}
-							Live ownership and orders above remain authoritative.
+								? formatMessage(messages.uniqueSubmissionsLoaded, {
+										loaded: props.activity.events.length.toLocaleString(),
+								  })
+								: formatMessage(messages.uniqueSubmissionsLoadedOfTotal, {
+										loaded: props.activity.events.length.toLocaleString(),
+										total: props.activity.totalCount.toLocaleString(),
+								  })}{' '}
+							{messages.uniqueLiveOrdersAuthoritative}
 						</p>
 						{props.activity.hasNextPage ? (
 							<Button
@@ -257,7 +280,9 @@ export default function UniqueAssetSections(props: {
 								size="custom"
 								type="button"
 							>
-								{props.activity.loadingMore ? 'Loading older activity…' : 'Load older activity'}
+								{props.activity.loadingMore
+									? messages.uniqueLoadingOlderActivity
+									: messages.uniqueLoadOlderActivity}
 							</Button>
 						) : null}
 					</div>
@@ -280,10 +305,10 @@ export default function UniqueAssetSections(props: {
 								</div>
 							))}
 							<div className="license-proof">
-								<dt>Proof</dt>
+								<dt>{messages.uniqueLicenseProof}</dt>
 								<dd>
 									<a href={transactionExplorerUrl(props.asset.id)} target="_blank" rel="noreferrer">
-										View license proof on ViewBlock <Icon icon={ArrowUpRight} size="xs" />
+										{messages.uniqueLicenseProofLink} <Icon icon={ArrowUpRight} size="xs" />
 									</a>
 								</dd>
 							</div>
@@ -294,14 +319,12 @@ export default function UniqueAssetSections(props: {
 								<Icon icon={Diamond} />
 							</span>
 							<div>
-								<strong>No UDL terms declared</strong>
-								<p>This process does not publish Universal Data License properties.</p>
+								<strong>{messages.uniqueLicenseEmptyTitle}</strong>
+								<p>{messages.uniqueLicenseEmptyDetail}</p>
 							</div>
 						</div>
 					)}
-					<p className="market-note">
-						Declared terms and effective UDL 0.2 defaults are derived from immutable process metadata.
-					</p>
+					<p className="market-note">{messages.uniqueLicenseNote}</p>
 				</section>
 			) : null}
 			{props.active === 'blockchain' ? (
@@ -312,12 +335,13 @@ export default function UniqueAssetSections(props: {
 					role="tabpanel"
 					tabIndex={0}
 				>
-					<div className="asset-token-tags" aria-label="Asset protocol details">
+					<div className="asset-token-tags" aria-label={messages.uniqueProtocolDetails}>
 						<span>{props.state.device || 'token@1.0'}</span>
-						<span>Arweave</span>
-						<span>Supply 1</span>
+						<span>{messages.uniqueProtocolNetwork}</span>
+						<span>{messages.uniqueProtocolSupply}</span>
 					</div>
 					<StateVerification
+						labels={stateVerificationCopy(messages)}
 						provider={props.provider}
 						verifiedAt={props.verifiedAt}
 						refreshing={props.stateRefreshing}
@@ -325,7 +349,7 @@ export default function UniqueAssetSections(props: {
 					/>
 					<dl className="asset-blockchain-details">
 						<div>
-							<dt>Process ID</dt>
+							<dt>{messages.uniqueBlockchainProcessId}</dt>
 							<dd>
 								<a href={transactionExplorerUrl(props.asset.id)} target="_blank" rel="noreferrer">
 									{short(props.asset.id)} <Icon icon={ArrowUpRight} size="xs" />
@@ -333,22 +357,27 @@ export default function UniqueAssetSections(props: {
 							</dd>
 						</div>
 						<div>
-							<dt>Network</dt>
-							<dd>Arweave</dd>
+							<dt>{messages.uniqueBlockchainNetwork}</dt>
+							<dd>{messages.uniqueProtocolNetwork}</dd>
 						</div>
 						<div>
-							<dt>Execution</dt>
+							<dt>{messages.uniqueBlockchainExecution}</dt>
 							<dd>{props.state.device || 'token@1.0'}</dd>
 						</div>
 						<div>
-							<dt>Settlement</dt>
+							<dt>{messages.uniqueBlockchainSettlement}</dt>
 							<dd>
 								<ArCurrencyLabel />
 							</dd>
 						</div>
 						<div>
-							<dt>Content type</dt>
-							<dd>{props.asset.contentType ?? (props.asset.image ? 'image' : 'process')}</dd>
+							<dt>{messages.uniqueBlockchainContentType}</dt>
+							<dd>
+								{props.asset.contentType ??
+									(props.asset.image
+										? messages.uniqueContentTypeImage
+										: messages.uniqueContentTypeProcess)}
+							</dd>
 						</div>
 					</dl>
 				</section>
@@ -371,9 +400,17 @@ export default function UniqueAssetSections(props: {
 								onTouchStart={() => props.onPrefetchAsset(item.id)}
 							>
 								{item.image ? (
-									<ArtworkImage src={item.image} alt="" />
+									<ArtworkImage
+										src={item.image}
+										alt=""
+										unavailableLabel={messages.assetDetailArtworkUnavailable}
+									/>
 								) : isAudioContentType(item.contentType) ? (
-									<AudioArtwork contentType={item.contentType} name={item.name} />
+									<AudioArtwork
+										contentType={item.contentType}
+										label={audioArtworkLabel(item, messages)}
+										typeLabel={messages.assetDetailAudioArtworkType}
+									/>
 								) : (
 									<span>{item.name.slice(0, 1)}</span>
 								)}

@@ -5,6 +5,7 @@ import { signedDispatchFailure } from 'api/transactions/adapter';
 import { purchaseStateFailure } from 'api/transactions/failure';
 
 import { appErrorMessage, toAppError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 const REGISTRATION_ID = 'R'.repeat(43);
 const PAYMENT_ID = 'P'.repeat(43);
@@ -42,7 +43,7 @@ describe('signed transaction dispatch failures', () => {
 			retryable: false,
 			detail: { transactionId: PAYMENT_ID },
 		});
-		expect(appErrorMessage(toAppError(failure, 'unknown'))).not.toContain('socket');
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, toAppError(failure, 'unknown'))).not.toContain('socket');
 	});
 
 	it('returns a caller abort unchanged', () => {

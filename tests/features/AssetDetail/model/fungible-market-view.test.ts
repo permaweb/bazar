@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import type { Collection } from 'api/collections';
 import type { AssetState, SwapOrder } from 'api/marketplace';
 
+import { ASSET_DETAIL_MESSAGES } from 'features/AssetDetail/messages';
 import {
 	fungibleListingDraft,
 	fungibleMarketView,
 	fungibleTokenIdentity,
 } from 'features/AssetDetail/model/fungible-market-view';
+import { formatMessage } from 'helpers/i18n';
+
+const messages = ASSET_DETAIL_MESSAGES.en;
 
 const SELLER = 's'.repeat(43);
 const OTHER = 'c'.repeat(43);
@@ -118,7 +122,7 @@ describe('fungible token identity', () => {
 			kind: 'tokens',
 			assets: [],
 		} satisfies Collection;
-		expect(fungibleTokenIdentity(state(), collection)).toMatchObject({
+		expect(fungibleTokenIdentity(state(), collection, messages)).toMatchObject({
 			ticker: 'TEST',
 			tickerDisplay: '$TEST',
 			collectionName: 'Tokens',
@@ -127,15 +131,16 @@ describe('fungible token identity', () => {
 
 		const identity = fungibleTokenIdentity(
 			state({ ticker: '', raw: { description: 'Process copy.' } }),
-			collection
+			collection,
+			messages
 		);
-		expect(identity).toMatchObject({ ticker: 'Token', description: 'Process copy.' });
+		expect(identity).toMatchObject({ ticker: messages.validationDefaultTicker, description: 'Process copy.' });
 	});
 });
 
 describe('fungible listing draft', () => {
 	it('accepts a lot within the liquid balance and quotes its AR total', () => {
-		expect(fungibleListingDraft('10', '0.5', state(), '5000')).toEqual({
+		expect(fungibleListingDraft('10', '0.5', state(), '5000', messages)).toEqual({
 			quantityError: '',
 			unitPriceError: '',
 			quote: '5',
@@ -144,16 +149,18 @@ describe('fungible listing draft', () => {
 	});
 
 	it('explains malformed amounts, oversized lots, and invalid prices', () => {
-		expect(fungibleListingDraft('1.005', '0.5', state(), '5000').quantityError).toContain(
+		expect(fungibleListingDraft('1.005', '0.5', state(), '5000', messages).quantityError).toContain(
 			'no more than 2 decimal places'
 		);
-		expect(fungibleListingDraft('60', '0.5', state(), '5000').quantityError).toBe('You can list up to 50 $TEST.');
-		expect(fungibleListingDraft('10', '0', state(), '5000')).toMatchObject({
-			unitPriceError: 'Enter a positive AR price with no more than 12 decimal places.',
+		expect(fungibleListingDraft('60', '0.5', state(), '5000', messages).quantityError).toBe(
+			formatMessage(messages.validationListUpTo, { amount: '50 $TEST' })
+		);
+		expect(fungibleListingDraft('10', '0', state(), '5000', messages)).toMatchObject({
+			unitPriceError: messages.validationArPrice,
 			quote: null,
 			ready: false,
 		});
-		expect(fungibleListingDraft('', '', state(), '5000')).toEqual({
+		expect(fungibleListingDraft('', '', state(), '5000', messages)).toEqual({
 			quantityError: '',
 			unitPriceError: '',
 			quote: null,

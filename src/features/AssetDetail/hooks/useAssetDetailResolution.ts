@@ -6,8 +6,10 @@ import { loadBazarAtomicAssetById } from 'api/discovery';
 import { toAppError } from 'helpers/app-error';
 import { asyncData, type AsyncState, IDLE } from 'helpers/async-state';
 import { scheduleIdleTask } from 'helpers/idle';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../messages';
 import {
 	assetDetailErrorMessage,
 	assetDetailHasIndexedLookup,
@@ -42,6 +44,7 @@ export type AssetDetailResolutionState = {
  * chunk is warmed as soon as the route looks like a token.
  */
 export function useAssetDetailResolution(collectionId: string, assetId: string): AssetDetailResolutionState {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const market = useMarketProvider();
 	const cachedAsset = React.useMemo(
 		() => loadAssetShellSnapshot(window.localStorage, assetId),
@@ -104,7 +107,12 @@ export function useAssetDetailResolution(collectionId: string, assetId: string):
 		state: live.state,
 		verifiedCollectionIds: market.verifiedCollectionIds,
 	});
-	const detailError = assetDetailErrorMessage(live.error, resolution.shellAsset, Boolean(sources.indexedAtomic));
+	const detailError = assetDetailErrorMessage(
+		live.error,
+		resolution.shellAsset,
+		Boolean(sources.indexedAtomic),
+		messages
+	);
 	const verifiedAsset = resolution.verifiedAsset;
 
 	React.useEffect(() => {
@@ -120,6 +128,7 @@ export function useAssetDetailResolution(collectionId: string, assetId: string):
 			resolution,
 			live,
 			detailError,
+			messages,
 		}),
 		live,
 		indexedCollection: sources.indexedCollection,

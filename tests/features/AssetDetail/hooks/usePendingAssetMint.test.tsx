@@ -44,7 +44,6 @@ const activity: MintActivity = {
 	arweaveGateway: 'https://arweave.net',
 	computeGateway: 'https://compute.example',
 	phase: 'accepted',
-	status: 'Accepted by Arweave',
 	createdAt: 10,
 };
 

@@ -11,8 +11,11 @@ import { Icon } from 'components/atoms/Icon';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { transactionExplorerUrl } from 'helpers/explorer';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useMarketActivityNow } from '../../../hooks/useMarketActivityNow';
+import { ACTIVITY_MESSAGES } from '../../../messages';
 import { marketActivityRow, shortActivityValue } from '../../../model/market-activity';
 import { CompactActivityAmount } from '../../molecules/CompactActivityAmount';
 
@@ -29,6 +32,7 @@ export default function MarketActivityList(props: {
 	resolveAsset(event: CollectionActivityEvent): AssetSummary | undefined;
 	resolveCollection?(event: CollectionActivityEvent): Pick<Collection, 'id' | 'name'> | undefined;
 }) {
+	const messages = useMessages(ACTIVITY_MESSAGES);
 	const now = useMarketActivityNow(props.events);
 	return (
 		<ul
@@ -41,6 +45,7 @@ export default function MarketActivityList(props: {
 				const asset = props.resolveAsset(event);
 				const row = marketActivityRow(event, {
 					now,
+					messages,
 					collection: props.resolveCollection?.(event),
 					collectionId: props.collectionId,
 					reservationState: props.reservationState,
@@ -49,11 +54,15 @@ export default function MarketActivityList(props: {
 				});
 				const headline = row.reservation ? (
 					<>
-						Reserved. Payment deadline at block {row.reservation.deadline.toLocaleString()}.
+						{formatMessage(messages.activityReservation, {
+							deadline: row.reservation.deadline.toLocaleString(),
+						})}
 						{row.reservation.expired ? (
 							<>
 								{' '}
-								<span className="activity-reservation-expired">(Expired)</span>
+								<span className="activity-reservation-expired">
+									{messages.activityReservationExpired}
+								</span>
 							</>
 						) : null}
 					</>
@@ -74,12 +83,12 @@ export default function MarketActivityList(props: {
 									</small>
 								) : null}
 							</div>
-							<CompactActivityAmount amount={row.amount || '—'} />
+							<CompactActivityAmount amount={row.amount || messages.activityAmountEmpty} />
 							<div className="activity-compact-actor">
 								{event.actor ? (
-									<WalletAddress address={event.actor} label="actor" />
+									<WalletAddress address={event.actor} label={messages.activityActorAddress} />
 								) : (
-									<span>Unknown</span>
+									<span>{messages.activityActorUnknown}</span>
 								)}
 							</div>
 							<Tooltip
@@ -146,11 +155,11 @@ export default function MarketActivityList(props: {
 						</div>
 						<div className="activity-meta">
 							<div className="activity-actor">
-								<span>Actor</span>
+								<span>{messages.activityActor}</span>
 								{event.actor ? (
-									<WalletAddress address={event.actor} label="actor" />
+									<WalletAddress address={event.actor} label={messages.activityActorAddress} />
 								) : (
-									<strong>Unknown</strong>
+									<strong>{messages.activityActorUnknown}</strong>
 								)}
 							</div>
 							<div className="activity-block">
@@ -174,7 +183,7 @@ export default function MarketActivityList(props: {
 										{row.transactionSummary}
 									</span>
 									<span className="activity-transaction-short" aria-hidden="true">
-										View transaction
+										{messages.activityViewTransaction}
 									</span>
 									<Icon icon={ArrowUpRight} size="xs" />
 								</a>

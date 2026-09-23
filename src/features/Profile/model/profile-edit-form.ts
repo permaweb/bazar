@@ -1,6 +1,7 @@
+import type { AppErrorMessages } from 'helpers/app-error';
 import type { ProfileSummary } from 'types/profile';
 
-import { PROFILE_SAVE_PREPARING_STATUS, profileImageError } from './profile';
+import { profileImageError } from './profile';
 
 /** Editing accepts changes and may show the last failure; saving locks the form behind the wallet status label. */
 export type ProfileEditSave = { status: 'editing'; error: string } | { status: 'saving'; label: string };
@@ -19,7 +20,8 @@ export type ProfileEditFormEvent =
 	| { type: 'avatar-selected'; file: File }
 	| { type: 'avatar-removed' }
 	| { type: 'drag-changed'; dragging: boolean }
-	| { type: 'save-started' }
+	/** Carries both resolved preparing labels so the reducer stays free of copy. */
+	| { type: 'save-started'; preparingLabel: string; preparingPictureLabel: string }
 	| { type: 'save-progressed'; label: string }
 	| { type: 'save-failed'; error: string };
 
@@ -37,7 +39,18 @@ export function profileEditFormState(profile: Pick<ProfileSummary, 'displayName'
  * The profile editor's form and save flow. Every control is disabled while a save is signing or publishing, so
  * edits arriving during a save are ignored rather than racing the wallet request; status updates arrive only then.
  */
-export function profileEditFormReducer(state: ProfileEditFormState, event: ProfileEditFormEvent): ProfileEditFormState {
+/** Binds the reducer to the resolved error copy so the reducer itself stays free of copy. */
+export function createProfileEditFormReducer(
+	errorMessages: AppErrorMessages
+): (state: ProfileEditFormState, event: ProfileEditFormEvent) => ProfileEditFormState {
+	return (state, event) => profileEditFormReducer(state, event, errorMessages);
+}
+
+export function profileEditFormReducer(
+	state: ProfileEditFormState,
+	event: ProfileEditFormEvent,
+	errorMessages: AppErrorMessages
+): ProfileEditFormState {
 	const saving = state.save.status === 'saving';
 	switch (event.type) {
 		case 'opened':
@@ -46,7 +59,7 @@ export function profileEditFormReducer(state: ProfileEditFormState, event: Profi
 			return saving ? state : { ...state, displayName: event.displayName };
 		case 'avatar-selected': {
 			if (saving) return state;
-			const error = profileImageError(event.file);
+			const error = profileImageError(event.file, errorMessages);
 			return {
 				...state,
 				avatarFile: error ? null : event.file,
@@ -63,7 +76,7 @@ export function profileEditFormReducer(state: ProfileEditFormState, event: Profi
 				...state,
 				save: {
 					status: 'saving',
-					label: state.avatarFile ? 'Preparing picture…' : PROFILE_SAVE_PREPARING_STATUS,
+					label: state.avatarFile ? event.preparingPictureLabel : event.preparingLabel,
 				},
 			};
 		case 'save-progressed':

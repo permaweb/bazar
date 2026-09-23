@@ -3,6 +3,7 @@ import {
 	DEFAULT_DISPATCH_BATCH_SIZE,
 	type DispatchCostEstimate,
 	type DispatchPlan,
+	type DispatchRowStatus,
 	estimateDispatchCost,
 	type ParsedHolderList,
 	parseHolderList,
@@ -18,40 +19,61 @@ import {
 } from 'api/marketplace';
 import type { FungibleOperationActivityChange } from 'api/operations';
 
-import { appErrorMessage, toAppError } from 'helpers/app-error';
+import { appErrorMessage, type AppErrorMessages, toAppError } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
+
+import type { DispatchMessages } from '../messages';
+import type { PluralFormatter } from '../types';
 
 export function shortAddress(address: string): string {
 	return `${address.slice(0, 6)}…${address.slice(-6)}`;
 }
 
 /** A human token amount with grouped whole digits and the token's ticker. */
-export function formatDispatchTokenAmount(raw: string, token: Pick<AssetState, 'denomination' | 'ticker'>): string {
+export function formatDispatchTokenAmount(
+	raw: string,
+	token: Pick<AssetState, 'denomination' | 'ticker'>,
+	messages: DispatchMessages
+): string {
 	const [whole, fraction] = formatTokenAmount(raw, token.denomination).split('.');
 	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${token.ticker || 'tokens'}`;
+	return `${fraction ? `${grouped}.${fraction}` : grouped} ${token.ticker || messages.dispatchTokenFallbackTicker}`;
 }
 
 /** Dispatch copy for an application error: holder-dispatch context for shared reasons, the shared table otherwise. */
-export function dispatchErrorMessage(cause: unknown): string {
+export function dispatchErrorMessage(
+	cause: unknown,
+	messages: DispatchMessages,
+	errorMessages: AppErrorMessages
+): string {
 	const error = toAppError(cause, 'dispatch-failed');
 	switch (error.reason) {
 		case ASSET_BALANCE_STATE_UNAVAILABLE:
-			return 'The configured AO routes did not return a complete holder balance table. Bazar did not sign a transfer. Retry after complete state is available; any saved dispatch progress remains available.';
+			return messages.dispatchErrorBalanceStateUnavailable;
 		case DISPLAY_STATE_TIMEOUT_ERROR:
-			return 'The configured AO routes did not return complete holder state within 45 seconds. No new transfer was signed; saved dispatch progress remains available.';
+			return messages.dispatchErrorStateTimeout;
 		case 'asset-state-timeout':
-			return 'Timed out waiting for settlement. Nothing was lost: posted transfers stay posted — resume to continue watching without re-sending.';
+			return messages.dispatchErrorSettlementTimeout;
 		case 'wallet-sign-unavailable':
-			return 'Connect an Arweave wallet extension that supports transaction signing.';
+			return messages.dispatchErrorWalletSignUnavailable;
 		case 'asset-purchase-insufficient-funds':
-			return 'Your AR balance cannot cover the transfer amounts plus network rewards.';
+			return messages.dispatchErrorInsufficientFunds;
 		case 'wallet-account-changed':
-			return 'The connected wallet changed mid-dispatch. Reconnect the wallet that started this dispatch and resume.';
+			return messages.dispatchErrorWalletAccountChanged;
 	}
-	return appErrorMessage(error);
+	return appErrorMessage(errorMessages, error);
 }
 
-export const DISPATCH_STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
+export function dispatchRowStatusLabel(status: DispatchRowStatus, messages: DispatchMessages): string {
+	switch (status) {
+		case 'unsent':
+			return messages.dispatchRowStatusUnsent;
+		case 'posted':
+			return messages.dispatchRowStatusPosted;
+		case 'settled':
+			return messages.dispatchRowStatusSettled;
+	}
+}
 
 export function tokenPagePath(processId: string): string {
 	return `/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${processId}`;
@@ -114,12 +136,19 @@ export function dispatchPlanProgress(plan: DispatchPlan | null, walletAddress: s
 
 export type DispatchActivityPhase = 'working' | 'done' | 'error';
 
-export function dispatchStartStatus(recipientCount: number): string {
-	return `Dispatching to ${recipientCount} holder${recipientCount === 1 ? '' : 's'}…`;
+export function dispatchStartStatus(
+	recipientCount: number,
+	messages: DispatchMessages,
+	plural: PluralFormatter
+): string {
+	return plural(messages.dispatchStartStatus, recipientCount);
 }
 
-export function dispatchProgressStatus(plan: DispatchPlan): string {
-	return `${dispatchPlanProgress(plan, null).settled} of ${plan.rows.length} settled`;
+export function dispatchProgressStatus(plan: DispatchPlan, messages: DispatchMessages): string {
+	return formatMessage(messages.dispatchProgressStatus, {
+		settled: dispatchPlanProgress(plan, null).settled,
+		total: plan.rows.length,
+	});
 }
 
 // Surface the run in the top-bar activity notifier the same as a buy/sell/
@@ -134,6 +163,7 @@ export function dispatchActivityChange(input: {
 	phase: DispatchActivityPhase;
 	status: string;
 	createdAt: number;
+	messages: DispatchMessages;
 }): FungibleOperationActivityChange {
 	const id = `fungible:${input.processId}:${input.sender}:dispatch`;
 	if (input.phase === 'done') return { type: 'remove', id, owner: input.sender };
@@ -143,14 +173,14 @@ export function dispatchActivityChange(input: {
 			id,
 			asset: {
 				id: input.processId,
-				name: input.token?.ticker || 'Token',
+				name: input.token?.ticker || input.messages.dispatchActivityFallbackName,
 				...(input.token?.ticker ? { ticker: input.token.ticker } : {}),
 			},
 			collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
 			owner: input.sender,
 			operationKind: 'transfer',
 			phase: input.phase,
-			status: input.status,
+			status: { text: input.status },
 			createdAt: input.createdAt,
 		},
 	};

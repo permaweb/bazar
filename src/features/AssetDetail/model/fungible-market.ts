@@ -9,12 +9,14 @@ import {
 
 import { formatArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { unitPriceWinston } from 'features/Catalogue';
-import { appError, appErrorMessage, toAppError } from 'helpers/app-error';
+import { appError, appErrorMessage, type AppErrorMessages, toAppError } from 'helpers/app-error';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 
 import type { TokenPricePoint } from '../components/organisms/TokenPriceChart';
+import type { AssetDetailMessages } from '../messages';
 
 export function fungiblePriceHistory(events: CollectionActivityEvent[], denomination: number): TokenPricePoint[] {
 	const scale = 10n ** BigInt(denomination);
@@ -50,7 +52,13 @@ export function fungiblePriceHistory(events: CollectionActivityEvent[], denomina
 	);
 }
 
-export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state: AssetState) {
+export function purchaseAmountMatch(
+	orders: SwapOrder[],
+	quantity: string,
+	state: AssetState,
+	messages: AssetDetailMessages,
+	errorMessages: AppErrorMessages
+) {
 	if (!quantity.trim()) return { match: null, error: '' };
 	try {
 		const atomic = parseTokenAmount(quantity, state.denomination);
@@ -59,10 +67,12 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 			match,
 			error: match
 				? ''
-				: `Only ${tokenLabel(
-						orders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
-						state
-				  )} is currently available.`,
+				: formatMessage(messages.validationOnlyAvailable, {
+						amount: tokenLabel(
+							orders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
+							state
+						),
+				  }),
 		};
 	} catch (cause) {
 		const failure = toAppError(cause, 'invalid-input');
@@ -70,18 +80,23 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 			match: null,
 			error:
 				failure.reason === 'order-match-search-limit'
-					? appErrorMessage(failure)
-					: `Enter a valid ${formatTickerLabel(state.ticker)} amount using no more than ${
-							state.denomination
-					  } decimal places.`,
+					? appErrorMessage(errorMessages, failure)
+					: formatMessage(messages.validationTokenAmount, {
+							ticker: formatTickerLabel(state.ticker, messages.validationDefaultTicker),
+							denomination: state.denomination,
+					  }),
 		};
 	}
 }
 
-export function fungiblePurchaseReceiptOptions(orders: SwapOrder[], state: AssetState) {
+export function fungiblePurchaseReceiptOptions(orders: SwapOrder[], state: AssetState, messages: AssetDetailMessages) {
 	return orders.map((order, index) => ({
 		value: order.orderId,
-		label: `Listing ${index + 1} · ${tokenLabel(order.quantity, state)} · ${short(order.creator)}`,
+		label: formatMessage(messages.receiptOptionLabel, {
+			index: index + 1,
+			quantity: tokenLabel(order.quantity, state),
+			seller: short(order.creator),
+		}),
 	}));
 }
 

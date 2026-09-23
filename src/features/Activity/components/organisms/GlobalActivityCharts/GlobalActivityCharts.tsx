@@ -4,8 +4,12 @@ import type { CollectionActivityEvent } from 'api/discovery';
 
 import { Loading } from 'components/atoms/Loading';
 import { VisuallyHidden } from 'components/atoms/VisuallyHidden';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ACTIVITY_MESSAGES, type ActivityMessages } from '../../../messages';
 import {
+	type ActivityChartPeriod,
 	chartHoverIndex,
 	formatActivityChartDate,
 	formatActivityChartValue,
@@ -13,7 +17,8 @@ import {
 	globalActivityChartStats,
 } from '../../../model/activity-chart';
 
-function useChartInteraction(values: number[], label: string, starts: number[]) {
+function useChartInteraction(values: number[], label: string, description: string, starts: number[]) {
+	const messages = useMessages(ACTIVITY_MESSAGES);
 	const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
 	const selectedValue = hoveredIndex === null ? undefined : values[hoveredIndex];
 	const selectedDate = hoveredIndex === null ? undefined : starts[hoveredIndex];
@@ -28,10 +33,12 @@ function useChartInteraction(values: number[], label: string, starts: number[]) 
 		interactionProps: {
 			'aria-label':
 				selectedDate === undefined || selectedValue === undefined
-					? `${label} over time. Focus and use arrow keys to inspect values.`
-					: `${formatActivityChartDate(
-							selectedDate
-					  )}: ${selectedValue.toLocaleString()} ${label.toLowerCase()}.`,
+					? formatMessage(messages.chartOverview, { label })
+					: formatMessage(messages.chartValue, {
+							date: formatActivityChartDate(selectedDate),
+							value: selectedValue.toLocaleString(),
+							label: description,
+					  }),
 			onBlur: () => setHoveredIndex(null),
 			onFocus: () => {
 				if (values.length) {
@@ -74,7 +81,7 @@ function ChartTooltip(props: { x: number; y: number; date: number; value: number
 	);
 }
 
-function BarChart(props: { values: number[]; starts: number[]; label: string; unit: string }) {
+function BarChart(props: { values: number[]; starts: number[]; label: string; description: string; unit: string }) {
 	const max = Math.max(1, ...props.values);
 	const gap = 3;
 	const width = props.values.length ? (300 - gap * (props.values.length - 1)) / props.values.length : 300;
@@ -82,6 +89,7 @@ function BarChart(props: { values: number[]; starts: number[]; label: string; un
 	const { hoveredIndex, selectedDate, selectedValue, interactionProps } = useChartInteraction(
 		props.values,
 		props.label,
+		props.description,
 		props.starts
 	);
 	const crosshairX = hoveredIndex === null ? undefined : hoveredIndex * (width + gap) + width / 2;
@@ -122,7 +130,7 @@ function BarChart(props: { values: number[]; starts: number[]; label: string; un
 	);
 }
 
-function LineChart(props: { values: number[]; starts: number[]; label: string; unit: string }) {
+function LineChart(props: { values: number[]; starts: number[]; label: string; description: string; unit: string }) {
 	const points = props.values.length ? props.values : [0];
 	const max = Math.max(1, ...points);
 	const coordinates = points.map((value, index) => {
@@ -134,6 +142,7 @@ function LineChart(props: { values: number[]; starts: number[]; label: string; u
 	const { hoveredIndex, selectedDate, selectedValue, interactionProps } = useChartInteraction(
 		props.values,
 		props.label,
+		props.description,
 		props.starts
 	);
 	const selectedPoint = hoveredIndex === null ? undefined : coordinates[hoveredIndex];
@@ -209,63 +218,87 @@ export default function GlobalActivityCharts(props: {
 	loading?: boolean;
 	unavailable?: boolean;
 }) {
+	const messages = useMessages(ACTIVITY_MESSAGES);
 	const stats = React.useMemo(
 		() => props.stats ?? globalActivityChartStats(props.events ?? []),
 		[props.events, props.stats]
 	);
 	const latest = stats.buckets.at(-1);
 	const starts = stats.buckets.map((bucket) => bucket.start);
+	const period = activityChartPeriodLabel(stats.period, messages);
 	if (props.loading || props.unavailable)
 		return (
-			<section aria-label="Global market statistics" className="global-activity-stats">
-				{['Events', 'Listings submitted', 'Market participants'].map((label) => (
-					<article className="global-activity-stat global-activity-stat-pending" key={label}>
+			<section aria-label={messages.globalStats} className="global-activity-stats">
+				{[
+					{ label: messages.statEvents, loading: messages.statEventsLoading },
+					{ label: messages.statListings, loading: messages.statListingsLoading },
+					{ label: messages.statParticipants, loading: messages.statParticipantsLoading },
+				].map((stat) => (
+					<article className="global-activity-stat global-activity-stat-pending" key={stat.label}>
 						<div className="global-activity-stat-copy">
-							<h3>{label}</h3>
+							<h3>{stat.label}</h3>
 						</div>
-						{props.loading ? <Loading label={`Loading ${label.toLowerCase()}…`} /> : <p>Unavailable</p>}
+						{props.loading ? <Loading label={stat.loading} /> : <p>{messages.statUnavailable}</p>}
 					</article>
 				))}
 			</section>
 		);
 	return (
-		<section aria-label="Global market statistics" className="global-activity-stats">
+		<section aria-label={messages.globalStats} className="global-activity-stats">
 			<StatCard
-				label="Events"
-				meta={`${latest?.events.toLocaleString() ?? 0} in the latest interval · ${stats.period}`}
+				label={messages.statEvents}
+				meta={formatMessage(messages.statLatestInterval, {
+					count: latest?.events.toLocaleString() ?? 0,
+					period,
+				})}
 				value={stats.events}
 			>
 				<BarChart
-					label="Events"
+					description={messages.statEventsDescription}
+					label={messages.statEvents}
 					starts={starts}
-					unit="events"
+					unit={messages.statEventsUnit}
 					values={stats.buckets.map((bucket) => bucket.events)}
 				/>
 			</StatCard>
 			<StatCard
-				label="Listings submitted"
-				meta={`${latest?.listings.toLocaleString() ?? 0} in the latest interval · ${stats.period}`}
+				label={messages.statListings}
+				meta={formatMessage(messages.statLatestInterval, {
+					count: latest?.listings.toLocaleString() ?? 0,
+					period,
+				})}
 				value={stats.listings}
 			>
 				<BarChart
-					label="Listings submitted"
+					description={messages.statListingsDescription}
+					label={messages.statListings}
 					starts={starts}
-					unit="listings"
+					unit={messages.statListingsUnit}
 					values={stats.buckets.map((bucket) => bucket.listings)}
 				/>
 			</StatCard>
 			<StatCard
-				label="Market participants"
-				meta={`Unique signing wallets · ${stats.period}`}
+				label={messages.statParticipants}
+				meta={formatMessage(messages.statParticipantsMeta, { period })}
 				value={stats.participants}
 			>
 				<LineChart
-					label="Market participants"
+					description={messages.statParticipantsDescription}
+					label={messages.statParticipants}
 					starts={starts}
-					unit="participants"
+					unit={messages.statParticipantsUnit}
 					values={stats.buckets.map((bucket) => bucket.participants)}
 				/>
 			</StatCard>
 		</section>
 	);
+}
+
+/** The summary's covered span, formatted for display; the model keeps it as timestamps. */
+function activityChartPeriodLabel(period: ActivityChartPeriod, messages: ActivityMessages) {
+	if (!period) return messages.chartPeriodUndated;
+	return formatMessage(messages.chartPeriodRange, {
+		from: formatActivityChartDate(period.from),
+		to: formatActivityChartDate(period.to),
+	});
 }

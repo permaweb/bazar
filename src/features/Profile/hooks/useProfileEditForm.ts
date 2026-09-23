@@ -1,12 +1,15 @@
 import React from 'react';
 
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import type { ProfileSummary } from 'types/profile';
 
+import { PROFILE_MESSAGES } from '../messages';
 import type { ProfileEditUpdate } from '../model/profile';
 import { profileUpdateError } from '../model/profile';
 import {
+	createProfileEditFormReducer,
 	profileEditChanges,
-	profileEditFormReducer,
 	type ProfileEditFormState,
 	profileEditFormState,
 	profileEditPreview,
@@ -37,7 +40,10 @@ export function useProfileEditForm(
 	profile: Pick<ProfileSummary, 'avatar' | 'displayName'>,
 	onSave: ProfileEditSaveHandler
 ): ProfileEditForm {
-	const [form, dispatch] = React.useReducer(profileEditFormReducer, {}, profileEditFormState);
+	const messages = useMessages(PROFILE_MESSAGES);
+	const errorMessages = useAppErrorMessages();
+	const reducer = React.useMemo(() => createProfileEditFormReducer(errorMessages), [errorMessages]);
+	const [form, dispatch] = React.useReducer(reducer, {}, profileEditFormState);
 	const fileUrl = useObjectUrl(form.avatarFile);
 	const changes = profileEditChanges(form, profile);
 
@@ -62,7 +68,11 @@ export function useProfileEditForm(
 		removeAvatar: () => dispatch({ type: 'avatar-removed' }),
 		setDragging: (dragging) => dispatch({ type: 'drag-changed', dragging }),
 		submit: async () => {
-			dispatch({ type: 'save-started' });
+			dispatch({
+				type: 'save-started',
+				preparingLabel: messages.profileSavePreparing,
+				preparingPictureLabel: messages.profileSavePreparingPicture,
+			});
 			try {
 				await onSave(
 					{
@@ -74,7 +84,7 @@ export function useProfileEditForm(
 					reportStatus
 				);
 			} catch (cause) {
-				dispatch({ type: 'save-failed', error: profileUpdateError(cause) });
+				dispatch({ type: 'save-failed', error: profileUpdateError(cause, errorMessages) });
 			}
 		},
 	};

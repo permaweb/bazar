@@ -22,7 +22,7 @@ function operation(id: string, phase: OperationActivityPhase, activityOwner = ow
 		collectionId: 'collection',
 		operation: { kind: 'sell' },
 		phase,
-		status: 'Working',
+		status: { text: 'Working' },
 		confirmations: 0,
 		confirmationTarget: 5,
 		createdAt: 1,
@@ -39,7 +39,7 @@ function fungible(id: string, phase: OperationActivityPhase): FungibleOperationA
 		owner,
 		operationKind: 'buy',
 		phase,
-		status: 'Working',
+		status: { text: 'Working' },
 		createdAt: 1,
 	} as FungibleOperationActivitySummary;
 }
@@ -123,8 +123,8 @@ describe('operation activity menu items', () => {
 			context
 		);
 
-		expect(items.operations[0].operationLabel).toBe('List for sale');
-		expect(items.fungibleOperations[0].operationLabel).toBe('Buy asset');
+		expect(items.operations[0].operationKind).toBe('sell');
+		expect(items.fungibleOperations[0].operationKind).toBe('buy');
 	});
 
 	it('hides a mint that its own upload row already tracks', () => {

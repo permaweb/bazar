@@ -8,6 +8,9 @@ import TransactionDialogControl, {
 	transactionDialogHideMotion,
 	transactionDialogHideTarget,
 } from 'components/molecules/TransactionDialogControl/TransactionDialogControl';
+import { OPERATIONS_MESSAGES } from 'features/Operations/messages';
+
+const language = OPERATIONS_MESSAGES.en;
 
 describe('shared transaction dialog control', () => {
 	it('keeps wallet approval out of background transaction activity', () => {
@@ -22,11 +25,13 @@ describe('shared transaction dialog control', () => {
 		expect(transactionDialogDismissAction('working', true)).toEqual({ kind: 'hide' });
 		const markup = renderToStaticMarkup(
 			React.createElement(TransactionDialogControl, {
+				closeLabel: language.operationDialogClose,
+				hideLabel: language.operationDialogHideTransaction,
 				phase: 'working',
 				onClick: () => undefined,
 			})
 		);
-		expect(markup).toContain('aria-label="Hide transaction details"');
+		expect(markup).toContain(`aria-label="${language.operationDialogHideTransaction}"`);
 		expect(markup).toContain('transaction-hide-eye-open');
 		expect(markup).toContain('transaction-hide-eye-closed');
 		expect(markup).not.toContain('role="tooltip"');
@@ -45,11 +50,13 @@ describe('shared transaction dialog control', () => {
 		});
 		const markup = renderToStaticMarkup(
 			React.createElement(TransactionDialogControl, {
+				closeLabel: language.operationDialogClose,
+				hideLabel: language.operationDialogHideTransaction,
 				phase: 'done',
 				onClick: () => undefined,
 			})
 		);
-		expect(markup).toContain('aria-label="Close dialog"');
+		expect(markup).toContain(`aria-label="${language.operationDialogClose}"`);
 		expect(markup).not.toContain('transaction-hide-eye-open');
 		expect(markup).not.toContain('role="tooltip"');
 	});

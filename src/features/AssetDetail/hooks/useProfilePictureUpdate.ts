@@ -3,7 +3,8 @@ import React from 'react';
 import { readAssetStateWithDeadline } from 'api/marketplace';
 import { ProfileClient } from 'api/profile';
 
-import { appError, appErrorMessage, toAppError } from 'helpers/app-error';
+import { appError, toAppError } from 'helpers/app-error';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
 
 import {
 	INITIAL_PROFILE_PICTURE_UPDATE,
@@ -32,6 +33,7 @@ export function useProfilePictureUpdate(input: {
 	image: string;
 }): ProfilePictureUpdateState {
 	const [update, dispatch] = React.useReducer(profilePictureUpdateReducer, INITIAL_PROFILE_PICTURE_UPDATE);
+	const errorMessage = useAppErrorMessage();
 	const key = profilePictureUpdateKey(input.assetId, input.owner, input.image);
 
 	const apply = React.useCallback(async () => {
@@ -51,5 +53,5 @@ export function useProfilePictureUpdate(input: {
 	}, [input.assetId, input.image, input.owner, key]);
 
 	const view = profilePictureUpdateView(update, key);
-	return { status: view.status, error: view.error ? appErrorMessage(view.error) : null, apply };
+	return { status: view.status, error: view.error ? errorMessage(view.error) : null, apply };
 }

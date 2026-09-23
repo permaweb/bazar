@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { TRANSACTION_SYNC_MESSAGES } from 'features/TransactionSync/messages';
 import {
 	confirmationLifecycleState,
 	confirmationProgressText,
@@ -7,6 +8,8 @@ import {
 	postConfirmationPendingLabel,
 	sequencePhaseBounds,
 } from 'features/TransactionSync/model/sequence';
+
+const language = TRANSACTION_SYNC_MESSAGES.en;
 
 describe('sequencePhaseBounds', () => {
 	it.each([
@@ -45,9 +48,13 @@ describe('sequencePhaseBounds', () => {
 
 describe('confirmationProgressText', () => {
 	it('describes bounded confirmation depth and completion', () => {
-		expect(confirmationProgressText('Reserve listing', 0, 5)).toBe('Reserve listing: 0 of 5 confirmations.');
-		expect(confirmationProgressText('Pay seller', 3, 5)).toBe('Pay seller: 3 of 5 confirmations.');
-		expect(confirmationProgressText('Pay seller', 8, 5)).toBe('Pay seller: 5 of 5 confirmations complete.');
+		expect(confirmationProgressText('Reserve listing', 0, 5, language)).toBe(
+			'Reserve listing: 0 of 5 confirmations.'
+		);
+		expect(confirmationProgressText('Pay seller', 3, 5, language)).toBe('Pay seller: 3 of 5 confirmations.');
+		expect(confirmationProgressText('Pay seller', 8, 5, language)).toBe(
+			'Pay seller: 5 of 5 confirmations complete.'
+		);
 	});
 });
 
@@ -67,7 +74,9 @@ describe('confirmationProgressWidth', () => {
 describe('postConfirmationPendingLabel', () => {
 	it('starts an indeterminate live-state phase only after confirmation completes', () => {
 		expect(postConfirmationPendingLabel(4, 5, 'Waiting for live state…')).toBeUndefined();
-		expect(postConfirmationPendingLabel(5, 5, 'Waiting for live state…')).toBe('Settling live state');
+		expect(postConfirmationPendingLabel(5, 5, 'Waiting for live state…')).toBe(
+			language.transactionSyncSettlingLiveState
+		);
 		expect(postConfirmationPendingLabel(8, 5, 'Waiting for live state…', 'Checking receipt')).toBe(
 			'Checking receipt'
 		);

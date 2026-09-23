@@ -6,6 +6,7 @@ import { OperationActivityHost } from 'features/Operations';
 import { registerFungibleAssetViewLoader } from 'helpers/asset-page-preload';
 import { Header } from 'navigation/Header';
 import { WalletConnectionDialog } from 'navigation/WalletConnectionDialog';
+import { useMessages } from 'providers/LanguageProvider';
 import { MarketProvider } from 'providers/MarketProvider';
 import { OperationActivityProvider } from 'providers/OperationActivityProvider';
 import { Asset } from 'views/Asset';
@@ -18,6 +19,7 @@ import { HomeRedirect } from 'views/HomeRedirect';
 import { PendingAsset } from 'views/PendingAsset';
 import { Profile } from 'views/Profile';
 
+import { BAZAR_APP_MESSAGES } from './messages';
 import { RouteFocus } from './RouteFocus';
 
 registerFungibleAssetViewLoader(loadFungibleAssetView);
@@ -30,16 +32,23 @@ function handleSkipToContent(event: React.MouseEvent<HTMLAnchorElement>) {
 }
 
 export function App() {
+	const messages = useMessages(BAZAR_APP_MESSAGES);
+
 	return (
 		<MarketProvider>
 			<HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
 				<OperationActivityProvider>
 					<RouteFocus />
 					<a className="skip-link" href="#main-content" onClick={handleSkipToContent}>
-						Skip to marketplace content
+						{messages.appSkipToContent}
 					</a>
 					<Header />
-					<main aria-label="Marketplace content" className="max-view-wrapper" id="main-content" tabIndex={-1}>
+					<main
+						aria-label={messages.appMainContent}
+						className="max-view-wrapper"
+						id="main-content"
+						tabIndex={-1}
+					>
 						<Routes>
 							<Route path="/" element={<HomeRedirect />} />
 							<Route path="/discover" element={<Home />} />

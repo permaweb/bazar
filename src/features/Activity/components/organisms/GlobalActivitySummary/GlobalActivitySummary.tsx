@@ -1,7 +1,9 @@
 import { Button } from 'components/atoms/Button';
 import { asyncData, isAsyncPending } from 'helpers/async-state';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useGlobalActivityStats } from '../../../hooks/useGlobalActivityStats';
+import { ACTIVITY_MESSAGES } from '../../../messages';
 import { GlobalActivityCharts } from '../GlobalActivityCharts';
 
 /** The summary owns its requests and loading state; row filters never reset it. */
@@ -12,6 +14,7 @@ export default function GlobalActivitySummary(props: {
 	marketLoading: boolean;
 	feedLoading: boolean;
 }) {
+	const messages = useMessages(ACTIVITY_MESSAGES);
 	const stats = useGlobalActivityStats({
 		recipientScope: props.recipientScope,
 		graphql: props.graphql,
@@ -26,9 +29,9 @@ export default function GlobalActivitySummary(props: {
 			<GlobalActivityCharts stats={asyncData(stats.state)} loading={loading} unavailable={unavailable} />
 			{unavailable ? (
 				<div className="collection-source-notice retry-notice">
-					<span role="status">Global stats could not finish loading. Activity below is still available.</span>
+					<span role="status">{messages.globalStatsUnavailable}</span>
 					<Button size="small" onClick={stats.retry}>
-						Retry stats
+						{messages.globalStatsRetry}
 					</Button>
 				</div>
 			) : null}

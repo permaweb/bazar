@@ -18,6 +18,7 @@ import {
 } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 
+import { ACTIVITY_MESSAGES } from 'features/Activity/messages';
 import {
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,
@@ -50,6 +51,7 @@ import {
 	nextListingAnnouncementProgress,
 	pendingCollectionPriceAssets,
 } from 'features/Collection/model/collection-market';
+import { HOME_MESSAGES } from 'features/Home/messages';
 import {
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
@@ -94,11 +96,17 @@ import {
 	shouldLoadHomeCollectionSummaries,
 } from 'features/Home/model/home-market';
 import { createAnimationFrameBatch } from 'helpers/animation-frame-batch';
+import { DEFAULT_LANGUAGE, formatPlural, type MessageValues, type PluralMessage } from 'helpers/i18n';
 import {
 	marketCatalogueCollections,
 	verifiedCollectionIdsFrom,
 	withoutDuplicatedCreatedAssets,
 } from 'providers/MarketProvider/catalogue';
+
+const activityMessages = ACTIVITY_MESSAGES.en;
+const homeMessages = HOME_MESSAGES.en;
+const plural = (message: PluralMessage, count: number, values?: MessageValues) =>
+	formatPlural(DEFAULT_LANGUAGE, message, count, values);
 
 const readyHiddenCollectionIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
 
@@ -349,24 +357,30 @@ describe('Home market summary retries', () => {
 
 	it('does not present an empty partial names page as a zero-asset collection', () => {
 		expect(
-			homeCollectionAssetCountLabel({
-				id: 'arweave-names',
-				name: 'Arweave names',
-				description: 'Names',
-				kind: 'names',
-				assets: [],
-				hasMore: true,
-			})
-		).toBe('N/A');
+			homeCollectionAssetCountLabel(
+				{
+					id: 'arweave-names',
+					name: 'Arweave names',
+					description: 'Names',
+					kind: 'names',
+					assets: [],
+					hasMore: true,
+				},
+				homeMessages
+			)
+		).toBe(homeMessages.homeSummaryUnindexed);
 		expect(
-			homeCollectionAssetCountLabel({
-				id: 'arweave-names',
-				name: 'Arweave names',
-				description: 'Names',
-				kind: 'names',
-				assets: [{ id: 'name-id', name: 'alice' }],
-				hasMore: true,
-			})
+			homeCollectionAssetCountLabel(
+				{
+					id: 'arweave-names',
+					name: 'Arweave names',
+					description: 'Names',
+					kind: 'names',
+					assets: [{ id: 'name-id', name: 'alice' }],
+					hasMore: true,
+				},
+				homeMessages
+			)
 		).toBe('1');
 	});
 
@@ -1141,9 +1155,15 @@ describe('Home market summary retries', () => {
 	});
 
 	it('keeps reveal counts explicitly scoped to loaded events', () => {
-		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 loaded events.');
-		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('Showing 100 of 100 loaded events.');
-		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('Showing 90 of 90 loaded matching events.');
+		expect(globalActivityRevealDescription(40, 100, 100, false, activityMessages)).toBe(
+			'Showing 40 of 100 loaded events.'
+		);
+		expect(globalActivityRevealDescription(100, 100, 100, false, activityMessages)).toBe(
+			'Showing 100 of 100 loaded events.'
+		);
+		expect(globalActivityRevealDescription(90, 90, 100, true, activityMessages)).toBe(
+			'Showing 90 of 90 loaded matching events.'
+		);
 	});
 
 	it('checks exact collection membership without rescanning loaded assets', () => {
@@ -1231,29 +1251,37 @@ describe('Home market summary retries', () => {
 	});
 
 	it('announces large activity scans only at bounded batch milestones', () => {
-		const messages = new Set(
+		const announcements = new Set(
 			Array.from({ length: 160 }, (_, index) =>
-				collectionActivityScanAnnouncement({
-					error: false,
-					events: index * 3,
-					loading: true,
-					pages: index + 1,
-					preservingEvents: false,
-				})
+				collectionActivityScanAnnouncement(
+					{
+						error: false,
+						events: index * 3,
+						loading: true,
+						pages: index + 1,
+						preservingEvents: false,
+					},
+					activityMessages,
+					plural
+				)
 			)
 		);
 
-		expect(messages.size).toBe(17);
-		expect(messages).toContain('Activity scan checked 1 batch so far.');
-		expect(messages).toContain('Activity scan checked 150 batches so far.');
+		expect(announcements.size).toBe(17);
+		expect(announcements).toContain('Activity scan checked 1 batch so far.');
+		expect(announcements).toContain('Activity scan checked 150 batches so far.');
 		expect(
-			collectionActivityScanAnnouncement({
-				error: false,
-				events: 18,
-				loading: false,
-				pages: 160,
-				preservingEvents: false,
-			})
+			collectionActivityScanAnnouncement(
+				{
+					error: false,
+					events: 18,
+					loading: false,
+					pages: 160,
+					preservingEvents: false,
+				},
+				activityMessages,
+				plural
+			)
 		).toBe('Activity scan complete. 18 indexed events found.');
 	});
 

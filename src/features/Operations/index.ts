@@ -1,5 +1,5 @@
 export { AssetBalanceStateNotice } from './components/molecules/AssetBalanceStateNotice';
-export { assetOperationPendingActionLabel, AssetOperationStatus } from './components/molecules/AssetOperationStatus';
+export { AssetOperationStatus, useAssetOperationPendingActionLabel } from './components/molecules/AssetOperationStatus';
 export { PausedRecoveryNotice } from './components/molecules/PausedRecoveryNotice';
 export type { UnavailableOperationRecovery } from './components/molecules/UnavailableOperationRecoveryNotice';
 export { UnavailableOperationRecoveryNotice } from './components/molecules/UnavailableOperationRecoveryNotice';

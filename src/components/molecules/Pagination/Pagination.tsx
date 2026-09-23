@@ -18,16 +18,19 @@ export function paginationItems(page: number, pageCount: number) {
 export default function Pagination(props: {
 	ariaLabel: string;
 	className?: string;
+	nextLabel: string;
 	onPageChange(page: number): void;
 	page: number;
 	pageCount: number;
+	pageLabel(page: number): string;
+	previousLabel: string;
 }) {
 	if (props.pageCount <= 1) return null;
 	return (
 		<nav aria-label={props.ariaLabel} className={['pagination', props.className ?? ''].filter(Boolean).join(' ')}>
 			<Button disabled={props.page === 1} onClick={() => props.onPageChange(props.page - 1)} size="small">
 				<Icon icon={ArrowLeft} size="xs" />
-				Previous
+				{props.previousLabel}
 			</Button>
 			<div className="pagination-pages">
 				{paginationItems(props.page, props.pageCount).map((item) => {
@@ -42,7 +45,7 @@ export default function Pagination(props: {
 					return (
 						<Button
 							aria-current={itemPage === props.page ? 'page' : undefined}
-							aria-label={`Page ${itemPage}`}
+							aria-label={props.pageLabel(itemPage)}
 							key={itemPage}
 							onClick={() => props.onPageChange(itemPage)}
 							size="small"
@@ -57,7 +60,7 @@ export default function Pagination(props: {
 				onClick={() => props.onPageChange(props.page + 1)}
 				size="small"
 			>
-				Next
+				{props.nextLabel}
 				<Icon icon={ArrowRight} size="xs" />
 			</Button>
 		</nav>

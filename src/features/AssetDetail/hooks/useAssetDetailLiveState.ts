@@ -11,7 +11,10 @@ import {
 
 import { toAppError } from 'helpers/app-error';
 import { aoRoutingScopeFromLocation } from 'helpers/config';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../messages';
 import { assetStateErrorMessage } from '../model/asset-detail';
 import {
 	assetLiveStateKey,
@@ -43,6 +46,8 @@ export function useAssetDetailLiveState(input: {
 	canResolve: boolean;
 	visibilityReady: boolean;
 }): AssetDetailLiveState {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const errorMessages = useAppErrorMessages();
 	const aoRoutingScope = aoRoutingScopeFromLocation();
 	const prefetched = React.useMemo(
 		() => (input.visibilityReady ? cachedAssetLiveSnapshot(cachedAssetState(input.assetId)) : undefined),
@@ -118,7 +123,7 @@ export function useAssetDetailLiveState(input: {
 		provider: view.snapshot?.provider ?? '',
 		verifiedAt: view.snapshot?.verifiedAt ?? null,
 		loading: view.loading,
-		error: view.error ? assetStateErrorMessage(view.error) : null,
+		error: view.error ? assetStateErrorMessage(view.error, messages, errorMessages) : null,
 		load,
 		refresh,
 	};

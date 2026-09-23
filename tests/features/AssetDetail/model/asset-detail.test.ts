@@ -5,6 +5,7 @@ import { HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from 'api/co
 import type { AssetState } from 'api/marketplace';
 import { CREATED_COLLECTION_ID } from 'api/mint';
 
+import { ASSET_DETAIL_MESSAGES } from 'features/AssetDetail/messages';
 import {
 	assetDetailErrorMessage,
 	assetDetailHasIndexedLookup,
@@ -19,8 +20,11 @@ import {
 	resolveAssetDetail,
 	uniquePriceHistory,
 } from 'features/AssetDetail/model/asset-detail';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+import { formatMessage } from 'helpers/i18n';
 
 const assetId = 'A'.repeat(43);
+const messages = ASSET_DETAIL_MESSAGES.en;
 
 describe('asset detail fallbacks', () => {
 	it('labels Atomic Asset shells as token@1.0 while retaining carrier@1.0 for names', () => {
@@ -62,18 +66,26 @@ describe('asset detail fallbacks', () => {
 	});
 
 	it('turns AO transport quorum failures into asset-specific compute availability copy', () => {
-		const friendly = assetStateErrorMessage(new Error('AO response quorum not met'));
-		const legacyFriendly = assetStateErrorMessage(new Error('ao-wrangler-response-quorum-not-met'));
+		const friendly = assetStateErrorMessage(
+			new Error('AO response quorum not met'),
+			messages,
+			APP_ERROR_MESSAGES.en
+		);
+		const legacyFriendly = assetStateErrorMessage(
+			new Error('ao-wrangler-response-quorum-not-met'),
+			messages,
+			APP_ERROR_MESSAGES.en
+		);
 		expect(friendly).toContain('the configured AO peers');
 		expect(legacyFriendly).toBe(friendly);
-		expect(assetDetailErrorMessage(friendly, { name: 'AntiqueWhite' }, true)).toBe(
-			'AntiqueWhite is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.'
+		expect(assetDetailErrorMessage(friendly, { name: 'AntiqueWhite' }, true, messages)).toBe(
+			formatMessage(messages.assetDetailIndexedStateUnavailable, { name: 'AntiqueWhite' })
 		);
 	});
 
 	it('explains a bounded foreground state timeout', () => {
-		expect(assetStateErrorMessage(new Error('asset-state-read-timeout'))).toBe(
-			'The configured AO peers did not return live state within 45 seconds. Retry or review the AO Core settings in the header.'
+		expect(assetStateErrorMessage(new Error('asset-state-read-timeout'), messages, APP_ERROR_MESSAGES.en)).toBe(
+			messages.assetStateTimeout
 		);
 	});
 
@@ -151,24 +163,26 @@ describe('asset detail fallbacks', () => {
 		};
 		const images: Collection = { ...tokens, id: 'images', name: 'Bazar images', kind: 'images' };
 
-		expect(assetDetailLoadingShellView(tokens, tokens.id)).toEqual({
+		expect(assetDetailLoadingShellView(tokens, tokens.id, messages)).toEqual({
 			kind: 'tokens',
 			device: 'token@1.0',
 			detailClass: 'fungible-asset-page',
 			collectionName: 'Tokens',
 		});
-		expect(assetDetailLoadingShellView(images, images.id)).toEqual({
+		expect(assetDetailLoadingShellView(images, images.id, messages)).toEqual({
 			kind: 'images',
 			device: 'token@1.0',
 			detailClass: 'atomic-asset-page',
 			collectionName: 'Bazar images',
 		});
-		expect(assetDetailLoadingShellView(undefined, CREATED_COLLECTION_ID).collectionName).toBe('Created on Bazar');
-		expect(assetDetailLoadingShellView(undefined, 'arweave-names')).toEqual({
+		expect(assetDetailLoadingShellView(undefined, CREATED_COLLECTION_ID, messages).collectionName).toBe(
+			'Created on Bazar'
+		);
+		expect(assetDetailLoadingShellView(undefined, 'arweave-names', messages)).toEqual({
 			kind: 'names',
 			device: 'carrier@1.0',
 			detailClass: 'atomic-asset-page',
-			collectionName: 'Arweave names',
+			collectionName: messages.loadingShellCollectionNames,
 		});
 	});
 
@@ -236,6 +250,7 @@ function screenFor(overrides: {
 		},
 		live: { state: uniqueState, loading: false, error: null, ...overrides.live },
 		detailError: overrides.detailError ?? null,
+		messages,
 	});
 }
 

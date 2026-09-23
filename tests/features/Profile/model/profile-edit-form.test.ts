@@ -1,18 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
+import { PROFILE_MESSAGES } from 'features/Profile/messages';
 import {
+	createProfileEditFormReducer,
 	profileEditChanges,
-	profileEditFormReducer,
 	type ProfileEditFormState,
 	profileEditFormState,
 	profileEditPreview,
 } from 'features/Profile/model/profile-edit-form';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
+const messages = PROFILE_MESSAGES.en;
+const profileEditFormReducer = createProfileEditFormReducer(APP_ERROR_MESSAGES.en);
 const image = new File([new Uint8Array(4)], 'avatar.png', { type: 'image/png' });
 const unsupported = new File([new Uint8Array(4)], 'avatar.svg', { type: 'image/svg+xml' });
 
 function saving(state: ProfileEditFormState): ProfileEditFormState {
-	return profileEditFormReducer(state, { type: 'save-started' });
+	return profileEditFormReducer(state, {
+		type: 'save-started',
+		preparingLabel: messages.profileSavePreparing,
+		preparingPictureLabel: messages.profileSavePreparingPicture,
+	});
 }
 
 describe('profile edit form', () => {
@@ -44,9 +52,15 @@ describe('profile edit form', () => {
 	});
 
 	it('labels the first save stage by whether a picture must upload', () => {
-		expect(saving(profileEditFormState({})).save).toEqual({ status: 'saving', label: 'Preparing profile…' });
+		expect(saving(profileEditFormState({})).save).toEqual({
+			status: 'saving',
+			label: messages.profileSavePreparing,
+		});
 		const withPicture = profileEditFormReducer(profileEditFormState({}), { type: 'avatar-selected', file: image });
-		expect(saving(withPicture).save).toEqual({ status: 'saving', label: 'Preparing picture…' });
+		expect(saving(withPicture).save).toEqual({
+			status: 'saving',
+			label: messages.profileSavePreparingPicture,
+		});
 	});
 
 	it('clears the last failure when a save starts and restores it when the save fails', () => {
@@ -58,7 +72,7 @@ describe('profile edit form', () => {
 			status: 'editing',
 			error: 'Your profile could not be updated. Please try again.',
 		});
-		expect(saving(failed).save).toEqual({ status: 'saving', label: 'Preparing profile…' });
+		expect(saving(failed).save).toEqual({ status: 'saving', label: messages.profileSavePreparing });
 	});
 
 	it('ignores edits and stray status updates outside their stage', () => {

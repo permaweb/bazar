@@ -26,8 +26,11 @@ import {
 } from 'components/molecules/TransactionDialogControl';
 import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
-import { fungibleMintView } from '../../../model/mint-flow';
+import { CREATE_MESSAGES } from '../../../messages';
+import { fungibleMintView, mintTransactionAddressCopy } from '../../../model/mint-flow';
 
 export default function FungibleMintDialog(props: {
 	error: string | null;
@@ -47,6 +50,7 @@ export default function FungibleMintDialog(props: {
 	consensus: Consensus | null;
 	confirmations: number;
 }) {
+	const messages = useMessages(CREATE_MESSAGES);
 	const dialogRef = React.useRef<HTMLElement | null>(null);
 	const [hiding, setHiding] = React.useState(false);
 	const hideTimerRef = React.useRef<number | null>(null);
@@ -75,7 +79,7 @@ export default function FungibleMintDialog(props: {
 		[]
 	);
 
-	const view = fungibleMintView(props.result, props.name, props.ticker);
+	const view = fungibleMintView(props.result, props.name, props.ticker, messages);
 	const tokenName = view.tokenName;
 	const tokenTicker = view.tokenTicker;
 	const receiptEntries = view.receiptEntries;
@@ -102,11 +106,23 @@ export default function FungibleMintDialog(props: {
 					props.logoPreview ? (
 						<img alt="" className="dialog-asset-artwork" src={props.logoPreview} />
 					) : (
-						<TokenArtwork className="dialog-asset-artwork" ticker={tokenTicker} />
+						<TokenArtwork
+							className="dialog-asset-artwork"
+							subtitle={messages.mintTokenArtworkSubtitle}
+							ticker={tokenTicker}
+						/>
 					)
 				}
-				control={<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />}
-				eyebrow="Create token"
+				control={
+					<TransactionDialogControl
+						closeLabel={messages.mintDialogClose}
+						hideLabel={messages.mintDialogHideTransaction}
+						hiding={hiding}
+						phase={dialogPhase}
+						onClick={closeOrHide}
+					/>
+				}
+				eyebrow={messages.fungibleDialogEyebrow}
 				eyebrowId="fungible-mint-operation"
 				layout="asset"
 				title={tokenName}
@@ -114,40 +130,36 @@ export default function FungibleMintDialog(props: {
 			/>
 			<OperationOutcomeAnnouncement
 				active={dialogPhase === 'done'}
-				detail={`All ${props.result?.wholeSupply ?? ''} ${
-					props.result?.ticker ?? ''
-				} are in your wallet and ready to dispatch.`}
-				title="Token live on Bazar"
+				detail={formatMessage(messages.fungibleDialogOutcomeDetail, {
+					supply: props.result?.wholeSupply ?? '',
+					ticker: props.result?.ticker ?? '',
+				})}
+				title={messages.fungibleDialogOutcomeTitle}
 			/>
 			{dialogPhase === 'working' && !props.result ? (
 				<div className="operation-preparing">
-					<Loading label={props.phaseLabel || 'Preparing token transactions…'} />
-					<p>
-						{props.phase
-							? 'Keep this wallet request open while Bazar prepares and submits the permanent token transactions.'
-							: 'Checking the connected wallet, network cost, and token details before requesting approval.'}
-					</p>
+					<Loading label={props.phaseLabel || messages.fungibleDialogPreparing} />
+					<p>{props.phase ? messages.fungibleDialogPhaseDetail : messages.fungibleDialogCheckingDetail}</p>
 				</div>
 			) : null}
 			{dialogPhase === 'working' && props.result ? (
 				<div className="operation-working">
-					<LiveRegion as="p">
-						Token submitted. Watching independently addressed Arweave nodes and waiting for the token
-						process state.
-					</LiveRegion>
+					<LiveRegion as="p">{messages.fungibleDialogSubmitted}</LiveRegion>
 					<p className="scheduler-wait">
-						All {props.result.wholeSupply} {props.result.ticker} are minted to your wallet. Bazar is waiting
-						for the scheduler to make the process readable.
+						{formatMessage(messages.fungibleDialogSchedulerWait, {
+							supply: props.result.wholeSupply,
+							ticker: props.result.ticker,
+						})}
 					</p>
-					<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+					<React.Suspense fallback={<Loading label={messages.fungibleDialogLoadingProgress} />}>
 						<LazyArweaveTransactionSync
 							active={props.visible}
 							activeStep="mint"
-							pendingAfterConfirmation="Waiting for token process state"
+							pendingAfterConfirmation={messages.fungibleDialogPendingAfterConfirmation}
 							steps={[
 								{
 									key: 'mint',
-									label: 'Mint token',
+									label: messages.fungibleDialogStepMint,
 									target: 5,
 									terminal: true,
 									confirmations: props.confirmations,
@@ -161,18 +173,28 @@ export default function FungibleMintDialog(props: {
 							subject={tokenTicker}
 						/>
 					</React.Suspense>
-					<MintTransactionReceipt entries={receiptEntries} />
+					<MintTransactionReceipt
+						addressLabels={mintTransactionAddressCopy(messages)}
+						ariaLabel={messages.mintReceiptsLabel}
+						entries={receiptEntries}
+					/>
 				</div>
 			) : null}
 			{dialogPhase === 'done' && props.result ? (
 				<div className="result success">
 					<OperationOutcome
-						detail={`All ${props.result.wholeSupply} ${props.result.ticker} are in your wallet and ready to dispatch.`}
-						title="Token live on Bazar"
+						detail={formatMessage(messages.fungibleDialogOutcomeDetail, {
+							supply: props.result.wholeSupply,
+							ticker: props.result.ticker,
+						})}
+						title={messages.fungibleDialogOutcomeTitle}
 					>
 						<OperationOutcomeSubject
-							label="You created"
-							title={`${props.result.wholeSupply} ${props.result.ticker}`}
+							label={messages.fungibleDialogOutcomeSubjectLabel}
+							title={formatMessage(messages.fungibleDialogOutcomeSubjectTitle, {
+								supply: props.result.wholeSupply,
+								ticker: props.result.ticker,
+							})}
 							detail={tokenName}
 							media={
 								<TokenAvatar
@@ -184,7 +206,11 @@ export default function FungibleMintDialog(props: {
 							}
 						/>
 					</OperationOutcome>
-					<MintTransactionReceipt entries={receiptEntries} />
+					<MintTransactionReceipt
+						addressLabels={mintTransactionAddressCopy(messages)}
+						ariaLabel={messages.mintReceiptsLabel}
+						entries={receiptEntries}
+					/>
 					<Button
 						className="with-icon"
 						data-dialog-initial
@@ -192,16 +218,16 @@ export default function FungibleMintDialog(props: {
 						size="custom"
 						variant="primary"
 					>
-						View token <Icon icon={ArrowRight} size="sm" />
+						{messages.fungibleDialogViewToken} <Icon icon={ArrowRight} size="sm" />
 					</Button>
 					<Button className="with-icon" onClick={() => handleNavigate(view.dispatchPath)} size="custom">
-						Dispatch to holders <Icon icon={ArrowRight} size="sm" />
+						{messages.fungibleDialogDispatch} <Icon icon={ArrowRight} size="sm" />
 					</Button>
 				</div>
 			) : null}
 			{dialogPhase === 'error' ? (
 				<div className="result error">
-					<OperationErrorAlert title="Could not create this token" message={props.error ?? ''} />
+					<OperationErrorAlert title={messages.fungibleDialogErrorTitle} message={props.error ?? ''} />
 					<Button
 						data-dialog-initial
 						onClick={() => {
@@ -210,7 +236,7 @@ export default function FungibleMintDialog(props: {
 						}}
 						size="custom"
 					>
-						Return to token details
+						{messages.fungibleDialogReturn}
 					</Button>
 				</div>
 			) : null}

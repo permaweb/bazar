@@ -134,7 +134,7 @@ describe('unique asset commerce card', () => {
 			owner: wallet,
 			operation: { kind: 'buy', order: openOrder },
 			phase: 'working',
-			status: 'Reserving the asset',
+			status: { text: 'Reserving the asset' },
 			confirmations: 1,
 			confirmationTarget: 5,
 			createdAt: 1,

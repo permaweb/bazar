@@ -1,1 +1,1 @@
-export { assetOperationPendingActionLabel, default as AssetOperationStatus } from './AssetOperationStatus';
+export { default as AssetOperationStatus, useAssetOperationPendingActionLabel } from './AssetOperationStatus';

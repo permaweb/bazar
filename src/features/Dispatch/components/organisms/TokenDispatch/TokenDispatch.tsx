@@ -9,10 +9,12 @@ import { Loading } from 'components/atoms/Loading';
 import { TokenArtwork } from 'components/atoms/TokenArtwork';
 import { AssetBalanceStateNotice } from 'features/Operations';
 import { asyncData, asyncError, isAsyncPending } from 'helpers/async-state';
+import { useMessages } from 'providers/LanguageProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { useDispatchToken } from '../../../hooks/useDispatchToken';
 import { useHolderDispatch } from '../../../hooks/useHolderDispatch';
+import { DISPATCH_MESSAGES } from '../../../messages';
 import {
 	dispatchRunError,
 	dispatchSenderBalance,
@@ -27,6 +29,7 @@ import { HolderDispatchForm } from '../HolderDispatchForm';
 
 /** Dispatch for one valid token process. Keyed by process ID so every piece of state belongs to one token. */
 export default function TokenDispatch(props: { processId: string }) {
+	const messages = useMessages(DISPATCH_MESSAGES);
 	const wallet = useWallet();
 	const dispatchToken = useDispatchToken(props.processId);
 	const token = asyncData(dispatchToken.token) ?? null;
@@ -53,33 +56,26 @@ export default function TokenDispatch(props: { processId: string }) {
 		<section className="create-page dispatch-page">
 			<div className="create-heading">
 				<div>
-					<Eyebrow>Dispatch fungible token</Eyebrow>
+					<Eyebrow>{messages.dispatchTokenEyebrow}</Eyebrow>
 					<h1>
 						{token
 							? token.name || token.ticker || shortAddress(props.processId)
 							: shortAddress(props.processId)}
 					</h1>
 				</div>
-				<p>
-					Send token amounts from a pasted holder list. Bazar converts them to atomic units for individual
-					Arweave L1 transfers and saves progress locally so you can resume.
-				</p>
+				<p>{messages.dispatchTokenIntro}</p>
 			</div>
 
-			{isAsyncPending(dispatchToken.token) ? <Loading label="Reading token state…" /> : null}
+			{isAsyncPending(dispatchToken.token) ? <Loading label={messages.dispatchTokenLoading} /> : null}
 			{asyncError(dispatchToken.token) ? (
 				<div className="mint-recovery" role="status">
 					<div>
-						<strong>Token state not readable yet</strong>
-						<span>
-							The token process state is not readable yet. A freshly minted token only becomes readable
-							once the arweave-scheduler sequences its creation — around 20 minutes on mainnet. Retry once
-							it has settled.
-						</span>
+						<strong>{messages.dispatchTokenUnreadableTitle}</strong>
+						<span>{messages.dispatchTokenUnreadableDetail}</span>
 					</div>
 					<div>
 						<Button type="button" size="custom" onClick={dispatchToken.retry}>
-							<Icon icon={RefreshCw} size="sm" /> Retry
+							<Icon icon={RefreshCw} size="sm" /> {messages.dispatchTokenRetry}
 						</Button>
 					</div>
 				</div>
@@ -87,32 +83,35 @@ export default function TokenDispatch(props: { processId: string }) {
 
 			{token ? (
 				<div className="dispatch-token-summary">
-					<TokenArtwork ticker={token.ticker || 'TOKEN'} />
+					<TokenArtwork
+						subtitle={messages.dispatchTokenArtworkSubtitle}
+						ticker={token.ticker || messages.dispatchArtworkFallbackTicker}
+					/>
 					<dl>
 						<div>
-							<dt>Ticker</dt>
+							<dt>{messages.dispatchTokenTicker}</dt>
 							<dd>{token.ticker || '—'}</dd>
 						</div>
 						<div>
-							<dt>Total supply</dt>
-							<dd>{formatDispatchTokenAmount(token.totalSupply, token)}</dd>
+							<dt>{messages.dispatchTokenTotalSupply}</dt>
+							<dd>{formatDispatchTokenAmount(token.totalSupply, token, messages)}</dd>
 						</div>
 						<div>
-							<dt>Denomination</dt>
+							<dt>{messages.dispatchTokenDenomination}</dt>
 							<dd>{token.denomination}</dd>
 						</div>
 						<div>
-							<dt>Your balance</dt>
+							<dt>{messages.dispatchTokenYourBalance}</dt>
 							<dd>
 								{wallet.address
 									? sender.balanceStateAvailable
-										? formatDispatchTokenAmount(sender.balance ?? '0', token)
-										: 'Unavailable'
-									: 'Connect wallet'}
+										? formatDispatchTokenAmount(sender.balance ?? '0', token, messages)
+										: messages.dispatchTokenBalanceUnavailable
+									: messages.dispatchTokenConnectWallet}
 							</dd>
 						</div>
 					</dl>
-					<Link to={tokenPagePath(props.processId)}>View token page</Link>
+					<Link to={tokenPagePath(props.processId)}>{messages.dispatchTokenPageLink}</Link>
 				</div>
 			) : null}
 			{token ? <AssetBalanceStateNotice state={token} /> : null}

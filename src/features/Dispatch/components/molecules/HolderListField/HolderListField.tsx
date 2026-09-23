@@ -4,7 +4,10 @@ import { Info, Plus, X } from 'lucide-react';
 import { Pressable } from 'components/atoms/Pressable';
 import { TextInput } from 'components/atoms/TextInput';
 import { Tooltip } from 'components/atoms/Tooltip';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
+import { DISPATCH_MESSAGES } from '../../../messages';
 import {
 	appendHolderRow,
 	editableHolderRows,
@@ -14,6 +17,9 @@ import {
 	updateHolderRow,
 } from '../../../model/holder-list';
 
+/** The CSV column order the parser accepts. A format sample like the JSON shapes below, not copy. */
+const CSV_HOLDER_SAMPLE = 'address,quantity';
+
 export default function HolderListField(props: {
 	rows: HolderDraftRow[];
 	onChange: (rows: HolderDraftRow[]) => void;
@@ -21,6 +27,8 @@ export default function HolderListField(props: {
 	denomination: number;
 	ticker: string;
 }) {
+	const messages = useMessages(DISPATCH_MESSAGES);
+	const plural = usePlural();
 	const editable = editableHolderRows(props.rows);
 	const exampleAmount = props.denomination ? '250.5' : '250';
 
@@ -41,23 +49,30 @@ export default function HolderListField(props: {
 	return (
 		<div className="holder-list">
 			<div className="holder-list-head">
-				<span>Recipients</span>
+				<span>{messages.dispatchHolderListRecipients}</span>
 				<Tooltip
 					className="field-hint"
 					content={
 						<>
-							Paste a whole list into any field to autofill the rows. Accepts CSV — one{' '}
-							<code>address,quantity</code> per line, <code>#</code> lines are comments — or JSON:{' '}
+							{messages.dispatchHolderListFormatIntro} <code>{CSV_HOLDER_SAMPLE}</code>{' '}
+							{messages.dispatchHolderListFormatPerLine} <code>#</code>{' '}
+							{messages.dispatchHolderListFormatComments}{' '}
 							<code>{`[{"address":"…","quantity":"${exampleAmount}"}]`}</code>,{' '}
-							<code>{`[["…","${exampleAmount}"]]`}</code>, or <code>{`{"…":"${exampleAmount}"}`}</code>.
-							Quantities are {props.ticker} amounts with up to {props.denomination} decimal
-							{props.denomination === 1 ? ' place' : ' places'}; one row per address. Use quoted JSON
-							strings for fractional or very large quantities.
+							<code>{`[["…","${exampleAmount}"]]`}</code>, {messages.dispatchHolderListFormatOr}{' '}
+							<code>{`{"…":"${exampleAmount}"}`}</code>.{' '}
+							{plural(messages.dispatchHolderListFormatQuantities, props.denomination, {
+								ticker: props.ticker,
+								denomination: props.denomination,
+							})}
 						</>
 					}
 				>
 					{(tooltipId) => (
-						<span aria-describedby={tooltipId} aria-label="Holder list format" tabIndex={0}>
+						<span
+							aria-describedby={tooltipId}
+							aria-label={messages.dispatchHolderListFormatLabel}
+							tabIndex={0}
+						>
 							<Info aria-hidden="true" />
 						</span>
 					)}
@@ -67,8 +82,8 @@ export default function HolderListField(props: {
 				{editable.map((row, index) => (
 					<div className="holder-list-row" key={index}>
 						<TextInput
-							aria-label={`Recipient address, row ${index + 1}`}
-							placeholder="Arweave address (43 characters)"
+							aria-label={formatMessage(messages.dispatchHolderRowAddressLabel, { row: index + 1 })}
+							placeholder={messages.dispatchHolderRowAddressPlaceholder}
 							spellCheck={false}
 							autoComplete="off"
 							value={row.address}
@@ -77,8 +92,13 @@ export default function HolderListField(props: {
 							onChange={(event) => handleRowChange(index, { address: event.target.value.trim() })}
 						/>
 						<TextInput
-							aria-label={`Quantity in ${props.ticker}, row ${index + 1}`}
-							placeholder={`Amount in ${props.ticker}`}
+							aria-label={formatMessage(messages.dispatchHolderRowQuantityLabel, {
+								ticker: props.ticker,
+								row: index + 1,
+							})}
+							placeholder={formatMessage(messages.dispatchHolderRowQuantityPlaceholder, {
+								ticker: props.ticker,
+							})}
 							inputMode="decimal"
 							spellCheck={false}
 							autoComplete="off"
@@ -90,7 +110,7 @@ export default function HolderListField(props: {
 						<Pressable
 							type="button"
 							className="holder-list-remove"
-							aria-label={`Remove recipient row ${index + 1}`}
+							aria-label={formatMessage(messages.dispatchHolderRowRemove, { row: index + 1 })}
 							disabled={props.disabled || (editable.length === 1 && !row.address && !row.quantity)}
 							onClick={() => handleRowRemove(index)}
 						>
@@ -100,7 +120,7 @@ export default function HolderListField(props: {
 				))}
 			</div>
 			<Pressable type="button" className="holder-list-add" onClick={handleRowAdd} disabled={props.disabled}>
-				<Plus aria-hidden="true" /> Add recipient
+				<Plus aria-hidden="true" /> {messages.dispatchHolderRowAdd}
 			</Pressable>
 		</div>
 	);

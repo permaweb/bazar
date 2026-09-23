@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, type DispatchPlan } from 'api/dispatch';
 import { type AssetState, DISPLAY_STATE_TIMEOUT_ERROR } from 'api/marketplace';
 
+import { DISPATCH_MESSAGES } from 'features/Dispatch/messages';
 import {
 	dispatchActivityChange,
 	dispatchErrorMessage,
@@ -19,7 +20,13 @@ import {
 	shortAddress,
 	tokenPagePath,
 } from 'features/Dispatch/model/dispatch';
+import type { PluralFormatter } from 'features/Dispatch/types';
 import { appError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+import { DEFAULT_LANGUAGE, formatPlural } from 'helpers/i18n';
+
+const messages = DISPATCH_MESSAGES.en;
+const plural: PluralFormatter = (message, count, values) => formatPlural(DEFAULT_LANGUAGE, message, count, values);
 
 const PROCESS = 'P'.repeat(43);
 const SENDER = 'S'.repeat(43);
@@ -50,7 +57,11 @@ function token(overrides: Partial<AssetState> = {}): AssetState {
 
 describe('dispatch recovery errors', () => {
 	it('explains why a missing signed transaction requires manual review instead of replacement', () => {
-		const message = dispatchErrorMessage(new Error(DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED));
+		const message = dispatchErrorMessage(
+			new Error(DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED),
+			messages,
+			APP_ERROR_MESSAGES.en
+		);
 
 		expect(message).toContain('may already have reached Arweave');
 		expect(message).toContain('will not sign a replacement');
@@ -58,7 +69,7 @@ describe('dispatch recovery errors', () => {
 	});
 
 	it('explains that a state-read deadline cannot create another signature', () => {
-		const message = dispatchErrorMessage(new Error(DISPLAY_STATE_TIMEOUT_ERROR));
+		const message = dispatchErrorMessage(new Error(DISPLAY_STATE_TIMEOUT_ERROR), messages, APP_ERROR_MESSAGES.en);
 
 		expect(message).toContain('within 45 seconds');
 		expect(message).toContain('No new transfer was signed');
@@ -66,18 +77,22 @@ describe('dispatch recovery errors', () => {
 	});
 
 	it('falls back to the dispatch copy for unknown failures', () => {
-		expect(dispatchErrorMessage(new Error('socket hang up'))).toBe('Dispatch failed.');
-		expect(dispatchErrorMessage(appError('asset-purchase-insufficient-funds'))).toBe(
-			'Your AR balance cannot cover the transfer amounts plus network rewards.'
+		expect(dispatchErrorMessage(new Error('socket hang up'), messages, APP_ERROR_MESSAGES.en)).toBe(
+			'Dispatch failed.'
 		);
+		expect(
+			dispatchErrorMessage(appError('asset-purchase-insufficient-funds'), messages, APP_ERROR_MESSAGES.en)
+		).toBe(messages.dispatchErrorInsufficientFunds);
 	});
 });
 
 describe('dispatch formatting', () => {
 	it('shortens addresses and groups whole token digits', () => {
 		expect(shortAddress(ALICE)).toBe('AAAAAA…AAAAAA');
-		expect(formatDispatchTokenAmount('123456789', { denomination: 2, ticker: 'SIG' })).toBe('1,234,567.89 SIG');
-		expect(formatDispatchTokenAmount('100', { denomination: 0, ticker: '' })).toBe('100 tokens');
+		expect(formatDispatchTokenAmount('123456789', { denomination: 2, ticker: 'SIG' }, messages)).toBe(
+			'1,234,567.89 SIG'
+		);
+		expect(formatDispatchTokenAmount('100', { denomination: 0, ticker: '' }, messages)).toBe('100 tokens');
 		expect(tokenPagePath(PROCESS)).toContain(`/${PROCESS}`);
 	});
 
@@ -138,13 +153,13 @@ describe('dispatch plan progress', () => {
 			complete: true,
 			senderMismatch: false,
 		});
-		expect(dispatchProgressStatus(plan(['settled', 'posted']))).toBe('1 of 2 settled');
-		expect(dispatchStartStatus(1)).toBe('Dispatching to 1 holder…');
-		expect(dispatchStartStatus(3)).toBe('Dispatching to 3 holders…');
+		expect(dispatchProgressStatus(plan(['settled', 'posted']), messages)).toBe('1 of 2 settled');
+		expect(dispatchStartStatus(1, messages, plural)).toBe('Dispatching to 1 holder…');
+		expect(dispatchStartStatus(3, messages, plural)).toBe('Dispatching to 3 holders…');
 	});
 
 	it('announces a run as a transfer on its dedicated activity id and removes it when done', () => {
-		const base = { processId: PROCESS, sender: SENDER, status: '1 of 2 settled', createdAt: 5 };
+		const base = { processId: PROCESS, sender: SENDER, status: '1 of 2 settled', createdAt: 5, messages };
 		expect(dispatchActivityChange({ ...base, token: { ticker: 'SIG' }, phase: 'working' })).toMatchObject({
 			type: 'upsert',
 			activity: {
@@ -153,12 +168,15 @@ describe('dispatch plan progress', () => {
 				owner: SENDER,
 				operationKind: 'transfer',
 				phase: 'working',
-				status: '1 of 2 settled',
+				status: { text: '1 of 2 settled' },
 				createdAt: 5,
 			},
 		});
 		const unnamed = dispatchActivityChange({ ...base, token: null, phase: 'error' });
-		expect(unnamed.type === 'upsert' ? unnamed.activity.asset : null).toEqual({ id: PROCESS, name: 'Token' });
+		expect(unnamed.type === 'upsert' ? unnamed.activity.asset : null).toEqual({
+			id: PROCESS,
+			name: messages.dispatchActivityFallbackName,
+		});
 		expect(dispatchActivityChange({ ...base, token: null, phase: 'done' })).toEqual({
 			type: 'remove',
 			id: `fungible:${PROCESS}:${SENDER}:dispatch`,

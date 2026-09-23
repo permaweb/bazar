@@ -17,8 +17,8 @@ import {
 	operationForSigner,
 	operationStorageKey,
 	promoteWalletOperationClaim,
-	purchaseRecoveryApprovalCopy,
 	purchaseRecoveryApprovalCount,
+	purchaseRecoveryApprovalPrompt,
 	releaseWalletOperationClaim,
 	removeCompletedPurchaseRecoveryAndSignatures,
 	removeSignedTransactionRecords,
@@ -152,25 +152,22 @@ describe('wallet-bound operation sessions', () => {
 		).toBe(true);
 	});
 
-	it('explains which approval is missing without implying a duplicate reservation', () => {
-		expect(purchaseRecoveryApprovalCopy({ registration: { id: REGISTRATION_ID, dispatched: true } })).toEqual({
-			title: 'Continue your purchase',
-			detail: 'Your reservation is confirmed. Approve the seller payment to continue.',
-			action: 'Approve seller payment and continue',
+	it('names which approval is missing without implying a duplicate reservation', () => {
+		expect(purchaseRecoveryApprovalPrompt({ registration: { id: REGISTRATION_ID, dispatched: true } })).toEqual({
+			kind: 'seller-payment',
+			reservation: 'dispatched',
 		});
-		expect(purchaseRecoveryApprovalCopy({ registration: { id: REGISTRATION_ID, dispatched: false } }).detail).toBe(
-			'Your reservation is saved. Approve the seller payment to continue.'
-		);
+		expect(purchaseRecoveryApprovalPrompt({ registration: { id: REGISTRATION_ID, dispatched: false } })).toEqual({
+			kind: 'seller-payment',
+			reservation: 'saved',
+		});
 		expect(
-			purchaseRecoveryApprovalCopy(
+			purchaseRecoveryApprovalPrompt(
 				{ registration: { id: REGISTRATION_ID, dispatched: true } },
 				{ externalOrigin: true }
 			)
-		).toEqual({
-			title: 'Continue your purchase',
-			detail: 'Close the other Bazar tab, then approve the seller payment to continue.',
-			action: 'Approve seller payment and continue',
-		});
+		).toEqual({ kind: 'seller-payment', reservation: 'external-tab' });
+		expect(purchaseRecoveryApprovalPrompt(null)).toEqual({ kind: 'all-transactions', approvals: 2 });
 	});
 
 	it('repairs only the terminally rejected purchase leg', () => {

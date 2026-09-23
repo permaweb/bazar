@@ -21,8 +21,11 @@ import {
 } from 'api/transactions';
 
 import type { ArweaveSyncStep } from 'features/TransactionSync';
-import { type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
+import { type AppErrorMessages, type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 import { winstonToArDecimal } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+
+import type { AssetDetailMessages, AssetDetailPlural } from '../messages';
 
 import { safeArPrice, safeLotQuote, safeTokenAmount, tokenLabel } from './fungible-market';
 import {
@@ -80,7 +83,9 @@ export function fungiblePurchaseDraftMatch(
 	eligible: SwapOrder[],
 	quantity: string,
 	state: AssetState,
-	tickerDisplay: string
+	tickerDisplay: string,
+	messages: AssetDetailMessages,
+	errorMessages: AppErrorMessages
 ): FungiblePurchaseDraftMatch {
 	if (kind !== 'buy') return { match: null, error: '' };
 	try {
@@ -90,19 +95,24 @@ export function fungiblePurchaseDraftMatch(
 			match,
 			error: match
 				? ''
-				: `Only ${tokenLabel(
-						eligible.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
-						state
-				  )} is currently available.`,
+				: formatMessage(messages.validationOnlyAvailable, {
+						amount: tokenLabel(
+							eligible.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
+							state
+						),
+				  }),
 		};
 	} catch (cause) {
 		return {
 			match: null,
 			error:
 				toAppError(cause, 'invalid-input').reason === 'order-match-search-limit'
-					? appErrorReasonMessage('order-match-search-limit')
+					? appErrorReasonMessage(errorMessages, 'order-match-search-limit')
 					: quantity
-					? `Enter a valid ${tickerDisplay} amount using no more than ${state.denomination} decimal places.`
+					? formatMessage(messages.validationTokenAmount, {
+							ticker: tickerDisplay,
+							denomination: state.denomination,
+					  })
 					: '',
 		};
 	}
@@ -219,19 +229,19 @@ export type FungiblePurchaseSync = {
 };
 
 /** Reservation and payment progress for the purchase lot currently shown. */
-export function fungiblePurchaseSync(purchase?: PurchaseState): FungiblePurchaseSync {
+export function fungiblePurchaseSync(messages: AssetDetailMessages, purchase?: PurchaseState): FungiblePurchaseSync {
 	if (!purchase) return { steps: [], activeStep: 'register' };
 	return {
 		steps: [
 			{
 				key: 'register',
-				label: 'Reserve listing',
+				label: messages.syncStepReserve,
 				target: PURCHASE_REGISTRATION_TARGET,
 				transaction: purchase.registration,
 			},
 			{
 				key: 'pay',
-				label: 'Pay seller',
+				label: messages.syncStepPay,
 				target: PURCHASE_PAYMENT_TARGET,
 				terminal: true,
 				transaction: purchase.payment,
@@ -241,9 +251,9 @@ export function fungiblePurchaseSync(purchase?: PurchaseState): FungiblePurchase
 		skipKind: purchaseSkipKind(purchase),
 		pendingAfterConfirmation:
 			purchase.stage === 'registration-accepting'
-				? 'Checking live reservation'
+				? messages.syncPendingReservation
 				: purchase.stage === 'ownership-verifying'
-				? 'Checking receipt'
+				? messages.syncPendingReceipt
 				: undefined,
 	};
 }
@@ -254,13 +264,14 @@ export function fungibleSingleSyncSteps(
 	transaction: PreparedTransaction | null,
 	confirmations: number,
 	views: ObserverView[],
-	consensus: Consensus | null
+	consensus: Consensus | null,
+	messages: AssetDetailMessages
 ): ArweaveSyncStep[] {
 	return transaction
 		? [
 				{
 					key: kind,
-					label: operationLabel(kind),
+					label: operationLabel(kind, messages),
 					target: 5,
 					terminal: true,
 					confirmations,
@@ -282,31 +293,43 @@ export function fungibleOperationOutcome(
 	operation: FungibleOperation,
 	state: AssetState,
 	visibleOrders: SwapOrder[],
-	draft: Pick<FungibleOperationDraftView, 'enteredQuantity' | 'listingQuote' | 'transferRecipient'>
+	draft: Pick<FungibleOperationDraftView, 'enteredQuantity' | 'listingQuote' | 'transferRecipient'>,
+	messages: AssetDetailMessages,
+	plural: AssetDetailPlural
 ): FungibleOperationOutcome {
 	const purchasedQuantity = visibleOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
 	const title =
 		operation.kind === 'buy'
-			? 'Purchase complete'
+			? messages.outcomeBuyTitle
 			: operation.kind === 'sell'
-			? 'Tokens listed'
+			? messages.outcomeSellTitle
 			: operation.kind === 'cancel'
-			? 'Listing cancelled'
-			: 'Transfer complete';
+			? messages.outcomeCancelTitle
+			: messages.outcomeTransferTitle;
 	const detail =
 		operation.kind === 'buy'
-			? `${tokenLabel(purchasedQuantity.toString(), state)} received from ${visibleOrders.length} ${
-					visibleOrders.length === 1 ? 'listing' : 'listings'
-			  } · ${winstonToArDecimal(
-					visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString()
-			  )} AR paid to sellers.`
+			? formatMessage(messages.outcomeBuyDetail, {
+					quantity: tokenLabel(purchasedQuantity.toString(), state),
+					listings: plural(messages.outcomeBuyListings, visibleOrders.length),
+					paid: winstonToArDecimal(
+						visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString()
+					),
+			  })
 			: operation.kind === 'sell' && draft.enteredQuantity && draft.listingQuote
-			? `${tokenLabel(draft.enteredQuantity.toString(), state)} listed for ${draft.listingQuote} AR.`
+			? formatMessage(messages.outcomeSellDetail, {
+					quantity: tokenLabel(draft.enteredQuantity.toString(), state),
+					total: draft.listingQuote,
+			  })
 			: operation.kind === 'cancel'
-			? `${tokenLabel(operation.order.quantity, state)} returned to your liquid balance.`
+			? formatMessage(messages.outcomeCancelDetail, {
+					quantity: tokenLabel(operation.order.quantity, state),
+			  })
 			: draft.enteredQuantity
-			? `${tokenLabel(draft.enteredQuantity.toString(), state)} sent to ${draft.transferRecipient}.`
-			: 'The live token state now reflects this action.';
+			? formatMessage(messages.outcomeTransferDetail, {
+					quantity: tokenLabel(draft.enteredQuantity.toString(), state),
+					recipient: draft.transferRecipient,
+			  })
+			: messages.outcomeDefaultDetail;
 	return { title, detail, purchasedQuantity };
 }
 
@@ -341,25 +364,40 @@ export function fungibleOperationSubmit(
 		FungibleOperationDraftView,
 		'enteredQuantity' | 'listingQuote' | 'transferRecipient' | 'sellValid' | 'transferValid'
 	>,
-	purchase: { orders: SwapOrder[]; quantity: bigint; estimatedCost?: string; canAfford?: boolean }
+	purchase: { orders: SwapOrder[]; quantity: bigint; estimatedCost?: string; canAfford?: boolean },
+	messages: AssetDetailMessages
 ): FungibleOperationSubmit {
 	const label =
 		operation.kind === 'buy' && purchase.orders.length
-			? `Buy ${tokenLabel(purchase.quantity.toString(), state)} · ${
-					purchase.estimatedCost ? `${winstonToArDecimal(purchase.estimatedCost)} AR max` : 'checking total…'
-			  }`
+			? formatMessage(messages.submitBuy, {
+					quantity: tokenLabel(purchase.quantity.toString(), state),
+					cost: purchase.estimatedCost
+						? formatMessage(messages.submitBuyCost, {
+								amount: winstonToArDecimal(purchase.estimatedCost),
+						  })
+						: messages.submitBuyChecking,
+			  })
 			: operation.kind === 'sell' && draft.listingQuote && draft.enteredQuantity
-			? `List ${tokenLabel(draft.enteredQuantity.toString(), state)} for ${draft.listingQuote} AR`
+			? formatMessage(messages.submitSell, {
+					quantity: tokenLabel(draft.enteredQuantity.toString(), state),
+					total: draft.listingQuote,
+			  })
 			: operation.kind === 'cancel'
-			? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
+			? formatMessage(messages.submitCancel, { quantity: tokenLabel(operation.order.quantity, state) })
 			: operation.kind === 'transfer' && draft.enteredQuantity
-			? fungibleTransferSubmitLabel(draft.enteredQuantity.toString(), state, draft.transferRecipient)
-			: operationLabel(operation.kind);
+			? fungibleTransferSubmitLabel(draft.enteredQuantity.toString(), state, draft.transferRecipient, messages)
+			: operationLabel(operation.kind, messages);
 	return {
 		label,
 		ariaLabel:
 			operation.kind === 'transfer' && draft.enteredQuantity && draft.transferValid
-				? fungibleTransferSubmitLabel(draft.enteredQuantity.toString(), state, draft.transferRecipient, true)
+				? fungibleTransferSubmitLabel(
+						draft.enteredQuantity.toString(),
+						state,
+						draft.transferRecipient,
+						messages,
+						true
+				  )
 				: undefined,
 		disabled:
 			(operation.kind === 'buy' &&

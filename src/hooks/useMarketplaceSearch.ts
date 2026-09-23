@@ -3,7 +3,6 @@ import React from 'react';
 import {
 	type AssetSummary,
 	type Collection,
-	collectionKindLabel,
 	collectionSearchAssets,
 	directTokenSearchCollection,
 	interleaveCollectionAssets,
@@ -30,7 +29,7 @@ export type MarketplaceSearchScope = SearchScope;
 
 export type MarketplaceSearchResult = SearchAsset;
 
-export type MarketplaceCollectionResult = { collection: Collection; kindLabel: string };
+export type MarketplaceCollectionResult = { collection: Collection };
 
 /** The permanent creation-record index search: not needed for this query and scope, running, failed, or settled. */
 export type MarketplaceIndexSearchStatus = 'inactive' | 'pending' | 'failed' | 'settled';
@@ -59,6 +58,8 @@ export function useMarketplaceSearch(options: {
 	open: boolean;
 	query: string;
 	scope: MarketplaceSearchScope;
+	/** The caller's own wording for a collection, so this hook matches the text the results actually show. */
+	describeCollection(collection: Collection): string;
 }): MarketplaceSearch {
 	const market = useMarketProvider();
 	const normalizedQuery = options.query.trim().toLowerCase();
@@ -132,14 +133,14 @@ export function useMarketplaceSearch(options: {
 						.filter(
 							(collection) =>
 								!deferredNormalizedQuery ||
-								`${collection.name} ${collection.description}`
+								`${collection.name} ${options.describeCollection(collection)}`
 									.toLowerCase()
 									.includes(deferredNormalizedQuery) ||
 								Boolean(localMatches.get(collection)?.length)
 						)
 						.slice(0, COLLECTION_RESULT_LIMIT)
-			).map((collection) => ({ collection, kindLabel: collectionKindLabel(collection) })),
-		[deferredNormalizedQuery, localMatches, options.scope, relevantCollections]
+			).map((collection) => ({ collection })),
+		[deferredNormalizedQuery, localMatches, options, relevantCollections]
 	);
 	const searchableCollections = React.useMemo(
 		() => (options.scope === 'collections' ? [] : relevantCollections),

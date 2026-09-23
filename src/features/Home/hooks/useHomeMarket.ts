@@ -3,12 +3,15 @@ import React from 'react';
 import type { Collection } from 'api/collections';
 
 import { aoRoutingScopeFromLocation, arweaveGraphqlEndpoint } from 'helpers/config';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
+import { HOME_MESSAGES } from '../messages';
 import { type HomeListingFailure, homeListingScanFailure } from '../model/home-listing-scan';
 import {
 	type HomeAssetType,
 	type HomeAssetView,
+	homeCollectionDescription,
 	type HomeCollectionSort,
 	type HomeTab,
 	shouldLoadHomeAssetSummaries,
@@ -69,6 +72,7 @@ export type HomeMarketData = {
  */
 export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 	const market = useMarketProvider();
+	const messages = useMessages(HOME_MESSAGES);
 	const setPageRefreshing = market.setPageRefreshing;
 	const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
 	const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
@@ -94,6 +98,10 @@ export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 		() => homePartialTokenCollection(market.collections, normalizedQuery),
 		[market.collections, normalizedQuery]
 	);
+	const describeCollection = React.useCallback(
+		(collection: Collection) => homeCollectionDescription(collection, messages),
+		[messages]
+	);
 	const collections = React.useMemo(
 		() =>
 			homeVisibleCollections(
@@ -101,9 +109,10 @@ export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 				normalizedQuery,
 				searchMatches,
 				collectionSort,
-				collectionActivity
+				collectionActivity,
+				describeCollection
 			),
-		[collectionActivity, collectionSort, searchMatches, market.collections, normalizedQuery]
+		[collectionActivity, collectionSort, describeCollection, searchMatches, market.collections, normalizedQuery]
 	);
 	const liveShells = React.useMemo(() => homeLiveListingShells(listingScan.listings), [listingScan.listings]);
 	const listingShells = React.useMemo(

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AssetSummary } from 'api/collections';
 import type { SwapOrder } from 'api/marketplace';
 
+import { ASSET_DETAIL_MESSAGES } from 'features/AssetDetail/messages';
 import type { BatchResume, FungibleOperationActivity } from 'features/AssetDetail/model/fungible-operation';
 import {
 	batchResumeOperation,
@@ -15,6 +16,7 @@ import {
 	withoutScopedActivities,
 } from 'features/AssetDetail/model/fungible-recovery';
 
+const messages = ASSET_DETAIL_MESSAGES.en;
 const ASSET_ID = 'a'.repeat(43);
 const COLLECTION_ID = 'k'.repeat(43);
 const SIGNER = 's'.repeat(43);
@@ -103,29 +105,33 @@ describe('saved fungible operation records', () => {
 
 describe('fungible operation activity announcements', () => {
 	it('publishes the phase and its status for the activity centre', () => {
-		expect(fungibleOperationActivitySummary(ASSET_ACTION, ASSET, COLLECTION_ID, 'working')).toEqual({
+		expect(fungibleOperationActivitySummary(ASSET_ACTION, ASSET, COLLECTION_ID, 'working', messages)).toEqual({
 			id: 'asset',
 			asset: ASSET,
 			collectionId: COLLECTION_ID,
 			owner: SIGNER,
 			operationKind: 'sell',
 			phase: 'working',
-			status: 'Transaction in progress',
+			status: { text: messages.phaseStatusWorking },
 			createdAt: 1,
 		});
 	});
 
 	it('includes confirmation progress only when both values are known', () => {
 		expect(
-			fungibleOperationActivitySummary(ASSET_ACTION, ASSET, COLLECTION_ID, 'working', {
-				status: 'Watching Arweave confirmations…',
+			fungibleOperationActivitySummary(ASSET_ACTION, ASSET, COLLECTION_ID, 'working', messages, {
+				status: { text: messages.phaseStatusConfirming },
 				confirmations: 2,
 				confirmationTarget: 5,
 			})
-		).toMatchObject({ status: 'Watching Arweave confirmations…', confirmations: 2, confirmationTarget: 5 });
+		).toMatchObject({
+			status: { text: messages.phaseStatusConfirming },
+			confirmations: 2,
+			confirmationTarget: 5,
+		});
 		expect(
-			fungibleOperationActivitySummary(ASSET_ACTION, ASSET, COLLECTION_ID, 'working', {
-				status: 'Watching Arweave confirmations…',
+			fungibleOperationActivitySummary(ASSET_ACTION, ASSET, COLLECTION_ID, 'working', messages, {
+				status: { text: messages.phaseStatusConfirming },
 				confirmations: 2,
 			})
 		).not.toHaveProperty('confirmations');
@@ -138,6 +144,7 @@ describe('fungible operation activity announcements', () => {
 				ASSET,
 				COLLECTION_ID,
 				'form',
+				messages,
 				undefined,
 				42
 			).createdAt

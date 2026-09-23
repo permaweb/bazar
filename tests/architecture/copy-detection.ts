@@ -21,6 +21,8 @@ const CLASS_LIST = /^-?[a-z0-9_]+(?:-{1,2}[a-z0-9_]+)*-*(?:\s+-?[a-z0-9_]+(?:-{1
 const GRAPHQL = /^\s*(?:query|mutation|fragment|subscription)\b/;
 const KEY_NAMES =
 	/^(?:Enter|Escape|Tab|Home|End|PageUp|PageDown|Arrow(?:Up|Down|Left|Right)|Backspace|Delete|Space|Shift|Control|Alt|Meta)$/;
+// A currency or token ticker such as `$AR` or `$U` is protocol data: it reads the same in every language.
+const CURRENCY_TICKER = /^\$[A-Z][A-Z0-9]{0,9}$/;
 
 function calleeName(node: ts.CallExpression | ts.NewExpression): string {
 	const expression = node.expression;
@@ -83,7 +85,9 @@ function literalText(node: ts.Node): string | null {
 function looksLikeCopy(text: string): boolean {
 	const value = text.trim();
 	if (value.length < 2 || !PROSE.test(value)) return false;
-	if (MACHINE.test(value) || KEY_NAMES.test(value) || GRAPHQL.test(value)) return false;
+	if (MACHINE.test(value) || KEY_NAMES.test(value) || GRAPHQL.test(value) || CURRENCY_TICKER.test(value)) {
+		return false;
+	}
 	if (CLASS_LIST.test(value) && value.includes('-')) return false;
 	return SENTENCE.test(value) || /\s/.test(value);
 }
@@ -105,7 +109,8 @@ export function findHardcodedCopy(fileName: string, sourceText: string): CopyFin
 	};
 	const visit = (node: ts.Node) => {
 		if (ts.isJsxText(node)) {
-			if (/\p{L}{2,}/u.test(node.text)) record(node, node.text);
+			const text = node.text.trim();
+			if (/\p{L}{2,}/u.test(text) && !CURRENCY_TICKER.test(text)) record(node, node.text);
 			return;
 		}
 		const text = literalText(node);

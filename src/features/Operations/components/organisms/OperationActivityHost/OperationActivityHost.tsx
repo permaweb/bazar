@@ -1,11 +1,15 @@
 import { Button } from 'components/atoms/Button';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useOperationActivityHost } from '../../../hooks/useOperationActivityHost';
+import { OPERATIONS_MESSAGES } from '../../../messages';
 import { OperationDialog } from '../OperationDialog';
 import { UploadActivityPanel } from '../UploadActivityPanel';
 
 // Renders the global operation, upload, and mint surfaces owned by the operation activity provider.
 export default function OperationActivityHost() {
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	const host = useOperationActivityHost();
 	const mintNotice = host.mintNotice;
 
@@ -14,14 +18,14 @@ export default function OperationActivityHost() {
 			{mintNotice ? (
 				<div className="mint-live-notice" role="status" aria-live="polite">
 					<div>
-						<strong>{mintNotice.asset.name} is live on Bazar</strong>
-						<span>The original accepted upload is now applied to live process state.</span>
+						<strong>{formatMessage(messages.mintNoticeTitle, { asset: mintNotice.asset.name })}</strong>
+						<span>{messages.mintNoticeDetail}</span>
 					</div>
 					<Button type="button" size="custom" onClick={host.viewMintNoticeAsset}>
-						View asset
+						{messages.mintNoticeViewAsset}
 					</Button>
 					<Button type="button" size="custom" variant="ghost" onClick={host.dismissMintNotice}>
-						Dismiss
+						{messages.mintNoticeDismiss}
 					</Button>
 				</div>
 			) : null}

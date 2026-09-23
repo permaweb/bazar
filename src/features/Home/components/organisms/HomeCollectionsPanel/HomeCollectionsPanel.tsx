@@ -1,3 +1,7 @@
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { HOME_MESSAGES } from '../../../messages';
 import type { HomeCollectionsView } from '../../../model/home-market-view';
 import { HomeCollectionCard } from '../../molecules/HomeCollectionCard';
 import { HomeMarketGhostCard } from '../../molecules/HomeMarketGhostCard';
@@ -7,6 +11,7 @@ export default function HomeCollectionsPanel(props: {
 	marketFailed: boolean;
 	query: string;
 }) {
+	const messages = useMessages(HOME_MESSAGES);
 	return (
 		<div
 			aria-busy={props.collections.pending}
@@ -32,7 +37,9 @@ export default function HomeCollectionsPanel(props: {
 				</div>
 			) : null}
 			{props.collections.ready && !props.marketFailed && props.collections.items.length === 0 ? (
-				<div className="home-no-results">No collections match “{props.query}”.</div>
+				<div className="home-no-results">
+					{formatMessage(messages.homeNoCollections, { query: props.query })}
+				</div>
 			) : null}
 		</div>
 	);

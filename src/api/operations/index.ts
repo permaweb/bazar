@@ -4,6 +4,8 @@ export type {
 	Operation,
 	OperationActivity,
 	OperationActivityPhase,
+	OperationActivityStatus,
+	OperationRecoveryStatus,
 } from './activity';
 export {
 	announceFungibleOperationActivityChange,
@@ -16,13 +18,12 @@ export {
 	fungibleActivityHasRecovery,
 	fungibleOperationActivityId,
 	fungiblePurchaseRecoveryCanBeDiscarded,
-	operationLabel,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
 } from './activity';
-export type { OperationSession, WalletOperationClaim } from './session';
+export type { OperationSession, PurchaseRecoveryApprovalPrompt, WalletOperationClaim } from './session';
 export {
 	acquireWalletOperationClaim,
 	assetHasSavedSignedAction,
@@ -37,8 +38,8 @@ export {
 	operationClaimStorageKey,
 	operationStorageKey,
 	promoteWalletOperationClaim,
-	purchaseRecoveryApprovalCopy,
 	purchaseRecoveryApprovalCount,
+	purchaseRecoveryApprovalPrompt,
 	releaseWalletOperationClaim,
 	removeWalletRecord,
 	removeWalletRecordIf,

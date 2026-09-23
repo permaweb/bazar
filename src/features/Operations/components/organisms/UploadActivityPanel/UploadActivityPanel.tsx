@@ -13,10 +13,13 @@ import { MintTransactionReceipt } from 'components/molecules/MintTransactionRece
 import { TransactionDialogControl } from 'components/molecules/TransactionDialogControl';
 import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
+import { useMessages } from 'providers/LanguageProvider';
 import type { UploadActivity } from 'providers/OperationActivityProvider';
 
 import { useTransactionDialogHide } from '../../../hooks/useTransactionDialogHide';
 import { useUploadObservers } from '../../../hooks/useUploadObservers';
+import { OPERATIONS_MESSAGES } from '../../../messages';
+import { operationTransactionAddressCopy } from '../../../model/operation-copy';
 import { isUploadActivityWorking, uploadActivityDestination, uploadActivityView } from '../../../model/upload-activity';
 
 export default function UploadActivityPanel(props: {
@@ -27,13 +30,14 @@ export default function UploadActivityPanel(props: {
 	onClose(): void;
 }) {
 	const navigate = useNavigate();
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	const dialogHide = useTransactionDialogHide(props.visible, props.onHide);
 	const titleId = React.useId();
 	const observerState = useUploadObservers(
 		props.activity.transactions,
 		props.visible && isUploadActivityWorking(props.activity)
 	);
-	const view = uploadActivityView(props.activity, props.relatedMintActivities, observerState);
+	const view = uploadActivityView(props.activity, props.relatedMintActivities, observerState, messages);
 
 	function handleDismiss() {
 		if (!view.working) {
@@ -75,9 +79,19 @@ export default function UploadActivityPanel(props: {
 					</span>
 				}
 				control={
-					<TransactionDialogControl hiding={dialogHide.hiding} phase={view.phase} onClick={handleDismiss} />
+					<TransactionDialogControl
+						closeLabel={messages.operationDialogClose}
+						hideLabel={messages.operationDialogHideTransaction}
+						hiding={dialogHide.hiding}
+						phase={view.phase}
+						onClick={handleDismiss}
+					/>
 				}
-				eyebrow={props.activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
+				eyebrow={
+					props.activity.kind === 'collection'
+						? messages.uploadEyebrowCollection
+						: messages.uploadEyebrowAsset
+				}
 				layout="asset"
 				title={props.activity.name}
 				titleId={titleId}
@@ -85,13 +99,13 @@ export default function UploadActivityPanel(props: {
 			{view.working && !view.syncSteps.length ? (
 				<div className="operation-preparing">
 					<Loading label={view.status} />
-					<p>The network view will appear as soon as the first signed transaction is available.</p>
+					<p>{messages.uploadPreparingDetail}</p>
 				</div>
 			) : null}
 			{view.working && view.syncSteps.length ? (
 				<div className="operation-working">
 					<LiveRegion as="p">{view.status}</LiveRegion>
-					<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+					<React.Suspense fallback={<Loading label={messages.loadingTransactionProgress} />}>
 						<LazyArweaveTransactionSync
 							active={props.visible}
 							activeStep={view.activeStep}
@@ -115,10 +129,10 @@ export default function UploadActivityPanel(props: {
 							{props.activity.phase === 'done'
 								? props.activity.kind === 'collection'
 									? props.activity.extended
-										? 'Collection extended'
-										: 'Collection submitted'
-									: 'Live on Bazar'
-								: 'Upload needs attention'}
+										? messages.uploadCollectionExtended
+										: messages.uploadCollectionSubmitted
+									: messages.uploadAssetLive
+								: messages.uploadNeedsAttention}
 						</strong>
 						<p aria-live="polite" role="status">
 							{view.status}
@@ -126,10 +140,16 @@ export default function UploadActivityPanel(props: {
 					</div>
 				</div>
 			) : null}
-			{view.receiptEntries.length ? <MintTransactionReceipt entries={view.receiptEntries} /> : null}
+			{view.receiptEntries.length ? (
+				<MintTransactionReceipt
+					addressLabels={operationTransactionAddressCopy(messages)}
+					ariaLabel={messages.operationReceiptsLabel}
+					entries={view.receiptEntries}
+				/>
+			) : null}
 			{props.activity.phase === 'done' && props.activity.collectionId ? (
 				<Button className="wide" data-dialog-initial onClick={handleViewResult} size="custom" variant="primary">
-					View {props.activity.kind === 'collection' ? 'collection' : 'asset'}
+					{props.activity.kind === 'collection' ? messages.uploadViewCollection : messages.uploadViewAsset}
 				</Button>
 			) : null}
 		</Dialog>

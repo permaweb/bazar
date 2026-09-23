@@ -3,6 +3,16 @@ import { Server } from 'lucide-react';
 import { Icon } from '../../atoms/Icon';
 import { Tooltip } from '../../atoms/Tooltip';
 
+// A molecule may not read the language provider, so the status wording travels with the verification data.
+export type StateVerificationLabels = {
+	checked: string;
+	failed: string;
+	fallbackHost: string;
+	refreshing: string;
+	requested: string;
+	via: string;
+};
+
 export function stateVerificationTimeLabel(verifiedAt: number) {
 	const timestamp = new Date(verifiedAt);
 	const time = timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
@@ -11,13 +21,14 @@ export function stateVerificationTimeLabel(verifiedAt: number) {
 }
 
 export default function StateVerification(props: {
+	labels: StateVerificationLabels;
 	provider: string;
 	verifiedAt: number | null;
 	refreshing?: boolean;
 	failed?: boolean;
 }) {
 	if (!props.verifiedAt) return null;
-	let host = 'selected gateway';
+	let host = props.labels.fallbackHost;
 	try {
 		host = props.provider ? new URL(props.provider).host : host;
 	} catch {
@@ -30,10 +41,10 @@ export default function StateVerification(props: {
 			<Icon icon={Server} size="xs" />
 			<span>
 				{props.refreshing ?? false
-					? 'Refreshing · last checked'
+					? props.labels.refreshing
 					: props.failed ?? false
-					? 'Refresh failed · last checked'
-					: 'Checked'}
+					? props.labels.failed
+					: props.labels.checked}
 			</span>{' '}
 			<Tooltip content={timestamp.toLocaleString()} placement="top">
 				{(tooltipId) => (
@@ -42,11 +53,11 @@ export default function StateVerification(props: {
 					</time>
 				)}
 			</Tooltip>{' '}
-			<span>via</span>{' '}
+			<span>{props.labels.via}</span>{' '}
 			<Tooltip content={props.provider} placement="top">
 				{(tooltipId) => <strong aria-describedby={tooltipId}>{host}</strong>}
 			</Tooltip>
-			<span>· current state requested</span>
+			<span>{props.labels.requested}</span>
 		</p>
 	);
 }

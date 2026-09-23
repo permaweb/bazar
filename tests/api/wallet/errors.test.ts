@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { signWithWallet, walletFailure } from 'api/wallet/errors';
 
 import { appError, appErrorMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 describe('wallet failure mapping', () => {
 	it.each([
@@ -14,7 +15,9 @@ describe('wallet failure mapping', () => {
 	])('maps a declined approval (%s) to a neutral rejection', (text) => {
 		const failure = walletFailure(new Error(text), 'wallet-sign-failed');
 		expect(failure).toMatchObject({ reason: 'wallet-request-rejected', code: 'rejected' });
-		expect(appErrorMessage(failure)).toBe('The wallet request was declined. Nothing was signed or sent.');
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, failure)).toBe(
+			'The wallet request was declined. Nothing was signed or sent.'
+		);
 	});
 
 	it('uses the caller reason for a declined connection and the fallback for anything else', () => {

@@ -3,12 +3,16 @@ import React from 'react';
 import type { Collection } from 'api/collections';
 import { type CollectionMintEstimate, loadMintedCollections, loadMintRuntime } from 'api/mint';
 
-import { type AppError, appErrorMessage, toAppError } from 'helpers/app-error';
+import { type AppError, toAppError } from 'helpers/app-error';
 import { asyncData, isAsyncPending } from 'helpers/async-state';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useOperationActivity } from 'providers/OperationActivityProvider';
 import { useWallet } from 'providers/WalletProvider';
 
+import { COLLECTION_MESSAGES } from '../messages';
 import {
 	appendedCollectionAssetIds,
 	collectionAppendReducer,
@@ -37,6 +41,8 @@ export type CollectionAppendView = {
 };
 
 export function useCollectionAppend(collectionId: string, collection: Collection | undefined): CollectionAppendView {
+	const language = useMessages(COLLECTION_MESSAGES);
+	const errorMessage = useAppErrorMessage();
 	const market = useMarketProvider();
 	const wallet = useWallet();
 	const operations = useOperationActivity();
@@ -89,8 +95,8 @@ export function useCollectionAppend(collectionId: string, collection: Collection
 			id: uploadId,
 			owner,
 			kind: 'collection',
-			name: `${collection.name} additions`,
-			status: 'Preparing secure wallet approvals…',
+			name: formatMessage(language.appendUploadName, { name: collection.name }),
+			status: language.appendUploadStatus,
 		});
 		try {
 			const { CollectionMintClient } = await loadMintRuntime();
@@ -102,7 +108,7 @@ export function useCollectionAppend(collectionId: string, collection: Collection
 					allowHighCost: true,
 					onTransaction: (transaction) => operations.recordUploadTransaction(uploadId, transaction),
 					onPhase: (phase) => {
-						const progress = collectionAppendPhaseLabel(phase);
+						const progress = collectionAppendPhaseLabel(phase, language);
 						dispatch({ type: 'submit-progressed', progress });
 						operations.updateUpload(uploadId, progress);
 					},
@@ -120,7 +126,7 @@ export function useCollectionAppend(collectionId: string, collection: Collection
 		} catch (cause) {
 			const error = toAppError(cause, 'unknown');
 			dispatch({ type: 'submit-failed', error });
-			operations.failUpload(uploadId, appErrorMessage(error));
+			operations.failUpload(uploadId, errorMessage(error));
 		}
 	};
 

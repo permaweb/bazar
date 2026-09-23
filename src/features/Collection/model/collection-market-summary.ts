@@ -1,96 +1,140 @@
 import type { Collection } from 'api/collections';
 
+import { formatMessage } from 'helpers/i18n';
+
+import type { CollectionMessages, CollectionPlural } from '../messages';
+
 import type { CollectionListingProgress } from './collection-listings';
 
 /** Progress of a listing pass, optionally scoped to the tokens loaded so far. */
 export function collectionListingSearchProgress(
 	progress: Pick<CollectionListingProgress, 'pages' | 'total' | 'resolved' | 'failures'>,
-	loadedTokens: number | null
+	loadedTokens: number | null,
+	messages: CollectionMessages,
+	plural: CollectionPlural
 ): string {
-	return `${progress.pages.toLocaleString()} index ${
-		progress.pages === 1 ? 'check' : 'checks'
-	} this pass · ${progress.total.toLocaleString()} ${
-		progress.total === 1 ? 'candidate' : 'candidates'
-	} · ${progress.resolved.toLocaleString()} checked${
-		progress.failures ? ` · ${progress.failures.toLocaleString()} unavailable` : ''
-	}${loadedTokens !== null ? ` · among ${loadedTokens.toLocaleString()} loaded tokens` : ''}`;
+	const segments = [
+		plural(messages.listingProgressChecks, progress.pages, { count: progress.pages.toLocaleString() }),
+		plural(messages.listingProgressCandidates, progress.total, { count: progress.total.toLocaleString() }),
+		formatMessage(messages.listingProgressChecked, { count: progress.resolved.toLocaleString() }),
+	];
+	if (progress.failures) {
+		segments.push(
+			formatMessage(messages.listingProgressUnavailable, { count: progress.failures.toLocaleString() })
+		);
+	}
+	if (loadedTokens !== null) {
+		segments.push(formatMessage(messages.listingProgressLoadedTokens, { count: loadedTokens.toLocaleString() }));
+	}
+	return segments.join(messages.progressSeparator);
 }
 
 /** The visible count beside the collection tools. */
-export function collectionResultSummary(input: {
-	collection: Collection;
-	loading: boolean;
-	listedOnly: boolean;
-	listedCount: number;
-	offerCount: number;
-	query: string;
-	initial: string;
-	matchCount: number;
-	failures: number;
-}): string {
+export function collectionResultSummary(
+	input: {
+		collection: Collection;
+		loading: boolean;
+		listedOnly: boolean;
+		listedCount: number;
+		offerCount: number;
+		query: string;
+		initial: string;
+		matchCount: number;
+		failures: number;
+	},
+	messages: CollectionMessages,
+	plural: CollectionPlural
+): string {
 	const collection = input.collection;
 	const loaded = collection.assets.length;
 	if (input.loading) {
 		return input.listedOnly
-			? `${input.listedCount.toLocaleString()} live ${input.listedCount === 1 ? 'listing' : 'listings'} so far`
-			: `${input.offerCount.toLocaleString()} live ${input.offerCount === 1 ? 'offer' : 'offers'} so far`;
+			? plural(messages.summaryListingsSoFar, input.listedCount, { count: input.listedCount.toLocaleString() })
+			: plural(messages.summaryOffersSoFar, input.offerCount, { count: input.offerCount.toLocaleString() });
 	}
 	if (input.query) {
-		return `${input.matchCount.toLocaleString()} ${
-			collection.kind === 'names' ? 'current namespace' : 'loaded'
-		} matches`;
+		return formatMessage(
+			collection.kind === 'names' ? messages.summaryNamespaceMatches : messages.summaryLoadedMatches,
+			{ count: input.matchCount.toLocaleString() }
+		);
 	}
-	if (input.initial !== 'all')
-		return `${input.matchCount.toLocaleString()} loaded names beginning with ${input.initial}`;
+	if (input.initial !== 'all') {
+		return formatMessage(messages.summaryInitialMatches, {
+			count: input.matchCount.toLocaleString(),
+			initial: input.initial,
+		});
+	}
 	if (input.listedOnly) {
-		return `${input.matchCount.toLocaleString()} live ${input.matchCount === 1 ? 'listing' : 'listings'}${
-			collection.kind === 'tokens' && collection.hasMore ? ' in loaded tokens' : ''
-		}${input.failures ? ` · ${input.failures.toLocaleString()} unavailable` : ''}`;
+		const listings = plural(
+			collection.kind === 'tokens' && collection.hasMore
+				? messages.summaryLiveListingsInLoadedTokens
+				: messages.summaryLiveListings,
+			input.matchCount,
+			{ count: input.matchCount.toLocaleString() }
+		);
+		return input.failures
+			? [
+					listings,
+					formatMessage(messages.listingProgressUnavailable, { count: input.failures.toLocaleString() }),
+			  ].join(messages.progressSeparator)
+			: listings;
 	}
 	if (collection.kind === 'names') {
 		return collection.hasMore
-			? `${loaded.toLocaleString()} current names loaded · more available`
-			: `${loaded.toLocaleString()} current ${loaded === 1 ? 'name' : 'names'}`;
+			? formatMessage(messages.summaryNamesLoadedMore, { count: loaded.toLocaleString() })
+			: plural(messages.summaryNames, loaded, { count: loaded.toLocaleString() });
 	}
 	if (collection.kind === 'tokens' && collection.hasMore)
-		return `${loaded.toLocaleString()} tokens loaded · more available`;
-	return `${loaded.toLocaleString()} ${
-		collection.kind === 'tokens' ? (loaded === 1 ? 'token' : 'tokens') : loaded === 1 ? 'asset' : 'assets'
-	}`;
+		return formatMessage(messages.summaryTokensLoadedMore, { count: loaded.toLocaleString() });
+	return plural(collection.kind === 'tokens' ? messages.summaryTokens : messages.summaryAssets, loaded, {
+		count: loaded.toLocaleString(),
+	});
 }
 
 /** The polite announcement for the current search, price check, or listing pass. */
-export function collectionResultAnnouncement(input: {
-	collection: Collection;
-	loading: boolean;
-	listedOnly: boolean;
-	searchProgress: string;
-	pricesLoading: boolean;
-	visiblePriceCount: number;
-	query: string;
-	matchCount: number;
-	summary: string;
-}): string {
+export function collectionResultAnnouncement(
+	input: {
+		collection: Collection;
+		loading: boolean;
+		listedOnly: boolean;
+		searchProgress: string;
+		pricesLoading: boolean;
+		visiblePriceCount: number;
+		query: string;
+		matchCount: number;
+		summary: string;
+	},
+	messages: CollectionMessages
+): string {
 	const collection = input.collection;
 	if (input.loading) {
 		return input.listedOnly
-			? `Searching Arweave for live listings in ${collection.name}: ${input.searchProgress}.`
-			: `Checking live offers in ${collection.name} while all items remain visible.`;
+			? formatMessage(messages.announcementSearchingListings, {
+					collection: collection.name,
+					progress: input.searchProgress,
+			  })
+			: formatMessage(messages.announcementCheckingOffers, { collection: collection.name });
 	}
 	if (input.pricesLoading) {
-		return `Checking live prices for ${input.visiblePriceCount.toLocaleString()} visible assets in ${
-			collection.name
-		}.`;
+		return formatMessage(messages.announcementCheckingPrices, {
+			collection: collection.name,
+			count: input.visiblePriceCount.toLocaleString(),
+		});
 	}
 	if (input.query) {
 		if (input.matchCount) {
-			return `${input.matchCount.toLocaleString()} ${collection.kind === 'names' ? 'names' : 'assets'} match ${
-				input.query
-			} in ${collection.name}.`;
+			return formatMessage(
+				collection.kind === 'names' ? messages.announcementNamesMatch : messages.announcementAssetsMatch,
+				{ collection: collection.name, count: input.matchCount.toLocaleString(), query: input.query }
+			);
 		}
-		return collection.kind === 'tokens' && collection.hasMore
-			? `No loaded tokens match ${input.query} in ${collection.name}; more token records remain available.`
-			: `No ${collection.kind === 'names' ? 'names' : 'assets'} match ${input.query} in ${collection.name}.`;
+		const empty =
+			collection.kind === 'tokens' && collection.hasMore
+				? messages.announcementNoLoadedTokensMatch
+				: collection.kind === 'names'
+				? messages.announcementNoNamesMatch
+				: messages.announcementNoAssetsMatch;
+		return formatMessage(empty, { collection: collection.name, query: input.query });
 	}
-	return `${input.summary} in ${collection.name}.`;
+	return formatMessage(messages.announcementSummary, { collection: collection.name, summary: input.summary });
 }

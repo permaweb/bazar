@@ -10,8 +10,12 @@ import {
 	type MintPhase,
 } from 'api/mint';
 
+import type { TxAddressLabels } from 'components/atoms/TxAddress';
 import type { MintTransactionReceiptEntry } from 'components/molecules/MintTransactionReceipt';
 import { type AsyncState, IDLE, isAsyncPending, LOADING } from 'helpers/async-state';
+import { formatMessage } from 'helpers/i18n';
+
+import type { CreateMessages } from '../messages';
 
 import type { CreatorMode } from './mint-form';
 
@@ -152,74 +156,117 @@ export function fungibleMintError(state: MintFlowState): string | null {
 }
 
 /** Upload-activity status for one asset mint stage. */
-export function mintPhaseStatus(phase: MintPhase): string {
+export function mintPhaseStatus(phase: MintPhase, messages: CreateMessages): string {
 	return {
-		'signing-asset': 'Waiting for approval of the atomic asset in your wallet…',
-		'uploading-asset': 'Uploading the atomic asset to Arweave…',
-		'signing-artwork': 'Waiting for approval of the album artwork in your wallet…',
-		'uploading-artwork': 'Uploading album artwork to Arweave…',
+		'signing-asset': messages.mintPhaseStatusSigningAsset,
+		'uploading-asset': messages.mintPhaseStatusUploadingAsset,
+		'signing-artwork': messages.mintPhaseStatusSigningArtwork,
+		'uploading-artwork': messages.mintPhaseStatusUploadingArtwork,
 	}[phase];
 }
 
 /** Upload-activity status for one collection mint stage. */
-export function collectionMintPhaseLabel(phase: CollectionMintPhase): string {
+export function collectionMintPhaseLabel(phase: CollectionMintPhase, messages: CreateMessages): string {
 	if (phase.kind === 'asset') {
-		return `Asset ${phase.index + 1} of ${phase.total}: ${mintPhaseStatus(phase.phase)}`;
+		return formatMessage(messages.mintCollectionAssetStatus, {
+			index: phase.index + 1,
+			total: phase.total,
+			status: mintPhaseStatus(phase.phase, messages),
+		});
 	}
-	return `${phase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${phase.phase}…`;
+	return collectionStageLabel(phase.kind, phase.phase, messages);
+}
+
+function collectionStageLabel(
+	kind: 'manifest' | 'process',
+	phase: 'signing' | 'uploading',
+	messages: CreateMessages
+): string {
+	return formatMessage(
+		kind === 'manifest' ? messages.mintCollectionStageManifest : messages.mintCollectionStageProcess,
+		{
+			phase:
+				phase === 'signing'
+					? messages.mintCollectionStagePhaseSigning
+					: messages.mintCollectionStagePhaseUploading,
+		}
+	);
 }
 
 /** The submit button and token panel label for the stage in progress, token first. */
-export function mintPhaseLabel(state: MintFlowState): string {
+export function mintPhaseLabel(state: MintFlowState, messages: CreateMessages): string {
 	const fungiblePhase = fungibleMintPhase(state);
 	if (fungiblePhase) {
 		return {
-			'signing-logo': 'Approve the token logo in your wallet…',
-			'uploading-logo': 'Uploading the token logo to Arweave…',
-			signing: 'Approve the token process in your wallet…',
-			uploading: 'Submitting the token process to Arweave…',
+			'signing-logo': messages.mintPhaseLabelSigningLogo,
+			'uploading-logo': messages.mintPhaseLabelUploadingLogo,
+			signing: messages.mintPhaseLabelSigningToken,
+			uploading: messages.mintPhaseLabelUploadingToken,
 		}[fungiblePhase];
 	}
 	const collectionPhase = state.collectionPhase;
 	if (collectionPhase) {
 		return collectionPhase.kind === 'asset'
-			? `Asset ${collectionPhase.index + 1} of ${collectionPhase.total}: ${
-					{
-						'signing-asset': 'approve atomic asset',
-						'uploading-asset': 'uploading atomic asset',
-						'signing-artwork': 'approve artwork upload',
-						'uploading-artwork': 'uploading artwork',
-					}[collectionPhase.phase]
-			  }…`
-			: `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${
-					collectionPhase.phase
-			  }…`;
+			? formatMessage(messages.mintCollectionAssetLabel, {
+					index: collectionPhase.index + 1,
+					total: collectionPhase.total,
+					phase: {
+						'signing-asset': messages.mintCollectionAssetPhaseSigningAsset,
+						'uploading-asset': messages.mintCollectionAssetPhaseUploadingAsset,
+						'signing-artwork': messages.mintCollectionAssetPhaseSigningArtwork,
+						'uploading-artwork': messages.mintCollectionAssetPhaseUploadingArtwork,
+					}[collectionPhase.phase],
+			  })
+			: collectionStageLabel(collectionPhase.kind, collectionPhase.phase, messages);
 	}
 	if (state.assetPhase) {
 		return {
-			'signing-asset': 'Approve the atomic asset in your wallet…',
-			'uploading-asset': 'Uploading the atomic asset to Arweave…',
-			'signing-artwork': 'Approve the album artwork in your wallet…',
-			'uploading-artwork': 'Uploading album artwork to Arweave…',
+			'signing-asset': messages.mintPhaseLabelSigningAsset,
+			'uploading-asset': messages.mintPhaseLabelUploadingAsset,
+			'signing-artwork': messages.mintPhaseLabelSigningArtwork,
+			'uploading-artwork': messages.mintPhaseLabelUploadingArtwork,
 		}[state.assetPhase];
 	}
 	return '';
 }
 
+/** The wording `TxAddress` renders for its copy control; the atom cannot read the language provider itself. */
+export function mintTransactionAddressCopy(messages: CreateMessages): TxAddressLabels {
+	return {
+		copy: messages.mintCopyTransactionAddress,
+		copiedTooltip: messages.mintCopiedTooltip,
+		copiedLabel: messages.mintCopiedTransactionAddress,
+		copiedAnnouncement: messages.mintCopiedTransactionAddressAnnouncement,
+	};
+}
+
+/** One receipt row, with the accessible name its explorer link announces. */
+export function mintReceiptEntry(
+	label: string,
+	transactionId: string,
+	messages: CreateMessages
+): MintTransactionReceiptEntry {
+	return {
+		label,
+		linkLabel: formatMessage(messages.mintReceiptEntryLabel, { label, transaction: transactionId }),
+		transactionId,
+	};
+}
+
 /** Transactions to verify for the latest asset or collection mint, collection first. */
-export function mintReceiptEntries(state: MintFlowState): MintTransactionReceiptEntry[] {
+export function mintReceiptEntries(state: MintFlowState, messages: CreateMessages): MintTransactionReceiptEntry[] {
 	if (state.collectionResult) {
 		return [
-			{ label: 'View collection manifest', transactionId: state.collectionResult.manifestId },
-			{ label: 'View collection process', transactionId: state.collectionResult.processId },
+			mintReceiptEntry(messages.mintReceiptCollectionManifest, state.collectionResult.manifestId, messages),
+			mintReceiptEntry(messages.mintReceiptCollectionProcess, state.collectionResult.processId, messages),
 		];
 	}
 	if (state.assetResult) {
 		return [
 			...(state.assetResult.artworkId
-				? [{ label: 'Artwork transaction', transactionId: state.assetResult.artworkId }]
+				? [mintReceiptEntry(messages.mintReceiptArtwork, state.assetResult.artworkId, messages)]
 				: []),
-			{ label: 'Asset transaction', transactionId: state.assetResult.id },
+			mintReceiptEntry(messages.mintReceiptAsset, state.assetResult.id, messages),
 		];
 	}
 	return [];
@@ -268,14 +315,19 @@ export type FungibleMintView = {
 };
 
 /** The token panel's identity and links: the minted token's values, else the form's, else generic fallbacks. */
-export function fungibleMintView(result: FungibleMintResult | null, name: string, ticker: string): FungibleMintView {
+export function fungibleMintView(
+	result: FungibleMintResult | null,
+	name: string,
+	ticker: string,
+	messages: CreateMessages
+): FungibleMintView {
 	return {
-		tokenName: result?.name || name.trim() || 'Fungible token',
-		tokenTicker: result?.ticker || ticker.trim() || 'TKN',
+		tokenName: result?.name || name.trim() || messages.fungibleViewFallbackName,
+		tokenTicker: result?.ticker || ticker.trim() || messages.mintTokenFallbackTicker,
 		receiptEntries: result
 			? [
-					...(result.logo ? [{ label: 'Token logo transaction', transactionId: result.logo }] : []),
-					{ label: 'Token process transaction', transactionId: result.processId },
+					...(result.logo ? [mintReceiptEntry(messages.mintReceiptTokenLogo, result.logo, messages)] : []),
+					mintReceiptEntry(messages.mintReceiptTokenProcess, result.processId, messages),
 			  ]
 			: [],
 		tokenPath: result ? `/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${result.processId}` : null,

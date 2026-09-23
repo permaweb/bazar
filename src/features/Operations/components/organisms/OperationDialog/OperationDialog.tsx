@@ -11,11 +11,14 @@ import {
 	transactionDialogDismissAction,
 } from 'components/molecules/TransactionDialogControl';
 import { Dialog } from 'components/organisms/Dialog';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import type { OperationActivity } from 'providers/OperationActivityProvider';
 
 import { useAtomicOperationFlow } from '../../../hooks/useAtomicOperationFlow';
 import { usePurchaseQuote } from '../../../hooks/usePurchaseQuote';
 import { useTransactionDialogHide } from '../../../hooks/useTransactionDialogHide';
+import { OPERATIONS_MESSAGES } from '../../../messages';
 import { initialOperationValue, purchaseQuoteView } from '../../../model/operation-view';
 import { AtomicOperationFailure } from '../../molecules/AtomicOperationFailure';
 import { AtomicOperationOutcome } from '../../molecules/AtomicOperationOutcome';
@@ -43,7 +46,9 @@ export default function OperationDialog(props: {
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 	onViewAsset(): void;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	const [value, setValue] = React.useState(() => initialOperationValue(props.operation));
+	const errorMessages = useAppErrorMessages();
 	const titleId = React.useId();
 	const operationLabelId = React.useId();
 	const fieldHelpId = React.useId();
@@ -105,6 +110,7 @@ export default function OperationDialog(props: {
 								decoding="async"
 								loading="eager"
 								src={props.asset.image}
+								unavailableLabel={messages.operationArtworkUnavailable}
 							/>
 						) : (
 							<span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
@@ -114,7 +120,13 @@ export default function OperationDialog(props: {
 					) : null
 				}
 				control={
-					<TransactionDialogControl hiding={dialogHide.hiding} phase={view.phase} onClick={handleDismiss} />
+					<TransactionDialogControl
+						closeLabel={messages.operationDialogClose}
+						hideLabel={messages.operationDialogHideTransaction}
+						hiding={dialogHide.hiding}
+						phase={view.phase}
+						onClick={handleDismiss}
+					/>
 				}
 				eyebrow={view.label}
 				eyebrowId={operationLabelId}
@@ -131,7 +143,7 @@ export default function OperationDialog(props: {
 			{view.phase === 'approval' && kind === 'buy' ? (
 				<PurchaseRecoveryApproval
 					approvalCount={view.recoveryApprovalCount}
-					copy={view.recoveryApprovalCopy}
+					prompt={view.recoveryApprovalPrompt}
 					registrationId={
 						props.operation.kind === 'buy' ? props.operation.resume?.registration?.id : undefined
 					}
@@ -147,7 +159,7 @@ export default function OperationDialog(props: {
 					formError={view.formError}
 					kind={kind}
 					operationValue={view.value}
-					quote={purchaseQuoteView(quote.state)}
+					quote={purchaseQuoteView(quote.state, errorMessages)}
 					quoteStatusId={quoteStatusId}
 					reservationMinimum={view.reservationMinimum}
 					seller={view.order?.creator ?? ''}

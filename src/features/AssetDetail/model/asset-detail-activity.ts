@@ -1,7 +1,7 @@
 import type { CollectionActivityEvent } from 'api/discovery';
 import { type AssetState, liveOrderOfAsset } from 'api/marketplace';
 
-import { type AppError, appError, appErrorMessage, requestFailureKind } from 'helpers/app-error';
+import { type AppError, appError, appErrorMessage, type AppErrorMessages, requestFailureKind } from 'helpers/app-error';
 import { asyncData, asyncError, type AsyncState, beginLoad, failLoad, IDLE, isAsyncPending } from 'helpers/async-state';
 
 import { mergeAssetActivityPages } from './asset-detail';
@@ -129,13 +129,13 @@ export type AssetActivityFeedView = {
 	totalCount: number | null;
 };
 
-export function assetActivityFeedView(feed: AssetActivityFeed): AssetActivityFeedView {
+export function assetActivityFeedView(feed: AssetActivityFeed, errorMessages: AppErrorMessages): AssetActivityFeedView {
 	const error = asyncError(feed.events);
 	return {
 		events: asyncData(feed.events) ?? NO_EVENTS,
 		loading: isAsyncPending(feed.events),
 		loadingMore: feed.loadingMore,
-		error: error ? appErrorMessage(error) : null,
+		error: error ? appErrorMessage(errorMessages, error) : null,
 		hasNextPage: feed.hasNextPage,
 		totalCount: feed.totalCount,
 	};

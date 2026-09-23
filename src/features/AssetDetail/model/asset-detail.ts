@@ -2,19 +2,23 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
-	collectionDisplayName,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
 	isVisibleAssetId,
 } from 'api/collections';
 import { bazarAtomicAssetFromState, type CollectionActivityEvent } from 'api/discovery';
 import { type AssetState, DISPLAY_STATE_TIMEOUT_ERROR, servingNodeOrigin } from 'api/marketplace';
-import { CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME, type MintedAsset } from 'api/mint';
+import { CREATED_COLLECTION_ID, type MintedAsset } from 'api/mint';
 
-import { appErrorMessage, requestFailureMessage, toAppError } from 'helpers/app-error';
+import type { TxAddressLabels } from 'components/atoms/TxAddress';
+import type { StateVerificationLabels } from 'components/molecules/StateVerification';
+import { appErrorMessage, type AppErrorMessages, requestFailureMessage, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
+import { audioFormatLabel } from 'helpers/asset-media';
 import { bazarAoTransportUrl, usesPermawebOsAo } from 'helpers/config';
+import { formatMessage } from 'helpers/i18n';
 
 import type { TokenPricePoint } from '../components/organisms/TokenPriceChart';
+import type { AssetDetailMessages } from '../messages';
 
 export function assetDetailCanResolve({
 	assetId,
@@ -121,16 +125,62 @@ export type AssetDetailLoadingShellView = ReturnType<typeof assetDetailLoadingPr
 	collectionName: string;
 };
 
+/** The accessible name of an audio asset's artwork placeholder; an atom cannot read the language provider. */
+export function audioArtworkLabel(
+	asset: { contentType?: string; name: string },
+	messages: AssetDetailMessages
+): string {
+	return formatMessage(messages.assetDetailAudioArtworkLabel, {
+		format: audioFormatLabel(asset.contentType),
+		name: asset.name,
+	});
+}
+
+/** The wording `StateVerification` renders around the check time; a molecule cannot read the language provider. */
+export function stateVerificationCopy(messages: AssetDetailMessages): StateVerificationLabels {
+	return {
+		checked: messages.assetDetailStateChecked,
+		failed: messages.assetDetailStateRefreshFailed,
+		fallbackHost: messages.assetDetailStateSelectedGateway,
+		refreshing: messages.assetDetailStateRefreshing,
+		requested: messages.assetDetailStateRequested,
+		via: messages.assetDetailStateVia,
+	};
+}
+
+/** The wording `TxAddress` renders for its copy control; the atom cannot read the language provider itself. */
+export function transactionAddressCopy(messages: AssetDetailMessages): TxAddressLabels {
+	return {
+		copy: messages.assetDetailCopyTransactionAddress,
+		copiedTooltip: messages.assetDetailCopiedTooltip,
+		copiedLabel: messages.assetDetailCopiedTransactionAddress,
+		copiedAnnouncement: messages.assetDetailCopiedTransactionAddressAnnouncement,
+	};
+}
+
 /** Everything the loading shell shows before live state arrives: layout kind, device tag, page class, and title. */
+/** The description an asset page falls back to: the collection's manifest text, or this feature's built-in wording. */
+export function collectionDescriptionFallback(collection: Collection, messages: AssetDetailMessages) {
+	if (collection.descriptionCode === 'fungible-tokens') return messages.collectionDescriptionFungibleTokens;
+	if (collection.descriptionCode === 'arweave-names') return messages.collectionDescriptionArweaveNames;
+	if (collection.descriptionCode === 'permanent-collection') return messages.collectionDescriptionPermanent;
+	return collection.description;
+}
+
 export function assetDetailLoadingShellView(
 	collection: Collection | undefined,
-	collectionId: string
+	collectionId: string,
+	messages: AssetDetailMessages
 ): AssetDetailLoadingShellView {
 	const presentation = assetDetailLoadingPresentation(collection, collectionId);
 	const kind = presentation.kind;
 	const collectionName =
-		(collection ? (kind === 'tokens' ? collectionDisplayName(collection) : collection.name) : undefined) ??
-		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
+		(collection ? (kind === 'tokens' ? messages.collectionTokensName : collection.name) : undefined) ??
+		(kind === 'tokens'
+			? messages.loadingShellCollectionTokens
+			: kind === 'images'
+			? messages.loadingShellCollectionCreated
+			: messages.loadingShellCollectionNames);
 	return {
 		...presentation,
 		detailClass: kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page',
@@ -155,10 +205,11 @@ export function mergeAssetDetailMetadata(
 export function assetDetailErrorMessage(
 	error: string | null,
 	asset: Pick<AssetSummary, 'name'> | undefined,
-	indexed: boolean
+	indexed: boolean,
+	messages: AssetDetailMessages
 ): string | null {
 	if (!error || !asset || !indexed) return error;
-	return `${asset.name} is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.`;
+	return formatMessage(messages.assetDetailIndexedStateUnavailable, { name: asset.name });
 }
 
 type AssetStateRecoveryLocation = Pick<Location, 'hash' | 'hostname' | 'href' | 'port' | 'protocol' | 'search'>;
@@ -180,25 +231,21 @@ export function isFungiblePendingMint(asset: Pick<MintedAsset, 'contentType' | '
 }
 
 /** Asset-page copy for a failed live-state read, naming the selected AO peer when it could not be reached. */
-export function assetStateErrorMessage(cause: unknown) {
+export function assetStateErrorMessage(cause: unknown, messages: AssetDetailMessages, errorMessages: AppErrorMessages) {
 	const error = toAppError(cause, 'compute-unavailable');
-	if (error.code === 'rate-limited') return requestFailureMessage('compute', 'rate-limited');
-	if (error.reason === DISPLAY_STATE_TIMEOUT_ERROR) {
-		return 'The configured AO peers did not return live state within 45 seconds. Retry or review the AO Core settings in the header.';
-	}
+	if (error.code === 'rate-limited') return requestFailureMessage(errorMessages, 'compute', 'rate-limited');
+	if (error.reason === DISPLAY_STATE_TIMEOUT_ERROR) return messages.assetStateTimeout;
 	if (error.code === 'offline' || error.code === 'timeout') {
-		let host = 'The selected AO peer';
+		let host = messages.assetStateSelectedPeer;
 		try {
 			host = new URL(servingNodeOrigin(window.location)).host;
 		} catch {
 			// Keep the generic label if the selected origin cannot be parsed.
 		}
-		return `${host} could not be reached. Retry live state or review the AO Core settings in the header.`;
+		return formatMessage(messages.assetStateUnreachable, { host });
 	}
-	if (error.code === 'unavailable') {
-		return 'Live state could not be read through the configured AO peers. Retry shortly or review the AO Core settings in the header.';
-	}
-	return appErrorMessage(error);
+	if (error.code === 'unavailable') return messages.assetStateUnavailable;
+	return appErrorMessage(errorMessages, error);
 }
 
 export type IndexedAtomicAsset = { asset: AssetSummary; collection: Collection };
@@ -326,6 +373,7 @@ export function assetDetailScreen(input: {
 	resolution: AssetDetailResolution;
 	live: { state: AssetState | null; loading: boolean; error: string | null };
 	detailError: string | null;
+	messages: AssetDetailMessages;
 }): AssetDetailScreen {
 	const { market, resolution, live, detailError } = input;
 	const collection = resolution.collection;
@@ -363,9 +411,7 @@ export function assetDetailScreen(input: {
 			kind: 'loading',
 			asset: resolution.shellAsset,
 			collection,
-			error: market.loading
-				? detailError
-				: market.notice ?? 'Current collection membership could not be verified.',
+			error: market.loading ? detailError : market.notice ?? input.messages.assetDetailMembershipUnverified,
 			retry: market.loading ? 'state' : 'market',
 			recoverable: market.loading && Boolean(detailError),
 		};

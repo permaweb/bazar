@@ -8,22 +8,30 @@ import { Loading } from 'components/atoms/Loading';
 import { EmptyState } from 'components/molecules/EmptyState';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { DeferredMarketActivityList, globalActivityCollection, type GlobalActivityFilter } from 'features/Activity';
-import { appErrorMessage } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useHomeActivity } from '../../../hooks/useHomeActivity';
+import { HOME_MESSAGES } from '../../../messages';
 import { HOME_ACTIVITY_REVEAL_STEP, homeActivityAsset, homeActivityRevealLabel } from '../../../model/home-activity';
 
-const ACTIVITY_FILTERS: Array<{ value: GlobalActivityFilter; label: string }> = [
-	{ value: 'all', label: 'All' },
-	{ value: 'make-offer', label: 'Listings' },
-	{ value: 'transfer', label: 'Transfers' },
-	{ value: 'cancel-order', label: 'Cancellations' },
-];
-
 export default function HomeActivityPanel(props: { collections: Collection[]; marketLoading: boolean }) {
+	const messages = useMessages(HOME_MESSAGES);
+	const errorMessage = useAppErrorMessage();
 	const activity = useHomeActivity(props.collections, props.marketLoading);
 	const activityListId = React.useId();
+	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = React.useMemo(
+		() => [
+			{ value: 'all', label: messages.homeActivityFilterAll },
+			{ value: 'make-offer', label: messages.homeActivityFilterListings },
+			{ value: 'transfer', label: messages.homeActivityFilterTransfers },
+			{ value: 'cancel-order', label: messages.homeActivityFilterCancellations },
+		],
+		[messages]
+	);
 	const canReveal = activity.limit < activity.filteredEvents.length;
+	const activeFilter = activityFilters.find((filter) => filter.value === activity.filter) ?? activityFilters[0];
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(props.collections, event.processId);
 
@@ -44,8 +52,8 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<div aria-label="Filter global activity" className="activity-filters" role="group">
-				{ACTIVITY_FILTERS.map((filter) => (
+			<div aria-label={messages.homeActivityFilterGroup} className="activity-filters" role="group">
+				{activityFilters.map((filter) => (
 					<Button
 						aria-controls={activityListId}
 						aria-pressed={activity.filter === filter.value}
@@ -60,31 +68,41 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 			</div>
 			{activity.loading ? (
 				<div className="global-activity-loading">
-					<Loading label={activity.events.length ? 'Loading activity…' : 'Loading recent activity…'} />
+					<Loading
+						label={
+							activity.events.length
+								? messages.homeActivityLoadingMore
+								: messages.homeActivityLoadingInitial
+						}
+					/>
 				</div>
 			) : null}
 			{activity.error ? (
 				activity.events.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
-							This page could not be loaded. Your loaded activity is still available.{' '}
-							{appErrorMessage(activity.error)}
+							{formatMessage(messages.homeActivityPartialError, {
+								error: errorMessage(activity.error),
+							})}
 						</span>
 						<Button onClick={handleRetry} size="small">
-							Retry activity
+							{messages.homeActivityRetry}
 						</Button>
 					</div>
 				) : (
 					<ErrorPanel
-						message={`Activity could not be loaded. ${appErrorMessage(activity.error)}`}
-						onRetry={handleRetry}
+						heading={messages.homeErrorHeading}
+						message={formatMessage(messages.homeActivityError, {
+							error: errorMessage(activity.error),
+						})}
+						retryAction={{ label: messages.homeErrorRetry, onClick: handleRetry }}
 					/>
 				)
 			) : null}
 			<DeferredMarketActivityList
-				ariaLabel={`Global market activity, ${
-					ACTIVITY_FILTERS.find((filter) => filter.value === activity.filter)?.label
-				}`}
+				ariaLabel={formatMessage(messages.homeActivityListLabel, {
+					filter: activeFilter.label,
+				})}
 				events={activity.filteredEvents.slice(0, activity.limit)}
 				id={activityListId}
 				loading={activity.loading}
@@ -95,10 +113,8 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 				{activity.announcement}
 			</p>
 			{!activity.loading && !activity.error && !activity.filteredEvents.length ? (
-				<EmptyState title="No matching activity loaded">
-					{activity.hasNextPage
-						? 'Check older activity for more results.'
-						: 'No matching events were found for the currently loaded marketplace assets.'}
+				<EmptyState title={messages.homeActivityEmptyTitle}>
+					{activity.hasNextPage ? messages.homeActivityEmptyMore : messages.homeActivityEmptyNone}
 				</EmptyState>
 			) : null}
 			{canReveal || activity.hasNextPage ? (
@@ -110,18 +126,21 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 					type="button"
 					onClick={handleReveal}
 				>
-					{homeActivityRevealLabel({
-						loading: activity.loading,
-						canReveal,
-						revealCount: Math.min(
-							HOME_ACTIVITY_REVEAL_STEP,
-							activity.filteredEvents.length - activity.limit
-						),
-						matchingCount: activity.filteredEvents.length,
-					})}
+					{homeActivityRevealLabel(
+						{
+							loading: activity.loading,
+							canReveal,
+							revealCount: Math.min(
+								HOME_ACTIVITY_REVEAL_STEP,
+								activity.filteredEvents.length - activity.limit
+							),
+							matchingCount: activity.filteredEvents.length,
+						},
+						messages
+					)}
 				</Button>
 			) : !activity.loading && !activity.error ? (
-				<p className="collection-result-count">End of indexed activity for this filter.</p>
+				<p className="collection-result-count">{messages.homeActivityEnd}</p>
 			) : null}
 		</div>
 	);

@@ -1,6 +1,6 @@
 import type { Consensus, ObserverView, PurchaseSnapshot, PurchaseState, TxWatcher, WeaveNetwork } from 'weave-wrangler';
 
-import { appErrorMessage } from 'helpers/app-error';
+import { appErrorMessage, type AppErrorMessages } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 
 import { purchaseStateFailure } from './failure';
@@ -83,7 +83,7 @@ export function purchaseSkipKind(state: PurchaseState | null): 'yolo' | 'skip' |
 	return (state.registration?.consensus?.confirmations ?? 0) <= PURCHASE_SKIP_FROM_DEPTH ? 'yolo' : 'skip';
 }
 
-export function purchaseLifecycleStatus(state: PurchaseState | null) {
+export function purchaseLifecycleStatus(state: PurchaseState | null, errorMessages: AppErrorMessages) {
 	if (!state) return '';
 	if (state.stage === 'complete') {
 		return 'Applied to live process state. Purchase complete.';
@@ -125,7 +125,7 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 	if (state.stage === 'signing') return 'Waiting for the reservation and seller payment signatures.';
 	if (state.stage === 'failed') {
 		const failure = purchaseStateFailure(state);
-		return failure ? appErrorMessage(failure) : 'Purchase observation needs attention.';
+		return failure ? appErrorMessage(errorMessages, failure) : 'Purchase observation needs attention.';
 	}
 	return '';
 }

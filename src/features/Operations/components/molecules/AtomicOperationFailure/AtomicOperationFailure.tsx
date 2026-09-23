@@ -2,7 +2,9 @@ import type { Operation } from 'api/operations';
 
 import { Button } from 'components/atoms/Button';
 import type { AppErrorReason } from 'helpers/app-error';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { OPERATIONS_MESSAGES } from '../../../messages';
 import type { OperationFailureKind } from '../../../model/atomic-operation';
 import { AtomicOperationErrorAlert } from '../AtomicOperationErrorAlert';
 import { PurchaseSettlementReceipt } from '../PurchaseSettlementReceipt';
@@ -28,12 +30,13 @@ export default function AtomicOperationFailure(props: {
 	onDiscardRejectedSignature(): void;
 	onReturnToForm(): void;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	return (
 		<div className="result error">
 			<AtomicOperationErrorAlert message={props.message} />
 			{props.failureKind === 'market-state-changed' ? (
 				<Button data-dialog-initial type="button" onClick={props.onViewCurrentState} size="custom">
-					View updated asset
+					{messages.viewUpdatedAsset}
 				</Button>
 			) : props.kind === 'buy' ? (
 				<>
@@ -43,37 +46,37 @@ export default function AtomicOperationFailure(props: {
 						registrationId={props.registrationId}
 						seller={props.seller}
 						summary={props.failureStage}
-						summaryLabel="Failed stage"
+						summaryLabel={messages.failureStageLabel}
 					/>
 					{props.purchaseFailureReason === 'registration-dispatch-rejected' ? (
 						<Button data-dialog-initial onClick={props.onViewCurrentState} size="custom">
-							View current listing
+							{messages.failureViewCurrentListing}
 						</Button>
 					) : props.terminalReservationFailure ? (
 						<Button data-dialog-initial onClick={props.onStartFreshPurchase} size="custom">
-							Start a new purchase
+							{messages.failureStartNewPurchase}
 						</Button>
 					) : props.purchaseFailureReason === 'payment-dispatch-rejected' ? (
 						<Button data-dialog-initial onClick={props.onResubmit} size="custom">
-							Sign a replacement seller payment
+							{messages.failureSignReplacementPayment}
 						</Button>
 					) : (
 						<Button data-dialog-initial onClick={props.onRestartPurchase} size="custom">
-							{props.recoverable ? 'Continue saved purchase' : 'Try again'}
+							{props.recoverable ? messages.failureContinueSavedPurchase : messages.failureTryAgain}
 						</Button>
 					)}
 				</>
 			) : props.failureKind === 'transaction-rejected' && props.hasTransaction ? (
 				<Button data-dialog-initial size="custom" onClick={props.onDiscardRejectedSignature} variant="danger">
-					Discard rejected signature and sign again
+					{messages.failureDiscardRejectedSignature}
 				</Button>
 			) : props.hasTransaction ? (
 				<Button data-dialog-initial onClick={props.onResubmit} size="custom">
-					Resume the signed transaction
+					{messages.failureResumeSignedTransaction}
 				</Button>
 			) : (
 				<Button data-dialog-initial size="custom" onClick={props.onReturnToForm}>
-					Try again
+					{messages.failureTryAgain}
 				</Button>
 			)}
 		</div>

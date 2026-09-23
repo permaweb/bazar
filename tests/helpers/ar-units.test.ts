@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { appErrorMessage, toAppError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 import { arToWinston, winstonToArDecimal } from 'helpers/ar-units';
 
 const winston = fc.bigInt({ min: 1n, max: 10n ** 30n }).map((value) => value.toString());
@@ -25,6 +26,8 @@ describe('AR unit conversion', () => {
 		for (const input of ['0', '0.0', '-1', '1e3', '1.0000000000001', 'NaN', 'Infinity', '']) {
 			expect(() => arToWinston(input)).toThrow(expect.objectContaining({ reason: 'ar-amount-invalid' }));
 		}
-		expect(appErrorMessage(toAppError('ar-amount-invalid', 'unknown'))).toBe('Enter a positive AR amount.');
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, toAppError('ar-amount-invalid', 'unknown'))).toBe(
+			'Enter a positive AR amount.'
+		);
 	});
 });

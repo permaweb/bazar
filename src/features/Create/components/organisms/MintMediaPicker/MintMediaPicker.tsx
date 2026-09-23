@@ -6,10 +6,14 @@ import { Button } from 'components/atoms/Button';
 import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { TokenArtwork } from 'components/atoms/TokenArtwork';
+import { audioFormatLabel } from 'helpers/asset-media';
 import type { EmbeddedAudioMetadata } from 'helpers/audio-metadata';
 import { formatAudioDuration } from 'helpers/audio-metadata';
 import { formatBytes } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { CREATE_MESSAGES } from '../../../messages';
 import { type CreatorMode, isWholeTokenSupply } from '../../../model/mint-form';
 
 export default function MintMediaPicker(props: {
@@ -35,6 +39,7 @@ export default function MintMediaPicker(props: {
 	onArtworkSelect: (artwork: File | null) => void;
 	onArtworkRemove: () => void;
 }) {
+	const messages = useMessages(CREATE_MESSAGES);
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const artworkInput = React.useRef<HTMLInputElement>(null);
 
@@ -51,18 +56,25 @@ export default function MintMediaPicker(props: {
 						{props.logoPreview ? (
 							<img src={props.logoPreview} alt="" />
 						) : (
-							<TokenArtwork ticker={props.ticker.trim() || 'TKN'} />
+							<TokenArtwork
+								subtitle={messages.mintTokenArtworkSubtitle}
+								ticker={props.ticker.trim() || messages.mintTokenFallbackTicker}
+							/>
 						)}
 					</div>
 					<span>
-						<strong>{props.name.trim() || 'Unnamed token'}</strong>
-						<small className="fungible-token-preview-ticker">{props.ticker.trim() || 'Set a ticker'}</small>
+						<strong>{props.name.trim() || messages.mintTokenPreviewUnnamed}</strong>
+						<small className="fungible-token-preview-ticker">
+							{props.ticker.trim() || messages.mintTokenPreviewSetTicker}
+						</small>
 						<small>
 							{isWholeTokenSupply(props.wholeSupply)
-								? `${props.wholeSupply} ${props.ticker.trim() || 'tokens'} total · ${
-										props.denomination || '0'
-								  } decimal places`
-								: 'Set the whole-token supply'}
+								? formatMessage(messages.mintTokenPreviewSupply, {
+										supply: props.wholeSupply,
+										ticker: props.ticker.trim() || messages.mintTokenSupplyFallbackTicker,
+										denomination: props.denomination || '0',
+								  })
+								: messages.mintTokenPreviewSetSupply}
 						</small>
 					</span>
 				</div>
@@ -101,25 +113,35 @@ export default function MintMediaPicker(props: {
 							props.artworkPreview ? (
 								<img
 									src={props.artworkPreview}
-									alt={`${props.name || props.file?.name || 'Audio'} album artwork`}
+									alt={formatMessage(messages.mintArtworkAlt, {
+										name: props.name || props.file?.name || messages.mintArtworkAltFallbackName,
+									})}
 								/>
 							) : (
 								<AudioArtwork
 									contentType={props.selectedContentType ?? undefined}
-									name={props.file?.name ?? props.name}
+									label={formatMessage(messages.mintAudioArtworkLabel, {
+										format: audioFormatLabel(props.selectedContentType ?? undefined),
+										name: props.file?.name ?? props.name,
+									})}
+									typeLabel={messages.mintAudioArtworkType}
 								/>
 							)
 						) : (
-							<img src={props.preview} alt="Asset preview" />
+							<img src={props.preview} alt={messages.mintAssetPreviewAlt} />
 						)
 					) : (
 						<span>
 							<Upload aria-hidden="true" />
-							<strong>{props.mode === 'asset' ? 'Choose media' : 'Choose collection images'}</strong>
+							<strong>
+								{props.mode === 'asset'
+									? messages.mintChooseMedia
+									: messages.mintChooseCollectionImages}
+							</strong>
 							<small>
 								{props.mode === 'asset'
-									? 'Images up to 10 MB · MP3 or WAV up to 100 MB'
-									: 'PNG, JPG, WebP, or GIF · up to 10 MB each · 10 images maximum'}
+									? messages.mintMediaHintAsset
+									: messages.mintMediaHintCollection}
 							</small>
 						</span>
 					)}
@@ -148,24 +170,31 @@ export default function MintMediaPicker(props: {
 			) : null}
 			{props.mode === 'asset' && props.audioSelected ? (
 				<div className="mint-audio-metadata" aria-live="polite">
-					<strong>{props.readingAudioMetadata ? 'Reading embedded metadata…' : 'Audio metadata'}</strong>
+					<strong>
+						{props.readingAudioMetadata
+							? messages.mintAudioMetadataReading
+							: messages.mintAudioMetadataHeading}
+					</strong>
 					{!props.readingAudioMetadata ? (
 						<dl>
 							<div>
-								<dt>Title</dt>
-								<dd>{props.audioMetadata.title || 'Not embedded'}</dd>
+								<dt>{messages.mintAudioTitle}</dt>
+								<dd>{props.audioMetadata.title || messages.mintAudioNotEmbedded}</dd>
 							</div>
 							<div>
-								<dt>Artist</dt>
-								<dd>{props.audioMetadata.artist || 'Not embedded'}</dd>
+								<dt>{messages.mintAudioArtist}</dt>
+								<dd>{props.audioMetadata.artist || messages.mintAudioNotEmbedded}</dd>
 							</div>
 							<div>
-								<dt>Album</dt>
-								<dd>{props.audioMetadata.album || 'Not embedded'}</dd>
+								<dt>{messages.mintAudioAlbum}</dt>
+								<dd>{props.audioMetadata.album || messages.mintAudioNotEmbedded}</dd>
 							</div>
 							<div>
-								<dt>Duration</dt>
-								<dd>{formatAudioDuration(props.audioMetadata.duration) || 'Unavailable'}</dd>
+								<dt>{messages.mintAudioDuration}</dt>
+								<dd>
+									{formatAudioDuration(props.audioMetadata.duration) ||
+										messages.mintAudioDurationUnavailable}
+								</dd>
 							</div>
 						</dl>
 					) : null}
@@ -175,22 +204,25 @@ export default function MintMediaPicker(props: {
 				<div className="mint-artwork-field">
 					<div>
 						<span>
-							<strong>Album artwork</strong>
+							<strong>{messages.mintArtworkHeading}</strong>
 							<small>
 								{props.audioMetadata.artwork && props.artwork === props.audioMetadata.artwork
-									? 'Embedded artwork found · replace it if needed'
-									: 'Optional · PNG, JPG, WebP, or GIF · up to 10 MB'}
+									? messages.mintArtworkEmbeddedHint
+									: messages.mintArtworkOptionalHint}
 							</small>
 						</span>
-						{props.artworkPreview ? <img src={props.artworkPreview} alt="Album artwork preview" /> : null}
+						{props.artworkPreview ? (
+							<img src={props.artworkPreview} alt={messages.mintArtworkPreviewAlt} />
+						) : null}
 					</div>
 					<div>
 						<Button type="button" onClick={() => artworkInput.current?.click()} size="custom">
-							<Icon icon={Upload} size="sm" /> {props.artwork ? 'Replace artwork' : 'Add artwork'}
+							<Icon icon={Upload} size="sm" />{' '}
+							{props.artwork ? messages.mintArtworkReplace : messages.mintArtworkAdd}
 						</Button>
 						{props.artwork ? (
 							<Button type="button" size="custom" variant="danger" onClick={handleArtworkRemove}>
-								<Icon icon={X} size="sm" /> Remove
+								<Icon icon={X} size="sm" /> {messages.mintRemove}
 							</Button>
 						) : null}
 					</div>
@@ -213,7 +245,7 @@ export default function MintMediaPicker(props: {
 							<Button
 								type="button"
 								size="icon"
-								aria-label={`Remove ${item.name}`}
+								aria-label={formatMessage(messages.mintCollectionFileRemove, { name: item.name })}
 								onClick={() => props.onCollectionFileRemove(index)}
 								variant="danger"
 							>
@@ -222,7 +254,7 @@ export default function MintMediaPicker(props: {
 						</div>
 					))}
 					<Button type="button" onClick={() => fileInput.current?.click()} size="custom">
-						<Icon icon={Upload} size="sm" /> Add images
+						<Icon icon={Upload} size="sm" /> {messages.mintCollectionAddImages}
 					</Button>
 				</div>
 			) : null}

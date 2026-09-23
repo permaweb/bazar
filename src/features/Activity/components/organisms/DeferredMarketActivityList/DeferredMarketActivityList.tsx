@@ -1,6 +1,9 @@
 import React from 'react';
 
 import { Loading } from 'components/atoms/Loading';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { ACTIVITY_MESSAGES } from '../../../messages';
 
 const LazyMarketActivityList = React.lazy(async () => {
 	const module = await import('../MarketActivityList');
@@ -8,8 +11,9 @@ const LazyMarketActivityList = React.lazy(async () => {
 });
 
 export default function DeferredMarketActivityList(props: React.ComponentProps<typeof LazyMarketActivityList>) {
+	const messages = useMessages(ACTIVITY_MESSAGES);
 	return (
-		<React.Suspense fallback={<Loading label="Loading activity…" />}>
+		<React.Suspense fallback={<Loading label={messages.activityLoading} />}>
 			<LazyMarketActivityList {...props} />
 		</React.Suspense>
 	);

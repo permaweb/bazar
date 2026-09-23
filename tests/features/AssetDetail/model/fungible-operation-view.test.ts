@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AssetState, SwapOrder } from 'api/marketplace';
 import type { PurchaseState } from 'api/transactions';
 
+import { ASSET_DETAIL_MESSAGES, type AssetDetailPlural } from 'features/AssetDetail/messages';
 import type { BatchEntry, FungibleOperation } from 'features/AssetDetail/model/fungible-operation';
 import {
 	fungibleOperationDraftView,
@@ -19,7 +20,11 @@ import {
 	isRecoverableFungiblePurchase,
 	shouldResumeFungibleOperation,
 } from 'features/AssetDetail/model/fungible-operation-view';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+import { formatPlural } from 'helpers/i18n';
 
+const messages = ASSET_DETAIL_MESSAGES.en;
+const plural: AssetDetailPlural = (message, count, values) => formatPlural('en', message, count, values);
 const SELLER = 's'.repeat(43);
 const OTHER = 'c'.repeat(43);
 const OWNER = 'o'.repeat(43);
@@ -146,19 +151,53 @@ describe('fungible operation draft', () => {
 		expect(fungiblePurchaseCandidates(operation)).toEqual([FIRST]);
 		expect(fungiblePurchaseCandidates({ kind: 'sell' })).toEqual([]);
 
-		const matched = fungiblePurchaseDraftMatch('buy', [FIRST], '10', STATE, '$TEST');
+		const matched = fungiblePurchaseDraftMatch(
+			'buy',
+			[FIRST],
+			'10',
+			STATE,
+			'$TEST',
+			messages,
+			APP_ERROR_MESSAGES.en
+		);
 		expect(matched.match?.fills).toHaveLength(1);
 		expect(matched.error).toBe('');
 
-		const tooLarge = fungiblePurchaseDraftMatch('buy', [FIRST], '999', STATE, '$TEST');
+		const tooLarge = fungiblePurchaseDraftMatch(
+			'buy',
+			[FIRST],
+			'999',
+			STATE,
+			'$TEST',
+			messages,
+			APP_ERROR_MESSAGES.en
+		);
 		expect(tooLarge.match).toBeNull();
 		expect(tooLarge.error).toContain('is currently available');
 
-		const malformed = fungiblePurchaseDraftMatch('buy', [FIRST], '1.005', STATE, '$TEST');
+		const malformed = fungiblePurchaseDraftMatch(
+			'buy',
+			[FIRST],
+			'1.005',
+			STATE,
+			'$TEST',
+			messages,
+			APP_ERROR_MESSAGES.en
+		);
 		expect(malformed.match).toBeNull();
 		expect(malformed.error).toContain('no more than 2 decimal places');
-		expect(fungiblePurchaseDraftMatch('buy', [FIRST], '', STATE, '$TEST')).toEqual({ match: null, error: '' });
-		expect(fungiblePurchaseDraftMatch('sell', [FIRST], '10', STATE, '$TEST')).toEqual({ match: null, error: '' });
+		expect(fungiblePurchaseDraftMatch('buy', [FIRST], '', STATE, '$TEST', messages, APP_ERROR_MESSAGES.en)).toEqual(
+			{
+				match: null,
+				error: '',
+			}
+		);
+		expect(
+			fungiblePurchaseDraftMatch('sell', [FIRST], '10', STATE, '$TEST', messages, APP_ERROR_MESSAGES.en)
+		).toEqual({
+			match: null,
+			error: '',
+		});
 	});
 });
 
@@ -243,36 +282,46 @@ describe('fungible purchase lots', () => {
 
 describe('fungible operation progress and outcome', () => {
 	it('keeps reservation and payment as separate steps and names the active one', () => {
-		expect(fungiblePurchaseSync()).toEqual({ steps: [], activeStep: 'register' });
+		expect(fungiblePurchaseSync(messages)).toEqual({ steps: [], activeStep: 'register' });
 
-		const reserving = fungiblePurchaseSync({
+		const reserving = fungiblePurchaseSync(messages, {
 			stage: 'registration-accepting',
 			canSkip: false,
 			registration: { id: REGISTRATION },
 		} as unknown as PurchaseState);
 		expect(reserving.steps.map((step) => step.key)).toEqual(['register', 'pay']);
 		expect(reserving.activeStep).toBe('register');
-		expect(reserving.pendingAfterConfirmation).toBe('Checking live reservation');
+		expect(reserving.pendingAfterConfirmation).toBe(messages.syncPendingReservation);
 		expect(reserving.skipKind).toBeUndefined();
 
-		const verifying = fungiblePurchaseSync({
+		const verifying = fungiblePurchaseSync(messages, {
 			stage: 'ownership-verifying',
 			canSkip: true,
 			registration: { id: REGISTRATION, consensus: { confirmations: 9 } },
 			payment: { id: PAYMENT },
 		} as unknown as PurchaseState);
 		expect(verifying.activeStep).toBe('pay');
-		expect(verifying.pendingAfterConfirmation).toBe('Checking receipt');
+		expect(verifying.pendingAfterConfirmation).toBe(messages.syncPendingReceipt);
 		expect(verifying.skipKind).toBe('skip');
 	});
 
 	it('builds one terminal step for a single signed transaction', () => {
-		expect(fungibleSingleSyncSteps('sell', null, 0, [], null)).toEqual([]);
-		const steps = fungibleSingleSyncSteps('transfer', { id: 't'.repeat(43) } as never, 4, [], {
-			confirmations: 4,
-		} as never);
+		expect(fungibleSingleSyncSteps('sell', null, 0, [], null, messages)).toEqual([]);
+		const steps = fungibleSingleSyncSteps(
+			'transfer',
+			{ id: 't'.repeat(43) } as never,
+			4,
+			[],
+			{ confirmations: 4 } as never,
+			messages
+		);
 		expect(steps).toHaveLength(1);
-		expect(steps[0]).toMatchObject({ key: 'transfer', label: 'Transfer tokens', target: 5, confirmations: 4 });
+		expect(steps[0]).toMatchObject({
+			key: 'transfer',
+			label: messages.operationLabelTransfer,
+			target: 5,
+			confirmations: 4,
+		});
 		expect(steps[0].transaction?.consensus).toBeDefined();
 	});
 
@@ -281,35 +330,46 @@ describe('fungible operation progress and outcome', () => {
 			{ kind: 'buy', availableOrders: [], startingBalance: '0' },
 			STATE,
 			[FIRST, SECOND],
-			{ enteredQuantity: null, listingQuote: null, transferRecipient: '' }
+			{ enteredQuantity: null, listingQuote: null, transferRecipient: '' },
+			messages,
+			plural
 		);
-		expect(purchase.title).toBe('Purchase complete');
+		expect(purchase.title).toBe(messages.outcomeBuyTitle);
 		expect(purchase.purchasedQuantity).toBe(3000n);
 		expect(purchase.detail).toContain('2 listings');
 		expect(purchase.detail).toContain('AR paid to sellers');
 
-		const listing = fungibleOperationOutcome({ kind: 'sell' }, STATE, [], {
-			enteredQuantity: 1000n,
-			listingQuote: '5',
-			transferRecipient: '',
-		});
-		expect(listing).toMatchObject({ title: 'Tokens listed' });
+		const listing = fungibleOperationOutcome(
+			{ kind: 'sell' },
+			STATE,
+			[],
+			{ enteredQuantity: 1000n, listingQuote: '5', transferRecipient: '' },
+			messages,
+			plural
+		);
+		expect(listing).toMatchObject({ title: messages.outcomeSellTitle });
 		expect(listing.detail).toBe('10 $TEST listed for 5 AR.');
 
 		expect(
-			fungibleOperationOutcome({ kind: 'cancel', order: FIRST }, STATE, [], {
-				enteredQuantity: null,
-				listingQuote: null,
-				transferRecipient: '',
-			}).detail
+			fungibleOperationOutcome(
+				{ kind: 'cancel', order: FIRST },
+				STATE,
+				[],
+				{ enteredQuantity: null, listingQuote: null, transferRecipient: '' },
+				messages,
+				plural
+			).detail
 		).toContain('returned to your liquid balance');
 
 		expect(
-			fungibleOperationOutcome({ kind: 'transfer' }, STATE, [], {
-				enteredQuantity: 500n,
-				listingQuote: null,
-				transferRecipient: OTHER,
-			}).detail
+			fungibleOperationOutcome(
+				{ kind: 'transfer' },
+				STATE,
+				[],
+				{ enteredQuantity: 500n, listingQuote: null, transferRecipient: OTHER },
+				messages,
+				plural
+			).detail
 		).toBe(`5 $TEST sent to ${OTHER}.`);
 	});
 
@@ -321,7 +381,9 @@ describe('fungible operation progress and outcome', () => {
 			sellValid: true,
 			transferValid: false,
 		};
-		expect(fungibleOperationSubmit({ kind: 'sell' }, STATE, draft, { orders: [], quantity: 0n })).toMatchObject({
+		expect(
+			fungibleOperationSubmit({ kind: 'sell' }, STATE, draft, { orders: [], quantity: 0n }, messages)
+		).toMatchObject({
 			label: 'List 10 $TEST for 5 AR',
 			disabled: false,
 		});
@@ -330,7 +392,8 @@ describe('fungible operation progress and outcome', () => {
 				{ kind: 'sell' },
 				STATE,
 				{ ...draft, sellValid: false },
-				{ orders: [], quantity: 0n }
+				{ orders: [], quantity: 0n },
+				messages
 			).disabled
 		).toBe(true);
 
@@ -340,34 +403,48 @@ describe('fungible operation progress and outcome', () => {
 				{ kind: 'buy', availableOrders: [FIRST], startingBalance: '0' },
 				STATE,
 				draft,
-				buying
+				buying,
+				messages
 			)
 		).toMatchObject({ label: 'Buy 10 $TEST · 0.006 AR max', disabled: false });
 		expect(
-			fungibleOperationSubmit({ kind: 'buy', availableOrders: [FIRST], startingBalance: '0' }, STATE, draft, {
-				...buying,
-				canAfford: false,
-			}).disabled
+			fungibleOperationSubmit(
+				{ kind: 'buy', availableOrders: [FIRST], startingBalance: '0' },
+				STATE,
+				draft,
+				{ ...buying, canAfford: false },
+				messages
+			).disabled
 		).toBe(true);
 		expect(
-			fungibleOperationSubmit({ kind: 'buy', availableOrders: [FIRST], startingBalance: '0' }, STATE, draft, {
-				orders: [FIRST],
-				quantity: 1000n,
-			}).label
-		).toContain('checking total…');
+			fungibleOperationSubmit(
+				{ kind: 'buy', availableOrders: [FIRST], startingBalance: '0' },
+				STATE,
+				draft,
+				{ orders: [FIRST], quantity: 1000n },
+				messages
+			).label
+		).toContain(messages.submitBuyChecking);
 
 		const transfer = fungibleOperationSubmit(
 			{ kind: 'transfer' },
 			STATE,
 			{ ...draft, transferRecipient: OTHER, transferValid: true },
-			{ orders: [], quantity: 0n }
+			{ orders: [], quantity: 0n },
+			messages
 		);
 		expect(transfer.label).toBe(`Send 10 $TEST to ${OTHER.slice(0, 6)}…${OTHER.slice(-5)}`);
 		expect(transfer.ariaLabel).toBe(`Send 10 $TEST to ${OTHER}`);
 		expect(transfer.disabled).toBe(false);
 
 		expect(
-			fungibleOperationSubmit({ kind: 'cancel', order: FIRST }, STATE, draft, { orders: [], quantity: 0n })
+			fungibleOperationSubmit(
+				{ kind: 'cancel', order: FIRST },
+				STATE,
+				draft,
+				{ orders: [], quantity: 0n },
+				messages
+			)
 		).toMatchObject({ label: 'Cancel listing and return 10 $TEST', disabled: false });
 	});
 });

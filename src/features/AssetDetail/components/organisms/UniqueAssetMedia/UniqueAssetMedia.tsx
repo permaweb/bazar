@@ -9,6 +9,11 @@ import { InteractiveHtmlArtwork } from 'components/atoms/InteractiveHtmlArtwork'
 import { Loading } from 'components/atoms/Loading';
 import { NameArtwork } from 'components/atoms/NameArtwork';
 import { isAudioContentType, isHtmlContentType } from 'helpers/asset-media';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
+import { audioArtworkLabel } from '../../../model/asset-detail';
 
 const DeferredAudioWaveformPlayer = React.lazy(async () => {
 	const module = await import('../AudioWaveformPlayer');
@@ -16,6 +21,7 @@ const DeferredAudioWaveformPlayer = React.lazy(async () => {
 });
 
 export default function UniqueAssetMedia(props: { asset: AssetSummary; collection: Collection; state: AssetState }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const audio = isAudioContentType(props.asset.contentType);
 	const interactive = isHtmlContentType(props.asset.contentType);
 	return (
@@ -25,27 +31,41 @@ export default function UniqueAssetMedia(props: { asset: AssetSummary; collectio
 			}`}
 		>
 			{interactive && props.asset.media ? (
-				<InteractiveHtmlArtwork name={props.asset.name} src={props.asset.media} />
+				<InteractiveHtmlArtwork
+					src={props.asset.media}
+					title={formatMessage(messages.uniqueMediaInteractiveArtwork, { name: props.asset.name })}
+				/>
 			) : audio ? (
 				<div className="asset-audio-player">
 					{props.asset.image ? (
 						<ArtworkImage
 							src={props.asset.image}
-							alt={`${props.asset.name} album artwork`}
+							alt={formatMessage(messages.uniqueMediaAlbumArtwork, { name: props.asset.name })}
 							fetchPriority="high"
 							loading="eager"
+							unavailableLabel={messages.assetDetailArtworkUnavailable}
 						/>
 					) : (
-						<AudioArtwork contentType={props.asset.contentType} name={props.asset.name} />
+						<AudioArtwork
+							contentType={props.asset.contentType}
+							label={audioArtworkLabel(props.asset, messages)}
+							typeLabel={messages.assetDetailAudioArtworkType}
+						/>
 					)}
 					{props.asset.media ? (
-						<React.Suspense fallback={<Loading label="Loading audio player…" />}>
+						<React.Suspense fallback={<Loading label={messages.uniqueMediaLoadingPlayer} />}>
 							<DeferredAudioWaveformPlayer name={props.asset.name} src={props.asset.media} />
 						</React.Suspense>
 					) : null}
 				</div>
 			) : props.asset.image ? (
-				<ArtworkImage src={props.asset.image} alt={props.asset.name} fetchPriority="high" loading="eager" />
+				<ArtworkImage
+					src={props.asset.image}
+					alt={props.asset.name}
+					fetchPriority="high"
+					loading="eager"
+					unavailableLabel={messages.assetDetailArtworkUnavailable}
+				/>
 			) : props.collection.kind === 'names' ? (
 				<NameArtwork name={props.asset.name} />
 			) : (
@@ -53,7 +73,7 @@ export default function UniqueAssetMedia(props: { asset: AssetSummary; collectio
 			)}
 			{props.collection.kind !== 'names' ? (
 				<div className="asset-media-label">
-					<span>Permanent asset</span>
+					<span>{messages.uniqueMediaPermanentAsset}</span>
 					<strong>
 						{props.asset.contentType ?? (props.asset.image ? 'image' : props.state.device ?? 'process')}
 					</strong>

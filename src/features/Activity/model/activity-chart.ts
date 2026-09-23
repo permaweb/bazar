@@ -10,12 +10,15 @@ export type ActivityBucket = {
 	participants: number;
 };
 
+/** The span the summary covers, as timestamps the view formats; `null` when no event carried a usable date. */
+export type ActivityChartPeriod = { from: number; to: number } | null;
+
 export type GlobalActivityChartStats = {
 	events: number;
 	listings: number;
 	participants: number;
 	buckets: ActivityBucket[];
-	period: string;
+	period: ActivityChartPeriod;
 };
 
 function eventTimestamp(event: CollectionActivityEvent) {
@@ -36,7 +39,7 @@ export function globalActivityChartStats(events: CollectionActivityEvent[]): Glo
 			listings,
 			participants: participants.size,
 			buckets: [],
-			period: 'No dated activity',
+			period: null,
 		};
 	}
 
@@ -73,7 +76,7 @@ export function globalActivityChartStats(events: CollectionActivityEvent[]): Glo
 		listings,
 		participants: participants.size,
 		buckets,
-		period: `${formatActivityChartDate(first)} – ${formatActivityChartDate(last)}`,
+		period: { from: first, to: last },
 	};
 }
 

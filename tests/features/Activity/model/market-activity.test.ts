@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { CollectionActivityEvent } from 'api/discovery';
 import { parseAssetState } from 'api/marketplace';
 
+import { ACTIVITY_MESSAGES } from 'features/Activity/messages';
 import {
 	formatMarketActivityTimestamp,
 	marketActivityDetail,
@@ -17,6 +18,7 @@ const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
 const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
 const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 const NOW = Date.UTC(2026, 7, 7, 16, 35, 12);
+const messages = ACTIVITY_MESSAGES.en;
 
 function reservedState(height: number, reservedBuyer = buyer) {
 	return parseAssetState(
@@ -56,21 +58,27 @@ const registration: CollectionActivityEvent = {
 
 describe('market activity labels', () => {
 	it('presents a purchase reservation as a submitted purchase', () => {
-		expect(marketActivityLabel('register-interest')).toBe('Purchase submitted');
-		expect(marketActivityLabel('register-interest', true)).toBe('Purchase confirmed');
-		expect(marketActivityLabel('make-offer')).toBe('Listing submitted');
-		expect(marketActivityLabel('transfer')).toBe('Transfer submitted');
-		expect(marketActivityLabel('cancel-order')).toBe('Cancellation submitted');
+		expect(marketActivityLabel('register-interest', messages)).toBe(messages.activityLabelPurchaseSubmitted);
+		expect(marketActivityLabel('register-interest', messages, true)).toBe(messages.activityLabelPurchaseConfirmed);
+		expect(marketActivityLabel('make-offer', messages)).toBe(messages.activityLabelListing);
+		expect(marketActivityLabel('transfer', messages)).toBe(messages.activityLabelTransfer);
+		expect(marketActivityLabel('cancel-order', messages)).toBe(messages.activityLabelCancellation);
 	});
 
 	it('describes each action from its own fields and nothing else', () => {
 		const base = { actor: buyer, height: 1, id: 'event', processId, timestamp: 1 };
-		expect(marketActivityDetail({ ...base, action: 'make-offer', asking: '1500000000000' })).toBe('1.5 AR total');
-		expect(marketActivityDetail({ ...base, action: 'transfer', recipient: seller })).toBe('To 1uTLV5…82YZw');
-		expect(marketActivityDetail({ ...base, action: 'register-interest', orderId })).toBe('Order qAhWNM…djpwA');
-		expect(marketActivityDetail({ ...base, action: 'cancel-order', orderId })).toBe('Order qAhWNM…djpwA');
-		expect(marketActivityDetail({ ...base, action: 'make-offer' })).toBe('');
-		expect(marketActivityDetail({ ...base, action: 'transfer' })).toBe('');
+		expect(marketActivityDetail({ ...base, action: 'make-offer', asking: '1500000000000' }, messages)).toBe(
+			'1.5 AR total'
+		);
+		expect(marketActivityDetail({ ...base, action: 'transfer', recipient: seller }, messages)).toBe(
+			'To 1uTLV5…82YZw'
+		);
+		expect(marketActivityDetail({ ...base, action: 'register-interest', orderId }, messages)).toBe(
+			'Order qAhWNM…djpwA'
+		);
+		expect(marketActivityDetail({ ...base, action: 'cancel-order', orderId }, messages)).toBe('Order qAhWNM…djpwA');
+		expect(marketActivityDetail({ ...base, action: 'make-offer' }, messages)).toBe('');
+		expect(marketActivityDetail({ ...base, action: 'transfer' }, messages)).toBe('');
 	});
 });
 
@@ -101,12 +109,12 @@ describe('market activity rows', () => {
 				timestamp: (NOW - 60_000) / 1_000,
 				purchaseProof: { transactionId: 'settlement', height: 1_234 },
 			},
-			{ now: NOW, collection: { id: 'collection', name: 'Atomic art' } }
+			{ now: NOW, messages, collection: { id: 'collection', name: 'Atomic art' } }
 		);
 
 		expect(row).toMatchObject({
 			reservation: null,
-			label: 'Purchase confirmed',
+			label: messages.activityLabelPurchaseConfirmed,
 			detail: 'Atomic art · Order qAhWNM…djpwA',
 			amount: '',
 			assetCollectionId: 'collection',
@@ -123,7 +131,13 @@ describe('market activity rows', () => {
 	it('uses caller formatters and marks unconfirmed events as pending', () => {
 		const row = marketActivityRow(
 			{ ...registration, height: 0, timestamp: 0 },
-			{ now: NOW, collectionId: 'fallback', describeEvent: () => 'custom', eventAmount: () => '12 TOKEN' }
+			{
+				now: NOW,
+				messages,
+				collectionId: 'fallback',
+				describeEvent: () => 'custom',
+				eventAmount: () => '12 TOKEN',
+			}
 		);
 
 		expect(row).toMatchObject({
@@ -131,11 +145,11 @@ describe('market activity rows', () => {
 			amount: '12 TOKEN',
 			assetCollectionId: 'fallback',
 			transactionId: 'registration',
-			timestamp: 'Pending confirmation',
+			timestamp: messages.activityPendingConfirmation,
 			absoluteTimestamp: undefined,
 			timestampDateTime: undefined,
-			transactionLabel: 'View submitted transaction',
-			transactionSummary: 'View submitted transaction',
+			transactionLabel: messages.activityTransactionSubmittedLabel,
+			transactionSummary: messages.activityTransactionSubmittedLabel,
 		});
 	});
 });

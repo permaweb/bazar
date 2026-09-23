@@ -7,10 +7,13 @@ import type { AssetState } from 'api/marketplace';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Tooltip } from 'components/atoms/Tooltip';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { DISPATCH_MESSAGES } from '../../../messages';
 import {
-	DISPATCH_STATUS_LABEL,
 	type DispatchPlanProgress,
+	dispatchRowStatusLabel,
 	formatDispatchTokenAmount,
 	shortAddress,
 } from '../../../model/dispatch';
@@ -23,21 +26,28 @@ export default function DispatchPlanPanel(props: {
 	onResume: () => void;
 	onDiscard: () => void;
 }) {
+	const messages = useMessages(DISPATCH_MESSAGES);
+
 	return (
 		<div className="dispatch-plan">
 			<div className="dispatch-plan-heading">
 				<div>
 					<strong>
 						{props.progress.complete
-							? 'Dispatch complete'
+							? messages.dispatchPlanComplete
 							: props.running
-							? 'Dispatching…'
-							: 'Saved dispatch in progress'}
+							? messages.dispatchPlanRunning
+							: messages.dispatchPlanSaved}
 					</strong>
 					<span>
-						{props.progress.settled} of {props.plan.rows.length} settled
-						{props.progress.posted ? ` · ${props.progress.posted} posted, awaiting settlement` : ''} ·
-						started from {shortAddress(props.plan.sender)}
+						{formatMessage(messages.dispatchPlanSettled, {
+							settled: props.progress.settled,
+							total: props.plan.rows.length,
+						})}
+						{props.progress.posted
+							? formatMessage(messages.dispatchPlanPosted, { posted: props.progress.posted })
+							: ''}
+						{formatMessage(messages.dispatchPlanStartedFrom, { sender: shortAddress(props.plan.sender) })}
 					</span>
 				</div>
 				<div>
@@ -48,7 +58,7 @@ export default function DispatchPlanPanel(props: {
 							onClick={props.onResume}
 							disabled={props.running || props.progress.senderMismatch}
 						>
-							{props.running ? 'Working…' : 'Resume'}
+							{props.running ? messages.dispatchPlanWorking : messages.dispatchPlanResume}
 						</Button>
 					) : null}
 					<Button
@@ -58,35 +68,32 @@ export default function DispatchPlanPanel(props: {
 						onClick={props.onDiscard}
 						disabled={props.running}
 					>
-						{props.progress.complete ? 'Clear' : 'Discard plan'}
+						{props.progress.complete ? messages.dispatchPlanClear : messages.dispatchPlanDiscard}
 					</Button>
 				</div>
 			</div>
 			{props.progress.senderMismatch ? (
 				<div className="inline-error">
 					<span>
-						This dispatch was started from {shortAddress(props.plan.sender)}. Connect that wallet to resume
-						it.
+						{formatMessage(messages.dispatchPlanSenderMismatch, {
+							sender: shortAddress(props.plan.sender),
+						})}
 					</span>
 				</div>
 			) : null}
 			{props.running && props.progress.posted ? (
 				<div className="mint-notice">
 					<Icon icon={Info} />
-					<span>
-						Settlement is not instant: the scheduler only sequences a transfer once it sits ~10 blocks below
-						the network tip (~20 minutes). Leaving this page is safe — resume later and nothing will be
-						re-sent.
-					</span>
+					<span>{messages.dispatchPlanSettlementNotice}</span>
 				</div>
 			) : null}
 			<div className="dispatch-table-wrapper">
 				<table className="dispatch-table">
 					<thead>
 						<tr>
-							<th scope="col">Recipient</th>
-							<th scope="col">Token amount</th>
-							<th scope="col">Status</th>
+							<th scope="col">{messages.dispatchTableRecipient}</th>
+							<th scope="col">{messages.dispatchTableTokenAmount}</th>
+							<th scope="col">{messages.dispatchTableStatus}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -99,10 +106,12 @@ export default function DispatchPlanPanel(props: {
 										)}
 									</Tooltip>
 								</td>
-								<td>{props.token ? formatDispatchTokenAmount(row.quantity, props.token) : '—'}</td>
+								<td>
+									{props.token ? formatDispatchTokenAmount(row.quantity, props.token, messages) : '—'}
+								</td>
 								<td>
 									{row.status === 'settled' ? <Icon icon={Check} size="sm" /> : null}{' '}
-									{DISPATCH_STATUS_LABEL[row.status]}
+									{dispatchRowStatusLabel(row.status, messages)}
 								</td>
 							</tr>
 						))}
@@ -115,8 +124,8 @@ export default function DispatchPlanPanel(props: {
 						<Check aria-hidden="true" />
 					</span>
 					<div>
-						<strong>All transfers settled</strong>
-						<p>Every recipient balance has risen by its dispatched quantity.</p>
+						<strong>{messages.dispatchPlanSettledTitle}</strong>
+						<p>{messages.dispatchPlanSettledDetail}</p>
 					</div>
 				</div>
 			) : null}

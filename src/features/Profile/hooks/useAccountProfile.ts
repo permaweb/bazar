@@ -5,12 +5,13 @@ import { ProfileClient, readAccountProfile } from 'api/profile';
 import { toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { asyncData, IDLE, LOADING } from 'helpers/async-state';
+import { useMessages } from 'providers/LanguageProvider';
 import type { ProfileSummary } from 'types/profile';
 
+import { PROFILE_MESSAGES } from '../messages';
 import {
 	type AccountProfileState,
 	accountProfileSummary,
-	PROFILE_SAVE_PREPARING_STATUS,
 	type ProfileEditUpdate,
 	profileSaveStatus,
 	profileUpdateFields,
@@ -26,6 +27,7 @@ export type AccountProfileController = {
 
 /** Reads an address's published profile (latest address wins) and publishes the owner's edits. */
 export function useAccountProfile(address: string): AccountProfileController {
+	const messages = useMessages(PROFILE_MESSAGES);
 	const [attempt, setAttempt] = React.useState(0);
 	const [profile, setProfile] = React.useState<AccountProfileState>(() => (isArweaveId(address) ? LOADING : IDLE));
 	const activeAddress = React.useRef(address);
@@ -60,12 +62,12 @@ export function useAccountProfile(address: string): AccountProfileController {
 			if (update.avatarFile) {
 				const data = new Uint8Array(await update.avatarFile.arrayBuffer());
 				avatar = await client.uploadAvatar(address, data, update.avatarFile.type, {
-					onPhase: (phase) => onStatus(profileSaveStatus('picture', phase)),
+					onPhase: (phase) => onStatus(profileSaveStatus('picture', phase, messages)),
 				});
 			}
-			onStatus(PROFILE_SAVE_PREPARING_STATUS);
+			onStatus(messages.profileSavePreparing);
 			const updated = await client.update(address, profileUpdateFields(update, avatar), {
-				onPhase: (phase) => onStatus(profileSaveStatus('profile', phase)),
+				onPhase: (phase) => onStatus(profileSaveStatus('profile', phase, messages)),
 			});
 			// A save that finishes after the page moved to another address must not replace that address's profile.
 			if (activeAddress.current === address) setProfile({ status: 'success', data: updated });

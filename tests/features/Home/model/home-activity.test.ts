@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { replaceHiddenCollectionAssetIndex } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 
+import { HOME_MESSAGES } from 'features/Home/messages';
 import {
 	homeActivityAsset,
 	homeActivityLoadedAnnouncement,
@@ -13,6 +14,8 @@ import {
 } from 'features/Home/model/home-activity';
 
 import { assetId, imageCollection, READY_HIDDEN_COLLECTION_INDEX } from '../../../fixtures/home-market';
+
+const messages = HOME_MESSAGES.en;
 
 function event(processId: string): CollectionActivityEvent {
 	return { id: 'event', processId, action: 'transfer', actor: assetId('W'), height: 1, timestamp: 1 };
@@ -48,22 +51,22 @@ describe('home activity feed', () => {
 	});
 
 	it('describes the loaded events without claiming the whole indexed history', () => {
-		expect(homeActivityLoadedAnnouncement(1_500)).toBe('1,500 indexed events loaded.');
-		expect(homeActivityLoadedAnnouncement(0)).toBe('0 indexed events loaded.');
+		expect(homeActivityLoadedAnnouncement(1_500, messages)).toBe('1,500 indexed events loaded.');
+		expect(homeActivityLoadedAnnouncement(0, messages)).toBe('0 indexed events loaded.');
 	});
 
 	it('reveals loaded rows before offering an older page', () => {
-		expect(homeActivityRevealLabel({ loading: true, canReveal: true, revealCount: 20, matchingCount: 40 })).toBe(
-			'Loading activity…'
-		);
-		expect(homeActivityRevealLabel({ loading: false, canReveal: true, revealCount: 12, matchingCount: 32 })).toBe(
-			'Show 12 more events'
-		);
-		expect(homeActivityRevealLabel({ loading: false, canReveal: false, revealCount: 0, matchingCount: 32 })).toBe(
-			'Load older activity'
-		);
-		expect(homeActivityRevealLabel({ loading: false, canReveal: false, revealCount: 0, matchingCount: 0 })).toBe(
-			'Check older activity'
-		);
+		expect(
+			homeActivityRevealLabel({ loading: true, canReveal: true, revealCount: 20, matchingCount: 40 }, messages)
+		).toBe(messages.homeActivityRevealLoading);
+		expect(
+			homeActivityRevealLabel({ loading: false, canReveal: true, revealCount: 12, matchingCount: 32 }, messages)
+		).toBe('Show 12 more events');
+		expect(
+			homeActivityRevealLabel({ loading: false, canReveal: false, revealCount: 0, matchingCount: 32 }, messages)
+		).toBe(messages.homeActivityRevealOlder);
+		expect(
+			homeActivityRevealLabel({ loading: false, canReveal: false, revealCount: 0, matchingCount: 0 }, messages)
+		).toBe(messages.homeActivityRevealCheck);
 	});
 });

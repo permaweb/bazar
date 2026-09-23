@@ -74,9 +74,28 @@ describe('parseHolderList', () => {
 	it('rejects duplicate addresses and names them', () => {
 		const parsed = parseHolderList(`${addressA},1\n${addressB},2\n${addressA},3`, 3);
 		expect(parsed.rows).toEqual([]);
-		expect(parsed.errors).toHaveLength(1);
-		expect(parsed.errors[0]).toContain(addressA);
-		expect(parsed.errors[0]).not.toContain(addressB);
+		expect(parsed.errors).toEqual([{ code: 'duplicate-addresses', addresses: [addressA] }]);
+	});
+
+	it('reports issues as stable codes the UI maps to copy', () => {
+		expect(parseHolderList('   ', 3).errors).toEqual([{ code: 'list-empty' }]);
+		expect(parseHolderList('# only a comment', 3).errors).toEqual([{ code: 'list-without-entries' }]);
+		expect(parseHolderList('{broken', 3).errors).toEqual([{ code: 'invalid-json' }]);
+		expect(parseHolderList(JSON.stringify([1]), 3).errors).toEqual([
+			{ code: 'invalid-entry-shape', source: { kind: 'entry', number: 1 } },
+		]);
+		expect(parseHolderList(`${addressA},1,extra`, 3).errors).toEqual([
+			{ code: 'invalid-line-shape', source: { kind: 'line', number: 1 } },
+		]);
+		expect(parseHolderList('not-an-address,5', 3).errors).toEqual([
+			{ code: 'invalid-address', source: { kind: 'line', number: 1 }, value: 'not-an-address' },
+		]);
+		expect(parseHolderList(`${addressA},1.0001`, 3).errors).toEqual([
+			{ code: 'invalid-quantity', source: { kind: 'line', number: 1 }, denomination: 3 },
+		]);
+		expect(parseHolderList(`${addressA},1.5`, 0).errors).toEqual([
+			{ code: 'invalid-quantity', source: { kind: 'line', number: 1 }, denomination: 0 },
+		]);
 	});
 
 	it('keeps quantities bigint-safe beyond Number precision', () => {

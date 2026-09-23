@@ -10,8 +10,11 @@ import { Pressable } from 'components/atoms/Pressable';
 import { SegmentedTabs } from 'components/atoms/SegmentedTabs';
 import { Select } from 'components/atoms/Select';
 import { TextInput } from 'components/atoms/TextInput';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import type { UdlLicense } from '../../../hooks/useUdlLicense';
+import { CREATE_MESSAGES, type CreateMessages } from '../../../messages';
 import {
 	type UdlConfigurationMode,
 	udlGrantNeedsValue,
@@ -91,26 +94,26 @@ function AnimatedCreditBadgeIcon() {
 
 const UDL_PRESET_OPTIONS: Array<{
 	value: UdlPreset;
-	label: string;
-	description: string;
+	labelKey: keyof CreateMessages;
+	detailKey: keyof CreateMessages;
 	icon: React.ReactNode;
 }> = [
 	{
 		value: 'share-with-credit',
-		label: 'Share with credit',
-		description: 'Derivatives and commercial use are allowed with credit. AI training is allowed.',
+		labelKey: 'udlPresetShareWithCreditLabel',
+		detailKey: 'udlPresetShareWithCreditDetail',
 		icon: <AnimatedCreditBadgeIcon />,
 	},
 	{
 		value: 'share-with-payment',
-		label: 'Share with payment',
-		description: 'Access is free. All usage rights are allowed with a one-time fee.',
+		labelKey: 'udlPresetShareWithPaymentLabel',
+		detailKey: 'udlPresetShareWithPaymentDetail',
 		icon: <FloatingPaymentIcon />,
 	},
 	{
 		value: 'open-use',
-		label: 'Open use',
-		description: 'Derivatives, commercial use, and AI training are allowed.',
+		labelKey: 'udlPresetOpenUseLabel',
+		detailKey: 'udlPresetOpenUseDetail',
 		icon: <WireframeGlobeIcon />,
 	},
 ];
@@ -121,6 +124,7 @@ function UdlGrantField(props: {
 	options: Array<[string, string]>;
 	onChange: (value: UdlGrantValue | undefined) => void;
 }) {
+	const messages = useMessages(CREATE_MESSAGES);
 	const needsValue = udlGrantNeedsValue(props.value);
 	return (
 		<div className={needsValue ? 'udl-field udl-grant-field has-value' : 'udl-field udl-grant-field'}>
@@ -131,7 +135,7 @@ function UdlGrantField(props: {
 					showLabel={false}
 					value={props.value?.grant ?? ''}
 					options={[
-						{ value: '', label: 'Not granted' },
+						{ value: '', label: messages.udlGrantNotGranted },
 						...props.options.map(([optionValue, optionLabel]) => ({
 							value: optionValue,
 							label: optionLabel,
@@ -152,11 +156,20 @@ function UdlGrantValueInput(props: {
 	value: UdlGrantValue;
 	onChange: (value: UdlGrantValue | undefined) => void;
 }) {
+	const messages = useMessages(CREATE_MESSAGES);
 	return (
 		<label className="udl-value">
-			<span className="udl-value-label">{props.value.grant === 'revenue-share' ? 'Percent' : 'Amount'}</span>
+			<span className="udl-value-label">
+				{props.value.grant === 'revenue-share' ? messages.udlValuePercent : messages.udlValueAmount}
+			</span>
 			<TextInput
-				aria-label={`${props.label} ${props.value.grant === 'revenue-share' ? 'percentage' : 'fee amount'}`}
+				aria-label={formatMessage(messages.udlValueInputLabel, {
+					label: props.label,
+					kind:
+						props.value.grant === 'revenue-share'
+							? messages.udlValueKindPercentage
+							: messages.udlValueKindFeeAmount,
+				})}
 				className={props.value.grant === 'revenue-share' ? undefined : 'has-currency-suffix'}
 				inputMode="decimal"
 				min="0.000000000001"
@@ -186,22 +199,22 @@ export default function UdlLicenseEditor(props: {
 	onConfigurationModeChange: (mode: UdlConfigurationMode) => void;
 	onCustomLicenseIdChange: (value: string) => void;
 }) {
+	const messages = useMessages(CREATE_MESSAGES);
 	return (
 		<section className="create-license" aria-labelledby="mint-license-heading">
 			<div className="create-license-heading">
 				<div>
-					<strong id="mint-license-heading">Usage rights</strong>
+					<strong id="mint-license-heading">{messages.udlHeading}</strong>
 					<span>
-						Attach machine-readable terms stored with{' '}
-						{props.scope === 'asset' ? 'this asset' : 'every asset'} on Arweave.
+						{props.scope === 'asset' ? messages.udlHeadingDetailAsset : messages.udlHeadingDetailCollection}
 					</span>
 				</div>
 				<Select<'udl' | 'none'>
-					label="License"
+					label={messages.udlLicenseSelectLabel}
 					value={props.license.enabled ? 'udl' : 'none'}
 					options={[
-						{ value: 'udl', label: 'Universal Data License 0.2' },
-						{ value: 'none', label: 'No license tags' },
+						{ value: 'udl', label: messages.udlLicenseOptionUdl },
+						{ value: 'none', label: messages.udlLicenseOptionNone },
 					]}
 					onChange={(value) => props.onEnabledChange(value === 'udl')}
 					showLabel={false}
@@ -212,11 +225,11 @@ export default function UdlLicenseEditor(props: {
 				<div className="udl-options">
 					<p>
 						<a href={udlLicenseUrl()} target="_blank" rel="noreferrer">
-							Read UDL 0.2 <Icon icon={ArrowUpRight} size="sm" />
+							{messages.udlReadLink} <Icon icon={ArrowUpRight} size="sm" />
 						</a>
 					</p>
-					<img alt="Universal Data License" className="udl-options-logo" src={udlLogo} />
-					<div aria-label="UDL presets" className="udl-presets" role="group">
+					<img alt={messages.udlLogoAlt} className="udl-options-logo" src={udlLogo} />
+					<div aria-label={messages.udlPresetsLabel} className="udl-presets" role="group">
 						{UDL_PRESET_OPTIONS.map((preset) => (
 							<Pressable
 								aria-pressed={
@@ -230,9 +243,9 @@ export default function UdlLicenseEditor(props: {
 							>
 								<div className="udl-preset-title">
 									{preset.icon}
-									<strong>{preset.label}</strong>
+									<strong>{messages[preset.labelKey]}</strong>
 								</div>
-								<span>{preset.description}</span>
+								<span>{messages[preset.detailKey]}</span>
 							</Pressable>
 						))}
 					</div>
@@ -240,13 +253,13 @@ export default function UdlLicenseEditor(props: {
 					props.license.preset === 'share-with-payment' ? (
 						<div className="udl-preset-payment">
 							<div className="udl-preset-payment-copy">
-								<strong>One-time fee</strong>
-								<span>Applied to derivatives, commercial use, and AI model training.</span>
+								<strong>{messages.udlOneTimeFeeTitle}</strong>
+								<span>{messages.udlOneTimeFeeDetail}</span>
 							</div>
 							<label className="udl-value udl-preset-payment-value">
-								<span className="udl-value-label">Amount</span>
+								<span className="udl-value-label">{messages.udlValueAmount}</span>
 								<TextInput
-									aria-label="Share with payment one-time fee amount"
+									aria-label={messages.udlShareWithPaymentAmountLabel}
 									className="has-currency-suffix"
 									inputMode="decimal"
 									min="0.000000000001"
@@ -267,29 +280,29 @@ export default function UdlLicenseEditor(props: {
 
 					<details className="udl-advanced">
 						<summary>
-							Advanced UDL options
+							{messages.udlAdvancedSummary}
 							{props.license.configurationMode === 'custom'
-								? ' · Custom transaction'
+								? messages.udlAdvancedCustomTransaction
 								: props.license.preset
 								? ''
-								: ' · Custom terms'}
+								: messages.udlAdvancedCustomTerms}
 						</summary>
 						<div className="udl-advanced-content">
 							<SegmentedTabs<UdlConfigurationMode>
 								active={props.license.configurationMode}
-								ariaLabel="UDL configuration source"
+								ariaLabel={messages.udlSourceTabsLabel}
 								className="udl-source-tabs"
 								idPrefix="udl-source"
 								onChange={props.onConfigurationModeChange}
 								tabs={[
 									{
 										value: 'configured',
-										label: 'Bazar configuration',
+										label: messages.udlSourceConfigured,
 										panelId: 'udl-configured-panel',
 									},
 									{
 										value: 'custom',
-										label: 'Custom transaction ID',
+										label: messages.udlSourceCustom,
 										panelId: 'udl-custom-panel',
 									},
 								]}
@@ -303,14 +316,14 @@ export default function UdlLicenseEditor(props: {
 								>
 									<section className="udl-term-section" aria-labelledby="udl-payment-terms-heading">
 										<div className="udl-term-section-heading">
-											<strong id="udl-payment-terms-heading">Usage and payment</strong>
-											<span>
-												Choose access and usage permissions, including any required fees.
-											</span>
+											<strong id="udl-payment-terms-heading">
+												{messages.udlPaymentTermsHeading}
+											</strong>
+											<span>{messages.udlPaymentTermsDetail}</span>
 										</div>
 										<div className="udl-grid udl-payment-terms-grid">
 											<div className="udl-field">
-												<label>Access</label>
+												<label>{messages.udlAccessLabel}</label>
 												<div
 													className={
 														props.license.terms.accessFee
@@ -319,14 +332,14 @@ export default function UdlLicenseEditor(props: {
 													}
 												>
 													<Select<'free' | 'one-time'>
-														label="Access"
+														label={messages.udlAccessLabel}
 														showLabel={false}
 														value={props.license.terms.accessFee ? 'one-time' : 'free'}
 														options={[
-															{ value: 'free', label: 'Free' },
+															{ value: 'free', label: messages.udlAccessFree },
 															{
 																value: 'one-time',
-																label: 'One-time fee',
+																label: messages.udlAccessOneTime,
 															},
 														]}
 														onChange={(value) =>
@@ -337,9 +350,11 @@ export default function UdlLicenseEditor(props: {
 													/>
 													{props.license.terms.accessFee ? (
 														<label className="udl-value">
-															<span className="udl-value-label">Amount</span>
+															<span className="udl-value-label">
+																{messages.udlValueAmount}
+															</span>
 															<TextInput
-																aria-label="Access fee amount"
+																aria-label={messages.udlAccessFeeAmountLabel}
 																className="has-currency-suffix"
 																inputMode="decimal"
 																min="0.000000000001"
@@ -360,30 +375,30 @@ export default function UdlLicenseEditor(props: {
 												</div>
 											</div>
 											<UdlGrantField
-												label="Derivatives"
+												label={messages.udlDerivativesLabel}
 												value={props.license.terms.derivation}
 												options={[
-													['allowed', 'Allowed'],
-													['credit', 'Allowed with credit'],
-													['indication', 'Allowed with change indication'],
-													['license-passthrough', 'Allowed with license passthrough'],
-													['revenue-share', 'Allowed with revenue share'],
-													['one-time', 'Allowed with one-time fee'],
-													['monthly', 'Allowed with monthly fee'],
+													['allowed', messages.udlGrantAllowed],
+													['credit', messages.udlGrantCredit],
+													['indication', messages.udlGrantIndication],
+													['license-passthrough', messages.udlGrantLicensePassthrough],
+													['revenue-share', messages.udlGrantRevenueShare],
+													['one-time', messages.udlGrantOneTime],
+													['monthly', messages.udlGrantMonthly],
 												]}
 												onChange={(value) =>
 													props.onTermsChange({ derivation: value as UdlTerms['derivation'] })
 												}
 											/>
 											<UdlGrantField
-												label="Commercial use"
+												label={messages.udlCommercialUseLabel}
 												value={props.license.terms.commercialUse}
 												options={[
-													['allowed', 'Allowed'],
-													['credit', 'Allowed with credit'],
-													['revenue-share', 'Allowed with revenue share'],
-													['one-time', 'Allowed with one-time fee'],
-													['monthly', 'Allowed with monthly fee'],
+													['allowed', messages.udlGrantAllowed],
+													['credit', messages.udlGrantCredit],
+													['revenue-share', messages.udlGrantRevenueShare],
+													['one-time', messages.udlGrantOneTime],
+													['monthly', messages.udlGrantMonthly],
 												]}
 												onChange={(value) =>
 													props.onTermsChange({
@@ -392,12 +407,12 @@ export default function UdlLicenseEditor(props: {
 												}
 											/>
 											<UdlGrantField
-												label="AI model training"
+												label={messages.udlDataModelTrainingLabel}
 												value={props.license.terms.dataModelTraining}
 												options={[
-													['allowed', 'Allowed'],
-													['one-time', 'Allowed with one-time fee'],
-													['monthly', 'Allowed with monthly fee'],
+													['allowed', messages.udlGrantAllowed],
+													['one-time', messages.udlGrantOneTime],
+													['monthly', messages.udlGrantMonthly],
 												]}
 												onChange={(value) =>
 													props.onTermsChange({
@@ -410,22 +425,27 @@ export default function UdlLicenseEditor(props: {
 
 									<section className="udl-term-section" aria-labelledby="udl-other-terms-heading">
 										<div className="udl-term-section-heading">
-											<strong id="udl-other-terms-heading">Other terms</strong>
-											<span>Set the fallback rights and duration for this license.</span>
+											<strong id="udl-other-terms-heading">
+												{messages.udlOtherTermsHeading}
+											</strong>
+											<span>{messages.udlOtherTermsDetail}</span>
 										</div>
 
 										<div className="udl-grid udl-other-terms-grid">
 											<div className="udl-field">
 												<div className="udl-field-control">
 													<Select<'included' | 'excluded'>
-														label="Unknown usage rights"
+														label={messages.udlUnknownRightsLabel}
 														value={props.license.terms.unknownUsageRights ?? 'included'}
 														options={[
 															{
 																value: 'included',
-																label: 'Included when legally available',
+																label: messages.udlUnknownRightsIncluded,
 															},
-															{ value: 'excluded', label: 'Excluded' },
+															{
+																value: 'excluded',
+																label: messages.udlUnknownRightsExcluded,
+															},
 														]}
 														onChange={(value) =>
 															props.onTermsChange({
@@ -437,13 +457,13 @@ export default function UdlLicenseEditor(props: {
 												</div>
 											</div>
 											<div className="udl-field">
-												<label htmlFor="udl-expiry">License term</label>
+												<label htmlFor="udl-expiry">{messages.udlExpiryLabel}</label>
 												<div className="udl-field-control with-suffix">
 													<TextInput
 														id="udl-expiry"
 														inputMode="numeric"
 														min="1"
-														placeholder="Unlimited"
+														placeholder={messages.udlExpiryPlaceholder}
 														step="1"
 														type="number"
 														value={props.license.terms.expiry ?? ''}
@@ -453,7 +473,7 @@ export default function UdlLicenseEditor(props: {
 															})
 														}
 													/>
-													<span>years</span>
+													<span>{messages.udlExpiryYears}</span>
 												</div>
 											</div>
 										</div>
@@ -467,14 +487,11 @@ export default function UdlLicenseEditor(props: {
 									role="tabpanel"
 								>
 									<div className="udl-term-section-heading">
-										<strong>Custom UDL transaction ID</strong>
-										<span>
-											Use an existing on-chain license definition. Bazar will write only the
-											License tag; presets and configured terms will not be included.
-										</span>
+										<strong>{messages.udlCustomHeading}</strong>
+										<span>{messages.udlCustomDetail}</span>
 									</div>
 									<div className="udl-field">
-										<label htmlFor="udl-custom-license-id">Transaction ID</label>
+										<label htmlFor="udl-custom-license-id">{messages.udlCustomIdLabel}</label>
 										<TextInput
 											aria-describedby="udl-custom-license-help"
 											aria-invalid={
@@ -485,7 +502,7 @@ export default function UdlLicenseEditor(props: {
 											autoComplete="off"
 											id="udl-custom-license-id"
 											maxLength={43}
-											placeholder="43-character Arweave transaction ID"
+											placeholder={messages.udlCustomIdPlaceholder}
 											spellCheck={false}
 											value={props.license.customLicenseId}
 											onChange={(event) => props.onCustomLicenseIdChange(event.target.value)}
@@ -497,10 +514,11 @@ export default function UdlLicenseEditor(props: {
 													target="_blank"
 													rel="noreferrer"
 												>
-													Open license transaction <Icon icon={ArrowUpRight} size="sm" />
+													{messages.udlCustomIdOpenLink}{' '}
+													<Icon icon={ArrowUpRight} size="sm" />
 												</a>
 											) : (
-												'Enter the transaction ID of the UDL definition you want this asset to use.'
+												messages.udlCustomIdHelp
 											)}
 										</span>
 									</div>
@@ -510,7 +528,7 @@ export default function UdlLicenseEditor(props: {
 					</details>
 				</div>
 			) : (
-				<p className="udl-none">No license metadata will be written. Copyright defaults still apply.</p>
+				<p className="udl-none">{messages.udlNone}</p>
 			)}
 		</section>
 	);

@@ -1,6 +1,9 @@
 import React from 'react';
 import styled from 'styled-components';
 
+import { useMessages } from 'providers/LanguageProvider';
+
+import { TRANSACTION_SYNC_MESSAGES } from '../../../messages';
 import type { Infinity3DLane } from '../../../types';
 
 type BoundaryProps = React.PropsWithChildren<{
@@ -31,13 +34,14 @@ export class TransactionVisualizerBoundary extends React.Component<BoundaryProps
 }
 
 export function TransactionRendererFallback(props: { lanes: Infinity3DLane[] }) {
+	const language = useMessages(TRANSACTION_SYNC_MESSAGES);
 	return (
 		<RendererFallback>
 			<div className="renderer-fallback-announcement" aria-atomic="true" aria-live="polite" role="status">
-				<strong>3D network view unavailable</strong>
-				<span>Transaction tracking continues with live observer status.</span>
+				<strong>{language.transactionSyncVisualizerUnavailable}</strong>
+				<span>{language.transactionSyncVisualizerUnavailableDetail}</span>
 			</div>
-			<ul aria-label="Live observer status">
+			<ul aria-label={language.transactionSyncVisualizerObserverStatus}>
 				{props.lanes.slice(0, 8).map((lane) => (
 					<li key={lane.observerUrl}>
 						<span>{lane.label}</span>

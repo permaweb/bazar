@@ -145,11 +145,11 @@ describe('useHolderDispatch', () => {
 		expect(mocks.announce).toHaveBeenCalledWith(
 			expect.objectContaining({
 				type: 'upsert',
-				activity: expect.objectContaining({ status: 'Dispatching to 1 holder…', phase: 'working' }),
+				activity: expect.objectContaining({ status: { text: 'Dispatching to 1 holder…' }, phase: 'working' }),
 			})
 		);
 		expect(mocks.announce).toHaveBeenCalledWith(
-			expect.objectContaining({ activity: expect.objectContaining({ status: '0 of 1 settled' }) })
+			expect.objectContaining({ activity: expect.objectContaining({ status: { text: '0 of 1 settled' } }) })
 		);
 
 		finish();

@@ -7,7 +7,16 @@ import {
 	type WalletCandidateScan,
 } from 'api/discovery';
 
-import { type AppError, appError, requestFailureKind, requestFailureMessage } from 'helpers/app-error';
+import {
+	type AppError,
+	appError,
+	type AppErrorMessages,
+	requestFailureKind,
+	requestFailureMessage,
+} from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
+
+import type { MyAssetsMessages } from '../messages';
 
 export type CandidateSupportFailure = { candidate: AssetCandidate; error: unknown };
 
@@ -179,14 +188,19 @@ export function walletResolutionIsWorking(status: WalletResolutionStatus) {
 }
 
 /** Explains which service (the transaction index, AO compute, or both) left candidates unavailable. */
-export function walletResolutionFailureMessage(status: WalletResolutionStatus): string {
+export function walletResolutionFailureMessage(
+	status: WalletResolutionStatus,
+	errorMessages: AppErrorMessages
+): string {
 	const computeRateLimited = status.rateLimited - status.indexRateLimited;
 	const computeFailures = status.failures - status.indexFailures;
 	return [
 		status.indexFailures
-			? requestFailureMessage('index', status.indexRateLimited ? 'rate-limited' : 'unavailable')
+			? requestFailureMessage(errorMessages, 'index', status.indexRateLimited ? 'rate-limited' : 'unavailable')
 			: '',
-		computeFailures ? requestFailureMessage('compute', computeRateLimited ? 'rate-limited' : 'unavailable') : '',
+		computeFailures
+			? requestFailureMessage(errorMessages, 'compute', computeRateLimited ? 'rate-limited' : 'unavailable')
+			: '',
 	]
 		.filter(Boolean)
 		.join(' ');
@@ -207,48 +221,61 @@ export function trackRateLimitFailure(rateLimits: Set<string>, processId: string
 	else rateLimits.delete(processId);
 }
 
-export function walletResolutionCopy(status: WalletResolutionStatus, failureMessage: string) {
+export function walletResolutionCopy(
+	status: WalletResolutionStatus,
+	failureMessage: string,
+	language: MyAssetsMessages
+) {
 	const milestone = Math.floor(status.resolved / 10) * 10;
 	const heading =
 		status.phase === 'error'
-			? 'Discovery interrupted'
+			? language.myAssetsResolutionDiscoveryInterrupted
 			: !status.discoveryComplete
-			? 'Discovering and checking live state'
+			? language.myAssetsResolutionDiscovering
 			: status.phase === 'revalidating'
-			? 'Confirming current ownership'
+			? language.myAssetsResolutionConfirmingOwnership
 			: status.phase === 'resolving'
-			? 'Computing live state'
+			? language.myAssetsResolutionComputing
 			: status.phase === 'done' && status.failures
 			? status.indexFailures
 				? status.failures === status.total
-					? 'Candidate checks unavailable'
-					: 'Asset checks partially completed'
+					? language.myAssetsResolutionCandidateChecksUnavailable
+					: language.myAssetsResolutionChecksPartiallyCompleted
 				: status.failures === status.total
-				? 'Live state unavailable'
-				: 'Live state partially resolved'
+				? language.myAssetsResolutionLiveStateUnavailable
+				: language.myAssetsResolutionLiveStatePartiallyResolved
 			: status.phase === 'done'
-			? 'Live state resolved'
-			: 'Resolution interrupted';
+			? language.myAssetsResolutionLiveStateResolved
+			: language.myAssetsResolutionInterrupted;
 	const announcement =
 		status.phase === 'error'
 			? ''
 			: !status.discoveryComplete
-			? `Discovering and checking live state. ${status.discovered.toLocaleString()} candidates found${
-					milestone ? `, ${milestone.toLocaleString()} checked` : ''
-			  }.`
+			? formatMessage(
+					milestone
+						? language.myAssetsAnnouncementDiscoveringChecked
+						: language.myAssetsAnnouncementDiscovering,
+					{ discovered: status.discovered.toLocaleString(), checked: milestone.toLocaleString() }
+			  )
 			: status.phase === 'revalidating'
-			? `Confirming current ownership. ${(status.revalidated ?? 0).toLocaleString()} of ${(
-					status.revalidationTotal ?? 0
-			  ).toLocaleString()} visible assets rechecked without cached state.`
+			? formatMessage(language.myAssetsAnnouncementConfirmingOwnership, {
+					revalidated: (status.revalidated ?? 0).toLocaleString(),
+					total: (status.revalidationTotal ?? 0).toLocaleString(),
+			  })
 			: status.phase === 'resolving'
-			? `Checking asset candidates. ${
-					status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0
-			  }% complete.`
+			? formatMessage(language.myAssetsAnnouncementCheckingCandidates, {
+					percent: status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0,
+			  })
 			: status.phase === 'done' && status.failures
-			? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Resolved assets remain visible.`
+			? formatMessage(language.myAssetsAnnouncementPartiallyResolved, {
+					failureMessage,
+					resolved: status.resolved.toLocaleString(),
+					total: status.total.toLocaleString(),
+					failures: status.failures.toLocaleString(),
+			  })
 			: status.phase === 'done'
-			? `Live state resolved for ${status.resolved.toLocaleString()} candidates.`
-			: 'Asset resolution was interrupted.';
+			? formatMessage(language.myAssetsAnnouncementResolved, { resolved: status.resolved.toLocaleString() })
+			: language.myAssetsAnnouncementInterrupted;
 	return { heading, announcement };
 }
 

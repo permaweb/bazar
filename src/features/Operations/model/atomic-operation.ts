@@ -15,15 +15,23 @@ import {
 	purchaseStateFailure,
 } from 'api/transactions';
 
-import { type AppError, appError, appErrorMessage, type AppErrorReason } from 'helpers/app-error';
+import {
+	type AppError,
+	appError,
+	appErrorMessage,
+	type AppErrorMessages,
+	type AppErrorReason,
+} from 'helpers/app-error';
 import { arToWinston, winstonToAr } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+
+import type { OperationsMessages } from '../messages';
 
 export type AtomicPurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
-	label: string;
 	state: 'done' | 'active' | 'next';
 };
 
@@ -44,24 +52,16 @@ export function atomicPurchaseSequence(state: PurchaseState | null): AtomicPurch
 		state?.stage === 'complete',
 	];
 	const activeIndex = progress.findIndex((complete) => !complete);
-	const steps: Array<Omit<AtomicPurchaseSequenceStep, 'state'>> = [
-		{ key: 'sign', label: 'Sign reservation' },
-		{ key: 'reserve', label: 'Reserve asset' },
-		{ key: 'pay', label: 'Pay seller' },
-		{ key: 'verify', label: 'Verify ownership' },
-	];
-	return steps.map((step, index) => ({
-		...step,
+	const keys: Array<AtomicPurchaseSequenceStep['key']> = ['sign', 'reserve', 'pay', 'verify'];
+	return keys.map((key, index) => ({
+		key,
 		state: progress[index] ? 'done' : index === activeIndex ? 'active' : 'next',
 	}));
 }
 
-export const ASSET_BALANCE_STATE_NOTICE =
-	'The configured AO routes returned token and order state without a complete holder balance table. Bazar cannot safely verify wallet ownership or liquid balances, so new purchases, listings, cancellations, transfers, and holder-list dispatches are paused. Saved signed actions remain available for recovery.';
-
-/** Why new mutations are paused for this asset state, or `null` when its holder balances can be verified. */
-export function assetBalanceStateNotice(state: Pick<AssetState, 'holderBalancesAvailable'>): string | null {
-	return assetBalanceStateAvailable(state) ? null : ASSET_BALANCE_STATE_NOTICE;
+/** Whether new mutations are paused for this asset state because its holder balances cannot be verified. */
+export function assetBalanceStateNoticeRequired(state: Pick<AssetState, 'holderBalancesAvailable'>): boolean {
+	return !assetBalanceStateAvailable(state);
 }
 
 export function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
@@ -182,14 +182,14 @@ export function atomicOperationStateError(
 	return liquidBalanceOf(state, owner) !== '1' || liveOrderOfAsset(state) ? 'market-state-changed' : '';
 }
 
-export function pendingListingMessage(offer: Pick<PendingAssetOffer, 'id' | 'actor'>, signer: string): string {
+export function pendingListingMessage(
+	offer: Pick<PendingAssetOffer, 'id' | 'actor'>,
+	signer: string,
+	messages: OperationsMessages
+): string {
 	const transaction = short(offer.id);
-	if (offer.actor === signer) {
-		return `You already submitted listing transaction ${transaction}; waiting for live asset state. No new wallet approval was requested.`;
-	}
-	return `Another wallet ${short(
-		offer.actor
-	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
+	if (offer.actor === signer) return formatMessage(messages.pendingListingSelf, { transaction });
+	return formatMessage(messages.pendingListingOther, { actor: short(offer.actor), transaction });
 }
 
 export type OperationFailureKind = 'market-state-changed' | 'transaction-not-sent' | 'transaction-rejected' | 'other';
@@ -227,32 +227,62 @@ export function pendingListingsFailure(offers: PendingAssetOffer[], signer: stri
 }
 
 /** Operation copy for an application error, naming the exact pending listing when one blocked signing. */
-export function atomicOperationFailureMessage(error: AppError, signer: string): string {
+export function atomicOperationFailureMessage(
+	error: AppError,
+	signer: string,
+	messages: OperationsMessages,
+	errorMessages: AppErrorMessages
+): string {
 	const pendingListing =
 		(error.reason === 'asset-listing-pending-self' || error.reason === 'asset-listing-pending-other') &&
 		error.detail?.transactionId &&
 		error.detail.actor
 			? { id: error.detail.transactionId, actor: error.detail.actor }
 			: null;
-	return pendingListing ? pendingListingMessage(pendingListing, signer) : appErrorMessage(error);
+	return pendingListing
+		? pendingListingMessage(pendingListing, signer, messages)
+		: appErrorMessage(errorMessages, error);
 }
 
-export function atomicOperationActionLabel(operation: Operation, value: string) {
-	if (operation.kind === 'buy') return `Buy for ${winstonToAr(operation.order.asking)} AR`;
-	if (operation.kind === 'sell') return value ? `List for ${value} AR` : 'Enter a listing price';
-	if (operation.kind === 'cancel') return 'Cancel listing and return asset';
-	return isArweaveId(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
+export function atomicOperationActionLabel(operation: Operation, value: string, messages: OperationsMessages) {
+	if (operation.kind === 'buy') {
+		return formatMessage(messages.actionLabelBuy, { price: winstonToAr(operation.order.asking) });
+	}
+	if (operation.kind === 'sell') {
+		return value
+			? formatMessage(messages.actionLabelList, { price: value })
+			: messages.actionLabelListingPriceRequired;
+	}
+	if (operation.kind === 'cancel') return messages.actionLabelCancel;
+	return isArweaveId(value.trim())
+		? formatMessage(messages.actionLabelTransfer, { recipient: short(value.trim()) })
+		: messages.actionLabelRecipientRequired;
 }
 
-export function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
-	if (kind === 'buy') return { title: 'Purchase complete', detail: `${assetName} is now owned by ${short(owner)}.` };
-	if (kind === 'sell') return { title: 'Listing is live', detail: `${assetName} is offered for ${value} AR.` };
-	if (kind === 'cancel')
+export function atomicOperationResult(
+	kind: Operation['kind'],
+	messages: OperationsMessages,
+	assetName = '',
+	value = '',
+	owner = ''
+) {
+	if (kind === 'buy') {
 		return {
-			title: 'Listing cancelled',
-			detail: 'The asset is back in your liquid balance and is no longer for sale.',
+			title: messages.resultBuyTitle,
+			detail: formatMessage(messages.resultBuyDetail, { asset: assetName, owner: short(owner) }),
 		};
-	return { title: 'Transfer complete', detail: `${assetName} now belongs to ${short(value)}.` };
+	}
+	if (kind === 'sell') {
+		return {
+			title: messages.resultSellTitle,
+			detail: formatMessage(messages.resultSellDetail, { asset: assetName, price: value }),
+		};
+	}
+	if (kind === 'cancel') return { title: messages.resultCancelTitle, detail: messages.resultCancelDetail };
+	return {
+		title: messages.resultTransferTitle,
+		detail: formatMessage(messages.resultTransferDetail, { asset: assetName, recipient: short(value) }),
+	};
 }
 
 export function purchaseSnapshot(state: PurchaseState): PurchaseSnapshot {
@@ -269,18 +299,22 @@ export function currentPurchaseGatewayContext() {
 	return { arweave: arweaveGatewayFromLocation(), compute: gatewayFromLocation() };
 }
 
-export function purchaseStatusMessage(state: PurchaseState | null) {
-	return purchaseLifecycleStatus(state);
+export function purchaseStatusMessage(state: PurchaseState | null, errorMessages: AppErrorMessages) {
+	return purchaseLifecycleStatus(state, errorMessages);
 }
 
-export function atomicPurchaseFailureStage(state: PurchaseState | null) {
+export function atomicPurchaseFailureStage(state: PurchaseState | null, messages: OperationsMessages) {
 	if (state?.payment?.id) {
-		return state.payment.dispatched ? 'Payment confirmation or ownership' : 'Payment release';
+		return state.payment.dispatched
+			? messages.failureStagePaymentConfirmation
+			: messages.failureStagePaymentRelease;
 	}
 	if (state?.registration?.id) {
-		return state.registration.dispatched ? 'Reservation confirmation or acceptance' : 'Reservation dispatch';
+		return state.registration.dispatched
+			? messages.failureStageReservationConfirmation
+			: messages.failureStageReservationDispatch;
 	}
-	return 'Before reservation';
+	return messages.failureStageBeforeReservation;
 }
 
 const TERMINAL_RESERVATION_FAILURES = new Set<AppErrorReason>([

@@ -12,7 +12,10 @@ import { WalletAddress } from 'components/organisms/WalletAddress';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { fungiblePurchaseReceiptOptions, tokenLabel } from '../../../model/fungible-market';
 
 export default function FungiblePurchaseReceiptNavigator(props: {
@@ -22,6 +25,7 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 	purchaseStates: Record<string, PurchaseState>;
 	state: AssetState;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	if (!props.orders.length) return null;
 	const activeIndex = Math.max(
 		0,
@@ -29,15 +33,15 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 	);
 	const order = props.orders[activeIndex];
 	const settled = props.purchaseStates[order.orderId];
-	const receiptOptions = fungiblePurchaseReceiptOptions(props.orders, props.state);
+	const receiptOptions = fungiblePurchaseReceiptOptions(props.orders, props.state, messages);
 	return (
 		<div className="settlement-receipts">
 			<div className={`settlement-receipt-navigation${props.orders.length === 1 ? ' single' : ''}`}>
 				<div>
-					<strong>Settlement receipt</strong>
+					<strong>{messages.receiptNavigatorTitle}</strong>
 					{props.orders.length > 1 ? (
 						<Select
-							label="Choose settlement receipt"
+							label={messages.receiptNavigatorSelect}
 							onChange={props.onSelect}
 							options={receiptOptions}
 							showLabel={false}
@@ -46,26 +50,36 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 					) : null}
 				</div>
 				<span aria-live="polite" className="settlement-receipt-count">
-					{activeIndex + 1} of {props.orders.length}
+					{formatMessage(messages.receiptNavigatorPosition, {
+						index: activeIndex + 1,
+						total: props.orders.length,
+					})}
 				</span>
 			</div>
 			<section
-				aria-label={`Settlement receipt ${activeIndex + 1} of ${props.orders.length}`}
+				aria-label={formatMessage(messages.receiptNavigatorLabel, {
+					index: activeIndex + 1,
+					total: props.orders.length,
+				})}
 				className="settlement-receipt purchase-settlement-receipt"
 			>
 				<div className="settlement-receipt-amount">
-					<span>Listing {activeIndex + 1}</span>
+					<span>{formatMessage(messages.receiptNavigatorListing, { index: activeIndex + 1 })}</span>
 					<strong>{tokenLabel(order.quantity, props.state)}</strong>
 				</div>
 				<dl className="settlement-receipt-facts">
 					<div>
-						<dt>Seller</dt>
+						<dt>{messages.receiptNavigatorSeller}</dt>
 						<dd>
-							<WalletAddress address={order.creator} label="seller" tooltipEscapesOverflow />
+							<WalletAddress
+								address={order.creator}
+								label={messages.assetDetailWalletLabelSeller}
+								tooltipEscapesOverflow
+							/>
 						</dd>
 					</div>
 					<div>
-						<dt>Order</dt>
+						<dt>{messages.receiptNavigatorOrder}</dt>
 						<dd>
 							<Tooltip content={order.orderId} placement="top">
 								{(tooltipId) => <span aria-describedby={tooltipId}>{short(order.orderId)}</span>}
@@ -73,7 +87,7 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 						</dd>
 					</div>
 					<div>
-						<dt>Seller payment</dt>
+						<dt>{messages.receiptNavigatorSellerPayment}</dt>
 						<dd>
 							{winstonToArDecimal(order.asking)} <ArCurrencyLabel />
 						</dd>
@@ -82,24 +96,26 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 				<div className="settlement-receipt-links receipt-proof-links">
 					{settled?.registration?.id ? (
 						<a
-							aria-label={`View reservation ${settled.registration.id}`}
+							aria-label={formatMessage(messages.receiptNavigatorViewReservation, {
+								id: settled.registration.id,
+							})}
 							href={transactionExplorerUrl(settled.registration.id)}
 							rel="noreferrer"
 							target="_blank"
 						>
-							<span>Reservation</span>
+							<span>{messages.receiptNavigatorReservation}</span>
 							<strong>{short(settled.registration.id)}</strong>
 							<Icon icon={ArrowUpRight} size="xs" />
 						</a>
 					) : null}
 					{settled?.payment?.id ? (
 						<a
-							aria-label={`View payment ${settled.payment.id}`}
+							aria-label={formatMessage(messages.receiptNavigatorViewPayment, { id: settled.payment.id })}
 							href={transactionExplorerUrl(settled.payment.id)}
 							rel="noreferrer"
 							target="_blank"
 						>
-							<span>Payment</span>
+							<span>{messages.receiptNavigatorPayment}</span>
 							<strong>{short(settled.payment.id)}</strong>
 							<Icon icon={ArrowUpRight} size="xs" />
 						</a>
@@ -116,7 +132,7 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 						type="button"
 						size="custom"
 					>
-						Previous receipt
+						{messages.receiptNavigatorPrevious}
 					</Button>
 					<Button
 						aria-disabled={activeIndex === props.orders.length - 1}
@@ -127,7 +143,7 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 						type="button"
 						size="custom"
 					>
-						Next receipt
+						{messages.receiptNavigatorNext}
 					</Button>
 				</div>
 			) : null}

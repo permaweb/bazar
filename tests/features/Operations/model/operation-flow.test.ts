@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Operation } from 'api/operations';
 import type { PurchaseState } from 'api/transactions';
 
+import { OPERATIONS_MESSAGES } from 'features/Operations/messages';
 import {
 	ATOMIC_ACTION_CONFIRMATION_TARGET,
 	initialOperationFlowState,
@@ -13,6 +14,9 @@ import {
 	operationResumesAutomatically,
 } from 'features/Operations/model/operation-flow';
 import { appError, appErrorReasonMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+
+const messages = OPERATIONS_MESSAGES.en;
 
 const OWNER = 'O'.repeat(43);
 const REGISTRATION = 'G'.repeat(43);
@@ -42,7 +46,10 @@ function state(overrides: Partial<OperationFlowState> = {}): OperationFlowState 
 }
 
 function reduce(initial: OperationFlowState, ...events: OperationFlowEvent[]) {
-	return events.reduce(operationFlowReducer, initial);
+	return events.reduce(
+		(state, event) => operationFlowReducer(state, event, messages, APP_ERROR_MESSAGES.en),
+		initial
+	);
 }
 
 describe('atomic operation initial stage', () => {
@@ -111,7 +118,7 @@ describe('atomic operation state machine', () => {
 	it('reports invalid details without leaving the current stage', () => {
 		const next = reduce(state(), { type: 'validation-failed', reason: 'listing-price-required' });
 		expect(next.phase).toBe('form');
-		expect(next.message).toBe(appErrorReasonMessage('listing-price-required'));
+		expect(next.message).toBe(appErrorReasonMessage(APP_ERROR_MESSAGES.en, 'listing-price-required'));
 	});
 
 	it('clears earlier failures when an attempt starts', () => {
@@ -162,7 +169,7 @@ describe('atomic operation state machine', () => {
 			discardTransaction: true,
 		});
 		expect(refused).toMatchObject({ phase: 'error', transaction: null, failureKind: 'transaction-rejected' });
-		expect(refused.message).toBe(appErrorReasonMessage('fungible-transfer-rejected'));
+		expect(refused.message).toBe(appErrorReasonMessage(APP_ERROR_MESSAGES.en, 'fungible-transfer-rejected'));
 
 		const kept = reduce(working, {
 			type: 'failed',
@@ -186,22 +193,31 @@ describe('atomic operation state machine', () => {
 	it('ignores completion and failure reports outside a running attempt', () => {
 		for (const phase of ['form', 'approval', 'done', 'error'] as const) {
 			const current = state({ phase, message: 'Kept' });
-			expect(operationFlowReducer(current, { type: 'completed' })).toBe(current);
+			expect(operationFlowReducer(current, { type: 'completed' }, messages, APP_ERROR_MESSAGES.en)).toBe(current);
 			expect(
-				operationFlowReducer(current, {
-					type: 'failed',
-					error: appError('unknown'),
-					signer: OWNER,
-					discardTransaction: true,
-				})
+				operationFlowReducer(
+					current,
+					{
+						type: 'failed',
+						error: appError('unknown'),
+						signer: OWNER,
+						discardTransaction: true,
+					},
+					messages,
+					APP_ERROR_MESSAGES.en
+				)
 			).toBe(current);
 		}
 	});
 
 	it('only leaves a finished attempt for the form', () => {
 		const running = state({ phase: 'working', purchaseState: purchaseState() });
-		expect(operationFlowReducer(running, { type: 'returned-to-form' })).toBe(running);
-		expect(operationFlowReducer(running, { type: 'purchase-reset' })).toBe(running);
+		expect(operationFlowReducer(running, { type: 'returned-to-form' }, messages, APP_ERROR_MESSAGES.en)).toBe(
+			running
+		);
+		expect(operationFlowReducer(running, { type: 'purchase-reset' }, messages, APP_ERROR_MESSAGES.en)).toBe(
+			running
+		);
 
 		const failed = state({
 			phase: 'error',
@@ -225,7 +241,14 @@ describe('atomic operation state machine', () => {
 
 	it('ignores unknown events', () => {
 		const current = state();
-		expect(operationFlowReducer(current, { type: 'unknown' } as unknown as OperationFlowEvent)).toBe(current);
+		expect(
+			operationFlowReducer(
+				current,
+				{ type: 'unknown' } as unknown as OperationFlowEvent,
+				messages,
+				APP_ERROR_MESSAGES.en
+			)
+		).toBe(current);
 	});
 });
 
@@ -267,10 +290,22 @@ describe('atomic purchase observation', () => {
 		expect(next.purchaseState?.payment?.consensus).toEqual(observation.consensus);
 
 		expect(
-			operationFlowReducer(complete, { type: 'payment-observed', paymentId: 'X'.repeat(43), observation })
+			operationFlowReducer(
+				complete,
+				{ type: 'payment-observed', paymentId: 'X'.repeat(43), observation },
+				messages,
+				APP_ERROR_MESSAGES.en
+			)
 		).toBe(complete);
 		const empty = state({ phase: 'done' });
-		expect(operationFlowReducer(empty, { type: 'payment-observed', paymentId: PAYMENT, observation })).toBe(empty);
+		expect(
+			operationFlowReducer(
+				empty,
+				{ type: 'payment-observed', paymentId: PAYMENT, observation },
+				messages,
+				APP_ERROR_MESSAGES.en
+			)
+		).toBe(empty);
 	});
 
 	it('records every purchase lifecycle update', () => {

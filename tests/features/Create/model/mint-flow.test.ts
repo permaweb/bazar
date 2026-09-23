@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CollectionMintResult, FungibleMintResult, MintDraft, MintedAsset } from 'api/mint';
 
+import { CREATE_MESSAGES } from 'features/Create/messages';
 import {
 	collectionMintPhaseLabel,
 	discardEstimate,
@@ -17,11 +18,14 @@ import {
 	mintPhaseLabel,
 	mintPhaseStatus,
 	mintReceiptEntries,
+	mintReceiptEntry,
 	mintResultPath,
 	mintUploadId,
 	mintWorking,
 } from 'features/Create/model/mint-flow';
 import { IDLE, LOADING } from 'helpers/async-state';
+
+const messages = CREATE_MESSAGES.en;
 
 const OWNER = 'O'.repeat(43);
 const PROCESS = 'P'.repeat(43);
@@ -85,14 +89,14 @@ describe('mint flow', () => {
 
 		const signing = mintFlowReducer(started, { type: 'asset-phase', phase: 'signing-asset' });
 		expect(mintWorking(signing)).toBe(true);
-		expect(mintPhaseLabel(signing)).toBe('Approve the atomic asset in your wallet…');
+		expect(mintPhaseLabel(signing, messages)).toBe(messages.mintPhaseLabelSigningAsset);
 
 		const minted = mintFlowReducer(signing, { type: 'asset-minted', asset });
 		expect(minted).toMatchObject({ assetResult: asset, assetPhase: null, draft: null });
 		expect(mintWorking(minted)).toBe(false);
-		expect(mintReceiptEntries(minted)).toEqual([
-			{ label: 'Artwork transaction', transactionId: asset.artworkId },
-			{ label: 'Asset transaction', transactionId: asset.id },
+		expect(mintReceiptEntries(minted, messages)).toEqual([
+			mintReceiptEntry(messages.mintReceiptArtwork, asset.artworkId ?? '', messages),
+			mintReceiptEntry(messages.mintReceiptAsset, asset.id, messages),
 		]);
 		expect(mintResultPath(minted)).toContain(`/${asset.id}`);
 		expect(mintedAssetUpload(asset)).toMatchObject({
@@ -108,17 +112,19 @@ describe('mint flow', () => {
 			{ type: 'collection-phase', phase: { kind: 'asset', index: 1, total: 3, phase: 'uploading-asset' } }
 		);
 		expect(mintWorking(phase)).toBe(true);
-		expect(mintPhaseLabel(phase)).toBe('Asset 2 of 3: uploading atomic asset…');
-		expect(collectionMintPhaseLabel({ kind: 'manifest', phase: 'signing' })).toBe('Collection manifest: signing…');
-		expect(collectionMintPhaseLabel({ kind: 'asset', index: 0, total: 2, phase: 'signing-artwork' })).toBe(
-			`Asset 1 of 2: ${mintPhaseStatus('signing-artwork')}`
+		expect(mintPhaseLabel(phase, messages)).toBe('Asset 2 of 3: uploading atomic asset…');
+		expect(collectionMintPhaseLabel({ kind: 'manifest', phase: 'signing' }, messages)).toBe(
+			'Collection manifest: signing…'
 		);
+		expect(
+			collectionMintPhaseLabel({ kind: 'asset', index: 0, total: 2, phase: 'signing-artwork' }, messages)
+		).toBe(`Asset 1 of 2: ${mintPhaseStatus('signing-artwork', messages)}`);
 
 		const minted = mintFlowReducer(phase, { type: 'collection-minted', result: collection });
 		expect(minted).toMatchObject({ collectionResult: collection, collectionPhase: null });
-		expect(mintReceiptEntries(minted)).toEqual([
-			{ label: 'View collection manifest', transactionId: collection.manifestId },
-			{ label: 'View collection process', transactionId: collection.processId },
+		expect(mintReceiptEntries(minted, messages)).toEqual([
+			mintReceiptEntry(messages.mintReceiptCollectionManifest, collection.manifestId, messages),
+			mintReceiptEntry(messages.mintReceiptCollectionProcess, collection.processId, messages),
 		]);
 		expect(mintResultPath(minted)).toBe(`/collection/${collection.collection.id}`);
 		expect(mintedCollectionUpload(collection)).toEqual({
@@ -135,7 +141,7 @@ describe('mint flow', () => {
 
 		const signing = mintFlowReducer(started, { type: 'fungible-phase', phase: 'signing-logo' });
 		expect(fungibleMintPhase(signing)).toBe('signing-logo');
-		expect(mintPhaseLabel(signing)).toBe('Approve the token logo in your wallet…');
+		expect(mintPhaseLabel(signing, messages)).toBe(messages.mintPhaseLabelSigningLogo);
 
 		const minted = mintFlowReducer(signing, { type: 'fungible-minted', result: token });
 		expect(fungibleMintResult(minted)).toBe(token);
@@ -202,36 +208,36 @@ describe('mint flow', () => {
 		expect(mintFlowReducer(idle, { type: 'fungible-dialog-changed', visible: true }).fungibleDialogVisible).toBe(
 			true
 		);
-		expect(mintPhaseLabel(idle)).toBe('');
-		expect(mintReceiptEntries(idle)).toEqual([]);
+		expect(mintPhaseLabel(idle, messages)).toBe('');
+		expect(mintReceiptEntries(idle, messages)).toEqual([]);
 		expect(mintResultPath(idle)).toBeNull();
 	});
 });
 
 describe('token panel view', () => {
 	it('falls back to the typed name and ticker until the token exists', () => {
-		expect(fungibleMintView(null, '  ', '  ')).toEqual({
-			tokenName: 'Fungible token',
-			tokenTicker: 'TKN',
+		expect(fungibleMintView(null, '  ', '  ', messages)).toEqual({
+			tokenName: messages.fungibleViewFallbackName,
+			tokenTicker: messages.mintTokenFallbackTicker,
 			receiptEntries: [],
 			tokenPath: null,
 			dispatchPath: null,
 		});
-		expect(fungibleMintView(null, ' Draft ', ' DRF ')).toMatchObject({
+		expect(fungibleMintView(null, ' Draft ', ' DRF ', messages)).toMatchObject({
 			tokenName: 'Draft',
 			tokenTicker: 'DRF',
 		});
 	});
 
 	it('lists the minted token transactions and its routes', () => {
-		const view = fungibleMintView(token, 'ignored', 'ignored');
+		const view = fungibleMintView(token, 'ignored', 'ignored', messages);
 		expect(view).toMatchObject({ tokenName: 'Signal', tokenTicker: 'SIG', dispatchPath: `/dispatch/${PROCESS}` });
 		expect(view.receiptEntries).toEqual([
-			{ label: 'Token logo transaction', transactionId: token.logo },
-			{ label: 'Token process transaction', transactionId: PROCESS },
+			mintReceiptEntry(messages.mintReceiptTokenLogo, token.logo ?? '', messages),
+			mintReceiptEntry(messages.mintReceiptTokenProcess, PROCESS, messages),
 		]);
 		expect(view.tokenPath).toContain(`/${PROCESS}`);
-		expect(fungibleMintView({ ...token, logo: undefined }, '', '').receiptEntries).toHaveLength(1);
+		expect(fungibleMintView({ ...token, logo: undefined }, '', '', messages).receiptEntries).toHaveLength(1);
 	});
 });
 

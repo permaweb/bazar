@@ -3,8 +3,11 @@ import type { AssetState } from 'api/marketplace';
 import { LiveRegion } from 'components/atoms/LiveRegion';
 import { Loading } from 'components/atoms/Loading';
 import { postConfirmationPendingLabel } from 'features/TransactionSync';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import type { FungibleOperationFlow } from '../../../hooks/useFungibleOperationFlow';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import type { FungibleOperation } from '../../../model/fungible-operation';
 import { FungiblePurchaseSequence } from '../../molecules/FungiblePurchaseSequence';
@@ -17,6 +20,7 @@ export default function FungibleOperationProgress(props: {
 	state: AssetState;
 	visible: boolean;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const activeOrder = props.flow.activeOrder;
 	const activePurchase = props.flow.activePurchase;
 	return (
@@ -26,9 +30,7 @@ export default function FungibleOperationProgress(props: {
 			) : (
 				<LiveRegion as="p">
 					{props.flow.message ||
-						(props.flow.signedWork
-							? 'Watching this transaction.'
-							: 'Preparing the transaction for wallet approval.')}
+						(props.flow.signedWork ? messages.progressWatching : messages.progressPreparing)}
 				</LiveRegion>
 			)}
 			{props.operationKind === 'buy' && props.flow.visibleOrders.length ? (
@@ -38,10 +40,7 @@ export default function FungibleOperationProgress(props: {
 				/>
 			) : null}
 			{props.flow.signedWork && props.operationKind !== 'buy' ? (
-				<p className="sync-resume-note">
-					Transaction details are saved in this browser. Return with the same wallet to continue while this
-					browser data remains available.
-				</p>
+				<p className="sync-resume-note">{messages.progressResumeNote}</p>
 			) : null}
 			{props.flow.workingStatus ? <p className="scheduler-wait">{props.flow.workingStatus}</p> : null}
 			{props.operationKind === 'buy' && props.flow.visibleOrders.length ? (
@@ -50,14 +49,17 @@ export default function FungibleOperationProgress(props: {
 						active={props.visible}
 						skipKind={props.flow.purchaseSync.skipKind}
 						onSkip={activePurchase.canSkip ? () => props.flow.skipPurchase(activeOrder.orderId) : undefined}
-						subject={`${props.assetName} · ${tokenLabel(activeOrder.quantity, props.state)}`}
+						subject={formatMessage(messages.progressSubject, {
+							name: props.assetName,
+							amount: tokenLabel(activeOrder.quantity, props.state),
+						})}
 						startedAt={props.flow.startedAt}
 						steps={props.flow.purchaseSync.steps}
 						activeStep={props.flow.purchaseSync.activeStep}
 						pendingAfterConfirmation={props.flow.purchaseSync.pendingAfterConfirmation}
 					/>
 				) : (
-					<Loading label="Preparing the purchase for wallet approval…" />
+					<Loading label={messages.progressPreparingPurchase} />
 				)
 			) : props.flow.singleSteps.length ? (
 				<ArweaveTransactionSync
@@ -73,7 +75,7 @@ export default function FungibleOperationProgress(props: {
 					)}
 				/>
 			) : (
-				<Loading label="Preparing the signed transaction…" />
+				<Loading label={messages.progressPreparingSigned} />
 			)}
 		</div>
 	);

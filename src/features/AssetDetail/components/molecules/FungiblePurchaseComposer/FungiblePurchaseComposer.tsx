@@ -7,8 +7,11 @@ import { ArCurrencyLabel } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { TextInput } from 'components/atoms/TextInput';
 import { winstonToArDecimal } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
 import { formatTickerLabel } from 'helpers/token-display';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 
 export default function FungiblePurchaseComposer(props: {
@@ -21,20 +24,22 @@ export default function FungiblePurchaseComposer(props: {
 	quantity: string;
 	state: AssetState;
 }) {
-	const ticker = props.state.ticker || 'Token';
-	const tickerDisplay = formatTickerLabel(ticker);
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const plural = usePlural();
+	const ticker = props.state.ticker || messages.validationDefaultTicker;
+	const tickerDisplay = formatTickerLabel(ticker, messages.validationDefaultTicker);
 	const matchedSellerCount = props.match ? new Set(props.match.fills.map((fill) => fill.order.creator)).size : 0;
 	const inputId = React.useId();
 	const guidanceId = React.useId();
 	const errorId = React.useId();
 
 	return (
-		<section aria-label="Choose purchase amount" className="purchase-composer">
+		<section aria-label={messages.composerPurchaseLabel} className="purchase-composer">
 			<div className="purchase-composer-panel purchase-composer-buy">
 				<div className="purchase-composer-heading">
-					<label htmlFor={inputId}>You buy</label>
+					<label htmlFor={inputId}>{messages.composerYouBuy}</label>
 					<Button onClick={props.onMax} type="button" size="custom">
-						Max
+						{messages.composerMax}
 					</Button>
 				</div>
 				<div className="purchase-composer-value">
@@ -50,10 +55,14 @@ export default function FungiblePurchaseComposer(props: {
 					<span className="purchase-composer-token">{tickerDisplay}</span>
 				</div>
 				<small id={guidanceId}>
-					{tokenLabel(props.availableQuantity, props.state)} available to buy
 					{BigInt(props.excludedQuantity ?? '0') > 0n
-						? ` · ${tokenLabel(props.excludedQuantity ?? '0', props.state)} from your listing excluded`
-						: ''}
+						? formatMessage(messages.composerAvailableToBuyExcluded, {
+								amount: tokenLabel(props.availableQuantity, props.state),
+								excluded: tokenLabel(props.excludedQuantity ?? '0', props.state),
+						  })
+						: formatMessage(messages.composerAvailableToBuy, {
+								amount: tokenLabel(props.availableQuantity, props.state),
+						  })}
 				</small>
 			</div>
 			<div className="purchase-composer-panel purchase-composer-pay" aria-live="polite">
@@ -61,8 +70,8 @@ export default function FungiblePurchaseComposer(props: {
 					<ArrowDown />
 				</span>
 				<div className="purchase-composer-heading">
-					<span>You pay</span>
-					<span>Seller total</span>
+					<span>{messages.composerYouPay}</span>
+					<span>{messages.composerSellerTotal}</span>
 				</div>
 				<div className="purchase-composer-value">
 					<strong>{props.match ? winstonToArDecimal(props.match.totalAsking) : '0'}</strong>
@@ -72,12 +81,11 @@ export default function FungiblePurchaseComposer(props: {
 				</div>
 				<small>
 					{props.match
-						? `${props.match.fills.length} ${
-								props.match.fills.length === 1 ? 'order' : 'orders'
-						  } · ${matchedSellerCount} ${
-								matchedSellerCount === 1 ? 'seller' : 'sellers'
-						  } · network fees shown in review`
-						: 'Enter an amount to see the seller payment.'}
+						? formatMessage(messages.composerMatchSummary, {
+								orders: plural(messages.composerOrderCount, props.match.fills.length),
+								sellers: plural(messages.composerSellerCount, matchedSellerCount),
+						  })
+						: messages.composerEnterAmount}
 				</small>
 			</div>
 			{props.error ? (

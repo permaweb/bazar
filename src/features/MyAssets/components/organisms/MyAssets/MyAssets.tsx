@@ -12,11 +12,14 @@ import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { RetryNotice } from 'components/molecules/RetryNotice';
 import { RouteState } from 'components/molecules/RouteState';
 import { ConnectWalletButton } from 'components/organisms/ConnectWalletButton';
-import { appErrorMessage } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { useWalletAssetDiscovery } from '../../../hooks/useWalletAssetDiscovery';
+import { MY_ASSETS_MESSAGES } from '../../../messages';
 import { type WalletAssetView, walletGroupResults } from '../../../model/wallet-assets';
 import { walletResolutionIsWorking } from '../../../model/wallet-resolution';
 import { WalletAssetGroup } from '../WalletAssetGroup';
@@ -27,6 +30,9 @@ export default function MyAssets(
 		embedded?: boolean;
 	} = {}
 ) {
+	const language = useMessages(MY_ASSETS_MESSAGES);
+	const errorMessage = useAppErrorMessage();
+	const plural = usePlural();
 	const market = useMarketProvider();
 	const wallet = useWallet();
 	const walletAddress = props.address ?? wallet.address ?? '';
@@ -39,10 +45,10 @@ export default function MyAssets(
 	if (!walletAddress) {
 		return (
 			<section className={pageClassName}>
-				<Eyebrow>Your wallet</Eyebrow>
-				<h1>My assets</h1>
-				<EmptyState title="Connect a wallet to resolve its assets" action={<ConnectWalletButton />}>
-					No signature is requested. Candidate history and live state are read-only.
+				<Eyebrow>{language.myAssetsWalletEyebrow}</Eyebrow>
+				<h1>{language.myAssetsTitle}</h1>
+				<EmptyState title={language.myAssetsConnectTitle} action={<ConnectWalletButton />}>
+					{language.myAssetsConnectDetail}
 				</EmptyState>
 			</section>
 		);
@@ -51,13 +57,17 @@ export default function MyAssets(
 		if (props.embedded ?? false) {
 			return (
 				<section className={pageClassName}>
-					<Loading label="Reading supported asset collections from Arweave…" />
+					<Loading label={language.myAssetsCollectionsLoading} />
 				</section>
 			);
 		}
 		return (
-			<RouteState title="My assets">
-				<Loading label="Reading the supported asset collections from Arweave…" />
+			<RouteState
+				title={language.myAssetsTitle}
+				backLabel={language.myAssetsBackAllCollections}
+				eyebrow={language.myAssetsRouteEyebrow}
+			>
+				<Loading label={language.myAssetsCollectionsRouteLoading} />
 			</RouteState>
 		);
 	}
@@ -66,11 +76,15 @@ export default function MyAssets(
 			<section className={pageClassName}>
 				{!(props.embedded ?? false) ? (
 					<>
-						<Eyebrow>Live wallet inventory</Eyebrow>
-						<h1>My assets</h1>
+						<Eyebrow>{language.myAssetsInventoryEyebrow}</Eyebrow>
+						<h1>{language.myAssetsTitle}</h1>
 					</>
 				) : null}
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+				<ErrorPanel
+					heading={language.myAssetsErrorHeading}
+					message={market.error}
+					retryAction={{ label: language.myAssetsRetry, onClick: market.retry }}
+				/>
 			</section>
 		);
 	}
@@ -82,11 +96,11 @@ export default function MyAssets(
 			{!(props.embedded ?? false) ? (
 				<div className="my-assets-heading">
 					<div>
-						<Eyebrow>Live wallet inventory</Eyebrow>
-						<h1>My assets</h1>
-						<p>Your assets, read from live Arweave state.</p>
+						<Eyebrow>{language.myAssetsInventoryEyebrow}</Eyebrow>
+						<h1>{language.myAssetsTitle}</h1>
+						<p>{language.myAssetsSubtitle}</p>
 						<span className="gateway-pill">
-							<Icon icon={Server} size="xs" /> Gateway{' '}
+							<Icon icon={Server} size="xs" /> {language.myAssetsGateway}{' '}
 							<Tooltip content={new URL(discovery.gateway).host}>
 								{(tooltipId) => (
 									<span aria-describedby={tooltipId} className="gateway-pill-host">
@@ -101,12 +115,13 @@ export default function MyAssets(
 			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
 				<div className="my-assets-heading-status retry-notice">
 					<span role="status">
-						{discovery.failureMessage} {status.failures.toLocaleString()}{' '}
-						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
-						remain visible.
+						{plural(language.myAssetsCandidatesUnavailable, status.failures, {
+							failureMessage: discovery.failureMessage,
+							failures: status.failures.toLocaleString(),
+						})}
 					</span>
 					<Button className="with-icon" type="button" onClick={discovery.retryUnavailable} size="custom">
-						<Icon icon={RefreshCw} size="sm" /> Retry
+						<Icon icon={RefreshCw} size="sm" /> {language.myAssetsRetry}
 					</Button>
 				</div>
 			) : null}
@@ -120,12 +135,14 @@ export default function MyAssets(
 				</div>
 			) : null}
 			{status.error ? (
-				<RetryNotice onRetry={discovery.retryDiscovery}>{appErrorMessage(status.error)}</RetryNotice>
+				<RetryNotice onRetry={discovery.retryDiscovery} retryLabel={language.myAssetsRetry}>
+					{errorMessage(status.error)}
+				</RetryNotice>
 			) : null}
 			{!working || discovery.results.length ? (
 				<>
 					<WalletAssetGroup
-						title="Tokens"
+						title={language.myAssetsGroupTokens}
 						results={tokenResults}
 						address={walletAddress}
 						kind="tokens"
@@ -134,7 +151,7 @@ export default function MyAssets(
 						view={tokenView}
 					/>
 					<WalletAssetGroup
-						title="Uniques"
+						title={language.myAssetsGroupUniques}
 						results={uniqueResults}
 						address={walletAddress}
 						kind="uniques"
@@ -146,11 +163,7 @@ export default function MyAssets(
 			) : null}
 			{status.phase === 'done' && !discovery.results.length ? (
 				<EmptyState
-					title={
-						status.failures
-							? 'Ownership could not be checked'
-							: 'No indexed candidates currently resolve to this address'
-					}
+					title={status.failures ? language.myAssetsEmptyUncheckedTitle : language.myAssetsEmptyTitle}
 					action={
 						status.failures ? (
 							<Button
@@ -159,14 +172,18 @@ export default function MyAssets(
 								onClick={discovery.retryUnavailable}
 								size="custom"
 							>
-								<Icon icon={RefreshCw} size="sm" /> Retry
+								<Icon icon={RefreshCw} size="sm" /> {language.myAssetsRetry}
 							</Button>
 						) : null
 					}
 				>
 					{status.failures
-						? `${discovery.failureMessage} ${status.failures} of ${status.total} candidates still need to be checked.`
-						: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this profile opens; live state remains authoritative for every candidate found.'}
+						? formatMessage(language.myAssetsEmptyUncheckedDetail, {
+								failureMessage: discovery.failureMessage,
+								failures: status.failures,
+								total: status.total,
+						  })
+						: language.myAssetsEmptyDetail}
 				</EmptyState>
 			) : null}
 		</section>

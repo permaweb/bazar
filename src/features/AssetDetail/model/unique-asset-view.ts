@@ -13,6 +13,11 @@ import type { OperationActivityPhase } from 'api/operations';
 import { assetDescription, unitPriceWinston } from 'features/Catalogue';
 import { atomicOrderCanBeBought, externalReservationTransaction } from 'features/Operations';
 
+import type { AssetDetailMessages } from '../messages';
+
+import { collectionDescriptionFallback } from './asset-detail';
+import { licenseDisplayProperties, type LicenseDisplayProperty } from './license-display';
+
 export type UniqueAssetView = {
 	owner: string | null;
 	order: SwapOrder | null;
@@ -23,7 +28,7 @@ export type UniqueAssetView = {
 	mine: boolean;
 	/** A reservation this wallet made in another tab, ready to pay from this one. */
 	externalReservation: CollectionActivityEvent | null;
-	license: ReturnType<typeof licenseProperties>;
+	license: LicenseDisplayProperty[];
 	description: string;
 	moreAssets: AssetSummary[];
 	/** The unit ask in winston for the price chart's floor line. */
@@ -48,6 +53,7 @@ export function uniqueAssetView(input: {
 	error: string | null;
 	operationPhase: OperationActivityPhase | null;
 	hasUnavailableRecovery: boolean;
+	messages: AssetDetailMessages;
 }): UniqueAssetView {
 	const owner = ownerOfAsset(input.state);
 	const order = liveOrderOfAsset(input.state);
@@ -61,8 +67,8 @@ export function uniqueAssetView(input: {
 		balanceStateAvailable,
 		mine: Boolean(input.walletAddress && owner === input.walletAddress),
 		externalReservation: externalReservationTransaction(order, input.walletAddress, input.activity),
-		license: licenseProperties(input.state),
-		description: assetDescription(input.state, input.collection.description),
+		license: licenseDisplayProperties(licenseProperties(input.state), input.messages),
+		description: assetDescription(input.state, collectionDescriptionFallback(input.collection, input.messages)),
 		moreAssets: collectionMoreAssets(input.collection.assets, input.asset.id),
 		floorValue: order ? unitPriceWinston(order, input.state.denomination).toString() : null,
 		operationBlocksActions,

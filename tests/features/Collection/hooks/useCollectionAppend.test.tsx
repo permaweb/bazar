@@ -37,6 +37,7 @@ import type { CollectionMintEstimate, MintedCollection } from 'api/mint';
 
 import { useCollectionAppend } from 'features/Collection/hooks/useCollectionAppend';
 import { appError, appErrorMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 import { assetSummary, collectionFixture } from '../../../fixtures/collection';
 import { deferred, renderHook, settle } from '../../../test-utils/render-hook';
@@ -186,7 +187,10 @@ describe('useCollectionAppend', () => {
 		expect(harness.current().submitting).toBe(false);
 		expect(harness.current().open).toBe(true);
 		expect(harness.current().fileCount).toBe(1);
-		expect(mocks.failUpload).toHaveBeenCalledWith(expect.any(String), appErrorMessage(failure));
+		expect(mocks.failUpload).toHaveBeenCalledWith(
+			expect.any(String),
+			appErrorMessage(APP_ERROR_MESSAGES.en, failure)
+		);
 		expect(mocks.addCollection).not.toHaveBeenCalled();
 		harness.unmount();
 	});

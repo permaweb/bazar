@@ -32,6 +32,49 @@ export type Operation =
 
 export type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
+/**
+ * Recovery statuses this adapter derives from saved wallet records. They are stable codes, never copy: the UI maps
+ * each one to its own wording.
+ */
+export type OperationRecoveryStatus =
+	| 'resume-saved-purchase'
+	| 'resume-signed-transaction'
+	| 'resuming-purchase'
+	| 'resuming-signed-transaction';
+
+/**
+ * An activity's status line: a recovery code this adapter derived, or copy the UI already resolved. Both shapes are
+ * persisted, so `parseActivityStatus` also accepts the plain strings older builds stored.
+ */
+export type OperationActivityStatus = { readonly code: OperationRecoveryStatus } | { readonly text: string };
+
+const RECOVERY_STATUSES: readonly OperationRecoveryStatus[] = [
+	'resume-saved-purchase',
+	'resume-signed-transaction',
+	'resuming-purchase',
+	'resuming-signed-transaction',
+];
+
+/** The English wording older builds stored in `status`, so a saved activity keeps its meaning after this migration. */
+const LEGACY_STATUS_CODES: Readonly<Record<string, OperationRecoveryStatus>> = {
+	'Resume saved purchase': 'resume-saved-purchase',
+	'Resume signed transaction': 'resume-signed-transaction',
+	'Resuming purchase…': 'resuming-purchase',
+	'Resuming signed transaction…': 'resuming-signed-transaction',
+};
+
+export function parseActivityStatus(value: unknown): OperationActivityStatus | null {
+	if (typeof value === 'string') {
+		const code = LEGACY_STATUS_CODES[value];
+		return code ? { code } : { text: value };
+	}
+	if (!isRecord(value)) return null;
+	if (typeof value.code === 'string' && RECOVERY_STATUSES.includes(value.code as OperationRecoveryStatus)) {
+		return { code: value.code as OperationRecoveryStatus };
+	}
+	return typeof value.text === 'string' ? { text: value.text } : null;
+}
+
 export type OperationActivity = {
 	id: string;
 	asset: AssetSummary;
@@ -39,7 +82,7 @@ export type OperationActivity = {
 	owner: string;
 	operation: Operation;
 	phase: OperationActivityPhase;
-	status: string;
+	status: OperationActivityStatus;
 	confirmations: number;
 	confirmationTarget: number;
 	createdAt: number;
@@ -58,7 +101,7 @@ export type FungibleOperationActivitySummary = {
 	owner: string;
 	operationKind: FungibleOperationKind;
 	phase: OperationActivityPhase;
-	status: string;
+	status: OperationActivityStatus;
 	confirmations?: number;
 	confirmationTarget?: number;
 	createdAt: number;
@@ -258,7 +301,7 @@ export function discoverOperationActivities(
 					resume: record.snapshot as PurchaseSnapshot,
 				},
 				phase: 'working',
-				status: 'Resume saved purchase',
+				status: { code: 'resume-saved-purchase' },
 				confirmations: 0,
 				confirmationTarget: 5,
 				createdAt: finiteNonNegative(record.createdAt),
@@ -293,7 +336,7 @@ export function discoverOperationActivities(
 			owner,
 			operation: restoredOperation,
 			phase: 'working',
-			status: 'Resume signed transaction',
+			status: { code: 'resume-signed-transaction' },
 			confirmations: 0,
 			confirmationTarget: 5,
 			createdAt: finiteNonNegative(record.createdAt),
@@ -349,7 +392,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
 					...(isRecord(saved.snapshot) ? { resume: saved.snapshot as PurchaseSnapshot } : {}),
 				},
 				phase: 'working',
-				status: 'Resuming purchase…',
+				status: { code: 'resuming-purchase' },
 			};
 		}
 		return activity;
@@ -365,7 +408,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
 						resumeId: saved.txId,
 						...(typeof saved.value === 'string' ? { value: saved.value } : {}),
 				  } as const);
-		return { ...activity, operation, phase: 'working', status: 'Resuming signed transaction…' };
+		return { ...activity, operation, phase: 'working', status: { code: 'resuming-signed-transaction' } };
 	}
 
 	return activity;
@@ -373,6 +416,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
 
 function parseActivity(value: unknown): OperationActivity | null {
 	if (!isRecord(value) || !isRecord(value.asset) || !isOperation(value.operation)) return null;
+	const status = parseActivityStatus(value.status);
 	if (
 		typeof value.id !== 'string' ||
 		typeof value.asset.id !== 'string' ||
@@ -380,7 +424,7 @@ function parseActivity(value: unknown): OperationActivity | null {
 		typeof value.collectionId !== 'string' ||
 		typeof value.owner !== 'string' ||
 		!isPhase(value.phase) ||
-		typeof value.status !== 'string' ||
+		!status ||
 		typeof value.createdAt !== 'number'
 	)
 		return null;
@@ -391,7 +435,7 @@ function parseActivity(value: unknown): OperationActivity | null {
 		owner: value.owner,
 		operation: value.operation,
 		phase: value.phase,
-		status: value.status,
+		status,
 		confirmations: finiteNonNegative(value.confirmations),
 		confirmationTarget: Math.max(1, finiteNonNegative(value.confirmationTarget) || 5),
 		createdAt: value.createdAt,
@@ -543,7 +587,7 @@ export function discoverFungibleOperationActivities(
 			owner,
 			operationKind,
 			phase: 'working',
-			status: purchase ? 'Resume saved purchase' : 'Resume signed transaction',
+			status: { code: purchase ? 'resume-saved-purchase' : 'resume-signed-transaction' },
 			createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
 		});
 	}
@@ -566,6 +610,7 @@ function readStoredFungibleActivities(storage: ActivityStorage): FungibleOperati
 function parseFungibleActivity(value: unknown): FungibleOperationActivitySummary | null {
 	if (!isRecord(value) || !isRecord(value.asset)) return null;
 	const operationKind = parseFungibleOperationKind(value.operationKind);
+	const status = parseActivityStatus(value.status);
 	if (
 		typeof value.id !== 'string' ||
 		typeof value.asset.id !== 'string' ||
@@ -574,7 +619,7 @@ function parseFungibleActivity(value: unknown): FungibleOperationActivitySummary
 		typeof value.owner !== 'string' ||
 		!operationKind ||
 		!isPhase(value.phase) ||
-		typeof value.status !== 'string' ||
+		!status ||
 		typeof value.createdAt !== 'number'
 	)
 		return null;
@@ -585,7 +630,7 @@ function parseFungibleActivity(value: unknown): FungibleOperationActivitySummary
 		owner: value.owner,
 		operationKind,
 		phase: value.phase,
-		status: value.status,
+		status,
 		...(typeof value.confirmations === 'number' &&
 		Number.isFinite(value.confirmations) &&
 		value.confirmations >= 0 &&
@@ -722,8 +767,4 @@ function parseJson<T>(value: string | null): T | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-export function operationLabel(kind: Operation['kind']) {
-	return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Cancel listing', transfer: 'Transfer asset' }[kind];
 }

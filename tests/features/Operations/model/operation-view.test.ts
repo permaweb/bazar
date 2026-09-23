@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Operation } from 'api/operations';
 import type { PurchaseState } from 'api/transactions';
 
+import { OPERATIONS_MESSAGES } from 'features/Operations/messages';
 import { initialOperationFlowState, type OperationFlowState } from 'features/Operations/model/operation-flow';
 import {
 	atomicOperationView,
@@ -12,7 +13,10 @@ import {
 	purchaseQuoteView,
 } from 'features/Operations/model/operation-view';
 import { appError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 import { IDLE, LOADING } from 'helpers/async-state';
+
+const messages = OPERATIONS_MESSAGES.en;
 
 const OWNER = 'O'.repeat(43);
 const RECIPIENT = 'R'.repeat(43);
@@ -44,6 +48,8 @@ function view(operation: Operation, flow: Partial<OperationFlowState> = {}, valu
 		assetName: 'Atomic art',
 		owner: OWNER,
 		value,
+		messages,
+		errorMessages: APP_ERROR_MESSAGES.en,
 	});
 }
 
@@ -167,8 +173,8 @@ describe('atomic operation view', () => {
 			recoverable: true,
 			reportedStatus: 'Waiting for wallet approval',
 		});
-		expect(approval.recoveryApprovalCopy?.detail).toContain('Close the other Bazar tab');
-		expect(view({ kind: 'sell' })).toMatchObject({ recoveryApprovalCount: 0, recoveryApprovalCopy: null });
+		expect(approval.recoveryApprovalPrompt).toEqual({ kind: 'seller-payment', reservation: 'external-tab' });
+		expect(view({ kind: 'sell' })).toMatchObject({ recoveryApprovalCount: 0, recoveryApprovalPrompt: null });
 	});
 
 	it('prefers the flow message over purchase lifecycle status', () => {
@@ -181,9 +187,9 @@ describe('atomic operation view', () => {
 	});
 
 	it('only exposes the purchase lanes once signed work exists', () => {
-		expect(atomicPurchaseSyncSteps(null)).toEqual([]);
-		expect(atomicPurchaseSyncSteps(purchaseState({ registration: undefined }))).toEqual([]);
-		expect(atomicPurchaseSyncSteps(purchaseState())).toHaveLength(2);
+		expect(atomicPurchaseSyncSteps(null, messages)).toEqual([]);
+		expect(atomicPurchaseSyncSteps(purchaseState({ registration: undefined }), messages)).toEqual([]);
+		expect(atomicPurchaseSyncSteps(purchaseState(), messages)).toHaveLength(2);
 	});
 });
 
@@ -200,52 +206,70 @@ describe('purchase quote view', () => {
 	};
 
 	it('checks before a quote exists', () => {
-		expect(purchaseQuoteView(IDLE)).toEqual({ status: 'checking', affordable: null });
-		expect(purchaseQuoteView(LOADING)).toEqual({ status: 'checking', affordable: null });
+		expect(purchaseQuoteView(IDLE, APP_ERROR_MESSAGES.en)).toEqual({ status: 'checking', affordable: null });
+		expect(purchaseQuoteView(LOADING, APP_ERROR_MESSAGES.en)).toEqual({ status: 'checking', affordable: null });
 	});
 
 	it('shows the exact fees, total, and remaining balance', () => {
-		expect(purchaseQuoteView({ status: 'success', data: quote })).toEqual({
+		expect(purchaseQuoteView({ status: 'success', data: quote }, APP_ERROR_MESSAGES.en)).toEqual({
 			status: 'ready',
 			affordable: true,
 			networkFees: '0.2 AR',
 			maximumTotal: '1.2 AR',
 			walletAfterPurchase: '3.8 AR',
 		});
-		expect(purchaseQuoteView({ status: 'refreshing', data: quote }).status).toBe('ready');
+		expect(purchaseQuoteView({ status: 'refreshing', data: quote }, APP_ERROR_MESSAGES.en).status).toBe('ready');
 	});
 
 	it('blocks a purchase the wallet cannot afford, including the exact boundary', () => {
-		expect(purchaseQuoteView({ status: 'success', data: { ...quote, balance: 1_199_999_999_999n } })).toMatchObject(
-			{ affordable: false, walletAfterPurchase: null }
-		);
-		expect(purchaseQuoteView({ status: 'success', data: { ...quote, balance: 1_200_000_000_000n } })).toMatchObject(
-			{ affordable: true, walletAfterPurchase: '0 AR' }
-		);
+		expect(
+			purchaseQuoteView(
+				{ status: 'success', data: { ...quote, balance: 1_199_999_999_999n } },
+				APP_ERROR_MESSAGES.en
+			)
+		).toMatchObject({ affordable: false, walletAfterPurchase: null });
+		expect(
+			purchaseQuoteView(
+				{ status: 'success', data: { ...quote, balance: 1_200_000_000_000n } },
+				APP_ERROR_MESSAGES.en
+			)
+		).toMatchObject({ affordable: true, walletAfterPurchase: '0 AR' });
 	});
 
 	it('keeps totals above the safe integer range exact', () => {
 		const large = { ...quote.estimate, asking: '9007199254740993000', total: '9007199254740993001' };
 		expect(
-			purchaseQuoteView({ status: 'success', data: { estimate: large, balance: 9_007_199_254_740_993_002n } })
+			purchaseQuoteView(
+				{ status: 'success', data: { estimate: large, balance: 9_007_199_254_740_993_002n } },
+				APP_ERROR_MESSAGES.en
+			)
 		).toMatchObject({ maximumTotal: '9,007,199.254740993001 AR', walletAfterPurchase: '0.000000000001 AR' });
 	});
 
 	it('reports an unavailable quote even when an earlier one is known', () => {
-		expect(purchaseQuoteView({ status: 'error', error: appError('purchase-quote-balance-unavailable') })).toEqual({
+		expect(
+			purchaseQuoteView(
+				{ status: 'error', error: appError('purchase-quote-balance-unavailable') },
+				APP_ERROR_MESSAGES.en
+			)
+		).toEqual({
 			status: 'unavailable',
 			affordable: null,
 			message: 'Your AR balance could not be checked. Retry the cost check before buying.',
 			retryable: true,
 		});
-		expect(purchaseQuoteView({ status: 'stale', data: quote, error: appError('unknown') }).status).toBe(
-			'unavailable'
-		);
+		expect(
+			purchaseQuoteView({ status: 'stale', data: quote, error: appError('unknown') }, APP_ERROR_MESSAGES.en)
+				.status
+		).toBe('unavailable');
 	});
 
 	it('marks a listing the seller must relist as not retryable', () => {
 		expect(
-			purchaseQuoteView({ status: 'error', error: appError('asset-purchase-registration-fee-too-high') })
+			purchaseQuoteView(
+				{ status: 'error', error: appError('asset-purchase-registration-fee-too-high') },
+				APP_ERROR_MESSAGES.en
+			)
 		).toMatchObject({
 			status: 'unavailable',
 			retryable: false,

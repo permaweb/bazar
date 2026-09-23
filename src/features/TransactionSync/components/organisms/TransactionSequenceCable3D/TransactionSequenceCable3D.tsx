@@ -9,8 +9,10 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { ArweaveRecallContent } from 'api/mining-telemetry';
 
 import { TRANSACTION_SEQUENCE_COLORS } from 'helpers/theme';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useBoundedRecallImage } from '../../../hooks/useBoundedRecallImage';
+import { TRANSACTION_SYNC_MESSAGES } from '../../../messages';
 import {
 	ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS,
 	acceptedProofAnnotationIsVisible,
@@ -911,7 +913,8 @@ export default function TransactionSequenceCable3D(props: Props) {
 }
 
 function RecallContentPreview(props: { content?: ArweaveRecallContent; fallback: string }) {
-	const preview = recallContentPreview(props.content, props.fallback);
+	const language = useMessages(TRANSACTION_SYNC_MESSAGES);
+	const preview = recallContentPreview(props.content, props.fallback, language);
 	if (preview.kind === 'image') return <img src={preview.src} alt={preview.title} loading={'lazy'} />;
 	if (preview.kind === 'bounded-image') {
 		return <BoundedRecallImagePreview content={preview.content} title={preview.title} />;
@@ -920,13 +923,16 @@ function RecallContentPreview(props: { content?: ArweaveRecallContent; fallback:
 }
 
 function BoundedRecallImagePreview(props: { content: ArweaveRecallContent; title: string }) {
+	const language = useMessages(TRANSACTION_SYNC_MESSAGES);
 	const image = useBoundedRecallImage(props.content);
 	const imageUrl = image.status === 'success' ? image.data : null;
 
 	return imageUrl ? (
 		<img src={imageUrl} alt={props.title} />
 	) : (
-		<AcceptedProofPayloadText aria-label={'Loading image preview'}>Image</AcceptedProofPayloadText>
+		<AcceptedProofPayloadText aria-label={language.transactionSyncRecallImageLoading}>
+			{language.transactionSyncRecallImage}
+		</AcceptedProofPayloadText>
 	);
 }
 

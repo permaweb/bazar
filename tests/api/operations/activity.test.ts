@@ -87,7 +87,7 @@ function activity(overrides: Partial<OperationActivity> = {}): OperationActivity
 		owner,
 		operation: { kind: 'sell', value: '0.5' },
 		phase: 'working',
-		status: 'Watching Arweave confirmations…',
+		status: { text: 'Watching Arweave confirmations…' },
 		confirmations: 0,
 		confirmationTarget: 5,
 		createdAt: 100,
@@ -140,7 +140,7 @@ describe('operation activity persistence', () => {
 
 		const [restored] = loadOperationActivities(storage, owner);
 		expect(restored.operation).toEqual({ kind: 'sell', resumeId: 'T'.repeat(43), value: '0.5' });
-		expect(restored.status).toBe('Resuming signed transaction…');
+		expect(restored.status).toEqual({ code: 'resuming-signed-transaction' });
 	});
 
 	it('uses the latest purchase snapshot instead of restarting the purchase from scratch', () => {
@@ -148,7 +148,7 @@ describe('operation activity persistence', () => {
 		const order = { orderId: 'O'.repeat(43) } as SwapOrder;
 		saveOperationActivities(
 			storage,
-			[activity({ operation: { kind: 'buy', order }, status: 'Reserving asset…' })],
+			[activity({ operation: { kind: 'buy', order }, status: { text: 'Reserving asset…' } })],
 			[owner]
 		);
 		const snapshot = { registration: { id: 'R'.repeat(43), dispatched: true } };
@@ -156,7 +156,7 @@ describe('operation activity persistence', () => {
 
 		const [restored] = loadOperationActivities(storage, owner);
 		expect(restored.operation).toEqual({ kind: 'buy', order, resume: snapshot });
-		expect(restored.status).toBe('Resuming purchase…');
+		expect(restored.status).toEqual({ code: 'resuming-purchase' });
 	});
 
 	it('drops cached activity when its durable recovery record is gone', () => {
@@ -194,7 +194,7 @@ describe('operation activity persistence', () => {
 		expect(restored[0]).toMatchObject({
 			collectionId: 'collection-1',
 			operation: { kind: 'transfer', resumeId: 'T'.repeat(43), value: '1' },
-			status: 'Resume signed transaction',
+			status: { code: 'resume-signed-transaction' },
 			createdAt: 125,
 		});
 		expect(deriveOperationActivities(storage, owner, [collection])).toEqual(restored);
@@ -357,7 +357,7 @@ function fungibleActivity(overrides: Partial<FungibleOperationActivitySummary> =
 		owner,
 		operationKind: 'buy',
 		phase: 'working',
-		status: 'Watching Arweave confirmations…',
+		status: { text: 'Watching Arweave confirmations…' },
 		confirmations: 2,
 		confirmationTarget: 5,
 		createdAt: 200,
@@ -441,14 +441,14 @@ describe('fungible operation activity persistence', () => {
 			id: fungibleOperationActivityId('asset-1', owner, 'transfer'),
 			collectionId: 'fungible-tokens',
 			operationKind: 'transfer',
-			status: 'Resume signed transaction',
+			status: { code: 'resume-signed-transaction' },
 			createdAt: 123,
 		});
 	});
 
 	it('uses runtime state while mounted and falls back to recovery-derived state when it unmounts', () => {
-		const recovered = fungibleActivity({ status: 'Resume signed transaction', phase: 'working' });
-		const runtime = fungibleActivity({ status: 'Waiting for wallet approval', phase: 'approval' });
+		const recovered = fungibleActivity({ status: { code: 'resume-signed-transaction' }, phase: 'working' });
+		const runtime = fungibleActivity({ status: { text: 'Waiting for wallet approval' }, phase: 'approval' });
 
 		expect(mergeFungibleOperationActivities([recovered], [runtime], owner)).toEqual([runtime]);
 		const afterUnmount = reduceFungibleRuntimeActivities([runtime], {

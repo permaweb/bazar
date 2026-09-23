@@ -9,15 +9,18 @@ import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { RetryNotice } from 'components/molecules/RetryNotice';
 import { RouteState } from 'components/molecules/RouteState';
 import { asyncData, asyncError } from 'helpers/async-state';
+import { formatMessage } from 'helpers/i18n';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { useProgressiveAssetPageSize } from 'hooks/useProgressiveAssetPageSize';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
 import { useCollectionAppend } from '../../../hooks/useCollectionAppend';
 import { useCollectionMarket } from '../../../hooks/useCollectionMarket';
 import { useCollectionMetadataEnrichment } from '../../../hooks/useCollectionMetadataEnrichment';
 import { useCollectionMoreRecords } from '../../../hooks/useCollectionMoreRecords';
+import { COLLECTION_MESSAGES } from '../../../messages';
 import {
 	collectionDefaultsToListed,
 	type CollectionSort,
@@ -43,6 +46,8 @@ import { CollectionAppendDialog } from '../CollectionAppendDialog';
 export default function CollectionMarket() {
 	const { collectionId = '' } = useParams();
 	const { search } = useLocation();
+	const language = useMessages(COLLECTION_MESSAGES);
+	const plural = usePlural();
 	const market = useMarketProvider();
 	const collection = market.collections.find((item) => item.id === collectionId);
 	useCollectionMetadataEnrichment(collection);
@@ -108,20 +113,36 @@ export default function CollectionMarket() {
 
 	if (!collection && market.loading)
 		return (
-			<RouteState title="Collection">
-				<Loading label="Reading collection index…" />
+			<RouteState
+				title={language.collectionRouteTitle}
+				backLabel={language.backAllCollections}
+				eyebrow={language.collectionRouteEyebrow}
+			>
+				<Loading label={language.readingCollectionIndex} />
 			</RouteState>
 		);
 	if (!collection && market.error)
 		return (
-			<RouteState title="Collection unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+			<RouteState
+				title={language.collectionUnavailableTitle}
+				backLabel={language.backAllCollections}
+				eyebrow={language.collectionRouteEyebrow}
+			>
+				<ErrorPanel
+					heading={language.collectionErrorHeading}
+					message={market.error}
+					retryAction={{ label: language.retry, onClick: market.retry }}
+				/>
 			</RouteState>
 		);
 	if (!collection)
 		return (
-			<RouteState title="Collection not found">
-				<ErrorPanel message="This collection could not be found on Arweave." />
+			<RouteState
+				title={language.collectionNotFoundTitle}
+				backLabel={language.backAllCollections}
+				eyebrow={language.collectionRouteEyebrow}
+			>
+				<ErrorPanel heading={language.collectionErrorHeading} message={language.collectionNotFoundDetail} />
 			</RouteState>
 		);
 	const compactTokenCollection =
@@ -130,74 +151,86 @@ export default function CollectionMarket() {
 	const loadedTokens = pagedTokenScope ? collection.assets.length : null;
 	const visibleAssets = filtered.slice(0, limit);
 	const visibleUnavailablePrices = collectionUnavailablePriceCount(visibleAssets, listings.prices);
-	const listingSearchDetail = collectionListingSearchProgress(listings.progress, loadedTokens);
-	const resultSummary = collectionResultSummary({
-		collection,
-		loading: listings.loading,
-		listedOnly,
-		listedCount: listings.listed.length,
-		offerCount: listings.liveRows.length,
-		query,
-		initial,
-		matchCount: filtered.length,
-		failures: listings.progress.failures,
-	});
-	const resultAnnouncement = collectionResultAnnouncement({
-		collection,
-		loading: listings.loading,
-		listedOnly,
-		searchProgress: collectionListingSearchProgress(
-			{
-				...listings.progress,
-				resolved: listings.announcedProgress.resolved,
-				failures: listings.announcedProgress.failures,
-			},
-			loadedTokens
-		),
-		pricesLoading: listings.pricesLoading,
-		visiblePriceCount: visibleAssets.length,
-		query,
-		matchCount: filtered.length,
-		summary: resultSummary,
-	});
+	const listingSearchDetail = collectionListingSearchProgress(listings.progress, loadedTokens, language, plural);
+	const resultSummary = collectionResultSummary(
+		{
+			collection,
+			loading: listings.loading,
+			listedOnly,
+			listedCount: listings.listed.length,
+			offerCount: listings.liveRows.length,
+			query,
+			initial,
+			matchCount: filtered.length,
+			failures: listings.progress.failures,
+		},
+		language,
+		plural
+	);
+	const resultAnnouncement = collectionResultAnnouncement(
+		{
+			collection,
+			loading: listings.loading,
+			listedOnly,
+			searchProgress: collectionListingSearchProgress(
+				{
+					...listings.progress,
+					resolved: listings.announcedProgress.resolved,
+					failures: listings.announcedProgress.failures,
+				},
+				loadedTokens,
+				language,
+				plural
+			),
+			pricesLoading: listings.pricesLoading,
+			visiblePriceCount: visibleAssets.length,
+			query,
+			matchCount: filtered.length,
+			summary: resultSummary,
+		},
+		language
+	);
 	const moreAdded = asyncData(more.state) ?? 0;
+	const revealComplete = filtered.length > pageSize && limit >= filtered.length;
 	return (
 		<section className={`collection-page collection-marketplace-page view-${viewMode}`}>
 			<Link className="back" to="/">
-				<Icon icon={ArrowLeft} size="sm" /> {collection.kind === 'tokens' ? 'Discover' : 'All collections'}
+				<Icon icon={ArrowLeft} size="sm" />{' '}
+				{collection.kind === 'tokens' ? language.backDiscover : language.backAllCollections}
 			</Link>
 			<div className="collection-market-navigation">
 				<CollectionMarketSummary
 					action={
 						append.canAppend ? (
 							<Button onClick={append.openDialog} ref={appendTrigger} type="button" variant="neutral">
-								<Images aria-hidden="true" /> Add assets
+								<Images aria-hidden="true" /> {language.appendOpen}
 							</Button>
 						) : undefined
 					}
 					collection={collection}
 					stats={[
 						{
-							label: 'Floor price',
+							label: language.statFloorPrice,
 							value:
 								listings.loading && !listings.liveRows.length
-									? 'Checking…'
+									? language.statChecking
 									: listings.liveRows[0]?.price ?? '—',
 						},
 						{
-							label: 'Live offers',
+							label: language.statLiveOffers,
 							value:
 								listings.loading && !listings.liveRows.length
-									? 'Checking…'
+									? language.statChecking
 									: listings.liveRows.length.toLocaleString(),
 						},
 						{
-							label: 'Loaded / supply',
-							value: `${collection.assets.length.toLocaleString()} / ${(
-								collection.total ?? collection.assets.length
-							).toLocaleString()}`,
+							label: language.statLoadedSupply,
+							value: formatMessage(language.loadedSupplyValue, {
+								loaded: collection.assets.length.toLocaleString(),
+								total: (collection.total ?? collection.assets.length).toLocaleString(),
+							}),
 						},
-						{ label: 'Offer candidates', value: listings.candidates.length.toLocaleString() },
+						{ label: language.statOfferCandidates, value: listings.candidates.length.toLocaleString() },
 					]}
 				/>
 				<CollectionTabs
@@ -226,9 +259,10 @@ export default function CollectionMarket() {
 			{pagedTokenScope ? (
 				<div className="collection-source-notice" role="status">
 					<span>
-						Browsing {collection.assets.length.toLocaleString()} of{' '}
-						{(collection.total ?? collection.assets.length).toLocaleString()} discovered tokens. Prices,
-						listings, and recent activity cover the loaded records.
+						{formatMessage(language.pagedTokenScopeNotice, {
+							loaded: collection.assets.length.toLocaleString(),
+							total: (collection.total ?? collection.assets.length).toLocaleString(),
+						})}
 					</span>
 				</div>
 			) : null}
@@ -291,30 +325,27 @@ export default function CollectionMarket() {
 				summaryId={resultSummaryId}
 			/>
 			<p
-				className={
-					filtered.length > pageSize && limit >= filtered.length
-						? 'collection-result-count reveal-complete'
-						: 'sr-only'
-				}
+				className={revealComplete ? 'collection-result-count reveal-complete' : 'sr-only'}
 				aria-live="polite"
 				ref={resultSummaryRef}
 				role="status"
 				tabIndex={-1}
 			>
-				{filtered.length > pageSize && limit >= filtered.length
-					? `All ${filtered.length.toLocaleString()} ${
+				{revealComplete
+					? formatMessage(
 							collection.hasMore
-								? `currently loaded ${collection.kind === 'names' ? 'names' : 'assets'}`
+								? collection.kind === 'names'
+									? language.allLoadedNamesShown
+									: language.allLoadedAssetsShown
 								: collection.kind === 'names'
-								? 'names'
-								: 'assets'
-					  } are shown.`
-					: `Showing ${Math.min(
-							limit,
-							filtered.length
-					  ).toLocaleString()} of ${filtered.length.toLocaleString()} ${
-							collection.kind === 'names' ? 'names' : 'assets'
-					  }.`}
+								? language.allNamesShown
+								: language.allAssetsShown,
+							{ count: filtered.length.toLocaleString() }
+					  )
+					: formatMessage(collection.kind === 'names' ? language.showingNames : language.showingAssets, {
+							shown: Math.min(limit, filtered.length).toLocaleString(),
+							total: filtered.length.toLocaleString(),
+					  })}
 			</p>
 			<CollectionMarketEmptyState
 				candidates={listings.progress.total}
@@ -333,12 +364,15 @@ export default function CollectionMarket() {
 					ref={(node) => {
 						moreOutcomeRef.current = node;
 					}}
+					retryLabel={language.retry}
 					tabIndex={-1}
 					onRetry={() => {
 						more.loadMore();
 						focusCollectionStatus();
 					}}
-				/>
+				>
+					{language.computeIncompleteNotice}
+				</RetryNotice>
 			) : null}
 			{moreStatus === 'success' ? (
 				<p
@@ -351,24 +385,18 @@ export default function CollectionMarket() {
 					tabIndex={-1}
 				>
 					{moreAdded
-						? `${moreAdded.toLocaleString()} more ${
-								collection.kind === 'tokens'
-									? moreAdded === 1
-										? 'token'
-										: 'tokens'
-									: `current ${moreAdded === 1 ? 'name' : 'names'}`
-						  } loaded.`
+						? plural(
+								collection.kind === 'tokens' ? language.moreTokensLoaded : language.moreNamesLoaded,
+								moreAdded,
+								{ count: moreAdded.toLocaleString() }
+						  )
 						: collection.kind === 'tokens'
-						? `No additional tokens were found in that page. ${
-								collection.hasMore
-									? 'More token records remain.'
-									: 'The token index is now fully checked.'
-						  }`
-						: `No additional current names were found in that page. ${
-								collection.hasMore
-									? 'More carrier records remain.'
-									: 'The carrier index is now fully checked.'
-						  }`}
+						? collection.hasMore
+							? language.noMoreTokensRemaining
+							: language.noMoreTokensComplete
+						: collection.hasMore
+						? language.noMoreNamesRemaining
+						: language.noMoreNamesComplete}
 				</p>
 			) : null}
 			{limit < filtered.length ? (
@@ -391,8 +419,9 @@ export default function CollectionMarket() {
 						});
 					}}
 				>
-					Show {Math.min(pageSize, filtered.length - limit).toLocaleString()} more{' '}
-					{collection.kind === 'names' ? 'names' : 'assets'}
+					{formatMessage(collection.kind === 'names' ? language.showMoreNames : language.showMoreAssets, {
+						count: Math.min(pageSize, filtered.length - limit).toLocaleString(),
+					})}
 				</Button>
 			) : collection.hasMore &&
 			  (collection.kind === 'tokens' || (!listedOnly && !query)) &&
@@ -412,12 +441,16 @@ export default function CollectionMarket() {
 					type="button"
 				>
 					{moreStatus === 'loading'
-						? `${collection.kind === 'tokens' && query ? 'Searching' : 'Checking'} ${
-								collection.kind === 'tokens' ? 'token' : 'carrier'
-						  } records…`
-						: `${collection.kind === 'tokens' && query ? 'Search' : 'Check'} next 100 ${
-								collection.kind === 'tokens' ? 'token' : 'carrier'
-						  } records`}
+						? collection.kind !== 'tokens'
+							? language.checkingCarrierRecords
+							: query
+							? language.searchingTokenRecords
+							: language.checkingTokenRecords
+						: collection.kind !== 'tokens'
+						? language.checkNextCarrierRecords
+						: query
+						? language.searchNextTokenRecords
+						: language.checkNextTokenRecords}
 				</Button>
 			) : null}
 			<CollectionAnalyticsPanel collection={collection} loading={listings.loading} rows={listings.liveRows} />

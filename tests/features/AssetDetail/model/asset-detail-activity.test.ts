@@ -14,6 +14,7 @@ import {
 	INITIAL_ASSET_ACTIVITY_FEED,
 } from 'features/AssetDetail/model/asset-detail-activity';
 import { appError, appErrorMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 const assetId = 'A'.repeat(43);
 const wallet = 'W'.repeat(43);
@@ -43,10 +44,13 @@ describe('asset activity feed', () => {
 				page: page([event('live', 4)], 'cursor-1'),
 			}
 		);
-		expect(assetActivityFeedView(paginated)).toMatchObject({ hasNextPage: true, totalCount: 42 });
+		expect(assetActivityFeedView(paginated, APP_ERROR_MESSAGES.en)).toMatchObject({
+			hasNextPage: true,
+			totalCount: 42,
+		});
 
 		const next = reduce(paginated, { type: 'reset', assetId: 'B'.repeat(43), events: [] });
-		expect(assetActivityFeedView(next)).toEqual({
+		expect(assetActivityFeedView(next, APP_ERROR_MESSAGES.en)).toEqual({
 			events: [],
 			loading: false,
 			loadingMore: false,
@@ -58,7 +62,10 @@ describe('asset activity feed', () => {
 
 	it('keeps cached events visible while the first indexed page loads', () => {
 		const loading = reduce(scoped, { type: 'page-requested' });
-		expect(assetActivityFeedView(loading)).toMatchObject({ events: [event('cached', 1)], loading: true });
+		expect(assetActivityFeedView(loading, APP_ERROR_MESSAGES.en)).toMatchObject({
+			events: [event('cached', 1)],
+			loading: true,
+		});
 	});
 
 	it('stops loading without an error when the feed is no longer needed', () => {
@@ -68,7 +75,7 @@ describe('asset activity feed', () => {
 			{ type: 'page-failed', assetId, error: appError('index-unavailable') },
 			{ type: 'paused' }
 		);
-		expect(assetActivityFeedView(paused)).toMatchObject({ loading: false, error: null });
+		expect(assetActivityFeedView(paused, APP_ERROR_MESSAGES.en)).toMatchObject({ loading: false, error: null });
 	});
 
 	it('keeps loaded events as stale data when the indexed read fails', () => {
@@ -77,10 +84,10 @@ describe('asset activity feed', () => {
 			{ type: 'page-requested' },
 			{ type: 'page-failed', assetId, error: assetActivityError(new Error('gateway down')) }
 		);
-		expect(assetActivityFeedView(failed)).toMatchObject({
+		expect(assetActivityFeedView(failed, APP_ERROR_MESSAGES.en)).toMatchObject({
 			events: [event('cached', 1)],
 			loading: false,
-			error: appErrorMessage(appError('index-unavailable')),
+			error: appErrorMessage(APP_ERROR_MESSAGES.en, appError('index-unavailable')),
 		});
 	});
 
@@ -90,7 +97,10 @@ describe('asset activity feed', () => {
 			{ type: 'page-requested' },
 			{ type: 'page-received', assetId, page: page([event('offer', 5)], null) }
 		);
-		expect(assetActivityFeedView(received)).toMatchObject({ loading: false, events: [event('offer', 5)] });
+		expect(assetActivityFeedView(received, APP_ERROR_MESSAGES.en)).toMatchObject({
+			loading: false,
+			events: [event('offer', 5)],
+		});
 	});
 
 	it('ignores responses for a previously selected asset', () => {
@@ -120,14 +130,14 @@ describe('asset activity feed', () => {
 		expect(assetActivityCanLoadOlder(loaded)).toBe(true);
 		const loadingMore = reduce(loaded, { type: 'older-requested' });
 		expect(assetActivityCanLoadOlder(loadingMore)).toBe(false);
-		expect(assetActivityFeedView(loadingMore).loadingMore).toBe(true);
+		expect(assetActivityFeedView(loadingMore, APP_ERROR_MESSAGES.en).loadingMore).toBe(true);
 
 		const merged = reduce(loadingMore, {
 			type: 'older-received',
 			assetId,
 			page: page([event('older', 2)], null, false),
 		});
-		expect(assetActivityFeedView(merged)).toMatchObject({
+		expect(assetActivityFeedView(merged, APP_ERROR_MESSAGES.en)).toMatchObject({
 			events: [event('newest', 9), event('older', 2)],
 			loadingMore: false,
 			hasNextPage: false,
@@ -147,8 +157,11 @@ describe('asset activity feed', () => {
 			{ type: 'older-requested' },
 			{ type: 'older-received', assetId, page: page([event('older', 2)], null, false) }
 		);
-		expect(assetActivityFeedView(older).loadingMore).toBe(false);
-		expect(assetActivityFeedView(older).events.map((item) => item.id)).toEqual(['newest', 'older']);
+		expect(assetActivityFeedView(older, APP_ERROR_MESSAGES.en).loadingMore).toBe(false);
+		expect(assetActivityFeedView(older, APP_ERROR_MESSAGES.en).events.map((item) => item.id)).toEqual([
+			'newest',
+			'older',
+		]);
 	});
 
 	it('keeps loaded events when an older page fails and clears that failure on the next attempt', () => {
@@ -170,12 +183,14 @@ describe('asset activity feed', () => {
 				error: appError('index-rate-limited'),
 			}
 		);
-		expect(assetActivityFeedView(failed)).toMatchObject({
+		expect(assetActivityFeedView(failed, APP_ERROR_MESSAGES.en)).toMatchObject({
 			events: [event('newest', 9)],
 			loadingMore: false,
-			error: appErrorMessage(appError('index-rate-limited')),
+			error: appErrorMessage(APP_ERROR_MESSAGES.en, appError('index-rate-limited')),
 		});
-		expect(assetActivityFeedView(reduce(failed, { type: 'older-requested' })).error).toBeNull();
+		expect(
+			assetActivityFeedView(reduce(failed, { type: 'older-requested' }), APP_ERROR_MESSAGES.en).error
+		).toBeNull();
 	});
 
 	it('classifies indexed read failures for retry guidance', () => {

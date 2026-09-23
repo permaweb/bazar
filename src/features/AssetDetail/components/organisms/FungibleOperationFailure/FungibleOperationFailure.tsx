@@ -4,11 +4,14 @@ import { Button } from 'components/atoms/Button';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { OperationExternalLink } from 'components/molecules/OperationOutcomeAnnouncement';
 import { WalletAddress } from 'components/organisms/WalletAddress';
-import { appErrorMessage } from 'helpers/app-error';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
 import type { FungibleOperationFlow } from '../../../hooks/useFungibleOperationFlow';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { batchStageLabel, type FungibleOperation } from '../../../model/fungible-operation';
 import { FungibleOperationErrorAlert } from '../../molecules/FungibleOperationErrorAlert';
 import { FungibleSettlementRecoveryPanel } from '../../molecules/FungibleSettlementRecoveryPanel';
@@ -20,6 +23,9 @@ export default function FungibleOperationFailure(props: {
 	state: AssetState;
 	onClose(): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const plural = usePlural();
+	const errorMessage = useAppErrorMessage();
 	const activeOrder = props.flow.activeOrder;
 	const activePurchase = props.flow.activePurchase;
 	return (
@@ -40,15 +46,19 @@ export default function FungibleOperationFailure(props: {
 							settled={activePurchase?.stage === 'complete'}
 						>
 							<div>
-								<span>Stage</span>
-								<strong>{batchStageLabel(activePurchase)}</strong>
+								<span>{messages.failureStage}</span>
+								<strong>{batchStageLabel(messages, activePurchase)}</strong>
 							</div>
 							<div>
-								<span>Seller</span>
-								<WalletAddress address={activeOrder.creator} full label="seller" />
+								<span>{messages.failureSeller}</span>
+								<WalletAddress
+									address={activeOrder.creator}
+									full
+									label={messages.assetDetailWalletLabelSeller}
+								/>
 							</div>
 							<div>
-								<span>Order</span>
+								<span>{messages.failureOrder}</span>
 								<Tooltip content={activeOrder.orderId} placement="top">
 									{(tooltipId) => (
 										<strong aria-describedby={tooltipId}>{short(activeOrder.orderId)}</strong>
@@ -57,10 +67,10 @@ export default function FungibleOperationFailure(props: {
 							</div>
 							<p>
 								{props.flow.activePurchaseFailure
-									? appErrorMessage(props.flow.activePurchaseFailure)
+									? errorMessage(props.flow.activePurchaseFailure)
 									: activePurchase?.stage === 'complete'
-									? 'This listing settled successfully.'
-									: 'This incomplete listing has saved transaction details and can be continued with the same wallet.'}
+									? messages.failureSettled
+									: messages.failureIncomplete}
 							</p>
 							<div className="settlement-receipt-links">
 								{activePurchase?.registration?.id ? (
@@ -70,7 +80,9 @@ export default function FungibleOperationFailure(props: {
 										target="_blank"
 									>
 										<OperationExternalLink>
-											Reservation {short(activePurchase.registration.id)}
+											{formatMessage(messages.failureReservationLink, {
+												id: short(activePurchase.registration.id),
+											})}
 										</OperationExternalLink>
 									</a>
 								) : null}
@@ -81,7 +93,9 @@ export default function FungibleOperationFailure(props: {
 										target="_blank"
 									>
 										<OperationExternalLink>
-											Payment {short(activePurchase.payment.id)}
+											{formatMessage(messages.failurePaymentLink, {
+												id: short(activePurchase.payment.id),
+											})}
 										</OperationExternalLink>
 									</a>
 								) : null}
@@ -92,17 +106,17 @@ export default function FungibleOperationFailure(props: {
 			) : null}
 			{props.flow.failureKind === 'market-state-changed' ? (
 				<Button data-dialog-initial onClick={() => props.onClose()} size="custom">
-					View updated token
+					{messages.failureViewUpdatedToken}
 				</Button>
 			) : props.flow.failureKind === 'transaction-not-sent' && props.flow.transaction ? (
 				<>
-					<p>No transaction was submitted. Retry this signature or discard it to start over.</p>
+					<p>{messages.failureNoTransaction}</p>
 					<div className="dialog-actions">
 						<Button data-dialog-initial onClick={() => props.flow.submit()} size="custom">
-							Retry transfer
+							{messages.failureRetryTransfer}
 						</Button>
 						<Button size="custom" onClick={() => props.flow.discardTransfer()} variant="danger">
-							Discard transfer
+							{messages.failureDiscardTransfer}
 						</Button>
 					</div>
 				</>
@@ -113,19 +127,16 @@ export default function FungibleOperationFailure(props: {
 					onClick={() => props.flow.discardRejectedSignature()}
 					variant="danger"
 				>
-					Discard rejected signature and sign again
+					{messages.failureDiscardRejected}
 				</Button>
 			) : props.operationKind === 'buy' ? (
 				<>
 					{props.flow.purchaseNeedsManualReview ? (
-						<p>
-							The process rejected this scheduled purchase after payment. Rechecking it cannot apply the
-							transfer, so Bazar will keep the permanent receipts without creating a replacement.
-						</p>
+						<p>{messages.failureTerminalPurchase}</p>
 					) : props.flow.recoverableBatch ? (
-						<p>Completed settlements will not be retried; only incomplete settlements will continue.</p>
+						<p>{messages.failureRecoverableBatch}</p>
 					) : (
-						<p>No transaction was submitted. Any earlier approvals from this attempt were discarded.</p>
+						<p>{messages.failureDiscardedApprovals}</p>
 					)}
 					<Button
 						data-dialog-initial
@@ -137,21 +148,19 @@ export default function FungibleOperationFailure(props: {
 						size="custom"
 					>
 						{props.flow.purchaseNeedsManualReview
-							? 'Unlock asset and close'
+							? messages.failureUnlockAndClose
 							: props.flow.recoverableBatch
-							? `Resume ${props.flow.incompletePurchases} incomplete ${
-									props.flow.incompletePurchases === 1 ? 'settlement' : 'settlements'
-							  }`
-							: 'Try again'}
+							? plural(messages.failureResumeSettlements, props.flow.incompletePurchases)
+							: messages.failureTryAgain}
 					</Button>
 				</>
 			) : props.flow.transaction ? (
 				<Button data-dialog-initial onClick={() => props.flow.submit()} size="custom">
-					Resume the signed transaction
+					{messages.failureResumeSigned}
 				</Button>
 			) : (
 				<Button data-dialog-initial size="custom" onClick={() => props.flow.reopenForm()}>
-					Try again
+					{messages.failureTryAgain}
 				</Button>
 			)}
 		</div>

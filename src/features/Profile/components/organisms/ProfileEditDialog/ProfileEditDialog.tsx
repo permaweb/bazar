@@ -8,9 +8,11 @@ import { IconButton } from 'components/atoms/IconButton';
 import { TextInput } from 'components/atoms/TextInput';
 import { DialogHeading } from 'components/molecules/DialogHeading';
 import { Dialog } from 'components/organisms/Dialog';
+import { useMessages } from 'providers/LanguageProvider';
 import type { ProfileSummary } from 'types/profile';
 
 import { type ProfileEditSaveHandler, useProfileEditForm } from '../../../hooks/useProfileEditForm';
+import { PROFILE_MESSAGES } from '../../../messages';
 
 export default function ProfileEditDialog(props: {
 	onClose(): void;
@@ -19,6 +21,7 @@ export default function ProfileEditDialog(props: {
 	profile: ProfileSummary;
 	restoreTarget(): HTMLElement | null;
 }) {
+	const messages = useMessages(PROFILE_MESSAGES);
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const editor = useProfileEditForm(props.open, props.profile, props.onSave);
 	const busy = editor.busy;
@@ -47,29 +50,29 @@ export default function ProfileEditDialog(props: {
 						disabled={busy}
 						icon={X}
 						iconClassName="ui-icon"
-						label="Close profile editor"
+						label={messages.profileEditClose}
 						onClick={close}
 					/>
 				}
-				eyebrow="Your public identity"
-				title="Edit profile"
+				eyebrow={messages.profileEditEyebrow}
+				title={messages.profileEditTitle}
 				titleId="profile-edit-title"
 			/>
 			<form className="profile-edit-form" onSubmit={handleSubmit}>
 				<label>
-					<span>Profile name</span>
+					<span>{messages.profileEditNameLabel}</span>
 					<TextInput
 						autoComplete="nickname"
 						autoFocus
 						disabled={busy}
 						maxLength={64}
 						onChange={(event) => editor.setDisplayName(event.target.value)}
-						placeholder="How people will see you"
+						placeholder={messages.profileEditNamePlaceholder}
 						value={editor.form.displayName}
 					/>
 				</label>
 				<div className="profile-edit-form__field">
-					<span>Profile picture</span>
+					<span>{messages.profileEditPictureLabel}</span>
 					<FileInput
 						accept="image/png,image/jpeg,image/webp,image/gif"
 						className="profile-edit-form__file-input"
@@ -81,7 +84,9 @@ export default function ProfileEditDialog(props: {
 						ref={fileInput}
 					/>
 					<Button
-						aria-label={editor.avatarPreview ? 'Change profile picture' : 'Choose profile picture'}
+						aria-label={
+							editor.avatarPreview ? messages.profileEditPictureChange : messages.profileEditPictureChoose
+						}
 						className={`profile-edit-dropzone${editor.form.dragging ? ' is-dragging' : ''}${
 							editor.avatarPreview ? ' has-preview' : ''
 						}`}
@@ -107,13 +112,17 @@ export default function ProfileEditDialog(props: {
 						}}
 						size="custom"
 					>
-						{editor.avatarPreview ? <img alt="Profile picture preview" src={editor.avatarPreview} /> : null}
+						{editor.avatarPreview ? (
+							<img alt={messages.profileEditPicturePreview} src={editor.avatarPreview} />
+						) : null}
 						<span className="profile-edit-dropzone__prompt">
 							<Icon icon={Upload} />
 							<strong>
-								{editor.avatarPreview ? 'Drop or choose a new image' : 'Drop an image here'}
+								{editor.avatarPreview
+									? messages.profileEditPictureReplacePrompt
+									: messages.profileEditPicturePrompt}
 							</strong>
-							<small>PNG, JPEG, WebP, or GIF · up to 10 MB</small>
+							<small>{messages.profileEditPictureHint}</small>
 						</span>
 					</Button>
 					{editor.avatarPreview ? (
@@ -124,7 +133,7 @@ export default function ProfileEditDialog(props: {
 							size="custom"
 							variant="ghost"
 						>
-							Remove picture
+							{messages.profileEditRemovePicture}
 						</Button>
 					) : null}
 				</div>
@@ -133,19 +142,17 @@ export default function ProfileEditDialog(props: {
 						{editor.error}
 					</p>
 				) : null}
-				<p className="profile-edit-form__note">
-					Your profile is saved permanently on Arweave. A new picture may require two wallet approvals.
-				</p>
+				<p className="profile-edit-form__note">{messages.profileEditNote}</p>
 				<div className="profile-edit-form__actions">
 					<Button disabled={busy} onClick={close} variant="ghost">
-						Cancel
+						{messages.profileEditCancel}
 					</Button>
 					<Button
 						disabled={busy || (!editor.displayNameChanged && !editor.pictureChanged)}
 						type="submit"
 						variant="primary"
 					>
-						{editor.status || 'Save profile'}
+						{editor.status || messages.profileEditSave}
 					</Button>
 				</div>
 			</form>

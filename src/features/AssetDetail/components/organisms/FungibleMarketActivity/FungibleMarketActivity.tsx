@@ -5,7 +5,10 @@ import type { AssetState } from 'api/marketplace';
 import { Button } from 'components/atoms/Button';
 import { RetryNotice } from 'components/molecules/RetryNotice';
 import { MarketActivityList } from 'features/Activity';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { activityDetail, fungiblePurchaseActivityAmount } from '../../../model/fungible-operation';
 
 const ACTIVITY_REVEAL_STEP = 8;
@@ -25,33 +28,41 @@ export default function FungibleMarketActivity(props: {
 	onLoadMore(): void;
 	onRetry(): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const visibleRows = props.activity.slice(0, props.limit);
 	const loadedNote =
 		props.totalCount === null
-			? `${props.activity.length.toLocaleString()} indexed events loaded.`
-			: `${props.activity.length.toLocaleString()} of ${props.totalCount.toLocaleString()} indexed events loaded.`;
+			? formatMessage(messages.fungibleActivityLoaded, {
+					loaded: props.activity.length.toLocaleString(),
+			  })
+			: formatMessage(messages.fungibleActivityLoadedOfTotal, {
+					loaded: props.activity.length.toLocaleString(),
+					total: props.totalCount.toLocaleString(),
+			  });
 
 	return (
 		<section className="asset-market-activity" aria-labelledby="fungible-market-activity-title">
 			<div className="asset-market-activity-heading">
 				<div>
-					<h2 id="fungible-market-activity-title">Activity</h2>
-					{props.loading ? <span role="status">Refreshing…</span> : null}
+					<h2 id="fungible-market-activity-title">{messages.fungibleActivityTitle}</h2>
+					{props.loading ? <span role="status">{messages.fungibleActivityRefreshing}</span> : null}
 				</div>
 			</div>
 			{props.error ? (
-				<RetryNotice onRetry={props.onRetry} retryLabel="Retry history">
-					Compute hasn’t completed yet. Please try again.{' '}
-					{props.activity.length ? 'Previously loaded events remain visible.' : ''}
+				<RetryNotice onRetry={props.onRetry} retryLabel={messages.fungibleActivityRetryLabel}>
+					{messages.fungibleActivityRetry}{' '}
+					{props.activity.length ? messages.fungibleActivityRetryPrevious : ''}
 				</RetryNotice>
 			) : null}
 			{visibleRows.length ? (
 				<MarketActivityList
-					ariaLabel={`${props.asset.name} market activity`}
+					ariaLabel={formatMessage(messages.fungibleActivityListLabel, { name: props.asset.name })}
 					collectionId={props.collectionId}
 					compact
-					describeEvent={(event) => activityDetail(event, props.state)}
-					eventAmount={(event) => fungiblePurchaseActivityAmount(event, props.activity, props.state)}
+					describeEvent={(event) => activityDetail(event, messages)}
+					eventAmount={(event) =>
+						fungiblePurchaseActivityAmount(event, props.activity, props.state, messages)
+					}
 					events={visibleRows}
 					loading={props.loading || props.loadingMore}
 					reservationState={props.state}
@@ -59,7 +70,7 @@ export default function FungibleMarketActivity(props: {
 				/>
 			) : null}
 			{!props.loading && !props.error && !props.activity.length ? (
-				<p className="asset-empty-copy">No indexed market events found.</p>
+				<p className="asset-empty-copy">{messages.fungibleActivityEmpty}</p>
 			) : null}
 			{visibleRows.length < props.activity.length ? (
 				<div className="asset-market-activity-footer">
@@ -71,16 +82,19 @@ export default function FungibleMarketActivity(props: {
 							props.onLimitChange(Math.min(props.activity.length, props.limit + ACTIVITY_REVEAL_STEP))
 						}
 					>
-						Show{' '}
-						{Math.min(ACTIVITY_REVEAL_STEP, props.activity.length - visibleRows.length).toLocaleString()}{' '}
-						more
+						{formatMessage(messages.fungibleActivityShowMore, {
+							count: Math.min(
+								ACTIVITY_REVEAL_STEP,
+								props.activity.length - visibleRows.length
+							).toLocaleString(),
+						})}
 					</Button>
 				</div>
 			) : props.hasNextPage ? (
 				<div className="asset-market-activity-footer">
 					<p className="market-note">{loadedNote}</p>
 					<Button disabled={props.loadingMore} onClick={props.onLoadMore} size="custom" type="button">
-						{props.loadingMore ? 'Loading older activity…' : 'Load older activity'}
+						{props.loadingMore ? messages.fungibleActivityLoadingOlder : messages.fungibleActivityLoadOlder}
 					</Button>
 				</div>
 			) : props.activity.length ? (

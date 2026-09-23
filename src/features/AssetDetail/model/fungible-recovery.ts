@@ -5,6 +5,8 @@ import type { FungibleOperationActivitySummary } from 'api/operations';
 import type { TransactionDialogPhase } from 'components/molecules/TransactionDialogControl';
 import { isArweaveId } from 'helpers/arweave-id';
 
+import type { AssetDetailMessages } from '../messages';
+
 import {
 	type BatchResume,
 	fungibleActivityPhaseStatus,
@@ -90,6 +92,7 @@ export function fungibleOperationActivitySummary(
 	asset: AssetSummary,
 	collectionId: string,
 	phase: TransactionDialogPhase,
+	messages: AssetDetailMessages,
 	progress?: Pick<FungibleOperationActivitySummary, 'status' | 'confirmations' | 'confirmationTarget'>,
 	now = Date.now()
 ): FungibleOperationActivitySummary {
@@ -100,7 +103,7 @@ export function fungibleOperationActivitySummary(
 		owner: activity.signer,
 		operationKind: activity.operation.kind,
 		phase,
-		status: progress?.status ?? fungibleActivityPhaseStatus(phase),
+		status: progress?.status ?? { text: fungibleActivityPhaseStatus(phase, messages) },
 		...(progress?.confirmations !== undefined && progress.confirmationTarget !== undefined
 			? {
 					confirmations: progress.confirmations,

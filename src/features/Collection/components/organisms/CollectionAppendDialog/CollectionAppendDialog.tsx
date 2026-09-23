@@ -9,8 +9,13 @@ import { IconButton } from 'components/atoms/IconButton';
 import { DialogHeading } from 'components/molecules/DialogHeading';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { Dialog } from 'components/organisms/Dialog';
-import { type AppError, appErrorMessage } from 'helpers/app-error';
+import type { AppError } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { COLLECTION_MESSAGES } from '../../../messages';
 
 // Choose images to add to a wallet-minted collection, review the storage estimate, and start the signed upload.
 export default function CollectionAppendDialog(props: {
@@ -28,6 +33,8 @@ export default function CollectionAppendDialog(props: {
 	onSelectFiles(files: FileList | null): void;
 	onSubmit(): void;
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
+	const errorMessage = useAppErrorMessage();
 	return (
 		<Dialog
 			as="section"
@@ -42,19 +49,16 @@ export default function CollectionAppendDialog(props: {
 				control={
 					<IconButton
 						icon={X}
-						label="Close add assets"
+						label={language.appendClose}
 						onClick={() => props.onClose()}
 						disabled={props.submitting}
 					/>
 				}
-				eyebrow="Extend collection"
-				title={`Add assets to ${props.collectionName}`}
+				eyebrow={language.appendEyebrow}
+				title={formatMessage(language.appendTitle, { name: props.collectionName })}
 				titleId="append-collection-title"
 			/>
-			<p className="append-collection-copy">
-				Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the collection
-				carrier.
-			</p>
+			<p className="append-collection-copy">{language.appendIntro}</p>
 			<label className={`mint-dropzone${props.fileCount ? ' has-file' : ''}`}>
 				<FileInput
 					accept="image/png,image/jpeg,image/webp,image/gif"
@@ -64,12 +68,16 @@ export default function CollectionAppendDialog(props: {
 				/>
 				<span>
 					<Upload aria-hidden="true" />
-					<strong>{props.fileCount ? `${props.fileCount} images ready` : 'Choose images'}</strong>
-					<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
+					<strong>
+						{props.fileCount
+							? formatMessage(language.appendFilesReady, { count: props.fileCount })
+							: language.appendChooseImages}
+					</strong>
+					<small>{language.appendFileHint}</small>
 				</span>
 			</label>
 			{props.fileCount ? (
-				<div className="collection-append-preview" aria-label="Selected images">
+				<div className="collection-append-preview" aria-label={language.appendSelectedImages}>
 					{props.previews.map((preview) => (
 						<figure key={`${preview.file.name}:${preview.file.size}`}>
 							<img alt="" src={preview.url} />
@@ -79,18 +87,23 @@ export default function CollectionAppendDialog(props: {
 				</div>
 			) : null}
 			<div className="collection-append-summary">
-				<span>{props.estimating ? 'Checking Arweave storage cost…' : props.progress || 'Ready'}</span>
+				<span>{props.estimating ? language.appendEstimating : props.progress || language.appendReady}</span>
 				<strong>
 					{props.estimate ? (
-						<ArCurrencyText>{`${winstonToAr(props.estimate.total.toString())} AR · ${
-							props.estimate.transactionCount
-						} transactions`}</ArCurrencyText>
+						<ArCurrencyText>
+							{formatMessage(language.appendEstimateValue, {
+								amount: winstonToAr(props.estimate.total.toString()),
+								transactions: props.estimate.transactionCount,
+							})}
+						</ArCurrencyText>
 					) : (
 						'—'
 					)}
 				</strong>
 			</div>
-			{props.error ? <ErrorPanel message={appErrorMessage(props.error)} /> : null}
+			{props.error ? (
+				<ErrorPanel heading={language.collectionErrorHeading} message={errorMessage(props.error)} />
+			) : null}
 			<Button
 				className="wide"
 				disabled={!props.fileCount || !props.estimate || props.submitting}
@@ -102,7 +115,9 @@ export default function CollectionAppendDialog(props: {
 				) : (
 					<Upload aria-hidden="true" />
 				)}
-				{props.submitting ? 'Adding assets…' : `Add ${props.fileCount || ''} assets`}
+				{props.submitting
+					? language.appendSubmitting
+					: formatMessage(language.appendSubmit, { count: props.fileCount || '' })}
 			</Button>
 		</Dialog>
 	);

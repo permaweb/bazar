@@ -8,9 +8,13 @@ import { Select } from 'components/atoms/Select';
 import { VisuallyHidden } from 'components/atoms/VisuallyHidden';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { requestFailureMessage } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
 import { useHomeMarket } from '../../../hooks/useHomeMarket';
+import { HOME_MESSAGES } from '../../../messages';
 import {
 	type HomeAssetType,
 	type HomeAssetView,
@@ -28,6 +32,8 @@ export default function HomeMarket() {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const market = useMarketProvider();
+	const messages = useMessages(HOME_MESSAGES);
+	const errorMessages = useAppErrorMessages();
 	const marketPaneRef = React.useRef<HTMLDivElement>(null);
 	const homeTab = homeTabFromPathname(location.pathname);
 	const query = new URLSearchParams(location.search).get('q') ?? '';
@@ -47,10 +53,14 @@ export default function HomeMarket() {
 				<div className="home-content">
 					<div className="home-market-layout" ref={marketPaneRef}>
 						<section className="home-section home-assets" id="market">
-							<VisuallyHidden as="h1">Marketplace</VisuallyHidden>
+							<VisuallyHidden as="h1">{messages.homeMarketplace}</VisuallyHidden>
 							<div className="home-section-heading">
 								<div>
-									<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
+									<div
+										aria-label={messages.homeMarketplaceView}
+										className="home-market-tabs"
+										role="tablist"
+									>
 										<Button
 											aria-controls="home-discover-panel"
 											aria-selected={homeTab === 'discover'}
@@ -61,7 +71,7 @@ export default function HomeMarket() {
 											size="small"
 										>
 											<Icon icon={Compass} />
-											Discover
+											{messages.homeTabDiscover}
 										</Button>
 										<Button
 											aria-controls="home-collections-panel"
@@ -73,7 +83,7 @@ export default function HomeMarket() {
 											size="small"
 										>
 											<Icon icon={LayoutGrid} />
-											Collections
+											{messages.homeTabCollections}
 										</Button>
 										<Button
 											aria-controls="home-activity-panel"
@@ -85,39 +95,39 @@ export default function HomeMarket() {
 											size="small"
 										>
 											<Icon icon={History} />
-											Activity
+											{messages.homeTabActivity}
 										</Button>
 									</div>
 									<p>
 										{homeTab === 'discover'
 											? home.normalizedQuery
-												? `Results for “${query}” across the current Arweave collection indexes.`
-												: 'Browse fungible tokens and Uniques on the permaweb.'
+												? formatMessage(messages.homeDiscoverSearchIntro, { query })
+												: messages.homeDiscoverIntro
 											: homeTab === 'collections'
-											? 'Browse NFT and name collections.'
-											: 'Recent indexed listings, reservations, and transfers. Load older activity to explore more.'}
+											? messages.homeCollectionsIntro
+											: messages.homeActivityIntro}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
 									<div aria-busy={home.discover.pending} className="home-asset-filters">
 										<Select<HomeAssetType>
-											label="Asset type"
+											label={messages.homeAssetTypeLabel}
 											onChange={home.setAssetType}
 											options={[
-												{ value: 'all', label: 'All' },
-												{ value: 'tokens', label: 'Tokens' },
-												{ value: 'atomic', label: 'Uniques (NFTs)' },
+												{ value: 'all', label: messages.homeAssetTypeAll },
+												{ value: 'tokens', label: messages.homeAssetTypeTokens },
+												{ value: 'atomic', label: messages.homeAssetTypeAtomic },
 											]}
 											value={home.assetType}
 										/>
 										<Select<HomeAssetView>
-											label="View"
+											label={messages.homeAssetViewLabel}
 											onChange={home.setAssetView}
 											options={[
-												{ value: 'all', label: 'All records' },
-												{ value: 'listed', label: 'Listed for sale' },
-												{ value: 'price-low', label: 'Price: low to high' },
-												{ value: 'price-high', label: 'Price: high to low' },
+												{ value: 'all', label: messages.homeAssetViewAll },
+												{ value: 'listed', label: messages.homeAssetViewListed },
+												{ value: 'price-low', label: messages.homeAssetViewPriceLow },
+												{ value: 'price-high', label: messages.homeAssetViewPriceHigh },
 											]}
 											value={home.assetView}
 										/>
@@ -125,37 +135,46 @@ export default function HomeMarket() {
 								) : homeTab === 'collections' ? (
 									<div aria-busy={home.collections.pending} className="home-asset-filters">
 										<Select<HomeCollectionSort>
-											label="Sort collections"
+											label={messages.homeCollectionSortLabel}
 											onChange={home.setCollectionSort}
 											options={[
-												{ value: 'recent', label: 'Recent Activity' },
-												{ value: 'newest', label: 'Newest' },
-												{ value: 'oldest', label: 'Oldest' },
+												{ value: 'recent', label: messages.homeCollectionSortRecent },
+												{ value: 'newest', label: messages.homeCollectionSortNewest },
+												{ value: 'oldest', label: messages.homeCollectionSortOldest },
 											]}
 											value={home.collectionSort}
 										/>
 									</div>
 								) : null}
 							</div>
-							{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
+							{market.error ? (
+								<ErrorPanel
+									heading={messages.homeErrorHeading}
+									message={market.error}
+									retryAction={{ label: messages.homeErrorRetry, onClick: market.retry }}
+								/>
+							) : null}
 							{homeTab === 'discover' && home.listingFailure ? (
 								<ErrorPanel
+									heading={messages.homeErrorHeading}
 									message={requestFailureMessage(
+										errorMessages,
 										home.listingFailure.source,
 										home.listingFailure.kind
 									)}
-									onRetry={home.retryListings}
+									retryAction={{ label: messages.homeErrorRetry, onClick: home.retryListings }}
 								/>
 							) : null}
 							{homeTab === 'discover' && home.partialTokenCollection ? (
 								<div className="collection-source-notice">
 									<span role="status">
-										Search covers {home.partialTokenCollection.assets.length.toLocaleString()} of{' '}
-										{(
-											home.partialTokenCollection.total ??
-											home.partialTokenCollection.assets.length
-										).toLocaleString()}{' '}
-										discovered token records currently loaded.
+										{formatMessage(messages.homeTokenSearchCoverage, {
+											loaded: home.partialTokenCollection.assets.length.toLocaleString(),
+											total: (
+												home.partialTokenCollection.total ??
+												home.partialTokenCollection.assets.length
+											).toLocaleString(),
+										})}
 									</span>
 									<Link
 										className="with-icon"
@@ -163,7 +182,7 @@ export default function HomeMarket() {
 											query.trim()
 										)}`}
 									>
-										Continue token search
+										{messages.homeTokenSearchContinue}
 										<Icon icon={ArrowRight} size="xs" />
 									</Link>
 								</div>

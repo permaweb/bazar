@@ -3,13 +3,17 @@ import { ShoppingCart, Tag } from 'lucide-react';
 
 import type { Operation } from 'api/operations';
 
-import { ArCurrencyLabel, ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
+import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { TextInput } from 'components/atoms/TextInput';
 import { WalletIdentity } from 'components/organisms/WalletAddress';
-import { type AppErrorReason, appErrorReasonMessage } from 'helpers/app-error';
+import type { AppErrorReason } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorReasonMessage } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { OPERATIONS_MESSAGES } from '../../../messages';
 import type { PurchaseQuoteView } from '../../../model/operation-view';
 import { PurchaseQuoteSummary } from '../../molecules/PurchaseQuoteSummary';
 
@@ -33,6 +37,8 @@ export default function AtomicOperationForm(props: {
 	onRetryQuote(): void;
 	onSubmit(): void;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
+	const reasonMessage = useAppErrorReasonMessage();
 	const invalid = Boolean(props.value && props.formError);
 
 	function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -60,7 +66,7 @@ export default function AtomicOperationForm(props: {
 				{props.kind === 'sell' ? (
 					<label>
 						<span>
-							Sale price in <ArCurrencyLabel />
+							<ArCurrencyText>{messages.formSalePrice}</ArCurrencyText>
 						</span>
 						<TextInput
 							autoFocus
@@ -69,13 +75,13 @@ export default function AtomicOperationForm(props: {
 							aria-invalid={invalid}
 							value={props.value}
 							onChange={handleValueChange}
-							placeholder="0.25"
+							placeholder={messages.formSalePricePlaceholder}
 						/>
 					</label>
 				) : null}
 				{props.kind === 'transfer' ? (
 					<label>
-						Recipient wallet address
+						{messages.formRecipient}
 						<TextInput
 							autoFocus
 							data-dialog-initial
@@ -87,27 +93,24 @@ export default function AtomicOperationForm(props: {
 							spellCheck={false}
 							value={props.value}
 							onChange={handleValueChange}
-							placeholder="43-character Arweave address"
+							placeholder={messages.formRecipientPlaceholder}
 						/>
 					</label>
 				) : null}
 				{props.kind === 'transfer' && props.operationValue && !props.formError ? (
 					<div className="operation-summary transfer-review">
-						<span>Recipient</span>
+						<span>{messages.formRecipientLabel}</span>
 						<WalletIdentity address={props.operationValue} />
-						<small>
-							Review the complete destination before asking your wallet to approve this irreversible
-							transfer.
-						</small>
+						<small>{messages.formTransferReview}</small>
 					</div>
 				) : null}
 				{props.kind === 'cancel' ? (
 					<div className="operation-summary">
-						<span>Open listing</span>
+						<span>{messages.formOpenListing}</span>
 						<strong>
 							<ArCurrencyText>{props.sellerPrice}</ArCurrencyText>
 						</strong>
-						<small>Cancelling returns the asset from order escrow to your liquid balance.</small>
+						<small>{messages.formCancelNote}</small>
 					</div>
 				) : null}
 				{props.kind === 'sell' || props.kind === 'transfer' ? (
@@ -116,15 +119,11 @@ export default function AtomicOperationForm(props: {
 						className={invalid ? 'field-help field-help-error' : 'field-help'}
 						role={invalid ? 'alert' : undefined}
 					>
-						{props.formError ? (
-							<ArCurrencyText>{appErrorReasonMessage(props.formError)}</ArCurrencyText>
-						) : null}
+						{props.formError ? <ArCurrencyText>{reasonMessage(props.formError)}</ArCurrencyText> : null}
 					</p>
 				) : null}
 				<p className="operation-disclosure">
-					{props.kind === 'buy'
-						? 'You’ll approve twice in your wallet: reserve the asset, then pay the seller. Payment is sent only after the network accepts your reservation.'
-						: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
+					{props.kind === 'buy' ? messages.formPurchaseDisclosure : messages.formActionDisclosure}
 				</p>
 			</div>
 			<Button
@@ -148,16 +147,18 @@ export default function AtomicOperationForm(props: {
 				) : null}
 				{props.kind === 'buy' && props.quote.status === 'unavailable' ? (
 					props.quote.retryable ? (
-						'Cost check unavailable'
+						messages.formSubmitCostCheckUnavailable
 					) : (
-						'Listing needs an update'
+						messages.formSubmitListingNeedsUpdate
 					)
 				) : props.kind === 'buy' && props.quote.status === 'checking' ? (
-					'Checking purchase costs…'
+					messages.formSubmitCheckingCosts
 				) : props.kind === 'buy' && props.quote.affordable === false ? (
-					<ArCurrencyText>Insufficient AR</ArCurrencyText>
+					<ArCurrencyText>{messages.formSubmitInsufficientBalance}</ArCurrencyText>
 				) : props.kind === 'buy' && props.quote.status === 'ready' ? (
-					<ArCurrencyText>{`Buy · up to ${props.quote.maximumTotal}`}</ArCurrencyText>
+					<ArCurrencyText>
+						{formatMessage(messages.formSubmitBuyMaximum, { total: props.quote.maximumTotal })}
+					</ArCurrencyText>
 				) : (
 					<ArCurrencyText>{props.actionLabel}</ArCurrencyText>
 				)}

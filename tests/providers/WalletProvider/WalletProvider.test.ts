@@ -10,6 +10,7 @@ import {
 } from 'api/wallet/session';
 
 import { appErrorMessage, toAppError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 import { createLatestAddressCommitter } from 'providers/WalletProvider/WalletProvider';
 
 function deferred<T>() {
@@ -26,7 +27,7 @@ describe('explicit wallet connection', () => {
 			toAppError(cause, 'unknown')
 		);
 		expect(failure).toMatchObject({ reason: 'permaweb-os-wallet-missing', code: 'unavailable' });
-		expect(appErrorMessage(toAppError(failure, 'unknown'))).toBe(
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, toAppError(failure, 'unknown'))).toBe(
 			'Install the PermawebOS wallet extension to continue.'
 		);
 		await expect(connectWallet(undefined)).rejects.toMatchObject({ reason: 'wander-wallet-missing' });
@@ -40,7 +41,7 @@ describe('explicit wallet connection', () => {
 			sign: async (transaction) => transaction,
 		}).catch((cause: unknown) => toAppError(cause, 'unknown'));
 		expect(failure).toMatchObject({ reason: 'wallet-connection-rejected', code: 'rejected' });
-		expect(appErrorMessage(toAppError(failure, 'unknown'))).not.toContain('AuthRequest');
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, toAppError(failure, 'unknown'))).not.toContain('AuthRequest');
 	});
 
 	it('returns the active address only after the requested permissions are granted', async () => {

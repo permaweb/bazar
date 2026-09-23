@@ -3,6 +3,9 @@ import React from 'react';
 import { LiveRegion } from 'components/atoms/LiveRegion';
 import { Loading } from 'components/atoms/Loading';
 import { type ArweaveSyncStep, LazyArweaveTransactionSync } from 'features/TransactionSync';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { OPERATIONS_MESSAGES } from '../../../messages';
 
 // Preparation and network observation of a signed atomic operation while it is working.
 export default function AtomicOperationProgress(props: {
@@ -20,31 +23,19 @@ export default function AtomicOperationProgress(props: {
 	skipKind: 'yolo' | 'skip' | undefined;
 	onSkip?: () => void;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	return (
 		<>
 			{!props.steps.length ? (
 				<div className="operation-preparing">
-					<Loading
-						label={
-							props.recovering
-								? 'Recovering the signed transaction…'
-								: 'Preparing secure wallet approvals…'
-						}
-					/>
-					<p>
-						{props.purchase
-							? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
-							: 'Bazar is preparing the Arweave transaction. The network view will appear as soon as the signed transaction is recoverable.'}
-					</p>
+					<Loading label={props.recovering ? messages.progressRecovering : messages.progressPreparing} />
+					<p>{props.purchase ? messages.progressPurchaseDetail : messages.progressActionDetail}</p>
 				</div>
 			) : null}
 			{props.observable ? (
 				<div className="operation-working">
-					<LiveRegion as="p">
-						{props.status ||
-							'Watching independently addressed Arweave nodes report confirmations for this action.'}
-					</LiveRegion>
-					<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+					<LiveRegion as="p">{props.status || messages.progressObserving}</LiveRegion>
+					<React.Suspense fallback={<Loading label={messages.loadingTransactionProgress} />}>
 						<LazyArweaveTransactionSync
 							active={props.active}
 							skipKind={props.skipKind}

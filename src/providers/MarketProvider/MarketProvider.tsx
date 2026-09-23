@@ -14,23 +14,22 @@ import {
 	storeHiddenCollectionAssetIndex,
 	storeMarketShellSnapshot,
 } from 'api/collections';
-import {
-	CREATED_COLLECTION_ID,
-	createdCollection,
-	loadMintedAssets,
-	loadMintedCollections,
-	type MintedAsset,
-} from 'api/mint';
+import { CREATED_COLLECTION_ID, loadMintedAssets, loadMintedCollections, type MintedAsset } from 'api/mint';
 
 import { appErrorMessage, toAppError } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
 import { scheduleIdleTask } from 'helpers/idle';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 
 import {
+	displayCreatedCollection,
 	initialMarketCollections,
 	marketCatalogueCollections,
 	storedMarketCollections,
 	verifiedCollectionIdsFrom,
 } from './catalogue';
+import { MARKET_PROVIDER_MESSAGES } from './messages';
 
 export type MarketContextValue = {
 	collections: Collection[];
@@ -72,11 +71,13 @@ export function useMarketProvider(): MarketContextValue {
 }
 
 export default function MarketProvider(props: { children: React.ReactNode }) {
+	const messages = useMessages(MARKET_PROVIDER_MESSAGES);
+	const errorMessages = useAppErrorMessages();
 	const [marketRetry, setMarketRetry] = React.useState(0);
 	const [, setNetworkPolicyRevision] = React.useState(0);
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
-		collections: initialMarketCollections(),
+		collections: initialMarketCollections(messages),
 		searchAssets: [],
 		rememberSearchAssets: () => undefined,
 		verifiedCollectionIds: new Set(),
@@ -122,7 +123,7 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 				storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
 				setMarket((current) => ({
 					...current,
-					collections: current.collections.length ? current.collections : storedMarketCollections(),
+					collections: current.collections.length ? current.collections : storedMarketCollections(messages),
 					visibilityReady: true,
 				}));
 			},
@@ -130,8 +131,7 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 				if (controller.signal.aborted) return;
 				setMarket((current) => ({
 					...current,
-					notice:
-						current.notice ?? `${label} is unavailable. Loaded gateway-backed collections remain usable.`,
+					notice: current.notice ?? formatMessage(messages.marketCollectionIndexUnavailable, { label }),
 				}));
 			}
 		).then(
@@ -148,7 +148,7 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 							...resolved,
 							...localCollections.filter((collection) => !known.has(collection.id)),
 							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
-								? [createdCollection(mintedAssets)]
+								? [displayCreatedCollection(mintedAssets, messages)]
 								: []),
 						]),
 						verifiedCollectionIds: new Set([
@@ -159,23 +159,25 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 						loading: false,
 						error: null,
 						notice: unavailable.length
-							? `The latest Arweave references for ${unavailable.join(
-									', '
-							  )} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
+							? formatMessage(messages.marketBundledIndexesNotice, {
+									collections: unavailable.join(messages.marketCollectionListSeparator),
+							  })
 							: null,
 					};
 				});
 			},
 			(cause) => {
 				if (!controller.signal.aborted) {
-					const message = appErrorMessage(toAppError(cause, 'collection-indexes-unavailable'));
+					const message = appErrorMessage(errorMessages, toAppError(cause, 'collection-indexes-unavailable'));
 					setMarket((current) =>
 						current.collections.length
 							? {
 									...current,
 									loading: false,
 									error: null,
-									notice: `Collection indexes could not be refreshed: ${message}. Previously loaded collections remain available.`,
+									notice: formatMessage(messages.marketCollectionIndexRefreshFailed, {
+										error: message,
+									}),
 							  }
 							: { ...current, loading: false, error: message, notice: null }
 					);
@@ -186,7 +188,7 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 			controller.abort();
 			stopAoWarmup();
 		};
-	}, [marketRetry]);
+	}, [errorMessages, marketRetry, messages]);
 	const loadMore = React.useCallback(
 		async (collectionId: string, signal?: AbortSignal) => {
 			const collection = market.collections.find((item) => item.id === collectionId);
@@ -216,21 +218,24 @@ export default function MarketProvider(props: { children: React.ReactNode }) {
 		},
 		[market.collections]
 	);
-	const addCreatedAsset = React.useCallback((asset: MintedAsset) => {
-		setMarket((current) => {
-			const existing = current.collections.find((item) => item.id === CREATED_COLLECTION_ID);
-			const assets = [asset, ...(existing?.assets ?? []).filter((item) => item.id !== asset.id)];
-			const created = createdCollection(assets);
-			return {
-				...current,
-				collections: marketCatalogueCollections(
-					existing
-						? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
-						: [...current.collections, created]
-				),
-			};
-		});
-	}, []);
+	const addCreatedAsset = React.useCallback(
+		(asset: MintedAsset) => {
+			setMarket((current) => {
+				const existing = current.collections.find((item) => item.id === CREATED_COLLECTION_ID);
+				const assets = [asset, ...(existing?.assets ?? []).filter((item) => item.id !== asset.id)];
+				const created = displayCreatedCollection(assets, messages);
+				return {
+					...current,
+					collections: marketCatalogueCollections(
+						existing
+							? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
+							: [...current.collections, created]
+					),
+				};
+			});
+		},
+		[messages]
+	);
 	const addCollection = React.useCallback((collection: Collection) => {
 		setMarket((current) => ({
 			...current,

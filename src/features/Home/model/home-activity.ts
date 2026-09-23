@@ -2,6 +2,9 @@ import { type Collection, collectionAsset } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 
 import { globalActivityCollection, globalActivityRecipientIds } from 'features/Activity';
+import { formatMessage } from 'helpers/i18n';
+
+import type { HomeMessages } from '../messages';
 
 /** How many rows the feed reveals at a time, and how far each successful page request extends that window. */
 export const HOME_ACTIVITY_REVEAL_STEP = 20;
@@ -35,18 +38,23 @@ export function homeActivityAsset(collections: Collection[], event: CollectionAc
 	return collection ? collectionAsset(collection, event.processId) : undefined;
 }
 
-export function homeActivityLoadedAnnouncement(eventCount: number) {
-	return `${Math.max(0, Math.floor(eventCount)).toLocaleString()} indexed events loaded.`;
+export function homeActivityLoadedAnnouncement(eventCount: number, messages: HomeMessages) {
+	return formatMessage(messages.homeActivityLoadedAnnouncement, {
+		count: Math.max(0, Math.floor(eventCount)).toLocaleString(),
+	});
 }
 
 /** The label of the feed's single paging control, which reveals loaded rows before requesting an older page. */
-export function homeActivityRevealLabel(input: {
-	loading: boolean;
-	canReveal: boolean;
-	revealCount: number;
-	matchingCount: number;
-}) {
-	if (input.loading) return 'Loading activity…';
-	if (input.canReveal) return `Show ${input.revealCount} more events`;
-	return input.matchingCount ? 'Load older activity' : 'Check older activity';
+export function homeActivityRevealLabel(
+	input: {
+		loading: boolean;
+		canReveal: boolean;
+		revealCount: number;
+		matchingCount: number;
+	},
+	messages: HomeMessages
+) {
+	if (input.loading) return messages.homeActivityRevealLoading;
+	if (input.canReveal) return formatMessage(messages.homeActivityRevealMore, { count: input.revealCount });
+	return input.matchingCount ? messages.homeActivityRevealOlder : messages.homeActivityRevealCheck;
 }

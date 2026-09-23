@@ -1,4 +1,4 @@
-export type { AssetSummary, Collection } from './adapter';
+export type { AssetSummary, Collection, CollectionDescriptionCode } from './adapter';
 export {
 	collectionAsset,
 	enrichImageCollectionAssetMetadata,
@@ -15,7 +15,6 @@ export {
 	replaceHiddenCollectionAssetIndex,
 	withVisibleCollectionAssets,
 } from './adapter';
-export { collectionDisplayName, collectionEyebrow, collectionKindLabel } from './labels';
 export { HIDDEN_COLLECTION_IDS } from './policy';
 export type { SearchAsset, SearchScope } from './search';
 export {

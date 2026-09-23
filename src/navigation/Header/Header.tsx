@@ -13,6 +13,8 @@ import {
 	X,
 } from 'lucide-react';
 
+import type { Collection } from 'api/collections';
+
 import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { AudioArtwork } from 'components/atoms/AudioArtwork';
 import { BazarMark } from 'components/atoms/BazarMark';
@@ -28,17 +30,31 @@ import { Tooltip } from 'components/atoms/Tooltip';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { TokenMarketRow } from 'components/molecules/TokenMarketRow';
 import { Dialog, isModalDialogOpen } from 'components/organisms/Dialog';
-import { isAudioContentType } from 'helpers/asset-media';
+import { audioFormatLabel, isAudioContentType } from 'helpers/asset-media';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
 import { type MarketplaceSearchScope, useMarketplaceSearch } from 'hooks/useMarketplaceSearch';
 import { GatewayControl } from 'navigation/GatewayControl';
 import { OperationActivityControl } from 'navigation/OperationActivityControl';
 import { WalletMenu } from 'navigation/WalletMenu';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
+
+import { HEADER_MESSAGES, type HeaderMessages } from './messages';
+
+/** Navigation's own wording for the collections the catalogue adapter describes with a code. */
+function collectionDescriptionText(collection: Collection, language: HeaderMessages) {
+	if (collection.descriptionCode === 'fungible-tokens') return language.collectionDescriptionFungibleTokens;
+	if (collection.descriptionCode === 'arweave-names') return language.collectionDescriptionArweaveNames;
+	if (collection.descriptionCode === 'permanent-collection') return language.collectionDescriptionPermanent;
+	return collection.description;
+}
 
 export default function Header() {
 	const location = useLocation();
 	const navigate = useNavigate();
+	const language = useMessages(HEADER_MESSAGES);
+	const plural = usePlural();
 	const market = useMarketProvider();
 	const inputRef = React.useRef<HTMLInputElement>(null);
 	const panelInputRef = React.useRef<HTMLInputElement>(null);
@@ -54,27 +70,37 @@ export default function Header() {
 	const [recentQueries, setRecentQueries] = React.useState<string[]>([]);
 	const [searchFeedback, setSearchFeedback] = React.useState('');
 	const normalizedQuery = query.trim().toLowerCase();
-	const search = useMarketplaceSearch({ open: searchOpen, query, scope });
+	const describeCollection = React.useCallback(
+		(collection: Collection) => collectionDescriptionText(collection, language),
+		[language]
+	);
+	const search = useMarketplaceSearch({ open: searchOpen, query, scope, describeCollection });
 	const assetResultCount = search.tokenResults.length + search.collectibleResults.length;
 	const atomicIndexSearchPending = search.indexSearch === 'pending';
 	const atomicIndexSearchFailed = search.indexSearch === 'failed';
+	const summaryAssetCount = assetResultCount + (search.directTokenCollection ? 1 : 0);
 	const searchResultAnnouncement = atomicIndexSearchPending
-		? 'Searching permanent Bazar creation records on Arweave.'
+		? language.headerSearchIndexPendingAnnouncement
 		: atomicIndexSearchFailed
-		? 'Permanent Bazar creation-record search is temporarily unavailable.'
+		? language.headerSearchIndexFailedAnnouncement
 		: market.loading
-		? 'Loading collection indexes from Arweave.'
+		? language.headerSearchCollectionsLoadingAnnouncement
 		: market.error
-		? 'Marketplace search is unavailable.'
+		? language.headerSearchUnavailableAnnouncement
 		: normalizedQuery && !search.collectionResults.length && !assetResultCount && !search.directTokenCollection
-		? search.partialTokenCollection
-			? `No loaded tokens, collections, or Uniques match ${query.trim()}; more token records remain available.`
-			: `No tokens, collections, or Uniques match ${query.trim()}.`
-		: `Showing ${search.collectionResults.length.toLocaleString()} ${
-				search.collectionResults.length === 1 ? 'collection' : 'collections'
-		  } and ${(assetResultCount + (search.directTokenCollection ? 1 : 0)).toLocaleString()} ${
-				assetResultCount + (search.directTokenCollection ? 1 : 0) === 1 ? 'asset result' : 'asset results'
-		  }${normalizedQuery ? ` for ${query.trim()}` : ''}.`;
+		? formatMessage(
+				search.partialTokenCollection ? language.headerSearchNoMatchesPartial : language.headerSearchNoMatches,
+				{ query: query.trim() }
+		  )
+		: formatMessage(normalizedQuery ? language.headerSearchSummaryForQuery : language.headerSearchSummary, {
+				collections: plural(language.headerSearchSummaryCollections, search.collectionResults.length, {
+					count: search.collectionResults.length.toLocaleString(),
+				}),
+				assets: plural(language.headerSearchSummaryAssets, summaryAssetCount, {
+					count: summaryAssetCount.toLocaleString(),
+				}),
+				query: query.trim(),
+		  });
 	const [announcedSearchResult, setAnnouncedSearchResult] = React.useState('');
 	React.useEffect(() => {
 		if (!searchOpen) return;
@@ -145,7 +171,7 @@ export default function Header() {
 	};
 	const clearRecentSearches = () => {
 		setRecentQueries([]);
-		setSearchFeedback('Recent searches cleared.');
+		setSearchFeedback(language.headerSearchRecentCleared);
 		focusPanelInput();
 	};
 	const runSearch = () => {
@@ -181,17 +207,17 @@ export default function Header() {
 		[]
 	);
 	const scopes = [
-		{ id: 'all' as const, label: 'All', Icon: Search },
-		{ id: 'tokens' as const, label: 'Tokens', Icon: BarChart3 },
-		{ id: 'collections' as const, label: 'Collections', Icon: LayoutGrid },
-		{ id: 'assets' as const, label: 'Uniques', Icon: Images },
-		{ id: 'names' as const, label: 'Names', Icon: AtSign },
+		{ id: 'all' as const, label: language.headerSearchScopeAll, Icon: Search },
+		{ id: 'tokens' as const, label: language.headerSearchScopeTokens, Icon: BarChart3 },
+		{ id: 'collections' as const, label: language.headerSearchScopeCollections, Icon: LayoutGrid },
+		{ id: 'assets' as const, label: language.headerSearchScopeAssets, Icon: Images },
+		{ id: 'names' as const, label: language.headerSearchScopeNames, Icon: AtSign },
 	];
 	return (
 		<>
 			<header className="site-header">
 				<div className="site-header-content max-view-wrapper">
-					<Link aria-label="Bazar home" className="brand" to="/">
+					<Link aria-label={language.headerHome} className="brand" to="/">
 						<span className="brand-mark">
 							<BazarMark />
 						</span>
@@ -204,8 +230,8 @@ export default function Header() {
 						<Icon icon={Search} size="sm" />
 						<TextInput
 							ref={inputRef}
-							aria-label="Search tokens, collections, and Uniques"
-							placeholder="Search tokens, collections, and assets"
+							aria-label={language.headerSearchLabel}
+							placeholder={language.headerSearchPlaceholder}
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							onClick={openSearch}
@@ -222,19 +248,19 @@ export default function Header() {
 							<Tooltip
 								align="center"
 								className="create-link-tooltip"
-								content="Create asset"
+								content={language.headerCreateAsset}
 								delayMs={1000}
 							>
 								{(tooltipId) => (
 									<Link
 										aria-describedby={tooltipId}
-										aria-label="Create asset"
+										aria-label={language.headerCreateAsset}
 										aria-current={location.pathname === '/create' ? 'page' : undefined}
 										className={`create-link${location.pathname === '/create' ? ' active' : ''}`}
 										to="/create"
 									>
 										<Icon icon={Upload} size="sm" />
-										<span className="create-link-label">Create</span>
+										<span className="create-link-label">{language.headerCreate}</span>
 									</Link>
 								)}
 							</Tooltip>
@@ -252,7 +278,7 @@ export default function Header() {
 				backdropClassName="search-overlay"
 				className="search-panel"
 				id="marketplace-search-panel"
-				label="Search Bazar"
+				label={language.headerSearchDialog}
 				onDismiss={closeSearch}
 				open={searchOpen}
 				restoreTarget={searchRestoreTarget}
@@ -261,8 +287,8 @@ export default function Header() {
 					<Icon icon={Search} />
 					<TextInput
 						autoFocus
-						aria-label="Search Bazar marketplace"
-						placeholder="Search Bazar"
+						aria-label={language.headerSearchPanelLabel}
+						placeholder={language.headerSearchPanelPlaceholder}
 						value={query}
 						onChange={(event) => updateQuery(event.target.value)}
 						onKeyDown={(event) => {
@@ -277,29 +303,29 @@ export default function Header() {
 							size="custom"
 							type="button"
 							onClick={clearSearchQuery}
-							aria-label="Clear search"
+							aria-label={language.headerSearchClearLabel}
 							variant="ghost"
 						>
-							Clear
+							{language.headerSearchClear}
 						</Button>
 					) : null}
 					<Button
 						size="icon"
 						className="search-panel-submit"
 						type="submit"
-						aria-label="View search results"
+						aria-label={language.headerSearchSubmitLabel}
 						variant="primary"
 					>
 						<Icon icon={ArrowRight} size="sm" />
 					</Button>
 					<IconButton
 						icon={X}
-						label="Close search"
+						label={language.headerSearchCloseLabel}
 						onClick={() => closeSearch()}
 						className="search-panel-close"
 					/>
 				</form>
-				<aside className="search-categories" aria-label="Search categories">
+				<aside className="search-categories" aria-label={language.headerSearchCategories}>
 					{scopes.map((item) => {
 						const ScopeIcon = item.Icon;
 						return (
@@ -321,21 +347,21 @@ export default function Header() {
 					<div className="search-panel-content">
 						<LiveRegion>{searchFeedback || announcedSearchResult}</LiveRegion>
 						{market.loading && !market.collections.length ? (
-							<Loading label="Loading collection indexes from Arweave…" />
+							<Loading label={language.headerSearchCollectionsLoading} />
 						) : null}
 						{atomicIndexSearchPending && !assetResultCount ? (
-							<Loading label="Searching permanent Bazar creation records on Arweave…" />
+							<Loading label={language.headerSearchIndexPending} />
 						) : null}
 						{search.partialTokenCollection ? (
 							<div className="collection-source-notice">
 								<span role="status">
-									Token matches cover {search.partialTokenCollection.assets.length.toLocaleString()}{' '}
-									of{' '}
-									{(
-										search.partialTokenCollection.total ??
-										search.partialTokenCollection.assets.length
-									).toLocaleString()}{' '}
-									discovered records currently loaded.
+									{formatMessage(language.headerTokenCoverage, {
+										loaded: search.partialTokenCollection.assets.length.toLocaleString(),
+										discovered: (
+											search.partialTokenCollection.total ??
+											search.partialTokenCollection.assets.length
+										).toLocaleString(),
+									})}
 								</span>
 								<Link
 									className="with-icon"
@@ -344,7 +370,7 @@ export default function Header() {
 									)}`}
 									onClick={followSearchResult}
 								>
-									Continue token search
+									{language.headerContinueTokenSearch}
 									<Icon icon={ArrowRight} size="xs" />
 								</Link>
 							</div>
@@ -352,9 +378,9 @@ export default function Header() {
 						{!normalizedQuery && recentQueries.length ? (
 							<section className="search-result-section">
 								<div className="search-result-heading">
-									<h2>Recent searches</h2>
+									<h2>{language.headerRecentSearches}</h2>
 									<Button onClick={clearRecentSearches} size="custom" variant="ghost">
-										Clear
+										{language.headerRecentSearchesClear}
 									</Button>
 								</div>
 								<div className="recent-searches">
@@ -375,11 +401,19 @@ export default function Header() {
 						{search.collectionResults.length ? (
 							<section className="search-result-section">
 								<div className="search-result-heading">
-									<h2>{normalizedQuery ? 'Matching collections' : 'Featured collections'}</h2>
-									<span>{search.collectionResults.length} shown</span>
+									<h2>
+										{normalizedQuery
+											? language.headerMatchingCollections
+											: language.headerFeaturedCollections}
+									</h2>
+									<span>
+										{formatMessage(language.headerResultsShown, {
+											count: search.collectionResults.length,
+										})}
+									</span>
 								</div>
 								<div className="search-collection-grid">
-									{search.collectionResults.map(({ collection, kindLabel }) => {
+									{search.collectionResults.map(({ collection }) => {
 										const preview = collection.assets.find((asset) => asset.image)?.image;
 										const tokenPreview =
 											collection.assets.find((asset) => asset.image) ?? collection.assets[0];
@@ -397,10 +431,14 @@ export default function Header() {
 													{collection.kind === 'tokens' ? (
 														<TokenAvatar
 															image={tokenPreview?.image}
-															ticker={tokenPreview?.ticker ?? 'Token'}
+															ticker={tokenPreview?.ticker ?? language.headerTokenTicker}
 														/>
 													) : preview ? (
-														<ArtworkImage src={preview} alt="" />
+														<ArtworkImage
+															src={preview}
+															alt=""
+															unavailableLabel={language.headerArtworkUnavailable}
+														/>
 													) : collection.kind === 'names' ? (
 														<NamesCubePreview />
 													) : (
@@ -410,16 +448,28 @@ export default function Header() {
 												<span>
 													<strong>{collection.name}</strong>
 													<small>
-														{kindLabel} ·{' '}
-														{collection.kind === 'names'
-															? `${collection.assets.length.toLocaleString()} names loaded`
-															: `${(
-																	collection.total ?? collection.assets.length
-															  ).toLocaleString()} ${
-																	(collection.total ?? collection.assets.length) === 1
-																		? 'asset'
-																		: 'assets'
-															  }`}
+														{formatMessage(language.headerCollectionMeta, {
+															kind: collectionKindLabel(collection.kind, language),
+															detail:
+																collection.kind === 'names'
+																	? formatMessage(
+																			language.headerCollectionNamesLoaded,
+																			{
+																				count: collection.assets.length.toLocaleString(),
+																			}
+																	  )
+																	: plural(
+																			language.headerCollectionAssets,
+																			collection.total ??
+																				collection.assets.length,
+																			{
+																				count: (
+																					collection.total ??
+																					collection.assets.length
+																				).toLocaleString(),
+																			}
+																	  ),
+														})}
 													</small>
 												</span>
 												<Icon icon={ArrowUpRight} size="sm" />
@@ -432,15 +482,20 @@ export default function Header() {
 						{search.tokenResults.length ? (
 							<section className="search-result-section token-search-results">
 								<div className="search-result-heading">
-									<h2>{normalizedQuery ? 'Matching tokens' : 'Tokens'}</h2>
-									<span>{search.tokenResults.length} shown</span>
+									<h2>{normalizedQuery ? language.headerMatchingTokens : language.headerTokens}</h2>
+									<span>
+										{formatMessage(language.headerResultsShown, {
+											count: search.tokenResults.length,
+										})}
+									</span>
 								</div>
 								<div className="token-market-list compact">
 									{search.tokenResults.map(({ asset, collection }, index) => (
 										<TokenMarketRow
 											asset={asset}
 											collection={collection}
-											context="Fungible token"
+											context={language.headerTokenMarketContext}
+											tickerFallback={language.headerTokenTickerFallback}
 											key={`${collection.id}-${asset.id}`}
 											onFollow={followSearchResult}
 											onWarm={() => search.prefetchAsset(asset.id, true)}
@@ -453,8 +508,16 @@ export default function Header() {
 						{search.collectibleResults.length ? (
 							<section className="search-result-section">
 								<div className="search-result-heading">
-									<h2>{normalizedQuery ? 'Matching Uniques' : 'Featured Uniques'}</h2>
-									<span>{search.collectibleResults.length} shown</span>
+									<h2>
+										{normalizedQuery
+											? language.headerMatchingUniques
+											: language.headerFeaturedUniques}
+									</h2>
+									<span>
+										{formatMessage(language.headerResultsShown, {
+											count: search.collectibleResults.length,
+										})}
+									</span>
 								</div>
 								<div className="search-asset-grid">
 									{search.collectibleResults.map(({ asset, collection }) => (
@@ -476,11 +539,25 @@ export default function Header() {
 												}`}
 											>
 												{collection.kind === 'tokens' ? (
-													<TokenAvatar image={asset.image} ticker={asset.ticker ?? 'Token'} />
+													<TokenAvatar
+														image={asset.image}
+														ticker={asset.ticker ?? language.headerTokenTicker}
+													/>
 												) : asset.image ? (
-													<ArtworkImage src={asset.image} alt="" />
+													<ArtworkImage
+														src={asset.image}
+														alt=""
+														unavailableLabel={language.headerArtworkUnavailable}
+													/>
 												) : isAudioContentType(asset.contentType) ? (
-													<AudioArtwork contentType={asset.contentType} name={asset.name} />
+													<AudioArtwork
+														contentType={asset.contentType}
+														label={formatMessage(language.headerAudioArtworkLabel, {
+															format: audioFormatLabel(asset.contentType),
+															name: asset.name,
+														})}
+														typeLabel={language.headerAudioArtworkType}
+													/>
 												) : (
 													<BazarMark />
 												)}
@@ -498,8 +575,8 @@ export default function Header() {
 						{search.directTokenCollection ? (
 							<section className="search-result-section">
 								<div className="search-result-heading">
-									<h2>Direct process</h2>
-									<span>Live state check required</span>
+									<h2>{language.headerDirectProcess}</h2>
+									<span>{language.headerDirectProcessNote}</span>
 								</div>
 								<div className="search-asset-grid">
 									<Link
@@ -510,18 +587,28 @@ export default function Header() {
 										onTouchStart={() => search.prefetchAsset(query.trim(), true)}
 									>
 										<span className="search-result-image token-avatar-slot">
-											<TokenAvatar ticker="Token" />
+											<TokenAvatar ticker={language.headerTokenTicker} />
 										</span>
 										<span>
-											<strong>Check token process</strong>
-											<small>{short(query.trim())} · support is determined from live state</small>
+											<strong>{language.headerCheckTokenProcess}</strong>
+											<small>
+												{formatMessage(language.headerCheckTokenProcessDetail, {
+													id: short(query.trim()),
+												})}
+											</small>
 										</span>
 										<Icon icon={ArrowUpRight} size="sm" />
 									</Link>
 								</div>
 							</section>
 						) : null}
-						{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
+						{market.error ? (
+							<ErrorPanel
+								heading={language.headerErrorHeading}
+								message={market.error}
+								retryAction={{ label: language.headerErrorRetry, onClick: market.retry }}
+							/>
+						) : null}
 						{!market.loading &&
 						!market.error &&
 						!atomicIndexSearchPending &&
@@ -529,13 +616,13 @@ export default function Header() {
 						!assetResultCount &&
 						!search.directTokenCollection ? (
 							<div className="search-empty">
-								<strong>No results for “{query}”</strong>
+								<strong>{formatMessage(language.headerNoResults, { query })}</strong>
 								<span>
 									{search.partialTokenCollection
-										? 'More token records remain available from the token collection.'
+										? language.headerNoResultsPartialTokens
 										: atomicIndexSearchFailed
-										? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-										: 'Try the full asset name or process ID. Newly created assets may take time to appear in search.'}
+										? language.headerNoResultsIndexFailed
+										: language.headerNoResultsHint}
 								</span>
 							</div>
 						) : null}
@@ -544,4 +631,11 @@ export default function Header() {
 			</Dialog>
 		</>
 	);
+}
+
+/** Navigation may not import a feature, so the collection's stable kind code is mapped to copy here. */
+function collectionKindLabel(kind: Collection['kind'], language: HeaderMessages): string {
+	if (kind === 'names') return language.headerCollectionKindNames;
+	if (kind === 'tokens') return language.headerCollectionKindTokens;
+	return language.headerCollectionKindAssets;
 }

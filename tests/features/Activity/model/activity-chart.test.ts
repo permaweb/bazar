@@ -46,7 +46,7 @@ describe('global activity chart statistics', () => {
 
 	it('reports undated activity without buckets', () => {
 		const stats = globalActivityChartStats([]);
-		expect(stats).toEqual({ events: 0, listings: 0, participants: 0, buckets: [], period: 'No dated activity' });
+		expect(stats).toEqual({ events: 0, listings: 0, participants: 0, buckets: [], period: null });
 	});
 
 	it('normalizes millisecond timestamps into the same buckets as second timestamps', () => {
@@ -61,7 +61,7 @@ describe('global activity chart statistics', () => {
 			listings: 1,
 			participants: 1,
 			buckets: [],
-			period: 'No dated activity',
+			period: null,
 		});
 	});
 

@@ -24,7 +24,9 @@ import { AssetTransactionClient, purchaseGatewaySwitchNotice } from 'api/transac
 
 import type { TransactionDialogPhase } from 'components/molecules/TransactionDialogControl';
 import { currentPurchaseGatewayContext, type UnavailableOperationRecovery } from 'features/Operations';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../messages';
 import {
 	batchHasNoDispatchedSellerPayment,
 	batchRecoveryIdentity,
@@ -90,6 +92,7 @@ export function useFungibleOperationActivities(params: {
 	walletAddress: string | null;
 	onRefresh(): Promise<void>;
 }): FungibleOperationActivities {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const location = useLocation();
 	const navigate = useNavigate();
 	const navigationType = useNavigationType();
@@ -138,12 +141,13 @@ export function useFungibleOperationActivities(params: {
 						params.asset,
 						params.collectionId,
 						phase,
+						messages,
 						progress
 					),
 				});
 			}
 		},
-		[params.asset, params.collectionId]
+		[messages, params.asset, params.collectionId]
 	);
 
 	const open = React.useCallback(
@@ -269,14 +273,10 @@ export function useFungibleOperationActivities(params: {
 					walletAddress
 				);
 				if (removed) {
-					setRecoveryNotice(
-						'A stale unpaid purchase was cleared because the live order changed before seller payment. No seller payment was sent; review the current order book to continue.'
-					);
+					setRecoveryNotice(messages.fungibleRecoveryStalePurchaseCleared);
 				}
 			} else {
-				setRecoveryNotice(
-					'A previous token purchase is paused because a dispatched seller payment still needs a settlement check. Its signed transaction details remain saved in this browser, and no replacement payment will be created.'
-				);
+				setRecoveryNotice(messages.fungibleRecoveryPurchasePaused);
 			}
 		} else if (savedBatch !== null) {
 			removeWalletRecordIf<unknown>(
@@ -318,9 +318,7 @@ export function useFungibleOperationActivities(params: {
 						)
 					) {
 						setUnavailableRecovery(null);
-						setRecoveryNotice(
-							'A stale local action was removed after current live state proved that it can no longer apply. No replacement transaction was created.'
-						);
+						setRecoveryNotice(messages.fungibleRecoveryStaleActionRemoved);
 					}
 				} else {
 					setUnavailableRecovery({
@@ -424,9 +422,7 @@ export function useFungibleOperationActivities(params: {
 			);
 			if (removed) {
 				setUnavailableRecovery(null);
-				setRecoveryNotice(
-					'Local tracking was discarded. Current balances and orders above remain the live source of truth.'
-				);
+				setRecoveryNotice(messages.fungibleRecoveryTrackingDiscarded);
 			}
 		},
 	};

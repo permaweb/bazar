@@ -1,4 +1,11 @@
-export type { AssetState, SwapOrder } from './adapter';
+export type {
+	AssetState,
+	LicenseDefaultCode,
+	LicenseFieldKey,
+	LicenseProperty,
+	LicenseTerm,
+	SwapOrder,
+} from './adapter';
 export {
 	ASSET_BALANCE_STATE_UNAVAILABLE,
 	assetBalanceStateAvailable,

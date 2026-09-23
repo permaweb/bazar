@@ -4,12 +4,16 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { StatusNotice } from 'components/molecules/StatusNotice';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { OPERATIONS_MESSAGES } from '../../../messages';
 
 // Shown when saved signed work exists but local observation was paused by the user.
 export default function PausedRecoveryNotice(props: {
 	onResume: () => void;
 	resumeButtonRef?: React.Ref<HTMLButtonElement>;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	return (
 		<StatusNotice
 			actions={
@@ -20,12 +24,11 @@ export default function PausedRecoveryNotice(props: {
 					type="button"
 					onClick={props.onResume}
 				>
-					<Icon icon={RefreshCw} size="sm" /> Resume pending action
+					<Icon icon={RefreshCw} size="sm" /> {messages.pausedRecoveryResume}
 				</Button>
 			}
 		>
-			Local tracking is paused. Resume here to continue observing signed work or review any wallet approvals still
-			required.
+			{messages.pausedRecoveryDetail}
 		</StatusNotice>
 	);
 }

@@ -54,7 +54,6 @@ describe('background mint activity', () => {
 			arweaveGateway: 'https://gateway-a.example',
 			computeGateway: 'https://compute-a.example',
 		});
-		expect(restored.status).toContain('Safe to leave');
 	});
 
 	it('moves forward through accepted, mined, applied, and complete without regressing', () => {

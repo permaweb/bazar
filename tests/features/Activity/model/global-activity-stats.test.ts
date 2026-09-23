@@ -132,7 +132,13 @@ describe('completed global stats cache', () => {
 	const snapshot = {
 		scope: 'gateway|catalogue',
 		savedAt: 1000,
-		stats: { events: 2, listings: 1, participants: 1, buckets: [], period: 'Jan 1 – Jan 2' },
+		stats: {
+			events: 2,
+			listings: 1,
+			participants: 1,
+			buckets: [],
+			period: { from: 1_700_000_000, to: 1_700_086_400 },
+		},
 	};
 	it('reuses only fresh summaries for the exact gateway and marketplace scope', () => {
 		const values = new Map<string, string>();

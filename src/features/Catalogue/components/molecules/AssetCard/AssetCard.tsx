@@ -8,8 +8,11 @@ import { AudioArtwork } from 'components/atoms/AudioArtwork';
 import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { isAudioContentType } from 'helpers/asset-media';
 import { short } from 'helpers/format';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useAssetPageWarmup } from '../../../hooks/useAssetPageWarmup';
+import { CATALOGUE_MESSAGES } from '../../../messages';
+import { audioArtworkLabel } from '../../../model/artwork';
 
 export const AssetCard = React.memo(function AssetCard(props: {
 	collection: Collection;
@@ -20,6 +23,7 @@ export const AssetCard = React.memo(function AssetCard(props: {
 	collectionContext?: boolean;
 	priority?: boolean;
 }) {
+	const messages = useMessages(CATALOGUE_MESSAGES);
 	const warmAssetPage = useAssetPageWarmup(props.asset.id, props.collection.kind === 'tokens');
 	return (
 		<Link
@@ -37,7 +41,7 @@ export const AssetCard = React.memo(function AssetCard(props: {
 						fetchPriority={props.priority ?? false ? 'high' : 'auto'}
 						image={props.asset.image}
 						loading={props.priority ?? false ? 'eager' : 'lazy'}
-						ticker={props.asset.ticker ?? 'Token'}
+						ticker={props.asset.ticker ?? messages.tokenTickerFallback}
 					/>
 				) : props.asset.image ? (
 					<ArtworkImage
@@ -45,15 +49,20 @@ export const AssetCard = React.memo(function AssetCard(props: {
 						fetchPriority={props.priority ?? false ? 'high' : 'auto'}
 						loading={props.priority ?? false ? 'eager' : 'lazy'}
 						alt=""
+						unavailableLabel={messages.catalogueArtworkUnavailable}
 					/>
 				) : isAudioContentType(props.asset.contentType) ? (
-					<AudioArtwork contentType={props.asset.contentType} name={props.asset.name} />
+					<AudioArtwork
+						contentType={props.asset.contentType}
+						label={audioArtworkLabel(props.asset, messages)}
+						typeLabel={messages.catalogueAudioArtworkType}
+					/>
 				) : props.collection.kind === 'tokens' ? (
 					<TokenAvatar
 						fetchPriority={props.priority ?? false ? 'high' : 'auto'}
 						image={props.asset.image}
 						loading={props.priority ?? false ? 'eager' : 'lazy'}
-						ticker={props.asset.ticker ?? 'Token'}
+						ticker={props.asset.ticker ?? messages.tokenTickerFallback}
 					/>
 				) : (
 					<span>{props.asset.name.slice(0, 1)}</span>

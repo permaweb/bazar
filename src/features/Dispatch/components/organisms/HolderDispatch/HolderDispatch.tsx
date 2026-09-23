@@ -3,10 +3,13 @@ import { useParams } from 'react-router-dom';
 
 import { Eyebrow } from 'components/atoms/Eyebrow';
 import { isArweaveId } from 'helpers/arweave-id';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { DISPATCH_MESSAGES } from '../../../messages';
 import { TokenDispatch } from '../TokenDispatch';
 
 export default function HolderDispatch() {
+	const messages = useMessages(DISPATCH_MESSAGES);
 	const params = useParams();
 	const processId = params.processId ?? '';
 
@@ -15,10 +18,10 @@ export default function HolderDispatch() {
 			<section className="create-page dispatch-page">
 				<div className="create-heading">
 					<div>
-						<Eyebrow>Dispatch</Eyebrow>
-						<h1>Unknown token</h1>
+						<Eyebrow>{messages.dispatchEyebrow}</Eyebrow>
+						<h1>{messages.dispatchUnknownTokenTitle}</h1>
 					</div>
-					<p>The address in the URL is not a 43-character Arweave process ID.</p>
+					<p>{messages.dispatchUnknownTokenDetail}</p>
 				</div>
 			</section>
 		);

@@ -1186,14 +1186,14 @@ describe('asset state', () => {
 			ignored: { inferred: false },
 		});
 		expect(licenseProperties(state)).toEqual([
-			{ key: 'license', label: 'License', value: 'Universal Data License 0.2' },
-			{ key: 'access-fee', label: 'Access fee', value: '12' },
-			{ key: 'derivation', label: 'Derivatives', value: 'Non-commercial only' },
-			{ key: 'unknown-usage-rights', label: 'Unknown usage rights', value: 'Included where available' },
-			{ key: 'commercial-use', label: 'Commercial use', value: 'true' },
-			{ key: 'data-model-training', label: 'AI model training', value: 'Not allowed' },
-			{ key: 'expiry', label: 'License term', value: 'Unlimited' },
-			{ key: 'currency', label: 'Currency', value: '$U' },
+			{ key: 'license', value: { kind: 'udl-license' } },
+			{ key: 'access-fee', value: { kind: 'declared', text: '12' } },
+			{ key: 'derivation', value: { kind: 'default', code: 'derivation-non-commercial' } },
+			{ key: 'unknown-usage-rights', value: { kind: 'default', code: 'unknown-usage-rights-included' } },
+			{ key: 'commercial-use', value: { kind: 'declared', text: 'true' } },
+			{ key: 'data-model-training', value: { kind: 'default', code: 'data-model-training-not-allowed' } },
+			{ key: 'expiry', value: { kind: 'default', code: 'expiry-unlimited' } },
+			{ key: 'currency', value: { kind: 'default', code: 'currency-u' } },
 		]);
 	});
 
@@ -1206,14 +1206,14 @@ describe('asset state', () => {
 		});
 
 		expect(licenseProperties(state)).toEqual([
-			{ key: 'license', label: 'License', value: 'Universal Data License 0.2' },
-			{ key: 'access', label: 'Access', value: 'Free' },
-			{ key: 'derivation', label: 'Derivatives', value: 'Non-commercial only' },
-			{ key: 'unknown-usage-rights', label: 'Unknown usage rights', value: 'Included where available' },
-			{ key: 'commercial-use', label: 'Commercial use', value: 'Not allowed' },
-			{ key: 'data-model-training', label: 'AI model training', value: 'Not allowed' },
-			{ key: 'expiry', label: 'License term', value: 'Unlimited' },
-			{ key: 'currency', label: 'Currency', value: '$U' },
+			{ key: 'license', value: { kind: 'udl-license' } },
+			{ key: 'access', value: { kind: 'default', code: 'access-free' } },
+			{ key: 'derivation', value: { kind: 'default', code: 'derivation-non-commercial' } },
+			{ key: 'unknown-usage-rights', value: { kind: 'default', code: 'unknown-usage-rights-included' } },
+			{ key: 'commercial-use', value: { kind: 'default', code: 'commercial-use-not-allowed' } },
+			{ key: 'data-model-training', value: { kind: 'default', code: 'data-model-training-not-allowed' } },
+			{ key: 'expiry', value: { kind: 'default', code: 'expiry-unlimited' } },
+			{ key: 'currency', value: { kind: 'default', code: 'currency-u' } },
 		]);
 	});
 });

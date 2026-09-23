@@ -10,6 +10,9 @@ import {
 
 import { appError, type AppErrorReason, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
+import { formatMessage } from 'helpers/i18n';
+
+import type { AssetDetailMessages, AssetDetailPlural } from '../messages';
 
 import { BatchEntry, BatchResume } from './fungible-operation';
 
@@ -137,22 +140,28 @@ export function batchPurchaseRecoveryApprovalCount(entries: Array<Pick<BatchEntr
 	return entries.reduce((total, entry) => total + purchaseRecoveryApprovalCount(entry.snapshot), 0);
 }
 
-export function batchPurchaseRecoveryApprovalCopy(entries: Array<Pick<BatchEntry, 'snapshot'>>) {
+export function batchPurchaseRecoveryApprovalCopy(
+	entries: Array<Pick<BatchEntry, 'snapshot'>>,
+	messages: AssetDetailMessages,
+	plural: AssetDetailPlural
+) {
 	const approvals = batchPurchaseRecoveryApprovalCount(entries);
 	const transactionCount = entries.length * 2;
 	const recovered = transactionCount - approvals;
 	const dispatchedPayments = entries.filter((entry) => entry.snapshot.payment?.dispatched === true).length;
 	const paymentDetail = dispatchedPayments
-		? `${dispatchedPayments} seller ${
-				dispatchedPayments === 1 ? 'payment has' : 'payments have'
-		  } already been submitted and will only be monitored; Bazar will not replace them.`
-		: 'No seller payment has been submitted. Signed seller payments remain held until every reservation is accepted.';
+		? plural(messages.recoveryApprovalPaymentsDispatched, dispatchedPayments)
+		: messages.recoveryApprovalNoPayments;
 	return {
-		title: `${approvals} missing transaction ${approvals === 1 ? 'approval' : 'approvals'} needed to resume`,
-		detail: `Bazar recovered ${recovered} of ${transactionCount} signed transactions and will reuse those exact transactions. Your wallet will be asked only for the ${approvals} missing ${
-			approvals === 1 ? 'approval' : 'approvals'
-		}. ${paymentDetail} Nothing new will be signed or submitted until you choose Continue.`,
-		action: `Approve ${approvals} missing ${approvals === 1 ? 'transaction' : 'transactions'} and continue`,
+		title: plural(messages.recoveryApprovalTitle, approvals),
+		detail: formatMessage(messages.recoveryApprovalDetail, {
+			recovered,
+			total: transactionCount,
+			approvals,
+			approvalNoun: plural(messages.recoveryApprovalNoun, approvals),
+			paymentDetail,
+		}),
+		action: plural(messages.recoveryApprovalAction, approvals),
 	};
 }
 
@@ -317,7 +326,7 @@ export function settlementTabIndex(key: string, current: number, count: number):
 	return null;
 }
 
-export function batchSettlementSummary(states: Array<PurchaseState | undefined>) {
+export function batchSettlementSummary(states: Array<PurchaseState | undefined>, messages: AssetDetailMessages) {
 	const settled = states.filter((state) => state?.stage === 'complete').length;
 	const failed = states.filter((state) => state?.stage === 'failed').length;
 	const paying = states.filter((state) => {
@@ -330,9 +339,13 @@ export function batchSettlementSummary(states: Array<PurchaseState | undefined>)
 		failed,
 		paying,
 		reserving,
-		label: `${states.length} listings · ${settled} settled${
-			failed ? ` · ${failed} needs attention` : ''
-		} · ${paying} paying · ${reserving} reserving`,
+		label: formatMessage(messages.settlementSummary, {
+			count: states.length,
+			settled,
+			failed: failed ? formatMessage(messages.settlementSummaryFailed, { count: failed }) : '',
+			paying,
+			reserving,
+		}),
 	};
 }
 
@@ -340,25 +353,30 @@ export function nextSettlementAnnouncement(
 	previousKey: string,
 	signedWork: boolean,
 	total: number,
-	summary: Pick<ReturnType<typeof batchSettlementSummary>, 'failed' | 'settled'>
+	summary: Pick<ReturnType<typeof batchSettlementSummary>, 'failed' | 'settled'>,
+	messages: AssetDetailMessages,
+	plural: AssetDetailPlural
 ): { key: string; message: string } | null {
 	if (total < 1) return null;
 	let next: { key: string; message: string };
 	if (!signedWork) {
 		next = {
 			key: `preparing:${total}`,
-			message: `Preparing wallet approvals for ${total} ${total === 1 ? 'listing' : 'listings'}.`,
+			message: plural(messages.settlementPreparing, total),
 		};
 	} else if (summary.failed) {
 		if (previousKey.startsWith('attention:')) return null;
 		next = {
 			key: `attention:${total}`,
-			message: `A settlement needs attention. ${summary.settled} of ${total} settled; the others continue independently.`,
+			message: formatMessage(messages.settlementAttention, { settled: summary.settled, total }),
 		};
 	} else if (summary.settled >= total) {
 		next = {
 			key: `complete:${total}`,
-			message: total === 1 ? 'The settlement is complete.' : `All ${total} settlements are complete.`,
+			message:
+				total === 1
+					? messages.settlementCompleteOne
+					: formatMessage(messages.settlementCompleteAll, { count: total }),
 		};
 	} else {
 		const quarter = Math.floor((summary.settled * 4) / total);
@@ -366,12 +384,12 @@ export function nextSettlementAnnouncement(
 			const threshold = Math.ceil((total * Math.min(quarter, 3)) / 4);
 			next = {
 				key: `progress:${Math.min(quarter, 3)}:${total}`,
-				message: `${threshold} of ${total} settlements complete.`,
+				message: formatMessage(messages.settlementProgress, { done: threshold, total }),
 			};
 		} else {
 			next = {
 				key: `watching:${total}`,
-				message: `Watching ${total} parallel ${total === 1 ? 'settlement' : 'settlements'}.`,
+				message: plural(messages.settlementWatching, total),
 			};
 		}
 	}

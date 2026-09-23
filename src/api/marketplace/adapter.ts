@@ -76,10 +76,26 @@ export function isBalanceIdentity(value: string): boolean {
 	return isArweaveId(value) || LEGACY_BASE64URL_BALANCE_IDENTITY.test(value) || ETHEREUM_BALANCE_IDENTITY.test(value);
 }
 
+/** UDL fields the asset pages display, in the order they are shown. Field names and values are UI copy. */
+export type LicenseFieldKey = (typeof LICENSE_FIELDS)[number];
+
+/** Effective UDL 0.2 defaults, as stable codes the UI maps to copy. */
+export type LicenseDefaultCode =
+	| 'access-free'
+	| 'derivation-non-commercial'
+	| 'unknown-usage-rights-included'
+	| 'commercial-use-not-allowed'
+	| 'data-model-training-not-allowed'
+	| 'expiry-unlimited'
+	| 'currency-u';
+
+export type LicenseTerm =
+	/** A value the process declares itself; shown verbatim. */
+	{ kind: 'declared'; text: string } | { kind: 'udl-license' } | { kind: 'default'; code: LicenseDefaultCode };
+
 export type LicenseProperty = {
-	key: string;
-	label: string;
-	value: string;
+	key: LicenseFieldKey;
+	value: LicenseTerm;
 };
 
 const LEGACY_BASE64URL_BALANCE_IDENTITY = /^[A-Za-z0-9_-]{44}$/;
@@ -103,29 +119,29 @@ const DIRECT_JSON_BALANCE_METADATA = new Set([
 	'status',
 ]);
 const LICENSE_FIELDS = [
-	['license', 'License'],
-	['access', 'Access'],
-	['access-fee', 'Access fee'],
-	['derivation', 'Derivatives'],
-	['derivation-fee', 'Derivative fee'],
-	['unknown-usage-rights', 'Unknown usage rights'],
-	['commercial-use', 'Commercial use'],
-	['commercial-use-fee', 'Commercial fee'],
-	['data-model-training', 'AI model training'],
-	['expiry', 'License term'],
-	['payment-mode', 'Payment mode'],
-	['payment-address', 'Payment address'],
-	['currency', 'Currency'],
+	'license',
+	'access',
+	'access-fee',
+	'derivation',
+	'derivation-fee',
+	'unknown-usage-rights',
+	'commercial-use',
+	'commercial-use-fee',
+	'data-model-training',
+	'expiry',
+	'payment-mode',
+	'payment-address',
+	'currency',
 ] as const;
 const UDL_LICENSE_ID = 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw';
-const UDL_DEFAULTS = new Map<string, string>([
-	['access', 'Free'],
-	['derivation', 'Non-commercial only'],
-	['unknown-usage-rights', 'Included where available'],
-	['commercial-use', 'Not allowed'],
-	['data-model-training', 'Not allowed'],
-	['expiry', 'Unlimited'],
-	['currency', '$U'],
+const UDL_DEFAULTS = new Map<LicenseFieldKey, LicenseDefaultCode>([
+	['access', 'access-free'],
+	['derivation', 'derivation-non-commercial'],
+	['unknown-usage-rights', 'unknown-usage-rights-included'],
+	['commercial-use', 'commercial-use-not-allowed'],
+	['data-model-training', 'data-model-training-not-allowed'],
+	['expiry', 'expiry-unlimited'],
+	['currency', 'currency-u'],
 ]);
 
 function isValidServingNodeHostname(hostname: string): boolean {
@@ -536,14 +552,16 @@ export function licenseProperties(state: AssetState): LicenseProperty[] {
 		Object.entries(state.raw).map(([key, value]) => [key.toLowerCase().replaceAll('_', '-'), value])
 	);
 	const udl = normalized.get('license') === UDL_LICENSE_ID;
-	return LICENSE_FIELDS.flatMap(([key, label]) => {
+	return LICENSE_FIELDS.flatMap((key): LicenseProperty[] => {
 		const held = normalized.get(key);
 		const declared = ['string', 'number', 'boolean'].includes(typeof held);
 		if (!declared && (!udl || !UDL_DEFAULTS.has(key))) return [];
 		if (key === 'access' && !declared && normalized.has('access-fee')) return [];
 		const raw = declared ? String(held) : '';
-		const value = key === 'license' && udl ? 'Universal Data License 0.2' : raw || UDL_DEFAULTS.get(key)!;
-		return [{ key, label, value }];
+		if (key === 'license' && udl) return [{ key, value: { kind: 'udl-license' } }];
+		return [
+			{ key, value: raw ? { kind: 'declared', text: raw } : { kind: 'default', code: UDL_DEFAULTS.get(key)! } },
+		];
 	});
 }
 

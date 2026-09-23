@@ -2,8 +2,10 @@ import React from 'react';
 
 import { prefetchAssetPage } from 'api/marketplace';
 
+import { useMessages } from 'providers/LanguageProvider';
 import { useWallet } from 'providers/WalletProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../messages';
 import type { AssetDetailScreen } from '../model/asset-detail';
 import { type UniqueAssetView, uniqueAssetView } from '../model/unique-asset-view';
 
@@ -31,6 +33,7 @@ export type AssetDetailController = Omit<AssetDetailResolutionState, 'screen'> &
 
 /** Everything the asset route shows and does: resolution, live state, market activity, and atomic operations. */
 export function useAssetDetail(collectionId: string, assetId: string): AssetDetailController {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const wallet = useWallet();
 	const resolution = useAssetDetailResolution(collectionId, assetId);
 	const activity = useAssetDetailActivity({
@@ -83,6 +86,7 @@ export function useAssetDetail(collectionId: string, assetId: string): AssetDeta
 							error: resolution.live.error,
 							operationPhase: operations.activity?.phase ?? null,
 							hasUnavailableRecovery: Boolean(operations.unavailableRecovery),
+							messages,
 						}),
 				  }
 				: screen,

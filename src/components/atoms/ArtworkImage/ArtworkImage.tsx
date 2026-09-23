@@ -4,12 +4,13 @@ import { ImageOff } from 'lucide-react';
 import { aoRoutingScopeFromLocation, arweaveDataFallbackUrls } from 'helpers/config';
 import { omitProps } from 'helpers/props';
 
-type Props = Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'onError' | 'onLoad'> & {
+// A caller either supplies its own error fallback or the copy the built-in fallback announces; it may not
+// leave the error state without either.
+export type ArtworkImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'onError' | 'onLoad'> & {
 	src: string;
-	fallback?: React.ReactNode;
-};
+} & ({ fallback: React.ReactNode; unavailableLabel?: never } | { fallback?: never; unavailableLabel: string });
 
-export default function ArtworkImage(props: Props) {
+export default function ArtworkImage(props: ArtworkImageProps) {
 	const [status, setStatus] = React.useState<'loading' | 'loaded' | 'error'>('loading');
 	const [sourceIndex, setSourceIndex] = React.useState(0);
 	const routingScope = aoRoutingScopeFromLocation();
@@ -30,14 +31,23 @@ export default function ArtworkImage(props: Props) {
 				role={props.alt ?? '' ? 'img' : undefined}
 			>
 				<ImageOff aria-hidden="true" />
-				<small>Artwork unavailable</small>
+				<small>{props.unavailableLabel}</small>
 			</span>
 		);
 	}
 
 	return (
 		<img
-			{...omitProps(props, ['alt', 'className', 'decoding', 'fallback', 'fetchPriority', 'loading', 'src'])}
+			{...omitProps(props, [
+				'alt',
+				'className',
+				'decoding',
+				'fallback',
+				'fetchPriority',
+				'loading',
+				'src',
+				'unavailableLabel',
+			])}
 			{...(props.fetchPriority ? { fetchpriority: props.fetchPriority } : {})}
 			alt={props.alt ?? ''}
 			className={`artwork-image is-${status}${props.className ?? '' ? ` ${props.className ?? ''}` : ''}`}

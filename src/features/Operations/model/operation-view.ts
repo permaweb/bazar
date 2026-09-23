@@ -2,9 +2,9 @@ import type { SwapOrder } from 'api/marketplace';
 import {
 	hasRecoverablePurchase,
 	type Operation,
-	operationLabel,
-	purchaseRecoveryApprovalCopy,
 	purchaseRecoveryApprovalCount,
+	type PurchaseRecoveryApprovalPrompt,
+	purchaseRecoveryApprovalPrompt,
 } from 'api/operations';
 import {
 	PURCHASE_PAYMENT_TARGET,
@@ -16,9 +16,11 @@ import {
 } from 'api/transactions';
 
 import { type ArweaveSyncStep, postConfirmationPendingLabel, quorumConfirmationDepth } from 'features/TransactionSync';
-import { type AppError, appErrorMessage, type AppErrorReason } from 'helpers/app-error';
+import { type AppError, appErrorMessage, type AppErrorMessages, type AppErrorReason } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 import type { AsyncState } from 'helpers/async-state';
+
+import type { OperationsMessages } from '../messages';
 
 import {
 	atomicOperationActionLabel,
@@ -30,6 +32,7 @@ import {
 	purchaseOrderOf,
 	purchaseStatusMessage,
 } from './atomic-operation';
+import { operationKindLabel } from './operation-copy';
 import { ATOMIC_ACTION_CONFIRMATION_TARGET, type OperationFlowPhase, type OperationFlowState } from './operation-flow';
 
 /** The exact purchase cost and the buyer's balance, checked together before the purchase can be signed. */
@@ -72,7 +75,7 @@ export type AtomicOperationView = {
 	/** The seller's reservation fee, when the listing declares one; it is included in the purchase total. */
 	reservationMinimum: string | null;
 	recoveryApprovalCount: number;
-	recoveryApprovalCopy: { title: string; detail: string; action: string } | null;
+	recoveryApprovalPrompt: PurchaseRecoveryApprovalPrompt | null;
 	steps: ArweaveSyncStep[];
 	purchaseSteps: ArweaveSyncStep[];
 	activeStep: string;
@@ -99,18 +102,21 @@ export function initialOperationValue(operation: Operation) {
 }
 
 /** The reservation and seller payment lanes of a purchase whose signed work can be observed. */
-export function atomicPurchaseSyncSteps(purchaseState: PurchaseState | null): ArweaveSyncStep[] {
+export function atomicPurchaseSyncSteps(
+	purchaseState: PurchaseState | null,
+	messages: OperationsMessages
+): ArweaveSyncStep[] {
 	return purchaseState && hasRecoverablePurchase(purchaseState)
 		? [
 				{
 					key: 'register',
-					label: 'Reserve asset',
+					label: messages.purchaseStepReserve,
 					target: PURCHASE_REGISTRATION_TARGET,
 					transaction: purchaseState.registration,
 				},
 				{
 					key: 'pay',
-					label: 'Pay seller',
+					label: messages.purchaseStepPay,
 					target: PURCHASE_PAYMENT_TARGET,
 					terminal: true,
 					transaction: purchaseState.payment,
@@ -123,13 +129,14 @@ function reportedOperationStatus(
 	phase: OperationFlowPhase,
 	workingStatus: string,
 	resultTitle: string,
-	message: string
+	message: string,
+	messages: OperationsMessages
 ) {
-	if (phase === 'form') return 'Waiting for details';
-	if (phase === 'approval') return 'Waiting for wallet approval';
-	if (phase === 'working') return workingStatus || 'Watching Arweave confirmations…';
+	if (phase === 'form') return messages.reportedStatusForm;
+	if (phase === 'approval') return messages.reportedStatusApproval;
+	if (phase === 'working') return workingStatus || messages.reportedStatusWorking;
 	if (phase === 'done') return resultTitle;
-	return message || 'This transaction needs attention';
+	return message || messages.reportedStatusError;
 }
 
 export function atomicOperationView(input: {
@@ -138,17 +145,21 @@ export function atomicOperationView(input: {
 	assetName: string;
 	owner: string;
 	value: string;
+	messages: OperationsMessages;
+	errorMessages: AppErrorMessages;
 }): AtomicOperationView {
 	const operation = input.operation;
 	const flow = input.flow;
+	const messages = input.messages;
+	const errorMessages = input.errorMessages;
 	const purchaseState = flow.purchaseState;
 	const value = atomicOperationValue(operation.kind, input.value);
-	const purchaseSteps = atomicPurchaseSyncSteps(purchaseState);
+	const purchaseSteps = atomicPurchaseSyncSteps(purchaseState, messages);
 	const steps: ArweaveSyncStep[] = flow.transaction
 		? [
 				{
 					key: operation.kind,
-					label: operationLabel(operation.kind),
+					label: operationKindLabel(operation.kind, messages),
 					target: ATOMIC_ACTION_CONFIRMATION_TARGET,
 					terminal: true,
 					confirmations: flow.confirmations,
@@ -172,13 +183,13 @@ export function atomicOperationView(input: {
 	const phase =
 		operation.kind === 'buy' && flow.phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : flow.phase;
 	const purchaseFailure = purchaseStateFailure(purchaseState);
-	const message = flow.message || (purchaseFailure ? appErrorMessage(purchaseFailure) : '');
-	const workingStatus = flow.message || purchaseStatusMessage(purchaseState);
+	const message = flow.message || (purchaseFailure ? appErrorMessage(errorMessages, purchaseFailure) : '');
+	const workingStatus = flow.message || purchaseStatusMessage(purchaseState, errorMessages);
 	const pendingAfterConfirmation =
 		purchaseState?.stage === 'registration-accepting'
-			? 'Checking live reservation'
+			? messages.pendingCheckingReservation
 			: purchaseState?.stage === 'ownership-verifying'
-			? 'Checking ownership'
+			? messages.pendingCheckingOwnership
 			: postConfirmationPendingLabel(activityConfirmations, confirmationTarget, workingStatus);
 	const recoverable = Boolean(
 		flow.transaction ||
@@ -186,16 +197,16 @@ export function atomicOperationView(input: {
 			(operation.kind === 'buy' && hasRecoverablePurchase(operation.resume))
 	);
 	const terminalReservationFailure = atomicPurchaseHasTerminalReservationFailure(purchaseState);
-	const result = atomicOperationResult(operation.kind, input.assetName, value, input.owner);
+	const result = atomicOperationResult(operation.kind, messages, input.assetName, value, input.owner);
 	const resumingPurchase = operation.kind === 'buy' && operation.resume ? operation.resume : null;
 	return {
 		phase,
-		label: operationLabel(operation.kind),
+		label: operationKindLabel(operation.kind, messages),
 		order: operation.kind === 'buy' || operation.kind === 'cancel' ? operation.order : null,
 		recovering: Boolean(operation.kind === 'buy' ? operation.resume : operation.resumeId),
 		value,
 		formError: atomicOperationFormError(operation.kind, value, input.owner),
-		actionLabel: atomicOperationActionLabel(operation, value),
+		actionLabel: atomicOperationActionLabel(operation, value, messages),
 		result,
 		sellerPrice:
 			operation.kind === 'buy' || operation.kind === 'cancel'
@@ -204,9 +215,9 @@ export function atomicOperationView(input: {
 		reservationMinimum:
 			operation.kind === 'buy' ? orderReservationMinimum(purchaseOrderOf(operation).minimumFee) : null,
 		recoveryApprovalCount: resumingPurchase ? purchaseRecoveryApprovalCount(resumingPurchase) : 0,
-		recoveryApprovalCopy:
+		recoveryApprovalPrompt:
 			resumingPurchase && operation.kind === 'buy'
-				? purchaseRecoveryApprovalCopy(resumingPurchase, { externalOrigin: operation.externalOrigin })
+				? purchaseRecoveryApprovalPrompt(resumingPurchase, { externalOrigin: operation.externalOrigin })
 				: null,
 		steps,
 		purchaseSteps,
@@ -217,9 +228,9 @@ export function atomicOperationView(input: {
 		message,
 		workingStatus,
 		pendingAfterConfirmation,
-		reportedStatus: reportedOperationStatus(phase, workingStatus, result.title, message),
+		reportedStatus: reportedOperationStatus(phase, workingStatus, result.title, message, messages),
 		purchaseFailure,
-		failureStage: atomicPurchaseFailureStage(purchaseState),
+		failureStage: atomicPurchaseFailureStage(purchaseState, messages),
 		recoverable,
 		terminalReservationFailure,
 		resumable: recoverable && !terminalReservationFailure,
@@ -234,12 +245,15 @@ export function orderReservationMinimum(minimumFee: string): string | null {
 }
 
 /** What the purchase form shows while the exact cost and wallet balance are checked. */
-export function purchaseQuoteView(state: AsyncState<PurchaseQuote>): PurchaseQuoteView {
+export function purchaseQuoteView(
+	state: AsyncState<PurchaseQuote>,
+	errorMessages: AppErrorMessages
+): PurchaseQuoteView {
 	if (state.status === 'error' || state.status === 'stale') {
 		return {
 			status: 'unavailable',
 			affordable: null,
-			message: appErrorMessage(state.error),
+			message: appErrorMessage(errorMessages, state.error),
 			retryable: state.error.retryable,
 		};
 	}

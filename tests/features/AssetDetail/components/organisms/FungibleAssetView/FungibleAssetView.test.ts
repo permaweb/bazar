@@ -15,6 +15,7 @@ import MatchedListingsReview from 'features/AssetDetail/components/molecules/Mat
 import PurchaseRoute from 'features/AssetDetail/components/molecules/PurchaseRoute/PurchaseRoute';
 import FungibleHolderChart from 'features/AssetDetail/components/organisms/FungibleHolderChart/FungibleHolderChart';
 import FungiblePurchaseReceiptNavigator from 'features/AssetDetail/components/organisms/FungiblePurchaseReceiptNavigator/FungiblePurchaseReceiptNavigator';
+import { ASSET_DETAIL_MESSAGES, type AssetDetailPlural } from 'features/AssetDetail/messages';
 import {
 	batchHasNoDispatchedSellerPayment,
 	batchPaymentBarrierState,
@@ -68,11 +69,16 @@ import {
 	restartFungibleOperationActivity,
 } from 'features/AssetDetail/model/fungible-operation';
 import { appError, type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+import { formatPlural } from 'helpers/i18n';
+
+const copy = ASSET_DETAIL_MESSAGES.en;
+const plural: AssetDetailPlural = (message, count, values) => formatPlural('en', message, count, values);
 
 describe('fungible operation activity progress', () => {
 	it('reports the active Arweave confirmation depth for a purchase', () => {
 		expect(
-			fungibleOperationActivityProgress('working', {
+			fungibleOperationActivityProgress('working', copy, {
 				key: 'register',
 				label: 'Reserve listing',
 				target: 5,
@@ -81,16 +87,16 @@ describe('fungible operation activity progress', () => {
 			})
 		).toEqual({
 			phase: 'working',
-			status: 'Watching Arweave confirmations…',
+			status: { text: copy.phaseStatusConfirming },
 			confirmations: 2,
 			confirmationTarget: 5,
 		});
 	});
 
 	it('keeps the generic working status before a transaction is available', () => {
-		expect(fungibleOperationActivityProgress('working')).toEqual({
+		expect(fungibleOperationActivityProgress('working', copy)).toEqual({
 			phase: 'working',
-			status: 'Transaction in progress',
+			status: { text: copy.phaseStatusWorking },
 		});
 	});
 });
@@ -99,7 +105,7 @@ describe('fungible operation working status', () => {
 	it('uses one concrete retry message instead of stacking it with purchase lifecycle status', () => {
 		const retryMessage = 'Checking the exact submitted reservation again.';
 		expect(
-			fungibleOperationWorkingStatus('buy', retryMessage, {
+			fungibleOperationWorkingStatus('buy', retryMessage, APP_ERROR_MESSAGES.en, {
 				stage: 'registration-propagating',
 			} as PurchaseState)
 		).toBe(retryMessage);
@@ -260,7 +266,7 @@ describe('fungible holders', () => {
 			{ address: 'd'.repeat(43), liquid: '30', listed: '20', total: '50' },
 		];
 
-		expect(fungibleHolderChartSlices(holders, 3)).toEqual([
+		expect(fungibleHolderChartSlices(holders, copy, 3)).toEqual([
 			{ ...holders[0], holderCount: 1, key: holders[0].address, label: holders[0].address },
 			{ ...holders[1], holderCount: 1, key: holders[1].address, label: holders[1].address },
 			{
@@ -342,7 +348,7 @@ describe('fungible operation error semantics', () => {
 	it('shows the gated transaction sequence for a multi-listing purchase', () => {
 		const registration = { stage: 'registration-confirming' } as PurchaseState;
 		const payment = { stage: 'payment-confirming' } as PurchaseState;
-		const steps = fungiblePurchaseSequence([payment, registration], 2);
+		const steps = fungiblePurchaseSequence([payment, registration], 2, copy, plural);
 		const sequence = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseSequence, {
 				listingCount: 2,
@@ -370,13 +376,13 @@ describe('fungible operation error semantics', () => {
 		const verifying = { stage: 'ownership-verifying' } as PurchaseState;
 		const complete = { stage: 'complete' } as PurchaseState;
 
-		expect(fungiblePurchaseSequence([verifying], 1).map((step) => step.state)).toEqual([
+		expect(fungiblePurchaseSequence([verifying], 1, copy, plural).map((step) => step.state)).toEqual([
 			'done',
 			'done',
 			'done',
 			'active',
 		]);
-		expect(fungiblePurchaseSequence([complete], 1).every((step) => step.state === 'done')).toBe(true);
+		expect(fungiblePurchaseSequence([complete], 1, copy, plural).every((step) => step.state === 'done')).toBe(true);
 	});
 
 	it('keeps a running purchase when a separate listing form opens', () => {
@@ -467,7 +473,7 @@ describe('fungible operation error semantics', () => {
 			purchaseOrder('2'.repeat(43), 'b'.repeat(43), '5', '10'),
 		];
 		const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
-		const quote = purchaseAmountMatch(orders, '4', state);
+		const quote = purchaseAmountMatch(orders, '4', state, copy, APP_ERROR_MESSAGES.en);
 		const composer = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseComposer, {
 				availableQuantity: '7',
@@ -496,7 +502,13 @@ describe('fungible operation error semantics', () => {
 
 	it('rejects an amount beyond the available partial-fill liquidity', () => {
 		const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
-		const quote = purchaseAmountMatch([purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')], '3', state);
+		const quote = purchaseAmountMatch(
+			[purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')],
+			'3',
+			state,
+			copy,
+			APP_ERROR_MESSAGES.en
+		);
 		expect(quote.match).toBeNull();
 		expect(quote.error).toBe('Only 2 $WEAVE is currently available.');
 	});
@@ -579,15 +591,19 @@ describe('fungible operation error semantics', () => {
 
 	it('explains how much of a recovered batch will be reused', () => {
 		expect(
-			batchPurchaseRecoveryApprovalCopy([
-				{
-					snapshot: {
-						registration: { id: REGISTRATION_ID, dispatched: true },
-						payment: { id: PAYMENT_ID, dispatched: false },
+			batchPurchaseRecoveryApprovalCopy(
+				[
+					{
+						snapshot: {
+							registration: { id: REGISTRATION_ID, dispatched: true },
+							payment: { id: PAYMENT_ID, dispatched: false },
+						},
 					},
-				},
-				{ snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } },
-			])
+					{ snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } },
+				],
+				copy,
+				plural
+			)
 		).toEqual({
 			title: '1 missing transaction approval needed to resume',
 			detail: 'Bazar recovered 3 of 4 signed transactions and will reuse those exact transactions. Your wallet will be asked only for the 1 missing approval. No seller payment has been submitted. Signed seller payments remain held until every reservation is accepted. Nothing new will be signed or submitted until you choose Continue.',
@@ -637,10 +653,11 @@ describe('fungible operation error semantics', () => {
 				},
 			])
 		) as unknown as Record<string, PurchaseState>;
-		const receiptOptions = fungiblePurchaseReceiptOptions(orders, {
-			denomination: 0,
-			ticker: 'WEAVE',
-		} as AssetState);
+		const receiptOptions = fungiblePurchaseReceiptOptions(
+			orders,
+			{ denomination: 0, ticker: 'WEAVE' } as AssetState,
+			copy
+		);
 		expect(receiptOptions).toHaveLength(512);
 		expect(receiptOptions[511]).toEqual({
 			value: orders[511].orderId,
@@ -891,7 +908,7 @@ describe('fungible batch payment coordination', () => {
 		let key = '';
 		const messages: string[] = [];
 		for (let settled = 0; settled <= 512; settled += 1) {
-			const next = nextSettlementAnnouncement(key, true, 512, { failed: 0, settled });
+			const next = nextSettlementAnnouncement(key, true, 512, { failed: 0, settled }, copy, plural);
 			if (!next) continue;
 			key = next.key;
 			messages.push(next.message);
@@ -903,9 +920,11 @@ describe('fungible batch payment coordination', () => {
 			'384 of 512 settlements complete.',
 			'All 512 settlements are complete.',
 		]);
-		const failure = nextSettlementAnnouncement(key, true, 512, { failed: 1, settled: 400 });
+		const failure = nextSettlementAnnouncement(key, true, 512, { failed: 1, settled: 400 }, copy, plural);
 		expect(failure?.message).toContain('needs attention');
-		expect(nextSettlementAnnouncement(failure!.key, true, 512, { failed: 27, settled: 401 })).toBeNull();
+		expect(
+			nextSettlementAnnouncement(failure!.key, true, 512, { failed: 27, settled: 401 }, copy, plural)
+		).toBeNull();
 	});
 
 	it('distinguishes recovery attempts for the same order by their signed transactions', () => {
@@ -974,11 +993,12 @@ describe('fungible batch payment coordination', () => {
 		);
 
 		expect(failure.detail?.failureReasons).toEqual(['asset-purchase-rejected', 'unknown']);
-		const message = fungibleOperationFailureMessage(failure);
+		const message = fungibleOperationFailureMessage(failure, copy, APP_ERROR_MESSAGES.en);
 		expect(message).toBe(
 			`2 of 3 settlements need attention. ${appErrorReasonMessage(
+				APP_ERROR_MESSAGES.en,
 				'asset-purchase-rejected'
-			)} ${appErrorReasonMessage('unknown')}`
+			)} ${appErrorReasonMessage(APP_ERROR_MESSAGES.en, 'unknown')}`
 		);
 		expect(message).not.toContain('502');
 		expect(operationFailureNeedsManualReview(failure)).toBe(true);
@@ -1214,21 +1234,24 @@ describe('parallel settlement keyboard navigation', () => {
 
 describe('parallel settlement progress summary', () => {
 	it('keeps settled, failed, paying, and reserving states mutually exclusive', () => {
-		const summary = batchSettlementSummary([
-			{ stage: 'complete' } as PurchaseState,
-			{ stage: 'failed' } as PurchaseState,
-			{ stage: 'payment-confirming' } as PurchaseState,
-			{ stage: 'registration-confirming' } as PurchaseState,
-		]);
+		const summary = batchSettlementSummary(
+			[
+				{ stage: 'complete' } as PurchaseState,
+				{ stage: 'failed' } as PurchaseState,
+				{ stage: 'payment-confirming' } as PurchaseState,
+				{ stage: 'registration-confirming' } as PurchaseState,
+			],
+			copy
+		);
 		expect(summary).toMatchObject({ settled: 1, failed: 1, paying: 1, reserving: 1 });
 		expect(summary.label).toBe('4 listings · 1 settled · 1 needs attention · 1 paying · 1 reserving');
 	});
 
 	it('reports all-failed and not-yet-started batches truthfully', () => {
 		expect(
-			batchSettlementSummary([{ stage: 'failed' } as PurchaseState, { stage: 'failed' } as PurchaseState])
+			batchSettlementSummary([{ stage: 'failed' } as PurchaseState, { stage: 'failed' } as PurchaseState], copy)
 		).toMatchObject({ settled: 0, failed: 2, paying: 0, reserving: 0 });
-		expect(batchSettlementSummary([undefined, undefined])).toMatchObject({
+		expect(batchSettlementSummary([undefined, undefined], copy)).toMatchObject({
 			settled: 0,
 			failed: 0,
 			paying: 0,
@@ -1237,13 +1260,17 @@ describe('parallel settlement progress summary', () => {
 	});
 
 	it('does not report payment completion while token receipt is still being verified', () => {
-		expect(batchStageLabel({ stage: 'ownership-verifying' } as PurchaseState)).toBe('Checking receipt');
+		expect(batchStageLabel(copy, { stage: 'ownership-verifying' } as PurchaseState)).toBe(
+			copy.batchStageCheckingReceipt
+		);
 	});
 
 	it('names the live reservation check and caps historical confirmation counts', () => {
-		expect(batchStageLabel({ stage: 'registration-accepting' } as PurchaseState)).toBe('Checking reservation');
+		expect(batchStageLabel(copy, { stage: 'registration-accepting' } as PurchaseState)).toBe(
+			copy.batchStageCheckingReservation
+		);
 		expect(
-			batchStageLabel({
+			batchStageLabel(copy, {
 				stage: 'registration-confirming',
 				registration: { consensus: { confirmations: 316 } },
 			} as PurchaseState)
@@ -1283,13 +1310,15 @@ describe('fungible order action names', () => {
 			asking: '6000000',
 		} as SwapOrder;
 
-		expect(fungibleOrderActionLabel('buy', first, state)).toBe(
+		expect(fungibleOrderActionLabel('buy', first, state, copy)).toBe(
 			`Buy 3 $WEAVE for 0.000003 $AR from ${'A'.repeat(43)}`
 		);
-		expect(fungibleOrderActionLabel('buy', second, state)).toBe(
+		expect(fungibleOrderActionLabel('buy', second, state, copy)).toBe(
 			`Buy 5 $WEAVE for 0.000006 $AR from ${'B'.repeat(43)}`
 		);
-		expect(fungibleOrderActionLabel('cancel', first, state)).toBe('Cancel listing of 3 $WEAVE for 0.000003 $AR');
+		expect(fungibleOrderActionLabel('cancel', first, state, copy)).toBe(
+			'Cancel listing of 3 $WEAVE for 0.000003 $AR'
+		);
 	});
 
 	it('distinguishes sellers whose compact identities collide', () => {
@@ -1298,9 +1327,11 @@ describe('fungible order action names', () => {
 		const first = { ...shared, creator: `AAAAAA${'1'.repeat(32)}AAAAA` } as SwapOrder;
 		const second = { ...shared, creator: `AAAAAA${'2'.repeat(32)}AAAAA` } as SwapOrder;
 
-		expect(fungibleListingAccessibleLabel(first, state)).toContain(first.creator);
-		expect(fungibleListingAccessibleLabel(second, state)).toContain(second.creator);
-		expect(fungibleListingAccessibleLabel(first, state)).not.toBe(fungibleListingAccessibleLabel(second, state));
+		expect(fungibleListingAccessibleLabel(first, state, copy)).toContain(first.creator);
+		expect(fungibleListingAccessibleLabel(second, state, copy)).toContain(second.creator);
+		expect(fungibleListingAccessibleLabel(first, state, copy)).not.toBe(
+			fungibleListingAccessibleLabel(second, state, copy)
+		);
 	});
 });
 
@@ -1313,7 +1344,8 @@ describe('fungible activity amounts', () => {
 					asking: '7800000000000',
 					quantity: '1000000000000000',
 				} as CollectionActivityEvent,
-				{ denomination: 12, ticker: 'MIST' } as AssetState
+				{ denomination: 12, ticker: 'MIST' } as AssetState,
+				copy
 			)
 		).toBe('1,000 $MIST for 7.8 AR');
 	});
@@ -1333,10 +1365,12 @@ describe('fungible activity amounts', () => {
 			quantity: '250000000000000',
 		} as CollectionActivityEvent;
 		expect(
-			fungiblePurchaseActivityAmount(purchase, [purchase, listing], {
-				denomination: 12,
-				ticker: 'MIST',
-			} as AssetState)
+			fungiblePurchaseActivityAmount(
+				purchase,
+				[purchase, listing],
+				{ denomination: 12, ticker: 'MIST' } as AssetState,
+				copy
+			)
 		).toBe('250 $MIST for 1.95 AR');
 	});
 
@@ -1347,10 +1381,12 @@ describe('fungible activity amounts', () => {
 			quantity: '250000000000000',
 		} as CollectionActivityEvent;
 		expect(
-			fungiblePurchaseActivityAmount(purchase, [purchase], {
-				denomination: 12,
-				ticker: 'MIST',
-			} as AssetState)
+			fungiblePurchaseActivityAmount(
+				purchase,
+				[purchase],
+				{ denomination: 12, ticker: 'MIST' } as AssetState,
+				copy
+			)
 		).toBe('250 $MIST');
 	});
 
@@ -1362,16 +1398,18 @@ describe('fungible activity amounts', () => {
 			quantity: '250000000000000',
 		} as CollectionActivityEvent;
 		expect(
-			fungiblePurchaseActivityAmount(purchase, [purchase], {
-				denomination: 12,
-				ticker: 'MIST',
-				orders: {
-					[orderId]: {
-						asking: '7800000000000',
-						quantity: '1000000000000000',
-					} as SwapOrder,
-				},
-			} as AssetState)
+			fungiblePurchaseActivityAmount(
+				purchase,
+				[purchase],
+				{
+					denomination: 12,
+					ticker: 'MIST',
+					orders: {
+						[orderId]: { asking: '7800000000000', quantity: '1000000000000000' } as SwapOrder,
+					},
+				} as AssetState,
+				copy
+			)
 		).toBe('250 $MIST for 1.95 AR');
 	});
 });
@@ -1444,9 +1482,11 @@ describe('fungible transfer recipient validation', () => {
 		expect(fungibleTransferRecipientError('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs', BUYER)).toBe(
 			'fungible-recipient-invalid'
 		);
-		expect(appErrorReasonMessage('fungible-recipient-invalid')).toContain('43-character');
+		expect(appErrorReasonMessage(APP_ERROR_MESSAGES.en, 'fungible-recipient-invalid')).toContain('43-character');
 		expect(fungibleTransferRecipientError(BUYER, BUYER)).toBe('fungible-recipient-is-owner');
-		expect(appErrorReasonMessage('fungible-recipient-is-owner')).toContain('different wallet');
+		expect(appErrorReasonMessage(APP_ERROR_MESSAGES.en, 'fungible-recipient-is-owner')).toContain(
+			'different wallet'
+		);
 		expect(fungibleTransferRecipientError('c'.repeat(43), BUYER)).toBeNull();
 		expect(fungibleTransferRecipientError(`  ${'c'.repeat(43)}\n`, BUYER)).toBeNull();
 	});
@@ -1454,8 +1494,10 @@ describe('fungible transfer recipient validation', () => {
 	it('names the exact recipient before an irreversible transfer', () => {
 		const recipient = 'c'.repeat(43);
 		const state = { denomination: 12, ticker: 'WEAVE' } as AssetState;
-		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 $WEAVE to cccccc…ccccc');
-		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(
+		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, copy)).toBe(
+			'Send 2 $WEAVE to cccccc…ccccc'
+		);
+		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, copy, true)).toBe(
 			`Send 2 $WEAVE to ${recipient}`
 		);
 	});

@@ -8,50 +8,13 @@ const sourceRoot = path.resolve('src');
 
 // Adapters in `src/api` return data and AppError codes; on-chain tag values and GraphQL documents there are
 // protocol data, not copy. Message catalogs and design tokens are the only other places that hold literal text.
+// A catalog is either `messages.ts` beside its owner or `<subject>.messages.ts`, such as `helpers/app-error.messages`.
 const EXCLUDED = [
 	/^src\/api\//,
-	/(?:^|\/)messages\.ts$/,
+	/(?:^|[/.])messages\.ts$/,
 	/(?:^|\/)styles\.ts$/,
 	/\.d\.ts$/,
 	/^src\/helpers\/theme\.ts$/,
-];
-
-// Temporary: areas whose copy has not moved into message catalogs yet. Delete each entry as its area migrates;
-// the architecture migration is complete only when this list is empty.
-const PENDING_COPY_MIGRATION = [
-	'src/apps/',
-
-	'src/components/',
-
-	'src/helpers/',
-
-	'src/navigation/',
-
-	'src/providers/',
-
-	'src/views/',
-
-	'src/features/Activity/',
-
-	'src/features/AssetDetail/',
-
-	'src/features/Catalogue/',
-
-	'src/features/Collection/',
-
-	'src/features/Create/',
-
-	'src/features/Dispatch/',
-
-	'src/features/Home/',
-
-	'src/features/MyAssets/',
-
-	'src/features/Operations/',
-
-	'src/features/Profile/',
-
-	'src/features/TransactionSync/',
 ];
 
 function sourceFiles(directory = sourceRoot): string[] {
@@ -67,7 +30,6 @@ describe('user-facing copy', () => {
 		const offenders = sourceFiles().flatMap((file) => {
 			const relative = path.relative(process.cwd(), file).split(path.sep).join('/');
 			if (EXCLUDED.some((pattern) => pattern.test(relative))) return [];
-			if (PENDING_COPY_MIGRATION.some((prefix) => relative.startsWith(prefix))) return [];
 			return findHardcodedCopy(relative, readFileSync(file, 'utf8')).map(
 				(finding) => `${relative}:${finding.line} ${finding.text}`
 			);
@@ -97,6 +59,22 @@ describe('user-facing copy', () => {
 			'Please wait',
 			'Working on it',
 		]);
+	});
+
+	it('ignores currency tickers, which read the same in every language', () => {
+		expect(
+			findHardcodedCopy(
+				'Fixture.tsx',
+				`export function Fixture() {
+					const symbol = '$AR';
+					return (
+						<span>
+							{symbol} <small>$U</small>
+						</span>
+					);
+				}`
+			)
+		).toEqual([]);
 	});
 
 	it('ignores machine values, class names, comparisons, keys, and diagnostics', () => {

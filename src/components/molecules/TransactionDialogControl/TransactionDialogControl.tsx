@@ -70,6 +70,8 @@ export function transactionDialogDismissAction(
 }
 
 export default function TransactionDialogControl(props: {
+	closeLabel: string;
+	hideLabel: string;
 	hiding?: boolean;
 	phase: TransactionDialogPhase;
 	onClick(): void;
@@ -77,7 +79,7 @@ export default function TransactionDialogControl(props: {
 	const working = props.phase === 'working';
 	return (
 		<Button
-			aria-label={working ? 'Hide transaction details' : 'Close dialog'}
+			aria-label={working ? props.hideLabel : props.closeLabel}
 			className={`close${working ? ' transaction-hide' : ''}`}
 			onClick={props.onClick}
 			size="icon"

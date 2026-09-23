@@ -13,9 +13,13 @@ import { ErrorPanel, type ErrorPanelAction } from 'components/molecules/ErrorPan
 import { unitPriceWinston } from 'features/Catalogue';
 import { preloadArweaveTransactionSync } from 'features/TransactionSync';
 import { winstonToArDecimal } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { useFungibleOperationActivities } from '../../../hooks/useFungibleOperationActivities';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { fungibleHolders } from '../../../model/fungible-holders';
 import { fungiblePriceHistory, purchaseAmountMatch, tokenLabel } from '../../../model/fungible-market';
 import { fungibleListingDraft, fungibleMarketView, fungibleTokenIdentity } from '../../../model/fungible-market-view';
@@ -65,6 +69,8 @@ type Props = {
 type FungibleAssetSection = 'market' | 'holders' | 'about';
 
 export default function FungibleAssetView(props: Props) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const errorMessages = useAppErrorMessages();
 	const wallet = useWallet();
 	const activities = useFungibleOperationActivities({
 		asset: props.asset,
@@ -91,11 +97,11 @@ export default function FungibleAssetView(props: Props) {
 	const [activityReveal, setActivityReveal] = React.useState({ assetId: props.asset.id, limit: 8 });
 	const [holderReveal, setHolderReveal] = React.useState({ assetId: props.asset.id, limit: 50 });
 	const market = React.useMemo(() => fungibleMarketView(props.state, wallet.address), [props.state, wallet.address]);
-	const identity = fungibleTokenIdentity(props.state, props.collection);
+	const identity = fungibleTokenIdentity(props.state, props.collection, messages);
 	const orderLimit = orderReveal.assetId === props.asset.id ? orderReveal.limit : 50;
 	const activityLimit = activityReveal.assetId === props.asset.id ? activityReveal.limit : 8;
 	const holderLimit = holderReveal.assetId === props.asset.id ? holderReveal.limit : 50;
-	const listing = fungibleListingDraft(listingQuantity, listingUnitPrice, props.state, market.liquid);
+	const listing = fungibleListingDraft(listingQuantity, listingUnitPrice, props.state, market.liquid, messages);
 	const purchaseQuantityTracksMaximum = React.useRef(false);
 	React.useEffect(() => {
 		if (!purchaseQuantityTracksMaximum.current) return;
@@ -104,8 +110,8 @@ export default function FungibleAssetView(props: Props) {
 		);
 	}, [market.maximumPurchaseQuantity]);
 	const purchaseMatch = React.useMemo(
-		() => purchaseAmountMatch(market.purchasableOrders, purchaseQuantity, props.state),
-		[market.purchasableOrders, purchaseQuantity, props.state]
+		() => purchaseAmountMatch(market.purchasableOrders, purchaseQuantity, props.state, messages, errorMessages),
+		[errorMessages, market.purchasableOrders, messages, purchaseQuantity, props.state]
 	);
 	const holderRows = React.useMemo(() => fungibleHolders(props.state), [props.state]);
 	React.useEffect(() => {
@@ -118,23 +124,21 @@ export default function FungibleAssetView(props: Props) {
 	const assetTabs: AssetDetailTab<FungibleAssetSection>[] = [
 		{
 			value: 'market',
-			label: 'Market',
+			label: messages.fungibleTabMarket,
 			icon: <Icon icon={BarChart3} />,
 			panelId: 'fungible-asset-market',
 		},
 		{
 			value: 'holders',
-			label: 'Holders',
+			label: messages.fungibleTabHolders,
 			icon: <Icon icon={Users} />,
 			panelId: 'fungible-asset-holders',
 			disabled: !market.holderBalancesAvailable,
-			disabledMessage: !market.holderBalancesAvailable
-				? 'Holder balances are unavailable from the current AO routes.'
-				: undefined,
+			disabledMessage: !market.holderBalancesAvailable ? messages.fungibleHoldersUnavailable : undefined,
 		},
 		{
 			value: 'about',
-			label: 'About',
+			label: messages.fungibleTabAbout,
 			icon: <Icon icon={Grid2X2} />,
 			panelId: 'fungible-asset-about',
 		},
@@ -200,34 +204,37 @@ export default function FungibleAssetView(props: Props) {
 						</h1>
 						<span className="fungible-token-name">{props.asset.name}</span>
 					</div>
-					<div className="fungible-token-meta" aria-label="Token protocol details">
+					<div className="fungible-token-meta" aria-label={messages.fungibleTokenProtocolDetails}>
 						<Link to={`/collection/${props.collection.id}`}>{identity.collectionName}</Link>
 						<span>{props.state.device}</span>
-						<span>{props.state.denomination} decimals</span>
+						<span>
+							{formatMessage(messages.fungibleDecimals, { denomination: props.state.denomination })}
+						</span>
 					</div>
 				</div>
 				<div className="fungible-token-balance">
 					<span>
 						{props.loading || props.error
 							? wallet.address
-								? 'Balance'
-								: 'Last known supply'
+								? messages.fungibleBalance
+								: messages.fungibleLastKnownSupply
 							: wallet.address
-							? 'Your liquid balance'
-							: 'Circulating supply'}
+							? messages.fungibleYourLiquidBalance
+							: messages.fungibleCirculatingSupply}
 					</span>
 					<strong>
 						{wallet.address && !market.holderBalancesAvailable
-							? 'Unavailable'
+							? messages.fungibleUnavailable
 							: tokenLabel(wallet.address ? market.liquid : props.state.totalSupply, props.state)}
 					</strong>
 				</div>
 			</header>
-			{props.loading ? <Loading label="Computing current state…" /> : null}
+			{props.loading ? <Loading label={messages.assetDetailComputingState} /> : null}
 			{props.error ? (
 				<ErrorPanel
+					heading={messages.assetDetailErrorHeading}
 					message={props.error}
-					onRetry={() => void props.onRefresh()}
+					retryAction={{ label: messages.assetDetailRetry, onClick: () => void props.onRefresh() }}
 					secondaryAction={props.stateRecoveryAction}
 				/>
 			) : null}
@@ -264,7 +271,7 @@ export default function FungibleAssetView(props: Props) {
 					{props.collectionIndexNotice}
 					<AssetDetailTabs<FungibleAssetSection>
 						active={activeSection}
-						ariaLabel="Token detail sections"
+						ariaLabel={messages.fungibleSectionsAriaLabel}
 						idPrefix="fungible-asset"
 						onChange={setActiveSection}
 						tabs={assetTabs}
@@ -351,7 +358,7 @@ export default function FungibleAssetView(props: Props) {
 								onLimitChange={(limit) => setHolderReveal({ assetId: props.asset.id, limit })}
 								state={props.state}
 							/>
-							<p className="market-note">Balances include tokens held in active marketplace listings.</p>
+							<p className="market-note">{messages.fungibleHolderBalancesNote}</p>
 						</section>
 					) : null}
 					{activeSection === 'about' ? (

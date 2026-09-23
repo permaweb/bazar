@@ -14,6 +14,8 @@ import { collectionActivityVersion, collectionAssetWindowDelta } from 'features/
 import type { RequestFailureKind, RequestFailureSource } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 
+import type { HomeMessages } from '../messages';
+
 export type HomeMarketSummary =
 	| { status: 'resolved'; value: string | null }
 	| { status: 'unindexed' }
@@ -228,11 +230,12 @@ export function completeHomeSummaryRetryGroup(
 
 export function homeMarketSummaryLabel(
 	summary: HomeMarketSummary | undefined,
+	messages: HomeMessages,
 	emptyLabel: string,
 	unindexedLabel = emptyLabel
 ) {
-	if (!summary) return 'Checking…';
-	if (summary.status === 'unavailable') return 'Unavailable';
+	if (!summary) return messages.homeChecking;
+	if (summary.status === 'unavailable') return messages.homeSummaryUnavailable;
 	if (summary.status === 'unindexed') return unindexedLabel;
 	return summary.value ?? emptyLabel;
 }
@@ -241,8 +244,17 @@ export function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) 
 	return summary?.status === 'resolved' && Boolean(summary.value);
 }
 
-export function homeCollectionAssetCountLabel(collection: Collection) {
-	if (collection.kind === 'names' && collection.hasMore && collection.assets.length === 0) return 'N/A';
+/** The description a collection card shows: its own manifest text, or this feature's wording for a built-in code. */
+export function homeCollectionDescription(collection: Collection, messages: HomeMessages) {
+	if (collection.descriptionCode === 'fungible-tokens') return messages.homeCollectionDescriptionTokens;
+	if (collection.descriptionCode === 'arweave-names') return messages.homeCollectionDescriptionNames;
+	if (collection.descriptionCode === 'permanent-collection') return messages.homeCollectionDescriptionPermanent;
+	return collection.description;
+}
+
+export function homeCollectionAssetCountLabel(collection: Collection, messages: HomeMessages) {
+	if (collection.kind === 'names' && collection.hasMore && collection.assets.length === 0)
+		return messages.homeSummaryUnindexed;
 	return (collection.total ?? collection.assets.length).toLocaleString();
 }
 

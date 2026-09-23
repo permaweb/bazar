@@ -130,7 +130,12 @@ let root: Root;
 let search: MarketplaceSearch | undefined;
 
 function Probe(props: { open: boolean; query: string; scope: MarketplaceSearchScope }) {
-	search = useMarketplaceSearch({ open: props.open, query: props.query, scope: props.scope });
+	search = useMarketplaceSearch({
+		open: props.open,
+		query: props.query,
+		scope: props.scope,
+		describeCollection: (collection) => collection.description,
+	});
 	return null;
 }
 
@@ -190,10 +195,8 @@ describe('useMarketplaceSearch', () => {
 		render('sun');
 		expect(current().indexSearch).toBe('pending');
 		expect(current().collectionResults.map((result) => result.collection.id)).toEqual(['artwork', 'names']);
-		expect(current().collectionResults.map((result) => result.kindLabel)).toEqual([
-			'Permanent artwork collection',
-			'Arweave identity',
-		]);
+		// The hook returns the collection's stable kind; the header maps it to copy from its own catalog.
+		expect(current().collectionResults.map((result) => result.collection.kind)).toEqual(['images', 'names']);
 		expect(current().tokenResults.map((result) => result.asset.name)).toEqual(['Sun token']);
 		expect(current().collectibleResults.map((result) => result.asset.name)).toEqual(['Sunrise', 'sunny']);
 		expect(current().partialTokenCollection?.id).toBe('tokens');

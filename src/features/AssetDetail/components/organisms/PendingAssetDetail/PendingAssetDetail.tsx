@@ -12,32 +12,50 @@ import { RouteState } from 'components/molecules/RouteState';
 import { isAudioContentType } from 'helpers/asset-media';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { transactionExplorerUrl } from 'helpers/explorer';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { usePendingAssetMint } from '../../../hooks/usePendingAssetMint';
+import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
+import { audioArtworkLabel, transactionAddressCopy } from '../../../model/asset-detail';
 import { PENDING_MINT_PHASES, type PendingMintTransactionRole, pendingMintView } from '../../../model/pending-asset';
 
-const PHASE_LABELS: Record<(typeof PENDING_MINT_PHASES)[number], string> = {
-	accepted: 'Accepted by Arweave',
-	mined: 'Mined',
-	applied: 'Applied to process state',
-	complete: 'Live on Bazar',
+const PHASE_LABEL_KEYS: Record<(typeof PENDING_MINT_PHASES)[number], keyof AssetDetailMessages> = {
+	accepted: 'pendingPhaseAccepted',
+	mined: 'pendingPhaseMined',
+	applied: 'pendingPhaseApplied',
+	complete: 'pendingPhaseComplete',
 };
 
-const TRANSACTION_LABELS: Record<PendingMintTransactionRole, string> = {
-	artwork: 'Artwork transaction',
-	asset: 'Asset transaction',
-	logo: 'Token logo transaction',
-	token: 'Token process transaction',
+const PHASE_STATUS_KEYS: Record<(typeof PENDING_MINT_PHASES)[number], keyof AssetDetailMessages> = {
+	accepted: 'pendingStatusAccepted',
+	mined: 'pendingStatusMined',
+	applied: 'pendingStatusApplied',
+	complete: 'pendingStatusComplete',
+};
+
+const TRANSACTION_LABEL_KEYS: Record<PendingMintTransactionRole, keyof AssetDetailMessages> = {
+	artwork: 'pendingTransactionArtwork',
+	asset: 'pendingTransactionAsset',
+	logo: 'pendingTransactionLogo',
+	token: 'pendingTransactionToken',
 };
 
 export default function PendingAssetDetail() {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const { collectionId = '', assetId = '' } = useParams();
 	const mint = usePendingAssetMint(collectionId, assetId);
+	const transactionAddressLabels = transactionAddressCopy(messages);
 
 	if (!mint.asset) {
 		return (
-			<RouteState title="Upload not found" backTo="/create" backLabel="Back to create">
-				<p>This browser does not have a saved upload for that transaction.</p>
+			<RouteState
+				title={messages.pendingUploadNotFound}
+				backTo="/create"
+				backLabel={messages.pendingBackToCreate}
+				eyebrow={messages.assetDetailRouteEyebrow}
+			>
+				<p>{messages.pendingUploadNotFoundDetail}</p>
 			</RouteState>
 		);
 	}
@@ -53,16 +71,27 @@ export default function PendingAssetDetail() {
 	return (
 		<section className="mint-pending-page">
 			<Link className="back" to="/">
-				<Icon icon={ArrowLeft} size="sm" /> Continue browsing
+				<Icon icon={ArrowLeft} size="sm" /> {messages.pendingContinueBrowsing}
 			</Link>
 			<div className="mint-pending-layout">
 				<div className="mint-pending-artwork">
 					{mint.asset.image ? (
-						<ArtworkImage src={mint.asset.image} alt={`${mint.asset.name} artwork`} />
+						<ArtworkImage
+							src={mint.asset.image}
+							alt={formatMessage(messages.pendingArtworkAlt, { name: mint.asset.name })}
+							unavailableLabel={messages.assetDetailArtworkUnavailable}
+						/>
 					) : view.fungible ? (
-						<TokenArtwork ticker={mint.asset.ticker || mint.asset.name} />
+						<TokenArtwork
+							subtitle={messages.assetDetailTokenArtworkSubtitle}
+							ticker={mint.asset.ticker || mint.asset.name}
+						/>
 					) : isAudioContentType(mint.asset.contentType) ? (
-						<AudioArtwork contentType={mint.asset.contentType} name={mint.asset.name} />
+						<AudioArtwork
+							contentType={mint.asset.contentType}
+							label={audioArtworkLabel(mint.asset, messages)}
+							typeLabel={messages.assetDetailAudioArtworkType}
+						/>
 					) : (
 						<span className="mint-pending-artwork-fallback" aria-hidden="true">
 							{mint.asset.name.slice(0, 1)}
@@ -70,37 +99,42 @@ export default function PendingAssetDetail() {
 					)}
 				</div>
 				<div className="mint-pending-copy">
-					<Eyebrow>Submitted · safe to leave</Eyebrow>
+					<Eyebrow>{messages.pendingEyebrow}</Eyebrow>
 					<h1>{mint.asset.name}</h1>
-					<p>{mint.activity.status}</p>
+					<p>{messages[PHASE_STATUS_KEYS[mint.activity.phase]] as string}</p>
 					<ol className="mint-pending-phases">
 						{PENDING_MINT_PHASES.map((phase, index) => (
 							<li className={index <= view.currentPhaseIndex ? 'reached' : undefined} key={phase}>
 								<span>{index < view.currentPhaseIndex ? <Check aria-hidden="true" /> : index + 1}</span>
-								{PHASE_LABELS[phase]}
+								{messages[PHASE_LABEL_KEYS[phase]] as string}
 							</li>
 						))}
 					</ol>
 					<p className="mint-pending-gateway">
-						Tracking is pinned to the gateways that accepted this operation
-						{view.pinnedGateway
-							? '. Your current gateway selection is different; Bazar will not restart the upload'
-							: ''}
-						.
+						{view.pinnedGateway ? messages.pendingGatewayNotePinned : messages.pendingGatewayNote}
 					</p>
 					<div className="mint-pending-actions">
 						<a href={transactionExplorerUrl(mint.asset.id)} target="_blank" rel="noreferrer">
-							View transaction <Icon icon={ArrowUpRight} size="sm" />
+							{messages.pendingViewTransaction} <Icon icon={ArrowUpRight} size="sm" />
 						</a>
 						<Button type="button" size="custom" disabled>
-							View when available <Icon icon={InfinityIcon} size="sm" />
+							{messages.pendingViewWhenAvailable} <Icon icon={InfinityIcon} size="sm" />
 						</Button>
 					</div>
 					<MintTransactionReceipt
-						entries={view.transactions.map((transaction) => ({
-							label: TRANSACTION_LABELS[transaction.role],
-							transactionId: transaction.transactionId,
-						}))}
+						addressLabels={transactionAddressLabels}
+						ariaLabel={messages.assetDetailReceiptsLabel}
+						entries={view.transactions.map((transaction) => {
+							const label = messages[TRANSACTION_LABEL_KEYS[transaction.role]] as string;
+							return {
+								label,
+								linkLabel: formatMessage(messages.assetDetailReceiptEntryLabel, {
+									label,
+									transaction: transaction.transactionId,
+								}),
+								transactionId: transaction.transactionId,
+							};
+						})}
 					/>
 				</div>
 			</div>

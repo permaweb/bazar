@@ -9,32 +9,34 @@ export type ErrorPanelAction = {
 	onClick(): void;
 };
 
+// The heading and the retry control's wording come from the caller's catalog: a molecule may not read the
+// language provider. A retry handler without its label would render an unnamed control, so they travel together.
 export default function ErrorPanel(props: {
+	heading: string;
 	message: string;
-	onRetry?: () => void;
+	retryAction?: ErrorPanelAction;
 	secondaryAction?: ErrorPanelAction;
 }) {
-	const heading = 'Unable to load';
 	return (
-		<div className={`error-panel${props.onRetry ? ' retry-notice' : ''}`}>
-			<strong>{heading}</strong>
+		<div className={`error-panel${props.retryAction ? ' retry-notice' : ''}`}>
+			<strong>{props.heading}</strong>
 			<span
-				aria-label={formatArCurrencyText(`${heading}. ${props.message}`)}
-				role={props.onRetry ? 'status' : 'alert'}
+				aria-label={formatArCurrencyText(`${props.heading}. ${props.message}`)}
+				role={props.retryAction ? 'status' : 'alert'}
 			>
 				<ArCurrencyText>{props.message}</ArCurrencyText>
 			</span>
-			{props.onRetry || props.secondaryAction ? (
+			{props.retryAction || props.secondaryAction ? (
 				<div className="error-panel-actions">
-					{props.onRetry ? (
+					{props.retryAction ? (
 						<Button
 							className="with-icon error-panel-retry"
 							onClick={() => {
-								props.onRetry?.();
+								props.retryAction?.onClick();
 								document.getElementById('main-content')?.focus({ preventScroll: true });
 							}}
 						>
-							<Icon icon={RefreshCw} size="sm" /> Retry
+							<Icon icon={RefreshCw} size="sm" /> {props.retryAction.label}
 						</Button>
 					) : null}
 					{props.secondaryAction ? (

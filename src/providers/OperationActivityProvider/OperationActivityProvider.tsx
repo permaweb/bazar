@@ -42,9 +42,13 @@ import {
 import type { Consensus, ObserverView } from 'api/transactions';
 
 import { mapConcurrent } from 'helpers/concurrency';
+import { formatMessage } from 'helpers/i18n';
 import { scheduleIdleTask } from 'helpers/idle';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useWallet } from 'providers/WalletProvider';
+
+import { OPERATION_ACTIVITY_MESSAGES } from './messages';
 
 export type OperationActivity = StoredOperationActivity & {
 	origin: 'runtime' | 'restored';
@@ -112,6 +116,7 @@ const OperationActivityContext = React.createContext<OperationActivityContextVal
 
 export default function OperationActivityProvider(props: React.PropsWithChildren) {
 	const navigate = useNavigate();
+	const messages = useMessages(OPERATION_ACTIVITY_MESSAGES);
 	const wallet = useWallet();
 	const market = useMarketProvider();
 	const [activities, setActivities] = React.useState<OperationActivity[]>([]);
@@ -198,14 +203,14 @@ export default function OperationActivityProvider(props: React.PropsWithChildren
 			setUploadActivities((current) =>
 				current.map((activity) =>
 					activity.assetId === completed.asset.id
-						? { ...activity, phase: 'done', status: 'Live on Bazar.' }
+						? { ...activity, phase: 'done', status: messages.uploadStatusLive }
 						: activity
 				)
 			);
 		};
 		window.addEventListener('bazar:mint-live', completeUpload);
 		return () => window.removeEventListener('bazar:mint-live', completeUpload);
-	}, []);
+	}, [messages]);
 	React.useEffect(() => {
 		for (const activity of mintActivities) {
 			if (
@@ -228,9 +233,10 @@ export default function OperationActivityProvider(props: React.PropsWithChildren
 					window.dispatchEvent(new CustomEvent('bazar:mint-live', { detail: updated }));
 					if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
 						try {
-							new Notification(`${updated.asset.name} is live on Bazar`, {
-								body: 'The accepted Arweave upload is now available in live process state.',
-							});
+							new Notification(
+								formatMessage(messages.mintLiveNotificationTitle, { name: updated.asset.name }),
+								{ body: messages.mintLiveNotificationBody }
+							);
 						} catch {
 							// The in-app completion notice remains available when system notifications fail.
 						}
@@ -251,7 +257,7 @@ export default function OperationActivityProvider(props: React.PropsWithChildren
 				mintWatchersRef.current.delete(id);
 			}
 		}
-	}, [mintActivities]);
+	}, [messages, mintActivities]);
 	React.useEffect(
 		() => () => {
 			for (const controller of mintWatchersRef.current.values()) controller.abort();
@@ -432,12 +438,14 @@ export default function OperationActivityProvider(props: React.PropsWithChildren
 						...input,
 						id,
 						phase,
-						status:
-							phase === 'approval'
-								? 'Waiting for wallet approval'
-								: phase === 'working'
-								? 'Starting transaction…'
-								: 'Waiting for details',
+						status: {
+							text:
+								phase === 'approval'
+									? messages.operationStatusApproval
+									: phase === 'working'
+									? messages.operationStatusWorking
+									: messages.operationStatusForm,
+						},
 						confirmations: 0,
 						confirmationTarget: 5,
 						createdAt: Date.now(),
@@ -452,7 +460,7 @@ export default function OperationActivityProvider(props: React.PropsWithChildren
 				setActiveId(id);
 			}
 		},
-		[]
+		[messages]
 	);
 	const update = React.useCallback(
 		(
@@ -520,16 +528,16 @@ export default function OperationActivityProvider(props: React.PropsWithChildren
 								...result,
 								phase: result.assetId ? 'tracking' : 'done',
 								status: result.assetId
-									? 'Submitted; accepted by Arweave. Waiting for live process state.'
+									? messages.uploadStatusAssetSubmitted
 									: activity.kind === 'collection' && result.extended
-									? 'Collection manifest update submitted to Arweave.'
-									: 'Collection process submitted to Arweave.',
+									? messages.uploadStatusCollectionUpdateSubmitted
+									: messages.uploadStatusCollectionSubmitted,
 						  }
 						: activity
 				)
 			);
 		},
-		[]
+		[messages]
 	);
 	const failUpload = React.useCallback((id: string, status: string) => {
 		setUploadActivities((current) =>

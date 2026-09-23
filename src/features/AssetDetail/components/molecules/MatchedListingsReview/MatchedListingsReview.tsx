@@ -4,7 +4,10 @@ import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { WalletIdentity } from 'components/organisms/WalletAddress';
 import { winstonToArDecimal } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { orderPriceLabel, tokenLabel } from '../../../model/fungible-market';
 import { fungibleListingAccessibleLabel } from '../../../model/fungible-operation';
 
@@ -13,48 +16,48 @@ export default function MatchedListingsReview(props: {
 	orders: SwapOrder[];
 	state: AssetState;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const plural = usePlural();
 	return (
-		<section aria-label="Purchase overview" className="matched-listings">
+		<section aria-label={messages.matchedListingsLabel} className="matched-listings">
 			<div className="matched-listings-heading">
-				<strong>Purchase overview</strong>
-				<span>
-					{props.orders.length} {props.orders.length === 1 ? 'listing' : 'listings'}
-				</span>
+				<strong>{messages.matchedListingsHeading}</strong>
+				<span>{plural(messages.matchedListingsCount, props.orders.length)}</span>
 			</div>
 			{props.orders.length ? (
-				<ul aria-label="Matched seller addresses" tabIndex={props.orders.length > 4 ? 0 : undefined}>
+				<ul aria-label={messages.matchedListingsSellers} tabIndex={props.orders.length > 4 ? 0 : undefined}>
 					{props.orders.map((order) => (
 						<li key={order.orderId}>
 							<span>
 								<strong>{tokenLabel(order.quantity, props.state)}</strong>
 								<small>
 									<ArCurrencyText>
-										{`${orderPriceLabel(order, props.state)} · ${winstonToArDecimal(
-											order.asking
-										)} AR total`}
+										{formatMessage(messages.matchedListingsLot, {
+											price: orderPriceLabel(order, props.state),
+											total: winstonToArDecimal(order.asking),
+										})}
 									</ArCurrencyText>
 								</small>
 							</span>
 							<WalletIdentity address={order.creator} />
 							{props.onRemove ? (
 								<Button
-									aria-label={`Remove ${fungibleListingAccessibleLabel(
-										order,
-										props.state
-									)} from purchase`}
+									aria-label={formatMessage(messages.matchedListingsRemoveLabel, {
+										listing: fungibleListingAccessibleLabel(order, props.state, messages),
+									})}
 									onClick={() => props.onRemove?.(order)}
 									size="custom"
 									type="button"
 									variant="danger"
 								>
-									Remove
+									{messages.matchedListingsRemove}
 								</Button>
 							) : null}
 						</li>
 					))}
 				</ul>
 			) : (
-				<p className="matched-listings-empty">Your purchase overview is empty.</p>
+				<p className="matched-listings-empty">{messages.matchedListingsEmpty}</p>
 			)}
 		</section>
 	);

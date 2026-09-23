@@ -8,6 +8,8 @@ import {
 } from 'api/discovery';
 import type { AssetState } from 'api/marketplace';
 
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+
 import type { TokenPricePoint } from '../components/organisms/TokenPriceChart';
 import { uniquePriceHistory } from '../model/asset-detail';
 import {
@@ -71,6 +73,7 @@ export function useAssetDetailActivity(input: {
 	state: AssetState | null;
 	walletAddress: string | null;
 }): AssetDetailActivity {
+	const errorMessages = useAppErrorMessages();
 	const [requested, setRequested] = React.useState(false);
 	const [activityRetry, setActivityRetry] = React.useState(0);
 	const [askRetry, setAskRetry] = React.useState(0);
@@ -210,11 +213,11 @@ export function useAssetDetailActivity(input: {
 	const retryActivity = React.useCallback(() => setActivityRetry((value) => value + 1), []);
 	const retryAsks = React.useCallback(() => setAskRetry((value) => value + 1), []);
 
-	const asks = assetActivityFeedView(askFeed);
+	const asks = assetActivityFeedView(askFeed, errorMessages);
 	const askPricePoints = React.useMemo(() => uniquePriceHistory(asks.events), [asks.events]);
 
 	return {
-		activity: assetActivityFeedView(activityFeed),
+		activity: assetActivityFeedView(activityFeed, errorMessages),
 		asks,
 		askPricePoints,
 		requestActivity,

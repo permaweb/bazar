@@ -18,9 +18,11 @@ import {
 	searchResultScore,
 } from 'api/collections/search';
 
+import { ASSET_DETAIL_MESSAGES } from 'features/AssetDetail/messages';
 import { assetStateErrorMessage } from 'features/AssetDetail/model/asset-detail';
 import { alphabetBrowseIndex, alphabetFilterIndex } from 'features/Collection/model/collection-market';
 import { appError } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 const collection: Collection = {
 	id: 'tokens',
@@ -86,7 +88,13 @@ describe('marketplace search ranking', () => {
 	});
 
 	it('turns compute rate limits into actionable recovery guidance', () => {
-		expect(assetStateErrorMessage(appError('rate-limited', { message: 'compute-429' }))).toBe(
+		expect(
+			assetStateErrorMessage(
+				appError('rate-limited', { message: 'compute-429' }),
+				ASSET_DETAIL_MESSAGES.en,
+				APP_ERROR_MESSAGES.en
+			)
+		).toBe(
 			'The configured AO peers are temporarily rate-limiting live-state requests. Wait briefly and retry, or review the AO Core settings in the header.'
 		);
 	});

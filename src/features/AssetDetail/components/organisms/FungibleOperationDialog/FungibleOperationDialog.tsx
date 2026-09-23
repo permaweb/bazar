@@ -19,10 +19,14 @@ import {
 } from 'components/molecules/TransactionDialogControl';
 import { Dialog } from 'components/organisms/Dialog';
 import { asyncData } from 'helpers/async-state';
+import { formatMessage } from 'helpers/i18n';
 import { formatTickerLabel } from 'helpers/token-display';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
 import { useFungibleOperationFlow } from '../../../hooks/useFungibleOperationFlow';
 import { useFungiblePurchaseQuote } from '../../../hooks/useFungiblePurchaseQuote';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { type FungibleOperation, operationLabel } from '../../../model/fungible-operation';
 import {
 	fungibleOperationDraftView,
@@ -57,17 +61,29 @@ export default function FungibleOperationDialog(props: {
 	onRestart(): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const errorMessages = useAppErrorMessages();
+	const plural = usePlural();
 	const hideTimerRef = React.useRef<number | null>(null);
 	const dialogRef = React.useRef<HTMLElement | null>(null);
 	const [draft, setDraft] = React.useState(() =>
 		initialFungibleOperationDraft(props.operation, props.state.denomination)
 	);
 	const [hiding, setHiding] = React.useState(false);
-	const tickerDisplay = formatTickerLabel(props.state.ticker || 'Token');
+	const tickerDisplay = formatTickerLabel(props.state.ticker, messages.validationDefaultTicker);
 	const eligible = React.useMemo(() => fungiblePurchaseCandidates(props.operation), [props.operation]);
 	const purchaseMatch = React.useMemo(
-		() => fungiblePurchaseDraftMatch(props.operation.kind, eligible, draft.quantity, props.state, tickerDisplay),
-		[draft.quantity, eligible, props.operation.kind, props.state, tickerDisplay]
+		() =>
+			fungiblePurchaseDraftMatch(
+				props.operation.kind,
+				eligible,
+				draft.quantity,
+				props.state,
+				tickerDisplay,
+				messages,
+				errorMessages
+			),
+		[draft.quantity, eligible, errorMessages, messages, props.operation.kind, props.state, tickerDisplay]
 	);
 	const matchedFills = purchaseMatch.match?.fills ?? [];
 	const matchedOrders = matchedFills.map((fill) => fill.order);
@@ -94,13 +110,26 @@ export default function FungibleOperationDialog(props: {
 		onClose: props.onClose,
 	});
 	const quoteData = asyncData(quote.state);
-	const outcome = fungibleOperationOutcome(props.operation, props.state, flow.visibleOrders, draftView);
-	const submitAction = fungibleOperationSubmit(props.operation, props.state, draftView, {
-		orders: matchedOrders,
-		quantity: fungiblePurchaseTotals(matchedOrders).quantity,
-		estimatedCost: quoteData?.total,
-		canAfford: quoteData?.canAfford,
-	});
+	const outcome = fungibleOperationOutcome(
+		props.operation,
+		props.state,
+		flow.visibleOrders,
+		draftView,
+		messages,
+		plural
+	);
+	const submitAction = fungibleOperationSubmit(
+		props.operation,
+		props.state,
+		draftView,
+		{
+			orders: matchedOrders,
+			quantity: fungiblePurchaseTotals(matchedOrders).quantity,
+			estimatedCost: quoteData?.total,
+			canAfford: quoteData?.canAfford,
+		},
+		messages
+	);
 	const quoteStatusId = React.useId();
 	const dialogTitleId = React.useId();
 	const operationLabelId = React.useId();
@@ -172,11 +201,23 @@ export default function FungibleOperationDialog(props: {
 						/>
 					) : null
 				}
-				control={<TransactionDialogControl hiding={hiding} phase={flow.phase} onClick={handleDismiss} />}
-				eyebrow={compactPurchaseForm ? undefined : operationLabel(props.operation.kind)}
+				control={
+					<TransactionDialogControl
+						closeLabel={messages.assetDetailDialogClose}
+						hideLabel={messages.assetDetailDialogHideTransaction}
+						hiding={hiding}
+						phase={flow.phase}
+						onClick={handleDismiss}
+					/>
+				}
+				eyebrow={compactPurchaseForm ? undefined : operationLabel(props.operation.kind, messages)}
 				eyebrowId={operationLabelId}
 				layout="asset"
-				title={compactPurchaseForm ? `Buy ${props.asset.name}` : props.asset.name}
+				title={
+					compactPurchaseForm
+						? formatMessage(messages.operationBuyTitle, { name: props.asset.name })
+						: props.asset.name
+				}
 				titleId={dialogTitleId}
 			/>
 			<OperationOutcomeAnnouncement

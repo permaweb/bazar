@@ -20,10 +20,11 @@ export default function TokenMarketRow(props: {
 	secondaryMetric?: TokenMarketMetric;
 	badge?: string;
 	priority?: boolean;
+	tickerFallback: string;
 	onFollow?: () => void;
 	onWarm?: () => void;
 }) {
-	const ticker = props.asset.ticker?.trim() || 'TOKEN';
+	const ticker = props.asset.ticker?.trim() || props.tickerFallback;
 	return (
 		<Link
 			className="token-market-row"

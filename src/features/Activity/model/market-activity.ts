@@ -2,6 +2,10 @@ import type { Collection } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 import { type AssetState, parseSwapOrder } from 'api/marketplace';
 
+import { formatMessage } from 'helpers/i18n';
+
+import type { ActivityMessages } from '../messages';
+
 const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
 const absoluteTime = new Intl.DateTimeFormat(undefined, {
 	month: 'short',
@@ -34,20 +38,30 @@ export function marketActivityReservation(
 	return { deadline: order.reservedUntil, expired: effectiveOrder.status === 'open' };
 }
 
-export function marketActivityLabel(action: CollectionActivityEvent['action'], purchaseConfirmed = false) {
+export function marketActivityLabel(
+	action: CollectionActivityEvent['action'],
+	messages: ActivityMessages,
+	purchaseConfirmed = false
+) {
 	return {
-		'make-offer': 'Listing submitted',
-		'register-interest': purchaseConfirmed ? 'Purchase confirmed' : 'Purchase submitted',
-		transfer: 'Transfer submitted',
-		'cancel-order': 'Cancellation submitted',
+		'make-offer': messages.activityLabelListing,
+		'register-interest': purchaseConfirmed
+			? messages.activityLabelPurchaseConfirmed
+			: messages.activityLabelPurchaseSubmitted,
+		transfer: messages.activityLabelTransfer,
+		'cancel-order': messages.activityLabelCancellation,
 	}[action];
 }
 
-export function marketActivityDetail(event: CollectionActivityEvent) {
-	if (event.action === 'make-offer' && event.asking) return `${activityWinstonToAr(event.asking)} AR total`;
-	if (event.action === 'transfer' && event.recipient) return `To ${shortActivityValue(event.recipient)}`;
-	if (event.action === 'register-interest' && event.orderId) return `Order ${shortActivityValue(event.orderId)}`;
-	if (event.action === 'cancel-order' && event.orderId) return `Order ${shortActivityValue(event.orderId)}`;
+export function marketActivityDetail(event: CollectionActivityEvent, messages: ActivityMessages) {
+	if (event.action === 'make-offer' && event.asking)
+		return formatMessage(messages.activityDetailAsking, { value: activityWinstonToAr(event.asking) });
+	if (event.action === 'transfer' && event.recipient)
+		return formatMessage(messages.activityDetailRecipient, { recipient: shortActivityValue(event.recipient) });
+	if (event.action === 'register-interest' && event.orderId)
+		return formatMessage(messages.activityDetailOrder, { order: shortActivityValue(event.orderId) });
+	if (event.action === 'cancel-order' && event.orderId)
+		return formatMessage(messages.activityDetailOrder, { order: shortActivityValue(event.orderId) });
 	return '';
 }
 
@@ -108,6 +122,7 @@ export function marketActivityRow(
 	event: CollectionActivityEvent,
 	context: {
 		now: number;
+		messages: ActivityMessages;
 		collection?: Pick<Collection, 'id' | 'name'>;
 		collectionId?: string;
 		reservationState?: AssetState | null;
@@ -115,16 +130,22 @@ export function marketActivityRow(
 		eventAmount?(event: CollectionActivityEvent): string;
 	}
 ): MarketActivityRow {
+	const messages = context.messages;
 	const reservation = marketActivityReservation(event, context.reservationState);
 	const transactionHeight = event.purchaseProof?.height ?? event.height;
-	const transactionKind = event.purchaseProof ? 'settlement proof' : 'submitted transaction';
+	const transactionKind = event.purchaseProof
+		? messages.activityTransactionSettlementProof
+		: messages.activityTransactionSubmitted;
 	const timestamp = event.timestamp
 		? formatMarketActivityTimestamp(event.timestamp, context.now)
-		: 'Pending confirmation';
+		: messages.activityPendingConfirmation;
 	return {
 		reservation,
-		label: marketActivityLabel(event.action, Boolean(event.purchaseProof)),
-		detail: [context.collection?.name, (context.describeEvent ?? marketActivityDetail)(event)]
+		label: marketActivityLabel(event.action, messages, Boolean(event.purchaseProof)),
+		detail: [
+			context.collection?.name,
+			context.describeEvent ? context.describeEvent(event) : marketActivityDetail(event, messages),
+		]
 			.filter(Boolean)
 			.join(' · '),
 		amount: context.eventAmount?.(event) ?? '',
@@ -136,12 +157,18 @@ export function marketActivityRow(
 		timestampDateTime: event.timestamp ? new Date(event.timestamp * 1_000).toISOString() : undefined,
 		transactionLabel:
 			transactionHeight > 0
-				? `View ${transactionKind} included in block ${transactionHeight.toLocaleString()}`
-				: 'View submitted transaction',
+				? formatMessage(messages.activityTransactionInBlockLabel, {
+						kind: transactionKind,
+						height: transactionHeight.toLocaleString(),
+				  })
+				: messages.activityTransactionSubmittedLabel,
 		transactionSummary:
 			transactionHeight > 0
-				? `View ${transactionKind} · included in block ${transactionHeight.toLocaleString()}`
-				: 'View submitted transaction',
+				? formatMessage(messages.activityTransactionInBlockSummary, {
+						kind: transactionKind,
+						height: transactionHeight.toLocaleString(),
+				  })
+				: messages.activityTransactionSubmittedLabel,
 	};
 }
 

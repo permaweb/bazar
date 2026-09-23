@@ -1,14 +1,20 @@
+import { useMessages } from 'providers/LanguageProvider';
+
+import { FOOTER_MESSAGES } from './messages';
+
 export default function Footer() {
+	const language = useMessages(FOOTER_MESSAGES);
+	const [attributionLead, attributionTrail] = language.footerAttribution.split('{provider}');
 	return (
 		<footer className="site-footer">
 			<div className="site-footer-content max-view-wrapper">
-				<span>Bazar 2.0</span>
+				<span>{language.footerProduct}</span>
 				<span>
-					Ownership, offers, and settlement live on Arweave. Charts by{' '}
+					{attributionLead}
 					<a href="https://www.tradingview.com/" rel="noreferrer" target="_blank">
-						TradingView
+						{language.footerChartProvider}
 					</a>
-					.
+					{attributionTrail}
 				</span>
 			</div>
 		</footer>

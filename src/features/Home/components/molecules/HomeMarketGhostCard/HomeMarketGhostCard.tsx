@@ -1,6 +1,11 @@
 import { LoaderCircle } from 'lucide-react';
 
+import { useMessages } from 'providers/LanguageProvider';
+
+import { HOME_MESSAGES } from '../../../messages';
+
 export default function HomeMarketGhostCard(props: { kind: 'collection' }) {
+	const messages = useMessages(HOME_MESSAGES);
 	const collection = props.kind === 'collection';
 	return (
 		<div
@@ -8,8 +13,8 @@ export default function HomeMarketGhostCard(props: { kind: 'collection' }) {
 			role="status"
 		>
 			<LoaderCircle aria-hidden="true" />
-			<strong>{collection ? 'Loading more collections' : 'Loading more assets'}</strong>
-			<span>{collection ? 'Checking indexes and live floors.' : 'Checking active listings and prices.'}</span>
+			<strong>{collection ? messages.homeLoadingCollections : messages.homeLoadingAssets}</strong>
+			<span>{collection ? messages.homeCheckingIndexes : messages.homeCheckingListings}</span>
 		</div>
 	);
 }

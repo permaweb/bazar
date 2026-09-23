@@ -19,13 +19,16 @@ import {
 	type UdlPreset,
 } from 'api/mint';
 
-import { type AppError, appErrorMessage, toAppError } from 'helpers/app-error';
+import { type AppError, toAppError } from 'helpers/app-error';
 import { asyncData, type AsyncState, isAsyncPending } from 'helpers/async-state';
 import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata } from 'helpers/audio-metadata';
+import { useAppErrorMessage, useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useOperationActivity } from 'providers/OperationActivityProvider';
 import { useWallet } from 'providers/WalletProvider';
 
+import { CREATE_MESSAGES } from '../messages';
 import {
 	collectionMintPhaseLabel,
 	fungibleMintResult,
@@ -41,7 +44,6 @@ import {
 } from '../model/mint-flow';
 import {
 	assetMintInput,
-	COLLECTION_FILE_LIMIT_ERROR,
 	type CreatorMode,
 	fallbackAssetName,
 	fungibleLogoError,
@@ -158,6 +160,9 @@ export type AssetCreator = {
 
 /** The creator's inputs, cost estimates, and asset, collection, and token mint flows. */
 export function useAssetCreator(): AssetCreator {
+	const messages = useMessages(CREATE_MESSAGES);
+	const errorMessage = useAppErrorMessage();
+	const errorMessages = useAppErrorMessages();
 	const market = useMarketProvider();
 	const wallet = useWallet();
 	const uploads = useOperationActivity();
@@ -214,8 +219,8 @@ export function useAssetCreator(): AssetCreator {
 
 	const clearError = React.useCallback(() => dispatch({ type: 'error-changed', error: null }), []);
 	const reportEstimateError = React.useCallback(
-		(error: AppError) => dispatch({ type: 'error-changed', error: appErrorMessage(error) }),
-		[]
+		(error: AppError) => dispatch({ type: 'error-changed', error: errorMessage(error) }),
+		[errorMessage]
 	);
 	const assetEstimate = useMintEstimate(assetRequest, estimateAsset, clearError, reportEstimateError);
 	const collectionEstimate = useMintEstimate(collectionRequest, estimateCollection, clearError, reportEstimateError);
@@ -244,7 +249,7 @@ export function useAssetCreator(): AssetCreator {
 		collectionEstimate.discard();
 		dispatch({
 			type: 'collection-files-selected',
-			error: next.length > MAX_COLLECTION_FILES ? COLLECTION_FILE_LIMIT_ERROR : null,
+			error: next.length > MAX_COLLECTION_FILES ? messages.mintCollectionFileLimitError : null,
 		});
 	};
 	const completeMint = (asset: MintedAsset, uploadId: string) => {
@@ -290,7 +295,7 @@ export function useAssetCreator(): AssetCreator {
 		},
 		flow,
 		working,
-		phaseLabel: mintPhaseLabel(flow),
+		phaseLabel: mintPhaseLabel(flow, messages),
 		submitDisabled: mintSubmitDisabled({
 			mode,
 			working,
@@ -365,7 +370,7 @@ export function useAssetCreator(): AssetCreator {
 			setLogo(rejection ? null : next);
 			setLogoTxId('');
 			fungibleEstimate.discard();
-			dispatch({ type: 'error-changed', error: rejection ? appErrorMessage(rejection) : null });
+			dispatch({ type: 'error-changed', error: rejection ? errorMessage(rejection) : null });
 			return !rejection;
 		},
 		setLicenseEnabled: (enabled) => {
@@ -391,7 +396,12 @@ export function useAssetCreator(): AssetCreator {
 				wallet.openConnectDialog();
 				return;
 			}
-			const invalid = mintSubmissionError(mode, { file, collectionFiles, fungibleInput, logo });
+			const invalid = mintSubmissionError(
+				mode,
+				{ file, collectionFiles, fungibleInput, logo },
+				messages,
+				errorMessages
+			);
 			if (invalid) {
 				dispatch({ type: 'error-changed', error: invalid });
 				return;
@@ -405,7 +415,7 @@ export function useAssetCreator(): AssetCreator {
 					owner,
 					kind: mode,
 					name: name.trim(),
-					status: 'Preparing secure wallet approvals…',
+					status: messages.mintUploadPreparing,
 				});
 			}
 			try {
@@ -427,7 +437,7 @@ export function useAssetCreator(): AssetCreator {
 							onTransaction: (transaction) => uploads.recordUploadTransaction(uploadId, transaction),
 							onPhase: (phase) => {
 								dispatch({ type: 'collection-phase', phase });
-								uploads.updateUpload(uploadId, collectionMintPhaseLabel(phase));
+								uploads.updateUpload(uploadId, collectionMintPhaseLabel(phase, messages));
 							},
 						}
 					);
@@ -445,13 +455,13 @@ export function useAssetCreator(): AssetCreator {
 						onTransaction: (transaction) => uploads.recordUploadTransaction(uploadId, transaction),
 						onPhase: (phase) => {
 							dispatch({ type: 'asset-phase', phase });
-							uploads.updateUpload(uploadId, mintPhaseStatus(phase));
+							uploads.updateUpload(uploadId, mintPhaseStatus(phase, messages));
 						},
 					}
 				);
 				completeMint(minted.asset, uploadId);
 			} catch (cause) {
-				const message = appErrorMessage(toAppError(cause, 'unknown'));
+				const message = errorMessage(toAppError(cause, 'unknown'));
 				dispatch({ type: 'mint-failed', mode, error: message, draft: getMintDraft(owner) });
 				if (mode !== 'fungible') uploads.failUpload(uploadId, message);
 			}
@@ -467,19 +477,19 @@ export function useAssetCreator(): AssetCreator {
 				owner,
 				kind: 'asset',
 				name: draft.name,
-				status: 'Recovering the saved asset upload…',
+				status: messages.mintUploadRecovering,
 			});
 			try {
 				const minted = await new AssetMintClient().resume(draft, owner, {
 					onTransaction: (transaction) => uploads.recordUploadTransaction(uploadId, transaction),
 					onPhase: (phase) => {
 						dispatch({ type: 'asset-phase', phase });
-						uploads.updateUpload(uploadId, mintPhaseStatus(phase));
+						uploads.updateUpload(uploadId, mintPhaseStatus(phase, messages));
 					},
 				});
 				completeMint(minted.asset, uploadId);
 			} catch (cause) {
-				const message = appErrorMessage(toAppError(cause, 'unknown'));
+				const message = errorMessage(toAppError(cause, 'unknown'));
 				dispatch({ type: 'resume-failed', error: message });
 				uploads.failUpload(uploadId, message);
 			}

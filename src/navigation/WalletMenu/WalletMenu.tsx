@@ -6,20 +6,27 @@ import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Tooltip } from 'components/atoms/Tooltip';
-import { appErrorMessage, toAppError } from 'helpers/app-error';
+import { toAppError } from 'helpers/app-error';
+import { formatMessage } from 'helpers/i18n';
 import { useAccountProfileSummary } from 'hooks/useAccountProfileSummary';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import { useTheme } from 'providers/ThemeProvider';
 import { useWallet } from 'providers/WalletProvider';
 
+import { WALLET_MENU_MESSAGES, type WalletMenuMessages } from './messages';
+
 const THEME_OPTIONS = [
-	{ id: 'system', label: 'System', Icon: Monitor },
-	{ id: 'light', label: 'Light', Icon: Sun },
-	{ id: 'dimmed', label: 'Dimmed', Icon: SunDim },
-	{ id: 'dark', label: 'Dark', Icon: Moon },
+	{ id: 'system', labelKey: 'walletMenuThemeSystem', Icon: Monitor },
+	{ id: 'light', labelKey: 'walletMenuThemeLight', Icon: Sun },
+	{ id: 'dimmed', labelKey: 'walletMenuThemeDimmed', Icon: SunDim },
+	{ id: 'dark', labelKey: 'walletMenuThemeDark', Icon: Moon },
 ] as const;
 
 export default function WalletMenu() {
 	const navigate = useNavigate();
+	const language = useMessages(WALLET_MENU_MESSAGES);
+	const errorMessage = useAppErrorMessage();
 	const theme = useTheme();
 	const wallet = useWallet();
 	const appearanceLabelId = React.useId();
@@ -30,7 +37,7 @@ export default function WalletMenu() {
 	const [disconnecting, setDisconnecting] = React.useState(false);
 	const [error, setError] = React.useState('');
 	const profile = useAccountProfileSummary(wallet.address ?? '');
-	const walletLabel = walletMenuLabel(wallet.address, profile.displayName);
+	const walletLabel = walletMenuLabel(wallet.address, profile.displayName, language.walletMenuConnectShort);
 
 	React.useEffect(() => {
 		if (!open) return;
@@ -62,7 +69,7 @@ export default function WalletMenu() {
 			setCopied(true);
 			window.setTimeout(() => setCopied(false), 1800);
 		} catch {
-			setError('Address could not be copied.');
+			setError(language.walletMenuCopyFailed);
 		}
 	};
 	const disconnect = async () => {
@@ -72,7 +79,7 @@ export default function WalletMenu() {
 			await wallet.disconnect();
 			setOpen(false);
 		} catch (cause) {
-			setError(appErrorMessage(toAppError(cause, 'wallet-disconnect-failed')));
+			setError(errorMessage(toAppError(cause, 'wallet-disconnect-failed')));
 		} finally {
 			setDisconnecting(false);
 		}
@@ -80,13 +87,17 @@ export default function WalletMenu() {
 
 	return (
 		<div className="wallet-menu" ref={root}>
-			<Tooltip content={wallet.address || 'Connect wallet'} disabled={open}>
+			<Tooltip content={wallet.address || language.walletMenuConnect} disabled={open}>
 				{(tooltipId) => (
 					<Button
 						aria-describedby={tooltipId}
 						aria-expanded={wallet.address ? open : undefined}
 						aria-haspopup={wallet.address ? 'menu' : undefined}
-						aria-label={wallet.address ? `Wallet ${wallet.address}` : 'Connect wallet'}
+						aria-label={
+							wallet.address
+								? formatMessage(language.walletMenuWallet, { address: wallet.address })
+								: language.walletMenuConnect
+						}
 						className="wallet"
 						onClick={(event) => {
 							if (!wallet.address) {
@@ -106,37 +117,39 @@ export default function WalletMenu() {
 				)}
 			</Tooltip>
 			{open && wallet.address ? (
-				<div aria-label="Wallet options" className="wallet-dropdown" role="menu">
+				<div aria-label={language.walletMenuOptions} className="wallet-dropdown" role="menu">
 					<div className="wallet-dropdown-header">
 						<Icon icon={Wallet} />
 						<div>
-							<span>Connected wallet</span>
+							<span>{language.walletMenuConnected}</span>
 							<strong>{walletLabel}</strong>
 						</div>
 					</div>
-					<div aria-label="Balances" className="wallet-dropdown-balances" role="group">
+					<div aria-label={language.walletMenuBalances} className="wallet-dropdown-balances" role="group">
 						<div className="wallet-dropdown-balance">
-							<span>AR balance</span>
+							<span>{language.walletMenuArBalance}</span>
 							<strong aria-live="polite">
 								<ArCurrencyText>
 									{tokenBalanceLabel(
 										wallet.arBalance,
 										wallet.arBalanceStatus,
 										'AR',
-										wallet.arBalanceDenomination
+										wallet.arBalanceDenomination,
+										language
 									)}
 								</ArCurrencyText>
 							</strong>
 						</div>
 						{wallet.aoBalanceStatus !== 'idle' ? (
 							<div className="wallet-dropdown-balance">
-								<span>AO balance</span>
+								<span>{language.walletMenuAoBalance}</span>
 								<strong aria-live="polite">
 									{tokenBalanceLabel(
 										wallet.aoBalance,
 										wallet.aoBalanceStatus,
 										'AO',
-										wallet.aoBalanceDenomination
+										wallet.aoBalanceDenomination,
+										language
 									)}
 								</strong>
 							</div>
@@ -153,18 +166,18 @@ export default function WalletMenu() {
 							variant="ghost"
 						>
 							<Icon icon={UserRound} size="sm" />
-							My profile
+							{language.walletMenuProfile}
 						</Button>
 						<Button onClick={() => void copyAddress()} role="menuitem" size="custom" variant="ghost">
 							<Icon icon={Copy} size="sm" />
-							{copied ? 'Copied' : 'Copy address'}
+							{copied ? language.walletMenuCopied : language.walletMenuCopyAddress}
 						</Button>
 					</div>
 					<div aria-labelledby={appearanceLabelId} className="wallet-dropdown-appearance" role="group">
 						<span className="wallet-dropdown-section-label" id={appearanceLabelId}>
-							Appearance
+							{language.walletMenuAppearance}
 						</span>
-						{THEME_OPTIONS.map(({ id, label, Icon }) => {
+						{THEME_OPTIONS.map(({ id, labelKey, Icon }) => {
 							const active = theme.preference === id;
 							return (
 								<Button
@@ -177,7 +190,7 @@ export default function WalletMenu() {
 									variant="ghost"
 								>
 									<Icon className="ui-icon ui-icon--sm" aria-hidden="true" />
-									{label}
+									{language[labelKey]}
 									{active ? <Check className="theme-option-check" aria-hidden="true" /> : null}
 								</Button>
 							);
@@ -192,7 +205,7 @@ export default function WalletMenu() {
 							variant="danger"
 						>
 							<Icon icon={LogOut} size="sm" />
-							{disconnecting ? 'Disconnecting…' : 'Disconnect'}
+							{disconnecting ? language.walletMenuDisconnecting : language.walletMenuDisconnect}
 						</Button>
 					</div>
 					{error ? <p role="alert">{error}</p> : null}
@@ -206,25 +219,35 @@ function shortAddress(address: string) {
 	return `${address.slice(0, 6)}…${address.slice(-5)}`;
 }
 
-export function walletMenuLabel(address?: string | null, displayName?: string | null) {
-	return displayName?.trim() || (address ? shortAddress(address) : 'Connect');
+/** `connectLabel` is the already-resolved copy shown before a wallet is connected. */
+export function walletMenuLabel(
+	address: string | null | undefined,
+	displayName: string | null | undefined,
+	connectLabel: string
+) {
+	return displayName?.trim() || (address ? shortAddress(address) : connectLabel);
 }
 
-export function arBalanceLabel(balance: bigint | null, status: 'idle' | 'loading' | 'ready' | 'error'): string {
-	return tokenBalanceLabel(balance, status, 'AR', 12);
+export function arBalanceLabel(
+	balance: bigint | null,
+	status: 'idle' | 'loading' | 'ready' | 'error',
+	language: WalletMenuMessages
+): string {
+	return tokenBalanceLabel(balance, status, 'AR', 12, language);
 }
 
 export function tokenBalanceLabel(
 	balance: bigint | null,
 	status: 'idle' | 'loading' | 'ready' | 'error',
 	symbol: string,
-	denomination: number
+	denomination: number,
+	language: WalletMenuMessages
 ): string {
-	if (status === 'error') return 'Unavailable';
-	if (status !== 'ready' || balance === null) return 'Loading…';
+	if (status === 'error') return language.walletMenuBalanceUnavailable;
+	if (status !== 'ready' || balance === null) return language.walletMenuBalanceLoading;
 	const atomicScale = 10n ** BigInt(denomination);
 	const fixedBalance = (balance * 10_000n + atomicScale / 2n) / atomicScale;
 	const whole = fixedBalance / 10_000n;
 	const fraction = (fixedBalance % 10_000n).toString().padStart(4, '0');
-	return `${whole.toLocaleString()}.${fraction} ${symbol}`;
+	return formatMessage(language.walletMenuBalance, { amount: `${whole.toLocaleString()}.${fraction}`, symbol });
 }

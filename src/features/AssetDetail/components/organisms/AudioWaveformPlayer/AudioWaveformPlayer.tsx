@@ -3,11 +3,15 @@ import { Pause, Play } from 'lucide-react';
 
 import { Button } from 'components/atoms/Button';
 import { RangeInput } from 'components/atoms/RangeInput';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useAudioWaveformPlayer } from '../../../hooks/useAudioWaveformPlayer';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { audioTimelineKeyTarget, formatAudioTime } from '../../../model/audio-waveform';
 
 export default function AudioWaveformPlayer(props: { name: string; src: string }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const player = useAudioWaveformPlayer(props.src);
 	const draggingRef = React.useRef(false);
 
@@ -34,7 +38,10 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 				src={props.src}
 			/>
 			<Button
-				aria-label={`${player.playing ? 'Pause' : 'Play'} ${props.name}`}
+				aria-label={formatMessage(messages.audioControlLabel, {
+					action: player.playing ? messages.audioPause : messages.audioPlay,
+					name: props.name,
+				})}
 				className="audio-waveform-play"
 				onClick={player.togglePlayback}
 				size="custom"
@@ -48,12 +55,12 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 					</span>
 					<small aria-live="polite">
 						{player.status === 'idle'
-							? 'Play to load waveform'
+							? messages.audioStatusIdle
 							: player.status === 'loading'
-							? 'Reading waveform…'
+							? messages.audioStatusLoading
 							: player.status === 'unavailable'
-							? 'Waveform unavailable'
-							: 'Drag to seek'}
+							? messages.audioStatusUnavailable
+							: messages.audioStatusReady}
 					</small>
 				</div>
 				<div className="audio-waveform-viewport">
@@ -102,10 +109,11 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 							style={{ left: `${player.progress * 100}%` }}
 						/>
 						<RangeInput
-							aria-label={`${props.name} timeline`}
-							aria-valuetext={`${formatAudioTime(player.currentTime)} of ${formatAudioTime(
-								player.duration
-							)}`}
+							aria-label={formatMessage(messages.audioTimelineLabel, { name: props.name })}
+							aria-valuetext={formatMessage(messages.audioTimelineValue, {
+								current: formatAudioTime(player.currentTime),
+								duration: formatAudioTime(player.duration),
+							})}
 							className="audio-waveform-range"
 							disabled={!player.duration}
 							max={player.duration || 1}

@@ -3,7 +3,8 @@ import React from 'react';
 import { Button } from 'components/atoms/Button';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { TxAddress } from 'components/atoms/TxAddress';
-import { useMessages } from 'providers/LanguageProvider';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
 import { useEstimatedSyncProgress } from '../../../hooks/useEstimatedSyncProgress';
 import { useTransactionSyncRace } from '../../../hooks/useTransactionSyncRace';
@@ -39,6 +40,7 @@ export default function ArweaveTransactionSync(props: {
 	telemetryPanelEnabled?: boolean;
 }) {
 	const language = useMessages(TRANSACTION_SYNC_MESSAGES);
+	const plural = usePlural();
 	const header = transactionSyncHeader(props.steps, props.activeStep, props.pendingAfterConfirmation);
 	const race = useTransactionSyncRace({
 		steps: props.steps,
@@ -64,26 +66,40 @@ export default function ArweaveTransactionSync(props: {
 					<S.TransactionHeader>
 						<div>
 							<span>{language.transaction}</span>
-							<TxAddress address={header.transaction.id} wrap={false} tooltipPosition={'right'} />
+							<TxAddress
+								address={header.transaction.id}
+								labels={{
+									copy: language.transactionSyncCopyAddress,
+									copiedTooltip: language.transactionSyncCopiedTooltip,
+									copiedLabel: language.transactionSyncCopiedAddress,
+									copiedAnnouncement: language.transactionSyncCopiedAddressAnnouncement,
+								}}
+								wrap={false}
+								tooltipPosition={'right'}
+							/>
 						</div>
 						<S.Depth
 							aria-label={
 								header.terminalDepthBeyondTarget
-									? `${header.displayedConfirmationDepth} confirmation${
-											header.displayedConfirmationDepth === 1 ? '' : 's'
-									  }`
+									? plural(
+											language.transactionSyncConfirmationCount,
+											header.displayedConfirmationDepth
+									  )
 									: header.lifecycle.pending && !header.active?.terminal
 									? props.pendingAfterConfirmation
 									: header.verificationDelayed
 									? language.transactionSyncVerificationDelayed
-									: `${header.displayedConfirmationDepth} of ${header.target}`
+									: formatMessage(language.transactionSyncConfirmationDepthOfTarget, {
+											depth: header.displayedConfirmationDepth,
+											target: header.target,
+									  })
 							}
 							$success={header.lifecycle.complete}
 						>
 							{header.terminalDepthBeyondTarget ? (
 								<>
 									<strong>{header.displayedConfirmationDepth}</strong>
-									<span> confirmations</span>
+									<span> {language.transactionSyncConfirmations}</span>
 								</>
 							) : header.lifecycle.pending && !header.active?.terminal ? (
 								<strong>{props.pendingAfterConfirmation}</strong>
@@ -125,10 +141,9 @@ export default function ArweaveTransactionSync(props: {
 								<strong>
 									{props.skipKind === 'yolo'
 										? language.transactionSyncYoloTitle
-										: language.transactionSyncSkipTitle.replace(
-												'{depth}',
-												String(header.confirmationDepth)
-										  )}
+										: formatMessage(language.transactionSyncSkipTitle, {
+												depth: header.confirmationDepth,
+										  })}
 								</strong>
 								<small>
 									{props.skipKind === 'yolo'
@@ -163,7 +178,9 @@ export default function ArweaveTransactionSync(props: {
 							<React.Suspense fallback={<TransactionRendererFallback lanes={race.lanes} />}>
 								<TransactionSequenceCable3D
 									lanes={race.lanes}
-									ariaLabel={`${language.transactionSyncRacePrototypeInfinityCable}: ${props.subject}`}
+									ariaLabel={formatMessage(language.transactionSyncRacePrototypeInfinityCable, {
+										subject: props.subject,
+									})}
 									active={props.active ?? true}
 									layout={'bundle'}
 									phaseLabels={race.observedSteps.map((step) => step.label)}

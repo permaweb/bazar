@@ -2,8 +2,6 @@ import {
 	assetMatchesCollectionQuery,
 	type AssetSummary,
 	type Collection,
-	collectionDisplayName,
-	collectionEyebrow,
 	collectionSearchAssets,
 } from 'api/collections';
 import { type AssetCandidate, isLiveListing, type ResolvedAsset } from 'api/discovery';
@@ -13,6 +11,9 @@ import type { CollectionMintPhase } from 'api/mint';
 import { orderPriceLabel } from 'features/Catalogue';
 import { type AppError, appError, type RequestFailureKind, requestFailureKind } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+
+import type { CollectionMessages } from '../messages';
 
 export type CollectionCardPrice =
 	| { status: 'resolved'; label: string | null }
@@ -43,9 +44,23 @@ export type CollectionIdentity = {
 
 export const COLLECTION_ALPHABET = ['all', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
 
-export function collectionIdentity(collection: Collection): CollectionIdentity {
-	const name = collectionDisplayName(collection);
-	return { name, eyebrow: collectionEyebrow(collection), monogram: name.slice(0, 1) };
+function collectionEyebrowCopy(kind: Collection['kind'], messages: CollectionMessages): string {
+	if (kind === 'names') return messages.collectionEyebrowNames;
+	if (kind === 'tokens') return messages.collectionEyebrowTokens;
+	return messages.collectionEyebrowImages;
+}
+
+export function collectionIdentity(collection: Collection, messages: CollectionMessages): CollectionIdentity {
+	const name = collection.kind === 'tokens' ? messages.collectionTokensName : collection.name;
+	return { name, eyebrow: collectionEyebrowCopy(collection.kind, messages), monogram: name.slice(0, 1) };
+}
+
+/** The description a collection page shows: its own manifest text, or this feature's wording for a built-in code. */
+export function collectionDescriptionText(collection: Collection, messages: CollectionMessages) {
+	if (collection.descriptionCode === 'fungible-tokens') return messages.collectionDescriptionFungibleTokens;
+	if (collection.descriptionCode === 'arweave-names') return messages.collectionDescriptionArweaveNames;
+	if (collection.descriptionCode === 'permanent-collection') return messages.collectionDescriptionPermanent;
+	return collection.description;
 }
 
 export function collectionPriceValue(price?: CollectionCardPrice): number | null {
@@ -137,14 +152,16 @@ export function mergeResolvedListingBatch(current: ResolvedAsset[], outcomes: It
 	return [...byProcessId.values()];
 }
 
-export function collectionAppendPhaseLabel(phase: CollectionMintPhase) {
+export function collectionAppendPhaseLabel(phase: CollectionMintPhase, messages: CollectionMessages) {
 	if (phase.kind === 'asset') {
-		const action = phase.phase.startsWith('signing') ? 'Approve in your wallet' : 'Uploading to Arweave';
-		return `Asset ${phase.index + 1} of ${phase.total} · ${action}`;
+		return formatMessage(
+			phase.phase.startsWith('signing') ? messages.appendPhaseAssetSigning : messages.appendPhaseAssetUploading,
+			{ index: phase.index + 1, total: phase.total }
+		);
 	}
 	if (phase.kind === 'manifest')
-		return phase.phase === 'signing' ? 'Approve the new manifest' : 'Publishing manifest';
-	return phase.phase === 'signing' ? 'Approve the collection update' : 'Updating collection carrier';
+		return phase.phase === 'signing' ? messages.appendPhaseManifestSigning : messages.appendPhaseManifestPublishing;
+	return phase.phase === 'signing' ? messages.appendPhaseCarrierSigning : messages.appendPhaseCarrierUpdating;
 }
 
 export function alphabetFilterIndex(key: string, current: number, count: number): number | null {
@@ -280,11 +297,15 @@ export function collectionListingPrice(
 	return { status: 'resolved', label: order && result ? orderPriceLabel(order, result.state) : null };
 }
 
-export function collectionCardPriceLabel(price: CollectionCardPrice | undefined, checkFailed: boolean): string {
-	if (price?.status === 'unavailable') return 'Unavailable';
-	if (price?.status === 'unindexed') return 'Unlisted';
-	if (price?.status === 'resolved') return price.label ?? 'Not listed';
-	return checkFailed ? 'Unavailable' : 'Checking…';
+export function collectionCardPriceLabel(
+	price: CollectionCardPrice | undefined,
+	checkFailed: boolean,
+	messages: CollectionMessages
+): string {
+	if (price?.status === 'unavailable') return messages.priceUnavailable;
+	if (price?.status === 'unindexed') return messages.priceUnlisted;
+	if (price?.status === 'resolved') return price.label ?? messages.priceNotListed;
+	return checkFailed ? messages.priceUnavailable : messages.priceChecking;
 }
 
 export function collectionCardPriceListed(price: CollectionCardPrice | undefined): boolean {

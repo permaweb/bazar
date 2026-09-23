@@ -18,7 +18,10 @@ import { WalletAddress } from 'components/organisms/WalletAddress';
 import { type ArweaveSyncStep, LazyArweaveTransactionSync } from 'features/TransactionSync';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { OPERATIONS_MESSAGES } from '../../../messages';
 import { PurchaseSettlementReceipt } from '../PurchaseSettlementReceipt';
 
 // The confirmed result of an atomic operation with its receipt and a route back to the updated asset.
@@ -40,16 +43,23 @@ export default function AtomicOperationOutcome(props: {
 	startedAt: number | undefined;
 	onViewAsset(): void;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
+	const artworkAlt = formatMessage(messages.outcomeArtworkAlt, { asset: props.asset.name });
+
 	return (
 		<div className="result success">
 			<OperationOutcome
 				title={props.result.title}
 				detail={props.result.detail}
-				status={props.kind === 'buy' ? `Confirmations: ${props.paymentConfirmations}` : undefined}
+				status={
+					props.kind === 'buy'
+						? formatMessage(messages.outcomeConfirmations, { count: props.paymentConfirmations })
+						: undefined
+				}
 			>
 				{props.kind === 'buy' && props.purchaseSteps.length ? (
 					<div className="result-outcome-sync">
-						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+						<React.Suspense fallback={<Loading label={messages.loadingTransactionProgress} />}>
 							<LazyArweaveTransactionSync
 								active={props.active}
 								activeStep="pay"
@@ -62,21 +72,26 @@ export default function AtomicOperationOutcome(props: {
 				) : null}
 				{props.kind === 'buy' || props.kind === 'sell' ? (
 					<OperationOutcomeSubject
-						label={props.kind === 'buy' ? 'You received' : 'You listed'}
+						label={props.kind === 'buy' ? messages.outcomeYouReceived : messages.outcomeYouListed}
 						title={props.asset.name}
-						detail={props.kind === 'sell' ? `${props.value} AR` : 'One asset'}
+						detail={
+							props.kind === 'sell'
+								? formatMessage(messages.outcomeListedPrice, { price: props.value })
+								: messages.outcomeOneAsset
+						}
 						media={
 							props.asset.image ? (
 								<ArtworkImage
-									alt={`${props.asset.name} artwork`}
+									alt={artworkAlt}
 									className="operation-outcome-subject-artwork"
 									decoding="async"
 									loading="eager"
 									src={props.asset.image}
+									unavailableLabel={messages.operationArtworkUnavailable}
 								/>
 							) : (
 								<span
-									aria-label={`${props.asset.name} artwork`}
+									aria-label={artworkAlt}
 									className="operation-outcome-subject-artwork operation-outcome-subject-artwork-fallback"
 									role="img"
 								>
@@ -94,27 +109,33 @@ export default function AtomicOperationOutcome(props: {
 					registrationId={props.registrationId}
 					seller={props.seller}
 					summary={<ArCurrencyText>{props.sellerPrice}</ArCurrencyText>}
-					summaryLabel="Seller payment"
+					summaryLabel={messages.labelSellerPayment}
 				/>
 			) : props.kind === 'transfer' && props.transactionId ? (
 				<div className="settlement-receipt">
 					<div>
-						<span>Asset</span>
+						<span>{messages.receiptAsset}</span>
 						<strong>{props.asset.name}</strong>
 					</div>
 					<div>
-						<span>Recipient</span>
-						<WalletAddress address={props.value} full label="recipient" />
+						<span>{messages.receiptRecipient}</span>
+						<WalletAddress address={props.value} full label={messages.walletLabelRecipient} />
 					</div>
 					<div className="settlement-receipt-links">
 						<a href={transactionExplorerUrl(props.transactionId)} rel="noreferrer" target="_blank">
-							<OperationExternalLink>Transaction {short(props.transactionId)}</OperationExternalLink>
+							<OperationExternalLink>
+								{formatMessage(messages.receiptTransaction, {
+									transaction: short(props.transactionId),
+								})}
+							</OperationExternalLink>
 						</a>
 					</div>
 				</div>
 			) : props.transactionId ? (
 				<a href={transactionExplorerUrl(props.transactionId)} rel="noreferrer" target="_blank">
-					<OperationExternalLink>View transaction {short(props.transactionId)}</OperationExternalLink>
+					<OperationExternalLink>
+						{formatMessage(messages.receiptViewTransaction, { transaction: short(props.transactionId) })}
+					</OperationExternalLink>
 				</a>
 			) : null}
 			<Button
@@ -124,7 +145,7 @@ export default function AtomicOperationOutcome(props: {
 				size="custom"
 				variant="primary"
 			>
-				<Icon icon={ArrowLeft} size="sm" /> View updated asset
+				<Icon icon={ArrowLeft} size="sm" /> {messages.viewUpdatedAsset}
 			</Button>
 		</div>
 	);

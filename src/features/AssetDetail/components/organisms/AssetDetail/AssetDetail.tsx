@@ -9,10 +9,12 @@ import { StatusNotice } from 'components/molecules/StatusNotice';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { CollectionIndexNotice } from 'features/Collection';
 import { UnavailableOperationRecoveryNotice } from 'features/Operations';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { useAssetDetail } from '../../../hooks/useAssetDetail';
+import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
 import type { AssetDetailRetry } from '../../../model/asset-detail';
 import { loadFungibleAssetView } from '../../../model/fungible-asset-view';
 import type { UniqueAssetRecoveryNotice } from '../../../model/unique-asset-recovery';
@@ -25,20 +27,21 @@ const FungibleAssetView = React.lazy(() =>
 	loadFungibleAssetView().then((module) => ({ default: module.FungibleAssetView }))
 );
 
-function recoveryNoticeMessage(notice: UniqueAssetRecoveryNotice): string {
+function recoveryNoticeMessage(notice: UniqueAssetRecoveryNotice, messages: AssetDetailMessages): string {
 	switch (notice.kind) {
 		case 'gateway-switch':
 			return notice.message;
 		case 'purchase-paused':
-			return 'A previous purchase is paused because its order is no longer available to this wallet. Its signed transaction details remain saved in this browser, and no replacement payment will be created.';
+			return messages.uniqueRecoveryPurchasePaused;
 		case 'stale-action-removed':
-			return 'A stale local action was removed after current live state proved that it can no longer apply. No replacement transaction was created.';
+			return messages.uniqueRecoveryStaleActionRemoved;
 		case 'tracking-discarded':
-			return 'Local tracking was discarded. Current ownership and orders above remain the live source of truth.';
+			return messages.uniqueRecoveryTrackingDiscarded;
 	}
 }
 
 export default function AssetDetail() {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const { collectionId = '', assetId = '' } = useParams();
 	const market = useMarketProvider();
 	const wallet = useWallet();
@@ -53,7 +56,7 @@ export default function AssetDetail() {
 	}, [assetId]);
 
 	const stateRecoveryAction: ErrorPanelAction | undefined = detail.openStateRecovery
-		? { label: 'Use Bazar peers', onClick: detail.openStateRecovery }
+		? { label: messages.assetDetailUseBazarPeers, onClick: detail.openStateRecovery }
 		: undefined;
 	const retryFor = (retry: AssetDetailRetry) => (retry === 'market' ? market.retry : live.load);
 	const handleSectionChange = (section: UniqueAssetSection) => {
@@ -77,31 +80,44 @@ export default function AssetDetail() {
 		case 'unavailable':
 			return (
 				<RouteState
-					title="Asset unavailable"
+					title={messages.assetDetailUnavailable}
 					backTo={screen.collection ? `/collection/${screen.collection.id}` : undefined}
-					backLabel={screen.collection?.name}
+					backLabel={screen.collection?.name ?? messages.assetDetailBackAllCollections}
+					eyebrow={messages.assetDetailRouteEyebrow}
 				>
 					<ErrorPanel
+						heading={messages.assetDetailErrorHeading}
 						message={screen.message}
-						onRetry={retryFor(screen.retry)}
+						retryAction={{ label: messages.assetDetailRetry, onClick: retryFor(screen.retry) }}
 						secondaryAction={screen.recoverable ? stateRecoveryAction : undefined}
 					/>
 				</RouteState>
 			);
 		case 'collection-not-found':
 			return (
-				<RouteState title="Collection not found">
-					<ErrorPanel message="This collection could not be found on Arweave." />
+				<RouteState
+					title={messages.assetDetailCollectionNotFound}
+					backLabel={messages.assetDetailBackAllCollections}
+					eyebrow={messages.assetDetailRouteEyebrow}
+				>
+					<ErrorPanel
+						heading={messages.assetDetailErrorHeading}
+						message={messages.assetDetailCollectionNotFoundDetail}
+					/>
 				</RouteState>
 			);
 		case 'asset-not-found':
 			return (
 				<RouteState
-					title="Asset not found"
+					title={messages.assetDetailNotFound}
 					backTo={`/collection/${screen.collection.id}`}
 					backLabel={screen.collection.name}
+					eyebrow={messages.assetDetailRouteEyebrow}
 				>
-					<ErrorPanel message="This asset is not in the selected collection." />
+					<ErrorPanel
+						heading={messages.assetDetailErrorHeading}
+						message={messages.assetDetailNotFoundDetail}
+					/>
 				</RouteState>
 			);
 		case 'fungible':
@@ -164,14 +180,14 @@ export default function AssetDetail() {
 	return (
 		<section className="asset-page asset-detail-page atomic-asset-page">
 			{operations.notice ? (
-				<StatusNotice onDismiss={operations.dismissNotice}>
-					{recoveryNoticeMessage(operations.notice)}
+				<StatusNotice dismissLabel={messages.assetDetailNoticeDismiss} onDismiss={operations.dismissNotice}>
+					{recoveryNoticeMessage(operations.notice, messages)}
 				</StatusNotice>
 			) : null}
 			{unavailableRecovery ? (
 				<UnavailableOperationRecoveryNotice
 					recovery={unavailableRecovery}
-					stateNoun="ownership and orders above"
+					stateNoun={messages.assetDetailStateNoun}
 					onRefresh={() => void detail.refreshAsset()}
 					onDiscard={operations.discardUnavailableRecovery}
 				/>
@@ -192,18 +208,27 @@ export default function AssetDetail() {
 							{asset.name}
 						</h1>
 						<div className="asset-owner-line">
-							<span>{live.loading || live.error ? 'Last known owner' : 'Owned by'}</span>
+							<span>
+								{live.loading || live.error
+									? messages.assetDetailLastKnownOwner
+									: messages.assetDetailOwnedBy}
+							</span>
 							{view.owner ? (
-								<WalletAddress address={view.owner} label="owner" />
+								<WalletAddress address={view.owner} label={messages.assetDetailWalletLabelOwner} />
 							) : (
-								<strong>{view.balanceStateAvailable ? 'Unassigned' : 'Ownership unavailable'}</strong>
+								<strong>
+									{view.balanceStateAvailable
+										? messages.assetDetailUnassigned
+										: messages.assetDetailOwnershipUnavailable}
+								</strong>
 							)}
 						</div>
-						{live.loading ? <Loading label="Computing current state…" /> : null}
+						{live.loading ? <Loading label={messages.assetDetailComputingState} /> : null}
 						{live.error ? (
 							<ErrorPanel
+								heading={messages.assetDetailErrorHeading}
 								message={live.error}
-								onRetry={live.load}
+								retryAction={{ label: messages.assetDetailRetry, onClick: live.load }}
 								secondaryAction={stateRecoveryAction}
 							/>
 						) : null}

@@ -32,10 +32,18 @@ export type AssetSummary = {
 	duration?: number;
 };
 
+/**
+ * Which built-in description a collection carries. The adapter never holds display copy, so a collection the
+ * adapter itself describes reports this code and leaves `description` empty; the UI maps it to its own wording.
+ */
+export type CollectionDescriptionCode = 'fungible-tokens' | 'arweave-names' | 'permanent-collection';
+
 export type Collection = {
 	id: string;
 	name: string;
+	/** The collection's own description, as published in its manifest; empty when `descriptionCode` describes it. */
 	description: string;
+	descriptionCode?: CollectionDescriptionCode;
 	kind: 'names' | 'images' | 'tokens';
 	assets: AssetSummary[];
 	createdAt?: number;
@@ -1038,7 +1046,8 @@ function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection 
 	return {
 		id: 'fungible-tokens',
 		name: 'Bazar Fungible Tokens',
-		description: 'Arweave-native fungible tokens with direct wallet ownership and native $AR settlement.',
+		description: '',
+		descriptionCode: 'fungible-tokens',
 		kind: 'tokens',
 		assets,
 		total: Math.max(count, assets.length),
@@ -1076,7 +1085,8 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 	return {
 		id: 'arweave-names',
 		name: 'Arweave names',
-		description: 'Current carrier names owned and traded directly on Arweave.',
+		description: '',
+		descriptionCode: 'arweave-names',
 		kind: 'names',
 		assets: [],
 		manifestId: namespace.manifestId,
@@ -1304,7 +1314,8 @@ function imageCollection(
 	return {
 		id: referenceId,
 		name: manifest.name,
-		description: manifest.description ?? 'A permanent Arweave collection.',
+		description: manifest.description ?? '',
+		...(manifest.description === undefined ? { descriptionCode: 'permanent-collection' as const } : {}),
 		kind: 'images',
 		indexSource,
 		manifestId,

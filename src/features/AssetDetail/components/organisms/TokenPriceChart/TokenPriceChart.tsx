@@ -12,8 +12,12 @@ import {
 
 import { Button } from 'components/atoms/Button';
 import { Pressable } from 'components/atoms/Pressable';
+import { formatMessage } from 'helpers/i18n';
 import { colorWithAlpha, themes } from 'helpers/theme';
+import { useMessages } from 'providers/LanguageProvider';
 import { useTheme } from 'providers/ThemeProvider';
+
+import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
 
 export type TokenPricePoint = {
 	id: string;
@@ -23,23 +27,25 @@ export type TokenPricePoint = {
 
 export type TokenPriceRange = '5m' | '1h' | '24h' | '7d' | '30d' | 'all';
 
-const PRICE_RANGE_OPTIONS: Array<{ label: string; value: TokenPriceRange }> = [
-	{ label: '5M', value: '5m' },
-	{ label: '1H', value: '1h' },
-	{ label: '24H', value: '24h' },
-	{ label: '7D', value: '7d' },
-	{ label: '30D', value: '30d' },
-	{ label: 'All', value: 'all' },
-];
-
-const PRICE_RANGE_CONTEXT_LABELS: Record<TokenPriceRange, string> = {
-	'5m': 'past 5 minutes',
-	'1h': 'past hour',
-	'24h': 'past 24 hours',
-	'7d': 'past 7 days',
-	'30d': 'past 30 days',
-	all: 'all history',
+const PRICE_RANGE_LABEL_KEYS: Record<TokenPriceRange, keyof AssetDetailMessages> = {
+	'5m': 'priceChartRange5m',
+	'1h': 'priceChartRange1h',
+	'24h': 'priceChartRange24h',
+	'7d': 'priceChartRange7d',
+	'30d': 'priceChartRange30d',
+	all: 'priceChartRangeAll',
 };
+
+const PRICE_RANGE_CONTEXT_KEYS: Record<TokenPriceRange, keyof AssetDetailMessages> = {
+	'5m': 'priceChartContext5m',
+	'1h': 'priceChartContext1h',
+	'24h': 'priceChartContext24h',
+	'7d': 'priceChartContext7d',
+	'30d': 'priceChartContext30d',
+	all: 'priceChartContextAll',
+};
+
+const PRICE_RANGE_ORDER: TokenPriceRange[] = ['5m', '1h', '24h', '7d', '30d', 'all'];
 
 const PRICE_RANGE_MS: Record<Exclude<TokenPriceRange, 'all'>, number> = {
 	'5m': 5 * 60 * 1_000,
@@ -189,10 +195,12 @@ export function tokenPriceChangePercent(points: TokenPricePoint[]) {
 	return Number(((last - first) * 10_000n) / first) / 100;
 }
 
-function changeLabel(change: number | null) {
-	if (change === null) return 'Not enough data';
-	if (change === 0) return 'No change';
-	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+function changeLabel(change: number | null, messages: AssetDetailMessages) {
+	if (change === null) return messages.priceChartNotEnoughData;
+	if (change === 0) return messages.priceChartNoChange;
+	return formatMessage(messages.priceChartChangePercent, {
+		change: `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+	});
 }
 
 export default function TokenPriceChart(props: {
@@ -207,6 +215,7 @@ export default function TokenPriceChart(props: {
 	onLoadMore?(): void;
 	onRetry?(): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const { resolvedTheme } = useTheme();
 	const [range, setRange] = React.useState<TokenPriceRange>('all');
 	const [markerPosition, setMarkerPosition] = React.useState<{
@@ -341,16 +350,22 @@ export default function TokenPriceChart(props: {
 		<section
 			className="token-price-chart"
 			aria-busy={props.loading}
-			aria-label={`${props.ticker} verified price history`}
+			aria-label={formatMessage(messages.priceChartLabel, { ticker: props.ticker })}
 		>
 			<div className="token-price-chart-heading">
 				<div className="token-price-quote" aria-live="polite">
-					<small>Floor price</small>
-					<strong>{props.floorValue ? props.formatValue(props.floorValue) : 'No open asks'}</strong>
+					<small>{messages.priceChartFloorPrice}</small>
+					<strong>
+						{props.floorValue ? props.formatValue(props.floorValue) : messages.priceChartNoOpenAsks}
+					</strong>
 					{visiblePoints.length ? (
 						<div className="token-price-context">
-							<span data-direction={direction}>{changeLabel(change)}</span>
-							<small>over {PRICE_RANGE_CONTEXT_LABELS[range]}</small>
+							<span data-direction={direction}>{changeLabel(change, messages)}</span>
+							<small>
+								{formatMessage(messages.priceChartOverRange, {
+									range: messages[PRICE_RANGE_CONTEXT_KEYS[range]] as string,
+								})}
+							</small>
 						</div>
 					) : null}
 				</div>
@@ -358,7 +373,7 @@ export default function TokenPriceChart(props: {
 
 			{visiblePoints.length ? (
 				<div
-					aria-label={`${props.ticker} opening listing and completed sale price chart`}
+					aria-label={formatMessage(messages.priceChartPlotLabel, { ticker: props.ticker })}
 					className="token-price-plot"
 					role="img"
 				>
@@ -376,24 +391,24 @@ export default function TokenPriceChart(props: {
 					) : null}
 				</div>
 			) : props.loading ? (
-				<p className="token-price-empty">Reading verified price history…</p>
+				<p className="token-price-empty">{messages.priceChartLoading}</p>
 			) : props.error ? (
-				<p className="token-price-empty">Price history is temporarily unavailable.</p>
+				<p className="token-price-empty">{messages.priceChartError}</p>
 			) : (
-				<p className="token-price-empty">No opening listing or completed sales in this range.</p>
+				<p className="token-price-empty">{messages.priceChartEmpty}</p>
 			)}
 
-			<div aria-label="Price history range" className="token-price-ranges" role="group">
-				{PRICE_RANGE_OPTIONS.map((option) => (
+			<div aria-label={messages.priceChartRangeGroup} className="token-price-ranges" role="group">
+				{PRICE_RANGE_ORDER.map((option) => (
 					<Pressable
-						aria-pressed={range === option.value}
-						key={option.value}
+						aria-pressed={range === option}
+						key={option}
 						onClick={() => {
-							setRange(option.value);
+							setRange(option);
 						}}
 						type="button"
 					>
-						{option.label}
+						{messages[PRICE_RANGE_LABEL_KEYS[option]] as string}
 					</Pressable>
 				))}
 			</div>
@@ -405,13 +420,13 @@ export default function TokenPriceChart(props: {
 						size="custom"
 						type="button"
 					>
-						{props.loadingMore ?? false ? 'Loading older prices…' : 'Load older prices'}
+						{props.loadingMore ?? false ? messages.priceChartLoadingOlder : messages.priceChartLoadOlder}
 					</Button>
 				</div>
 			) : props.error && props.onRetry ? (
 				<div className="token-price-history-footer">
 					<Button onClick={props.onRetry} size="custom" type="button">
-						Retry price history
+						{messages.priceChartRetry}
 					</Button>
 				</div>
 			) : null}

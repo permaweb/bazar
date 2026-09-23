@@ -1,4 +1,4 @@
-export default function InteractiveHtmlArtwork(props: { name: string; src: string }) {
+export default function InteractiveHtmlArtwork(props: { src: string; title: string }) {
 	return (
 		<iframe
 			allow="fullscreen"
@@ -8,7 +8,7 @@ export default function InteractiveHtmlArtwork(props: { name: string; src: strin
 			referrerPolicy="no-referrer"
 			sandbox="allow-scripts allow-pointer-lock"
 			src={props.src}
-			title={`${props.name} interactive artwork`}
+			title={props.title}
 		/>
 	);
 }

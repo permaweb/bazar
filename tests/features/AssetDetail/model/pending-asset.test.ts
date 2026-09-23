@@ -28,7 +28,6 @@ const activity: MintActivity = {
 	arweaveGateway: 'https://arweave.net',
 	computeGateway: 'https://compute.example',
 	phase: 'mined',
-	status: 'Mined into a block',
 	createdAt: 10,
 };
 

@@ -8,7 +8,7 @@ import { appError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { GLOBAL_ACTIVITY_STATS_STORAGE_KEY } from 'helpers/browser-storage';
 
-import { type GlobalActivityChartStats, globalActivityChartStats } from './activity-chart';
+import { type ActivityChartPeriod, type GlobalActivityChartStats, globalActivityChartStats } from './activity-chart';
 import { mergeIndexedActivityEvent } from './global-activity';
 
 export const GLOBAL_ACTIVITY_STATS_MAX_AGE = 5 * 60_000;
@@ -100,6 +100,13 @@ function field(value: unknown, name: string): unknown {
 	return value && typeof value === 'object' ? (value as Record<string, unknown>)[name] : undefined;
 }
 
+function isChartPeriod(value: unknown): value is ActivityChartPeriod {
+	if (value === null) return true;
+	const from = field(value, 'from');
+	const to = field(value, 'to');
+	return isCount(from) && isCount(to) && from <= to;
+}
+
 // A cached summary is untrusted browser data: every count, the period, and every bucket is validated before reuse.
 function isChartStats(value: unknown): value is GlobalActivityChartStats {
 	const events = field(value, 'events');
@@ -108,7 +115,7 @@ function isChartStats(value: unknown): value is GlobalActivityChartStats {
 	const buckets = field(value, 'buckets');
 	if (!isCount(events) || !isCount(listings) || !isCount(participants)) return false;
 	if (listings > events || participants > events) return false;
-	if (typeof field(value, 'period') !== 'string') return false;
+	if (!isChartPeriod(field(value, 'period'))) return false;
 	if (!Array.isArray(buckets) || buckets.length > 30) return false;
 	return buckets.every(
 		(bucket) =>

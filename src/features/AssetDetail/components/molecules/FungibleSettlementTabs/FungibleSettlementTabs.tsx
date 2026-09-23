@@ -2,7 +2,10 @@ import type { AssetState, SwapOrder } from 'api/marketplace';
 import type { PurchaseState } from 'api/transactions';
 
 import { Button } from 'components/atoms/Button';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { settlementTabIndex } from '../../../model/fungible-batch';
 import { tokenLabel } from '../../../model/fungible-market';
 import { batchStageLabel, SETTLEMENT_ERROR_PANEL_ID } from '../../../model/fungible-operation';
@@ -14,8 +17,9 @@ export default function FungibleSettlementTabs(props: {
 	state: AssetState;
 	onSelect(orderId: string): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	return (
-		<div className="settlement-tabs" aria-label="Settlement recovery status" role="tablist">
+		<div className="settlement-tabs" aria-label={messages.settlementTabsLabel} role="tablist">
 			{props.orders.map((order, index) => {
 				const active = order.orderId === props.activeOrderId;
 				return (
@@ -41,9 +45,9 @@ export default function FungibleSettlementTabs(props: {
 						tabIndex={active ? 0 : -1}
 						type="button"
 					>
-						<span>Listing {index + 1}</span>
+						<span>{formatMessage(messages.settlementListing, { index: index + 1 })}</span>
 						<strong>{tokenLabel(order.quantity, props.state)}</strong>
-						<small>{batchStageLabel(props.purchaseStates[order.orderId])}</small>
+						<small>{batchStageLabel(messages, props.purchaseStates[order.orderId])}</small>
 					</Button>
 				);
 			})}

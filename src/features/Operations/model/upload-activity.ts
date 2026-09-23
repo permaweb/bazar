@@ -1,7 +1,13 @@
 import { CREATED_COLLECTION_ID, type MintActivity } from 'api/mint';
 
+import type { MintTransactionReceiptEntry } from 'components/molecules/MintTransactionReceipt';
 import type { ArweaveSyncStep } from 'features/TransactionSync';
+import { formatMessage } from 'helpers/i18n';
 import type { UploadActivity, UploadObserverState } from 'providers/OperationActivityProvider';
+
+import type { OperationsMessages } from '../messages';
+
+import { mintActivityStatusText } from './activity-status';
 
 export function uploadActivitySyncSteps(
 	activity: UploadActivity,
@@ -41,7 +47,7 @@ export type UploadActivityView = {
 	syncSteps: ArweaveSyncStep[];
 	activeStep: string | undefined;
 	pendingAfterConfirmation: string | undefined;
-	receiptEntries: Array<{ label: string; transactionId: string }>;
+	receiptEntries: MintTransactionReceiptEntry[];
 };
 
 /** Whether the upload is still signing, submitting, or waiting for live process state. */
@@ -49,20 +55,34 @@ export function isUploadActivityWorking(activity: Pick<UploadActivity, 'phase'>)
 	return activity.phase === 'working' || activity.phase === 'tracking';
 }
 
-function uploadReceiptLabel(activity: UploadActivity, index: number) {
+function uploadReceiptLabel(activity: UploadActivity, index: number, messages: OperationsMessages) {
 	const last = index === activity.transactionIds.length - 1;
 	if (activity.kind === 'collection') {
-		if (!last) return 'Collection manifest';
-		return activity.extended ? 'Collection update' : 'Collection process';
+		if (!last) return messages.uploadReceiptCollectionManifest;
+		return activity.extended ? messages.uploadReceiptCollectionUpdate : messages.uploadReceiptCollectionProcess;
 	}
-	return last ? 'Asset transaction' : 'Artwork transaction';
+	return last ? messages.uploadReceiptAssetTransaction : messages.uploadReceiptArtworkTransaction;
+}
+
+/** One receipt row, with the accessible name its explorer link announces. */
+function uploadReceiptEntry(
+	label: string,
+	transactionId: string,
+	messages: OperationsMessages
+): MintTransactionReceiptEntry {
+	return {
+		label,
+		linkLabel: formatMessage(messages.operationReceiptEntryLabel, { label, transaction: transactionId }),
+		transactionId,
+	};
 }
 
 /** What an upload panel renders, from the upload, the mint activities tracking it, and live observer views. */
 export function uploadActivityView(
 	activity: UploadActivity,
 	relatedMintActivities: MintActivity[],
-	observerState: UploadObserverState
+	observerState: UploadObserverState,
+	messages: OperationsMessages
 ): UploadActivityView {
 	const primaryMintActivity =
 		relatedMintActivities.find((candidate) => candidate.asset.id === activity.assetId) ??
@@ -73,25 +93,26 @@ export function uploadActivityView(
 		syncSteps[syncSteps.length - 1];
 	return {
 		working: isUploadActivityWorking(activity),
-		status: activity.phase === 'tracking' ? primaryMintActivity?.status ?? activity.status : activity.status,
+		status:
+			activity.phase === 'tracking' && primaryMintActivity
+				? mintActivityStatusText(primaryMintActivity.phase, messages)
+				: activity.status,
 		phase: activity.phase === 'error' ? 'error' : activity.phase === 'done' ? 'done' : 'working',
 		syncSteps,
 		activeStep: activeSyncStep?.key,
 		pendingAfterConfirmation:
 			primaryMintActivity?.phase === 'mined'
-				? 'Waiting for live process state'
+				? messages.uploadPendingLiveProcessState
 				: primaryMintActivity?.phase === 'applied'
-				? 'Finishing Bazar indexing'
+				? messages.uploadPendingIndexing
 				: undefined,
 		receiptEntries: activity.transactions.length
-			? activity.transactions.map((transaction) => ({
-					label: transaction.label,
-					transactionId: transaction.id,
-			  }))
-			: activity.transactionIds.map((transactionId, index) => ({
-					label: uploadReceiptLabel(activity, index),
-					transactionId,
-			  })),
+			? activity.transactions.map((transaction) =>
+					uploadReceiptEntry(transaction.label, transaction.id, messages)
+			  )
+			: activity.transactionIds.map((transactionId, index) =>
+					uploadReceiptEntry(uploadReceiptLabel(activity, index, messages), transactionId, messages)
+			  ),
 	};
 }
 
@@ -123,19 +144,22 @@ export function standaloneMintActivities(mintActivities: MintActivity[], uploads
 }
 
 /** A restored mint activity presented as the asset upload it tracks. */
-export function mintUploadActivity(activity: MintActivity): UploadActivity {
+export function mintUploadActivity(activity: MintActivity, messages: OperationsMessages): UploadActivity {
 	return {
 		id: activity.id,
 		owner: activity.owner,
 		kind: 'asset',
 		name: activity.asset.name,
 		phase: 'tracking',
-		status: activity.status,
+		status: mintActivityStatusText(activity.phase, messages),
 		createdAt: activity.createdAt,
 		transactionIds: activity.transactionIds,
 		transactions: activity.transactionIds.map((id, index) => ({
 			id,
-			label: index === activity.transactionIds.length - 1 ? 'Asset transaction' : 'Artwork transaction',
+			label:
+				index === activity.transactionIds.length - 1
+					? messages.uploadReceiptAssetTransaction
+					: messages.uploadReceiptArtworkTransaction,
 		})),
 		assetId: activity.asset.id,
 		collectionId: activity.collectionId,

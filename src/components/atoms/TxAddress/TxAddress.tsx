@@ -8,7 +8,20 @@ import { Icon } from '../Icon';
 import { LiveRegion } from '../LiveRegion';
 import { Tooltip } from '../Tooltip';
 
-export default function TxAddress(props: { address: string; wrap?: boolean; tooltipPosition?: string }) {
+// The copy control's wording belongs to the caller: an atom may not read the language provider.
+export type TxAddressLabels = {
+	copy: string;
+	copiedTooltip: string;
+	copiedLabel: string;
+	copiedAnnouncement: string;
+};
+
+export default function TxAddress(props: {
+	address: string;
+	labels: TxAddressLabels;
+	wrap?: boolean;
+	tooltipPosition?: string;
+}) {
 	const [copied, setCopied] = React.useState(false);
 	const resetTimer = React.useRef<number | null>(null);
 
@@ -47,11 +60,11 @@ export default function TxAddress(props: { address: string; wrap?: boolean; tool
 					</a>
 				)}
 			</Tooltip>
-			<Tooltip content={copied ? 'Copied' : 'Copy transaction address'} placement="top">
+			<Tooltip content={copied ? props.labels.copiedTooltip : props.labels.copy} placement="top">
 				{(tooltipId) => (
 					<Button
 						aria-describedby={tooltipId}
-						aria-label={copied ? 'Transaction address copied' : 'Copy transaction address'}
+						aria-label={copied ? props.labels.copiedLabel : props.labels.copy}
 						className="tx-address-copy"
 						onClick={() => void copyAddress()}
 						size="icon"
@@ -61,7 +74,7 @@ export default function TxAddress(props: { address: string; wrap?: boolean; tool
 					</Button>
 				)}
 			</Tooltip>
-			<LiveRegion>{copied ? 'Transaction address copied.' : ''}</LiveRegion>
+			<LiveRegion>{copied ? props.labels.copiedAnnouncement : ''}</LiveRegion>
 		</span>
 	);
 }

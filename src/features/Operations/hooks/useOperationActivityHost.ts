@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 
 import type { MintActivity } from 'api/mint';
 
+import { useMessages } from 'providers/LanguageProvider';
 import { type OperationActivity, type UploadActivity, useOperationActivity } from 'providers/OperationActivityProvider';
 
+import { OPERATIONS_MESSAGES } from '../messages';
 import { mintUploadActivity, standaloneMintActivities, uploadRelatedMintActivities } from '../model/upload-activity';
 
 type OperationActivityContext = ReturnType<typeof useOperationActivity>;
@@ -38,6 +40,7 @@ export function useOperationActivityHost(): {
 	closeOperation(activity: OperationActivity, resumeLater?: boolean, refresh?: boolean): void;
 } {
 	const navigate = useNavigate();
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	const operationActivity = useOperationActivity();
 	const uploadActivities = operationActivity.uploadActivities;
 	const mintActivities = operationActivity.mintActivities;
@@ -52,10 +55,10 @@ export function useOperationActivityHost(): {
 	const mintUploads = React.useMemo(
 		() =>
 			standaloneMintActivities(mintActivities, uploadActivities).map((activity) => ({
-				activity: mintUploadActivity(activity),
+				activity: mintUploadActivity(activity, messages),
 				relatedMintActivities: [activity],
 			})),
-		[mintActivities, uploadActivities]
+		[messages, mintActivities, uploadActivities]
 	);
 
 	function viewMintNoticeAsset() {

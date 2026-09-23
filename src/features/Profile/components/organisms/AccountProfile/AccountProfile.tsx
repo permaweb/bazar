@@ -2,19 +2,22 @@ import React from 'react';
 
 import { MyAssets } from 'features/MyAssets';
 import { isArweaveId } from 'helpers/arweave-id';
+import { useMessages } from 'providers/LanguageProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { useAccountProfile } from '../../../hooks/useAccountProfile';
+import { PROFILE_MESSAGES } from '../../../messages';
 import { accountProfileNotice, type ProfileEditUpdate } from '../../../model/profile';
 import { ProfileEditDialog } from '../ProfileEditDialog';
 import { ProfilePage } from '../ProfilePage';
 
 export default function AccountProfile(props: { address: string }) {
+	const messages = useMessages(PROFILE_MESSAGES);
 	const wallet = useWallet();
 	const account = useAccountProfile(props.address);
 	const editTrigger = React.useRef<HTMLButtonElement | null>(null);
 	const [editOpen, setEditOpen] = React.useState(false);
-	const notice = accountProfileNotice(props.address, account.profile);
+	const notice = accountProfileNotice(props.address, account.profile, messages);
 
 	const handleEdit = (trigger: HTMLButtonElement) => {
 		editTrigger.current = trigger;

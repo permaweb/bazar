@@ -6,10 +6,15 @@ import { Icon } from 'components/atoms/Icon';
 import { PortalIcon } from 'components/atoms/PortalIcon';
 import { TextInput } from 'components/atoms/TextInput';
 import { Tooltip } from 'components/atoms/Tooltip';
+import { formatMessage } from 'helpers/i18n';
 import { useAoPeerSettings } from 'hooks/useAoPeerSettings';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
+import { GATEWAY_CONTROL_MESSAGES } from './messages';
+
 export default function GatewayControl() {
+	const language = useMessages(GATEWAY_CONTROL_MESSAGES);
 	const { pageRefreshing } = useMarketProvider();
 	const settings = useAoPeerSettings();
 	const [open, setOpen] = React.useState(false);
@@ -52,11 +57,11 @@ export default function GatewayControl() {
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
-				<Tooltip content="Some assets on this page are still being refreshed on your configured AO peers.">
+				<Tooltip content={language.gatewayRefreshing}>
 					{(tooltipId) => (
 						<span
 							aria-describedby={tooltipId}
-							aria-label="Some assets on this page are still being refreshed on your configured AO peers."
+							aria-label={language.gatewayRefreshing}
 							className="gateway-refreshing"
 							role="status"
 							tabIndex={0}
@@ -70,7 +75,9 @@ export default function GatewayControl() {
 				<summary
 					aria-controls="gateway-panel"
 					aria-expanded={open}
-					aria-label={`AO-Core peers, ${settings.activePeers.join(', ')}`}
+					aria-label={formatMessage(language.gatewayPeersSummary, {
+						peers: settings.activePeers.join(', '),
+					})}
 					onClick={(event) => {
 						event.preventDefault();
 						setOpen((currentOpen) => !currentOpen);
@@ -81,14 +88,14 @@ export default function GatewayControl() {
 					<Tooltip
 						align="center"
 						className="gateway-trigger-tooltip"
-						content="AO-Core peers"
+						content={language.gatewayPeersTooltip}
 						delayMs={1000}
 						disabled={open}
 					>
 						{(tooltipId) => (
 							<span aria-describedby={tooltipId} className="gateway-summary-content">
 								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
-								<span className="gateway-label">AO Core</span>
+								<span className="gateway-label">{language.gatewayLabel}</span>
 							</span>
 						)}
 					</Tooltip>
@@ -106,8 +113,8 @@ export default function GatewayControl() {
 								variant="ghost"
 							>
 								<span>
-									<strong>Use PermawebOS Routing</strong>
-									<small>Use its role-aware routes and shared request state.</small>
+									<strong>{language.gatewayPermawebOsTitle}</strong>
+									<small>{language.gatewayPermawebOsDetail}</small>
 								</span>
 								<span className="gateway-permaweb-os-toggle-control" aria-hidden="true">
 									{settings.usesPermawebOs ? <Icon icon={Check} size="sm" /> : null}
@@ -115,15 +122,13 @@ export default function GatewayControl() {
 							</Button>
 						) : null}
 						<fieldset className="gateway-peer-editor">
-							<legend>AO-Core peers</legend>
-							<p className="gateway-peer-description">
-								Used by Bazar when PermawebOS is unavailable or disabled above.
-							</p>
+							<legend>{language.gatewayPeersLegend}</legend>
+							<p className="gateway-peer-description">{language.gatewayPeersDescription}</p>
 							<div className="gateway-peer-fields">
 								{settings.peers.map((value, index) => (
 									<div className="gateway-peer-row" key={index}>
 										<label className="sr-only" htmlFor={`gateway-peer-${index}`}>
-											Fallback AO-Core peer {index + 1}
+											{formatMessage(language.gatewayPeerLabel, { position: index + 1 })}
 										</label>
 										<TextInput
 											aria-describedby={settings.peersInvalid ? 'gateway-error' : undefined}
@@ -132,7 +137,7 @@ export default function GatewayControl() {
 											id={`gateway-peer-${index}`}
 											inputMode="url"
 											onChange={(event) => settings.updatePeer(index, event.target.value)}
-											placeholder="https://peer.example"
+											placeholder={language.gatewayPeerPlaceholder}
 											ref={(node) => {
 												inputRefs.current[index] = node;
 											}}
@@ -141,7 +146,9 @@ export default function GatewayControl() {
 										/>
 										{settings.peers.length > 1 ? (
 											<Button
-												aria-label={`Remove fallback AO-Core peer ${index + 1}`}
+												aria-label={formatMessage(language.gatewayPeerRemove, {
+													position: index + 1,
+												})}
 												className="gateway-peer-remove"
 												onClick={() => handleRemovePeer(index)}
 												size="custom"
@@ -161,26 +168,24 @@ export default function GatewayControl() {
 								type="button"
 								variant="ghost"
 							>
-								<Icon icon={Plus} size="sm" /> Add peer
+								<Icon icon={Plus} size="sm" /> {language.gatewayPeerAdd}
 							</Button>
 						</fieldset>
 						{settings.peersInvalid ? (
 							<p className="gateway-error" id="gateway-error" role="alert">
-								Enter one valid HTTP or HTTPS AO-Core peer in each field.
+								{language.gatewayPeersInvalid}
 							</p>
 						) : null}
 						<div className="gateway-apply-row">
 							<Button className="gateway-apply-button with-icon" type="submit" size="custom">
-								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply settings
+								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />{' '}
+								{language.gatewayApply}
 							</Button>
-							<Tooltip
-								className="gateway-peer-help"
-								content="The PermawebOS transport is selected by default when available. Turning it off keeps AO requests inside Bazar and uses the ordered fallback peers above."
-							>
+							<Tooltip className="gateway-peer-help" content={language.gatewayHelp}>
 								{(tooltipId) => (
 									<Button
 										aria-describedby={tooltipId}
-										aria-label="About AO transport settings"
+										aria-label={language.gatewayHelpLabel}
 										className="gateway-peer-help-trigger"
 										size="custom"
 										type="button"

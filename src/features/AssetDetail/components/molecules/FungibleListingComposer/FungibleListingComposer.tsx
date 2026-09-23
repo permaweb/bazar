@@ -6,8 +6,11 @@ import type { AssetState } from 'api/marketplace';
 import { ArCurrencyLabel, ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { TextInput } from 'components/atoms/TextInput';
+import { formatMessage } from 'helpers/i18n';
 import { formatTickerLabel } from 'helpers/token-display';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 
 export default function FungibleListingComposer(props: {
@@ -22,8 +25,9 @@ export default function FungibleListingComposer(props: {
 	unitPrice: string;
 	unitPriceError: string;
 }) {
-	const ticker = props.state.ticker || 'Token';
-	const tickerDisplay = formatTickerLabel(ticker);
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const ticker = props.state.ticker || messages.validationDefaultTicker;
+	const tickerDisplay = formatTickerLabel(ticker, messages.validationDefaultTicker);
 	const quantityId = React.useId();
 	const quantityGuidanceId = React.useId();
 	const quantityErrorId = React.useId();
@@ -32,12 +36,12 @@ export default function FungibleListingComposer(props: {
 	const priceErrorId = React.useId();
 
 	return (
-		<section aria-label="Create listing" className="purchase-composer">
+		<section aria-label={messages.composerListingLabel} className="purchase-composer">
 			<div className="purchase-composer-panel purchase-composer-buy">
 				<div className="purchase-composer-heading">
-					<label htmlFor={quantityId}>You list</label>
+					<label htmlFor={quantityId}>{messages.composerYouList}</label>
 					<Button onClick={props.onMax} type="button" size="custom">
-						Max
+						{messages.composerMax}
 					</Button>
 				</div>
 				<div className="purchase-composer-value">
@@ -52,16 +56,26 @@ export default function FungibleListingComposer(props: {
 					/>
 					<span className="purchase-composer-token">{tickerDisplay}</span>
 				</div>
-				<small id={quantityGuidanceId}>{tokenLabel(props.availableQuantity, props.state)} available</small>
+				<small id={quantityGuidanceId}>
+					{formatMessage(messages.composerAvailable, {
+						amount: tokenLabel(props.availableQuantity, props.state),
+					})}
+				</small>
 			</div>
 			<div className="purchase-composer-panel purchase-composer-pay">
 				<span className="purchase-composer-direction" aria-hidden="true">
 					<ArrowDown />
 				</span>
 				<div className="purchase-composer-heading">
-					<label htmlFor={unitPriceId}>Unit price</label>
+					<label htmlFor={unitPriceId}>{messages.composerUnitPrice}</label>
 					<span>
-						{props.total ? <ArCurrencyText>{`${props.total} AR total`}</ArCurrencyText> : 'Listing total'}
+						{props.total ? (
+							<ArCurrencyText>
+								{formatMessage(messages.composerListingTotalValue, { total: props.total })}
+							</ArCurrencyText>
+						) : (
+							messages.composerListingTotal
+						)}
 					</span>
 				</div>
 				<div className="purchase-composer-value">
@@ -78,7 +92,9 @@ export default function FungibleListingComposer(props: {
 						<ArCurrencyLabel />
 					</span>
 				</div>
-				<small id={priceGuidanceId}>Price per {tickerDisplay}; network fees are shown in review.</small>
+				<small id={priceGuidanceId}>
+					{formatMessage(messages.composerPricePerToken, { ticker: tickerDisplay })}
+				</small>
 			</div>
 			{props.quantityError ? (
 				<p className="purchase-composer-error" id={quantityErrorId} role="alert">

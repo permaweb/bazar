@@ -1,8 +1,13 @@
 import React from 'react';
 import { ChevronRight, Images, InfinityIcon, LoaderCircle, Upload } from 'lucide-react';
 
-import type { MintActivity } from 'api/mint';
-import type { OperationActivityPhase } from 'api/operations';
+import type { MintActivity, MintActivityPhase } from 'api/mint';
+import type {
+	Operation,
+	OperationActivityPhase,
+	OperationActivityStatus,
+	OperationRecoveryStatus,
+} from 'api/operations';
 
 import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { Button } from 'components/atoms/Button';
@@ -10,9 +15,15 @@ import { Icon } from 'components/atoms/Icon';
 import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { isTransactionActivityVisible } from 'components/molecules/TransactionDialogControl';
+import { formatMessage } from 'helpers/i18n';
 import { useOperationActivityMenu } from 'hooks/useOperationActivityMenu';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
+
+import { OPERATION_ACTIVITY_CONTROL_MESSAGES, type OperationActivityControlMessages } from './messages';
 
 export default function OperationActivityControl() {
+	const language = useMessages(OPERATION_ACTIVITY_CONTROL_MESSAGES);
+	const plural = usePlural();
 	const menu = useOperationActivityMenu(isTransactionActivityVisible);
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
@@ -21,9 +32,9 @@ export default function OperationActivityControl() {
 		if (!attentionCount) return;
 		if (
 			!window.confirm(
-				`Clear ${attentionCount.toLocaleString()} upload ${
-					attentionCount === 1 ? 'item' : 'items'
-				} that need attention?\n\nThis removes local Activity tracking only. It does not delete anything from Arweave.`
+				plural(language.operationActivityClearConfirm, attentionCount, {
+					count: attentionCount.toLocaleString(),
+				})
 			)
 		)
 			return;
@@ -41,14 +52,12 @@ export default function OperationActivityControl() {
 	if (!menu.activityCount) return null;
 	return (
 		<div className="operation-activity-control" ref={containerRef}>
-			<Tooltip content="Transaction activity" disabled={open}>
+			<Tooltip content={language.operationActivityTitle} disabled={open}>
 				{(tooltipId) => (
 					<Button
 						aria-describedby={tooltipId}
 						aria-expanded={open}
-						aria-label={`Transaction activity, ${menu.activityCount} ${
-							menu.activityCount === 1 ? 'item' : 'items'
-						}`}
+						aria-label={plural(language.operationActivityTrigger, menu.activityCount)}
 						className={`operation-activity-trigger${menu.workingCount ? ' working' : ''}`}
 						data-activity-owner="global"
 						size="custom"
@@ -62,23 +71,23 @@ export default function OperationActivityControl() {
 				)}
 			</Tooltip>
 			{open ? (
-				<section aria-label="Transaction activity" className="operation-activity-menu">
+				<section aria-label={language.operationActivityTitle} className="operation-activity-menu">
 					<div className="operation-activity-heading">
 						<div>
-							<strong>Transaction activity</strong>
+							<strong>{language.operationActivityTitle}</strong>
 							<span>
 								{attentionCount
-									? `${attentionCount.toLocaleString()} ${
-											attentionCount === 1 ? 'upload needs' : 'uploads need'
-									  } attention`
+									? plural(language.operationActivityAttention, attentionCount, {
+											count: attentionCount.toLocaleString(),
+									  })
 									: menu.workingCount
-									? `${menu.workingCount} running in the background`
-									: 'No transactions running'}
+									? formatMessage(language.operationActivityWorking, { count: menu.workingCount })
+									: language.operationActivityIdle}
 							</span>
 						</div>
 						{attentionCount ? (
 							<Button size="custom" variant="ghost" onClick={handleClearUploadIssues} type="button">
-								Clear upload issues
+								{language.operationActivityClearIssues}
 							</Button>
 						) : null}
 					</div>
@@ -105,12 +114,18 @@ export default function OperationActivityControl() {
 									<span className="operation-activity-copy">
 										<strong>{activity.name}</strong>
 										<small>
-											{activity.kind === 'collection' ? 'Collection upload' : 'Upload'} ·{' '}
-											{activity.phase === 'done'
-												? 'Complete'
-												: activity.phase === 'error'
-												? 'Needs attention'
-												: 'In progress'}
+											{formatMessage(language.operationActivityItemMeta, {
+												kind:
+													activity.kind === 'collection'
+														? language.operationActivityCollectionUpload
+														: language.operationActivityUpload,
+												phase:
+													activity.phase === 'done'
+														? language.operationActivityUploadComplete
+														: activity.phase === 'error'
+														? language.operationActivityUploadAttention
+														: language.operationActivityUploadWorking,
+											})}
 										</small>
 										<span>{activity.status}</span>
 									</span>
@@ -127,7 +142,7 @@ export default function OperationActivityControl() {
 								</Button>
 							</div>
 						))}
-						{menu.operations.map(({ activity, operationLabel }) => (
+						{menu.operations.map(({ activity, operationKind }) => (
 							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
 								<Button
 									className="operation-activity-open"
@@ -141,7 +156,11 @@ export default function OperationActivityControl() {
 								>
 									<span className="operation-activity-symbol" aria-hidden="true">
 										{activity.asset.image ? (
-											<ArtworkImage src={activity.asset.image} alt="" />
+											<ArtworkImage
+												src={activity.asset.image}
+												alt=""
+												unavailableLabel={language.operationActivityArtworkUnavailable}
+											/>
 										) : (
 											<span>{activity.asset.name.slice(0, 1)}</span>
 										)}
@@ -149,13 +168,19 @@ export default function OperationActivityControl() {
 									<span className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
-											{operationLabel} · {operationActivityPhaseLabel(activity.phase)}
+											{formatMessage(language.operationActivityItemMeta, {
+												kind: operationActivityKindLabel(operationKind, language),
+												phase: operationActivityPhaseLabel(activity.phase, language),
+											})}
 										</small>
-										<span>{activity.status}</span>
+										<span>{operationActivityStatusText(activity.status, language)}</span>
 									</span>
 									<span className="operation-activity-progress">
 										<span
-											aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
+											aria-label={formatMessage(language.operationActivityConfirmations, {
+												confirmations: activity.confirmations,
+												target: activity.confirmationTarget,
+											})}
 											className="operation-activity-confirmations"
 										>
 											{activity.confirmations}/{activity.confirmationTarget}
@@ -168,7 +193,7 @@ export default function OperationActivityControl() {
 								</Button>
 							</div>
 						))}
-						{menu.fungibleOperations.map(({ activity, operationLabel }) => (
+						{menu.fungibleOperations.map(({ activity, operationKind }) => (
 							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
 								<Button
 									className="operation-activity-open"
@@ -188,15 +213,21 @@ export default function OperationActivityControl() {
 									<span className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
-											{operationLabel} · {operationActivityPhaseLabel(activity.phase)}
+											{formatMessage(language.operationActivityItemMeta, {
+												kind: operationActivityKindLabel(operationKind, language),
+												phase: operationActivityPhaseLabel(activity.phase, language),
+											})}
 										</small>
-										<span>{activity.status}</span>
+										<span>{operationActivityStatusText(activity.status, language)}</span>
 									</span>
 									<span className="operation-activity-progress">
 										{activity.confirmations !== undefined &&
 										activity.confirmationTarget !== undefined ? (
 											<span
-												aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
+												aria-label={formatMessage(language.operationActivityConfirmations, {
+													confirmations: activity.confirmations,
+													target: activity.confirmationTarget,
+												})}
 												className="operation-activity-confirmations"
 											>
 												{activity.confirmations}/{activity.confirmationTarget}
@@ -232,16 +263,20 @@ export default function OperationActivityControl() {
 										<span className="operation-activity-copy">
 											<strong>{activity.asset.name}</strong>
 											<small>
-												Upload ·{' '}
-												{needsAttention
-													? 'Needs attention'
-													: mintActivityPhaseLabel(activity.phase)}
+												{formatMessage(language.operationActivityItemMeta, {
+													kind: language.operationActivityUpload,
+													phase: needsAttention
+														? language.operationActivityUploadAttention
+														: mintActivityPhaseLabel(activity.phase, language),
+												})}
 											</small>
 											<span>
-												{needsAttention
-													? 'This upload has not reached live process state.'
-													: activity.status}
-												{pinnedGateway ? ' Tracking is pinned to the original gateways.' : ''}
+												{mintActivityStatus(
+													needsAttention,
+													activity.phase,
+													pinnedGateway,
+													language
+												)}
 											</span>
 										</span>
 										{needsAttention ? null : (
@@ -259,16 +294,62 @@ export default function OperationActivityControl() {
 	);
 }
 
-function operationActivityPhaseLabel(phase: OperationActivityPhase) {
+function operationActivityKindLabel(kind: Operation['kind'], language: OperationActivityControlMessages) {
 	return {
-		form: 'Awaiting signature',
-		approval: 'Awaiting approval',
-		working: 'In progress',
-		done: 'Complete',
-		error: 'Needs attention',
+		sell: language.operationKindSell,
+		buy: language.operationKindBuy,
+		cancel: language.operationKindCancel,
+		transfer: language.operationKindTransfer,
+	}[kind];
+}
+
+function operationActivityPhaseLabel(phase: OperationActivityPhase, language: OperationActivityControlMessages) {
+	return {
+		form: language.operationPhaseForm,
+		approval: language.operationPhaseApproval,
+		working: language.operationPhaseWorking,
+		done: language.operationPhaseDone,
+		error: language.operationPhaseError,
 	}[phase];
 }
 
-function mintActivityPhaseLabel(phase: MintActivity['phase']) {
-	return { accepted: 'Accepted', mined: 'Mined', applied: 'Applied', complete: 'Complete' }[phase];
+function mintActivityPhaseLabel(phase: MintActivity['phase'], language: OperationActivityControlMessages) {
+	return {
+		accepted: language.mintPhaseAccepted,
+		mined: language.mintPhaseMined,
+		applied: language.mintPhaseApplied,
+		complete: language.mintPhaseComplete,
+	}[phase];
+}
+
+const MINT_STATUS_KEYS: Record<MintActivityPhase, keyof OperationActivityControlMessages> = {
+	accepted: 'mintStatusAccepted',
+	mined: 'mintStatusMined',
+	applied: 'mintStatusApplied',
+	complete: 'mintStatusComplete',
+};
+
+const RECOVERY_STATUS_KEYS: Record<OperationRecoveryStatus, keyof OperationActivityControlMessages> = {
+	'resume-saved-purchase': 'recoveryStatusResumeSavedPurchase',
+	'resume-signed-transaction': 'recoveryStatusResumeSignedTransaction',
+	'resuming-purchase': 'recoveryStatusResumingPurchase',
+	'resuming-signed-transaction': 'recoveryStatusResumingSignedTransaction',
+};
+
+/** The adapter's recovery code as copy, or the status text the operation dialog already resolved. */
+function operationActivityStatusText(status: OperationActivityStatus, language: OperationActivityControlMessages) {
+	return 'code' in status ? (language[RECOVERY_STATUS_KEYS[status.code]] as string) : status.text;
+}
+
+/** An upload that never reached live state explains itself; a pinned tracker adds that note to either status. */
+function mintActivityStatus(
+	needsAttention: boolean,
+	phase: MintActivityPhase,
+	pinnedGateway: boolean,
+	language: OperationActivityControlMessages
+) {
+	const current = needsAttention
+		? language.operationActivityMintUnsettled
+		: (language[MINT_STATUS_KEYS[phase]] as string);
+	return pinnedGateway ? formatMessage(language.operationActivityMintPinnedGateway, { status: current }) : current;
 }

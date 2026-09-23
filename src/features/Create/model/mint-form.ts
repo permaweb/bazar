@@ -9,16 +9,17 @@ import {
 	validateFungibleMintInput,
 } from 'api/mint';
 
-import { type AppError, appErrorMessage, toAppError } from 'helpers/app-error';
+import { type AppError, appErrorMessage, type AppErrorMessages, toAppError } from 'helpers/app-error';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import type { EmbeddedAudioMetadata } from 'helpers/audio-metadata';
+
+import type { CreateMessages } from '../messages';
 
 /** What the creator mints: one atomic asset, a collection of them, or a fungible token process. */
 export type CreatorMode = 'asset' | 'collection' | 'fungible';
 
 export const MAX_COLLECTION_FILES = 10;
 export const MAX_EMBEDDED_ARTWORK_BYTES = 10 * 1024 * 1024;
-export const COLLECTION_FILE_LIMIT_ERROR = 'Collections support up to 10 images at a time.';
 
 export function selectedAssetContentType(file: File | null): string | null {
 	return file ? normalizeAssetContentType(file.type, file.name) : null;
@@ -120,13 +121,15 @@ export function mintSubmissionError(
 		collectionFiles: File[];
 		fungibleInput: FungibleMintInput;
 		logo: File | null;
-	}
+	},
+	messages: CreateMessages,
+	errorMessages: AppErrorMessages
 ): string | null {
-	if (mode === 'asset' && !fields.file) return 'Choose an image, MP3, or WAV file to continue.';
-	if (mode === 'collection' && !fields.collectionFiles.length) return 'Choose at least one collection image.';
+	if (mode === 'asset' && !fields.file) return messages.mintChooseFileError;
+	if (mode === 'collection' && !fields.collectionFiles.length) return messages.mintChooseCollectionImageError;
 	if (mode === 'fungible') {
 		const error = fungibleMintInputError(fields.fungibleInput, fields.logo);
-		if (error) return appErrorMessage(error);
+		if (error) return appErrorMessage(errorMessages, error);
 	}
 	return null;
 }

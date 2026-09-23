@@ -49,7 +49,10 @@ import {
 import { currentPurchaseGatewayContext, type OperationFailureKind, operationFailureKind } from 'features/Operations';
 import type { ArweaveSyncStep } from 'features/TransactionSync';
 import { type AppError, appError, toAppError } from 'helpers/app-error';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../messages';
 import {
 	batchPaymentBarrierState,
 	batchPurchaseRecoveryApprovalCount,
@@ -151,6 +154,9 @@ export function useFungibleOperationFlow(params: {
 	onRestart(): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }): FungibleOperationFlow {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const errorMessages = useAppErrorMessages();
+	const plural = usePlural();
 	const [flow, dispatch] = React.useReducer(
 		fungibleOperationFlowReducer,
 		params.operation,
@@ -418,7 +424,7 @@ export function useFungibleOperationFlow(params: {
 				onProgress: (progress) => dispatch({ type: 'confirmations', confirmations: progress.confirmations }),
 			});
 			dispatch({ type: 'confirmations', confirmations: 5 });
-			dispatch({ type: 'status', message: 'Five confirmations reached. Waiting for live token state…' });
+			dispatch({ type: 'status', message: messages.flowConfirmationsReached });
 			if (operation.kind === 'sell') {
 				const expectedQuantity =
 					rawQuantity || parseTokenAmount(operation.quantity ?? params.quantity, params.state.denomination);
@@ -490,7 +496,7 @@ export function useFungibleOperationFlow(params: {
 			dispatch({
 				type: 'failed',
 				failure: nextFailure,
-				message: fungibleOperationFailureMessage(nextFailure),
+				message: fungibleOperationFailureMessage(nextFailure, messages, errorMessages),
 				discardTransaction,
 			});
 		}
@@ -809,7 +815,7 @@ export function useFungibleOperationFlow(params: {
 		recoveryBuffer.clear();
 		if (batchRecoveryBufferRef.current === recoveryBuffer) batchRecoveryBufferRef.current = null;
 		purchaseStateBuffer.flush();
-		dispatch({ type: 'status', message: 'Every lot is proven in its scheduled payment slot.' });
+		dispatch({ type: 'status', message: messages.flowLotsProven });
 		removeWalletRecoveryAndSignatures<BatchResume>(
 			localStorage,
 			fungibleBatchStorageKey(params.asset.id, params.owner),
@@ -853,7 +859,10 @@ export function useFungibleOperationFlow(params: {
 	}, [activePaymentId, flow.phase, observedOrderId, params.operation.kind, params.visible]);
 
 	const recoverableBatch = isRecoverableFungiblePurchase(params.operation, flow.purchaseStates);
-	const settlementSummary = batchSettlementSummary(visibleOrders.map((order) => flow.purchaseStates[order.orderId]));
+	const settlementSummary = batchSettlementSummary(
+		visibleOrders.map((order) => flow.purchaseStates[order.orderId]),
+		messages
+	);
 	const signedWork = Boolean(flow.transaction || recoverableBatch);
 
 	React.useEffect(() => {
@@ -865,33 +874,38 @@ export function useFungibleOperationFlow(params: {
 			{
 				failed: settlementSummary.failed,
 				settled: settlementSummary.settled,
-			}
+			},
+			messages,
+			plural
 		);
 		if (!next) return;
 		settlementAnnouncementKeyRef.current = next.key;
 		setSettlementAnnouncement(next.message);
 	}, [
 		flow.phase,
+		messages,
 		params.operation.kind,
+		plural,
 		settlementSummary.failed,
 		settlementSummary.settled,
 		signedWork,
 		visibleOrders.length,
 	]);
 
-	const purchaseSync = fungiblePurchaseSync(activePurchase);
+	const purchaseSync = fungiblePurchaseSync(messages, activePurchase);
 	const singleSteps = fungibleSingleSyncSteps(
 		params.operation.kind,
 		flow.transaction,
 		flow.confirmations,
 		flow.views,
-		flow.consensus
+		flow.consensus,
+		messages
 	);
 	const activeSyncStep =
 		params.operation.kind === 'buy'
 			? purchaseSync.steps.find((step) => step.key === purchaseSync.activeStep) ?? purchaseSync.steps[0]
 			: singleSteps[0];
-	const activityProgress = fungibleOperationActivityProgress(flow.phase, activeSyncStep);
+	const activityProgress = fungibleOperationActivityProgress(flow.phase, messages, activeSyncStep);
 
 	React.useEffect(() => {
 		activityChangeRef.current(activityProgress);
@@ -962,10 +976,7 @@ export function useFungibleOperationFlow(params: {
 			params.owner
 		);
 		if (!discarded) {
-			dispatch({
-				type: 'status',
-				message: 'This saved transfer changed in another tab. Close this panel and review the active action.',
-			});
+			dispatch({ type: 'status', message: messages.flowTransferChangedElsewhere });
 			return;
 		}
 		dispatch({ type: 'transaction-discarded' });
@@ -1000,7 +1011,12 @@ export function useFungibleOperationFlow(params: {
 		activePurchaseFailure: purchaseStateFailure(activePurchase),
 		purchaseSync,
 		singleSteps,
-		workingStatus: fungibleOperationWorkingStatus(params.operation.kind, flow.message, activePurchase),
+		workingStatus: fungibleOperationWorkingStatus(
+			params.operation.kind,
+			flow.message,
+			errorMessages,
+			activePurchase
+		),
 		recoverableBatch,
 		signedWork,
 		settlementAnnouncement,

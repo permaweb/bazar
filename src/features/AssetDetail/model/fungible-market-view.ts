@@ -1,4 +1,4 @@
-import { type Collection, collectionDisplayName } from 'api/collections';
+import type { Collection } from 'api/collections';
 import {
 	assetBalanceStateAvailable,
 	type AssetState,
@@ -10,8 +10,12 @@ import {
 	type SwapOrder,
 } from 'api/marketplace';
 
+import { formatMessage } from 'helpers/i18n';
 import { formatTickerLabel } from 'helpers/token-display';
 
+import type { AssetDetailMessages } from '../messages';
+
+import { collectionDescriptionFallback } from './asset-detail';
 import {
 	assetDescription,
 	orderbookCumulativeDepths,
@@ -20,24 +24,29 @@ import {
 	safeTokenAmount,
 	tokenLabel,
 } from './fungible-market';
+import { licenseDisplayProperties, type LicenseDisplayProperty } from './license-display';
 
 export type FungibleTokenIdentity = {
 	ticker: string;
 	tickerDisplay: string;
 	collectionName: string;
 	description: string;
-	license: ReturnType<typeof licenseProperties>;
+	license: LicenseDisplayProperty[];
 };
 
 /** How a token names and describes itself on its trading page. */
-export function fungibleTokenIdentity(state: AssetState, collection: Collection): FungibleTokenIdentity {
-	const ticker = state.ticker || 'Token';
+export function fungibleTokenIdentity(
+	state: AssetState,
+	collection: Collection,
+	messages: AssetDetailMessages
+): FungibleTokenIdentity {
+	const ticker = state.ticker || messages.validationDefaultTicker;
 	return {
 		ticker,
-		tickerDisplay: formatTickerLabel(ticker),
-		collectionName: collectionDisplayName(collection),
-		description: assetDescription(state, collection.description),
-		license: licenseProperties(state),
+		tickerDisplay: formatTickerLabel(ticker, messages.validationDefaultTicker),
+		collectionName: collection.kind === 'tokens' ? messages.collectionTokensName : collection.name,
+		description: assetDescription(state, collectionDescriptionFallback(collection, messages)),
+		license: licenseDisplayProperties(licenseProperties(state), messages),
 	};
 }
 
@@ -103,7 +112,8 @@ export function fungibleListingDraft(
 	quantity: string,
 	unitPrice: string,
 	state: AssetState,
-	liquid: string
+	liquid: string,
+	messages: AssetDetailMessages
 ): FungibleListingDraft {
 	const amount = safeTokenAmount(quantity, state.denomination);
 	const balance = BigInt(liquid);
@@ -111,17 +121,15 @@ export function fungibleListingDraft(
 	return {
 		quantityError: quantity.trim()
 			? amount === null
-				? `Enter a valid ${formatTickerLabel(state.ticker || 'Token')} amount using no more than ${
-						state.denomination
-				  } decimal places.`
+				? formatMessage(messages.validationTokenAmount, {
+						ticker: formatTickerLabel(state.ticker, messages.validationDefaultTicker),
+						denomination: state.denomination,
+				  })
 				: amount > balance
-				? `You can list up to ${tokenLabel(liquid, state)}.`
+				? formatMessage(messages.validationListUpTo, { amount: tokenLabel(liquid, state) })
 				: ''
 			: '',
-		unitPriceError:
-			unitPrice.trim() && !safeArPrice(unitPrice)
-				? 'Enter a positive AR price with no more than 12 decimal places.'
-				: '',
+		unitPriceError: unitPrice.trim() && !safeArPrice(unitPrice) ? messages.validationArPrice : '',
 		quote,
 		ready: Boolean(amount !== null && amount <= balance && safeArPrice(unitPrice) && quote),
 	};

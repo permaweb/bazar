@@ -18,8 +18,11 @@ import { announceFungibleOperationActivityChange } from 'api/operations';
 import { AssetTransactionClient } from 'api/transactions';
 
 import { appError } from 'helpers/app-error';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 import { useWallet } from 'providers/WalletProvider';
 
+import { DISPATCH_MESSAGES } from '../messages';
 import {
 	dispatchActivityChange,
 	type DispatchActivityPhase,
@@ -53,6 +56,9 @@ export type HolderDispatchController = {
  * settlement progress, and the top-bar activity entry.
  */
 export function useHolderDispatch(processId: string, token: AssetState | null): HolderDispatchController {
+	const messages = useMessages(DISPATCH_MESSAGES);
+	const errorMessages = useAppErrorMessages();
+	const plural = usePlural();
 	const wallet = useWallet();
 	const abortRef = React.useRef<AbortController | null>(null);
 	const [state, dispatch] = React.useReducer(dispatchReducer, processId, (id) => dispatchState(loadDispatchPlan(id)));
@@ -63,7 +69,7 @@ export function useHolderDispatch(processId: string, token: AssetState | null): 
 
 	const announce = (sender: string, phase: DispatchActivityPhase, status: string, createdAt: number) =>
 		announceFungibleOperationActivityChange(
-			dispatchActivityChange({ processId, token, sender, phase, status, createdAt })
+			dispatchActivityChange({ processId, token, sender, phase, status, createdAt, messages })
 		);
 
 	const execute = async (dispatchPlan: DispatchPlan) => {
@@ -72,7 +78,7 @@ export function useHolderDispatch(processId: string, token: AssetState | null): 
 		dispatch({ type: 'run-started' });
 		const sender = dispatchPlan.sender;
 		const startedAt = Date.now();
-		announce(sender, 'working', dispatchStartStatus(dispatchPlan.rows.length), startedAt);
+		announce(sender, 'working', dispatchStartStatus(dispatchPlan.rows.length, messages, plural), startedAt);
 		try {
 			await runDispatch(dispatchPlan, {
 				signal: controller.signal,
@@ -80,14 +86,14 @@ export function useHolderDispatch(processId: string, token: AssetState | null): 
 				readCurrentState: readAssetStateWithDeadline,
 				onProgress: (next) => {
 					dispatch({ type: 'progressed', plan: next });
-					announce(sender, 'working', dispatchProgressStatus(next), startedAt);
+					announce(sender, 'working', dispatchProgressStatus(next, messages), startedAt);
 				},
 			});
 			announce(sender, 'done', '', startedAt);
 		} catch (cause) {
 			if (!controller.signal.aborted) {
-				dispatch({ type: 'failed', error: dispatchErrorMessage(cause) });
-				announce(sender, 'error', dispatchErrorMessage(cause), startedAt);
+				dispatch({ type: 'failed', error: dispatchErrorMessage(cause, messages, errorMessages) });
+				announce(sender, 'error', dispatchErrorMessage(cause, messages, errorMessages), startedAt);
 			}
 		} finally {
 			if (!controller.signal.aborted) dispatch({ type: 'run-settled' });
@@ -117,7 +123,7 @@ export function useHolderDispatch(processId: string, token: AssetState | null): 
 				dispatch({ type: 'plan-created', plan: created });
 				await execute(created);
 			} catch (cause) {
-				dispatch({ type: 'failed', error: dispatchErrorMessage(cause) });
+				dispatch({ type: 'failed', error: dispatchErrorMessage(cause, messages, errorMessages) });
 			}
 		},
 		resume: async () => {

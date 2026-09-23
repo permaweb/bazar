@@ -1,5 +1,5 @@
 import { type MintActivity, mintActivityNeedsAttention, removeMintActivities } from 'api/mint';
-import { type FungibleOperationActivitySummary, type OperationActivityPhase, operationLabel } from 'api/operations';
+import type { FungibleOperationActivitySummary, Operation, OperationActivityPhase } from 'api/operations';
 
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { type OperationActivity, type UploadActivity, useOperationActivity } from 'providers/OperationActivityProvider';
@@ -7,8 +7,8 @@ import { useWallet } from 'providers/WalletProvider';
 
 export type OperationActivityMenuItems = {
 	uploads: UploadActivity[];
-	operations: Array<{ activity: OperationActivity; operationLabel: string }>;
-	fungibleOperations: Array<{ activity: FungibleOperationActivitySummary; operationLabel: string }>;
+	operations: Array<{ activity: OperationActivity; operationKind: Operation['kind'] }>;
+	fungibleOperations: Array<{ activity: FungibleOperationActivitySummary; operationKind: Operation['kind'] }>;
 	mints: Array<{
 		activity: MintActivity;
 		/** The upload has not reached live process state in time and needs the user's attention. */
@@ -65,7 +65,7 @@ export function useOperationActivityMenu(
 	};
 }
 
-/** Selects and labels the owner's visible activity; uploads absorb the mint activities of the assets they created. */
+/** Selects the owner's visible activity; uploads absorb the mint activities of the assets they created. */
 export function operationActivityMenuItems(
 	sources: {
 		activities: OperationActivity[];
@@ -83,10 +83,10 @@ export function operationActivityMenuItems(
 ): OperationActivityMenuItems {
 	const operations = sources.activities
 		.filter((activity) => activity.owner === context.owner && context.isPhaseVisible(activity.phase))
-		.map((activity) => ({ activity, operationLabel: operationLabel(activity.operation.kind) }));
+		.map((activity) => ({ activity, operationKind: activity.operation.kind }));
 	const fungibleOperations = sources.fungibleActivities
 		.filter((activity) => context.isPhaseVisible(activity.phase))
-		.map((activity) => ({ activity, operationLabel: operationLabel(activity.operationKind) }));
+		.map((activity) => ({ activity, operationKind: activity.operationKind }));
 	const uploads = sources.uploadActivities.filter((activity) => activity.owner === context.owner);
 	const linkedUploadAssets = new Set(uploads.flatMap((activity) => [activity.assetId, ...(activity.assetIds ?? [])]));
 	const mints = sources.mintActivities

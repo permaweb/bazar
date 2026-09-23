@@ -9,9 +9,12 @@ import { BazarMark } from 'components/atoms/BazarMark';
 import { Icon } from 'components/atoms/Icon';
 import { NamesCubePreview } from 'components/atoms/NamesCubePreview';
 import { TokenAvatar } from 'components/atoms/TokenAvatar';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { HOME_MESSAGES } from '../../../messages';
 import {
 	homeCollectionAssetCountLabel,
+	homeCollectionDescription,
 	type HomeMarketSummary,
 	homeMarketSummaryLabel,
 	homeMarketSummaryListed,
@@ -24,6 +27,7 @@ export default function HomeCollectionCard(props: {
 	floorPending: boolean;
 	index: number;
 }) {
+	const messages = useMessages(HOME_MESSAGES);
 	const image = props.collection.assets.find((asset) => asset.image)?.image;
 	const tokenPreview = props.collection.assets.find((asset) => asset.image) ?? props.collection.assets[0];
 	return (
@@ -35,7 +39,7 @@ export default function HomeCollectionCard(props: {
 						fetchPriority={props.index === 0 ? 'high' : 'auto'}
 						image={tokenPreview?.image}
 						loading={props.index === 0 ? 'eager' : 'lazy'}
-						ticker={tokenPreview?.ticker ?? 'Token'}
+						ticker={tokenPreview?.ticker ?? messages.homeTokenTickerFallback}
 					/>
 				) : image ? (
 					<ArtworkImage
@@ -47,7 +51,7 @@ export default function HomeCollectionCard(props: {
 							<span className="home-image-collection-fallback" aria-hidden="true">
 								<BazarMark />
 								<strong>{props.collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
-								<small>Permanent image collection</small>
+								<small>{messages.homeImageCollectionFallback}</small>
 							</span>
 						}
 					/>
@@ -56,29 +60,38 @@ export default function HomeCollectionCard(props: {
 				) : (
 					<div className="home-name-art">
 						<BazarMark />
-						<span>$AR</span>
+						<span>{messages.homeArSymbol}</span>
 					</div>
 				)}
 				<div className="home-feature-glow" />
 			</div>
 			<div className="home-feature-copy">
 				<h2>{props.collection.name}</h2>
-				<span>{props.collection.description}</span>
+				<span>{homeCollectionDescription(props.collection, messages)}</span>
 			</div>
 			<div className="home-feature-stats">
 				<div>
-					<span>{props.collection.kind === 'names' && props.collection.hasMore ? 'Loaded' : 'Assets'}</span>
-					<strong>{homeCollectionAssetCountLabel(props.collection)}</strong>
+					<span>
+						{props.collection.kind === 'names' && props.collection.hasMore
+							? messages.homeCollectionLoaded
+							: messages.homeCollectionAssets}
+					</span>
+					<strong>{homeCollectionAssetCountLabel(props.collection, messages)}</strong>
 				</div>
 				<div>
-					<span>{props.collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
+					<span>
+						{props.collection.hasMore ? messages.homeCollectionLoadedFloor : messages.homeCollectionFloor}
+					</span>
 					<strong className={homeMarketSummaryListed(props.floor) ? 'listed' : undefined}>
 						{!props.floorPending && props.floor ? (
 							<ArCurrencyText>
 								{homeMarketSummaryLabel(
 									props.floor,
-									props.collection.hasMore ? 'No loaded listings' : 'No live listings',
-									'N/A'
+									messages,
+									props.collection.hasMore
+										? messages.homeCollectionNoLoadedListings
+										: messages.homeCollectionNoLiveListings,
+									messages.homeSummaryUnindexed
 								)}
 							</ArCurrencyText>
 						) : (
@@ -88,7 +101,7 @@ export default function HomeCollectionCard(props: {
 				</div>
 			</div>
 			<strong className="home-card-action">
-				Open collection
+				{messages.homeOpenCollection}
 				<span>
 					<Icon icon={ArrowUpRight} size="xs" />
 				</span>

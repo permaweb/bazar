@@ -15,6 +15,7 @@ import {
 	requestFailureMessage,
 	toAppError,
 } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 const CODES: AppErrorCode[] = [
 	'cancelled',
@@ -31,7 +32,8 @@ const CODES: AppErrorCode[] = [
 	'unknown-outcome',
 	'unknown',
 ];
-const COPY = new Set(APP_ERROR_REASON_LIST.map(appErrorReasonMessage));
+const MESSAGES = APP_ERROR_MESSAGES.en;
+const COPY = new Set(APP_ERROR_REASON_LIST.map((reason) => appErrorReasonMessage(MESSAGES, reason)));
 
 describe('application error reasons', () => {
 	it('defines a category, retry policy, and copy for every reason', () => {
@@ -39,8 +41,8 @@ describe('application error reasons', () => {
 			const error = appError(reason);
 			expect(CODES).toContain(error.code);
 			expect(typeof error.retryable).toBe('boolean');
-			expect(appErrorMessage(error).trim().length).toBeGreaterThan(0);
-			expect(appErrorMessage(error)).not.toMatch(/^[a-z]+(?:-[a-z0-9]+)+$/);
+			expect(appErrorMessage(MESSAGES, error).trim().length).toBeGreaterThan(0);
+			expect(appErrorMessage(MESSAGES, error)).not.toMatch(/^[a-z]+(?:-[a-z0-9]+)+$/);
 			expect(error.message).toBe(reason);
 		}
 	});
@@ -50,8 +52,8 @@ describe('application error reasons', () => {
 			expect(isAppErrorReason(code)).toBe(true);
 			expect(appError(code).code).toBe(code);
 		}
-		expect(appErrorMessage(appError('invalid-input', { message: 'mint-artist-invalid' }))).toBe(
-			appErrorReasonMessage('invalid-input')
+		expect(appErrorMessage(MESSAGES, appError('invalid-input', { message: 'mint-artist-invalid' }))).toBe(
+			appErrorReasonMessage(MESSAGES, 'invalid-input')
 		);
 	});
 
@@ -79,7 +81,7 @@ describe('application error reasons', () => {
 		expect(error.message).toBe('transaction-dispatch-unconfirmed');
 		expect(error.cause).toBe(cause);
 		expect(error.detail).toEqual({ transactionId: 'T'.repeat(43) });
-		expect(appErrorMessage(error)).not.toContain('socket');
+		expect(appErrorMessage(MESSAGES, error)).not.toContain('socket');
 	});
 
 	it.each([
@@ -112,12 +114,12 @@ describe('application error reasons', () => {
 		['wallet-sign-unavailable', 'Connect an Arweave wallet that can sign transactions.'],
 		['ar-amount-invalid', 'Enter a positive AR amount.'],
 	] as const)('explains recovery for %s', (reason, guidance) => {
-		expect(appErrorReasonMessage(reason)).toContain(guidance);
+		expect(appErrorReasonMessage(MESSAGES, reason)).toContain(guidance);
 	});
 
 	it('explains that observation-window failures continue automatically', () => {
 		for (const reason of ['registration-not-found', 'payment-not-found'] as const) {
-			const message = appErrorReasonMessage(reason);
+			const message = appErrorReasonMessage(MESSAGES, reason);
 			expect(message).toContain('keep checking');
 			expect(message).toContain('automatically');
 			expect(message).not.toContain('visible Resume action');
@@ -199,7 +201,7 @@ describe('toAppError', () => {
 				fc.constantFrom(...APP_ERROR_REASON_LIST),
 				(text, fallback) => {
 					for (const cause of [text, new Error(text), { message: text, code: text }]) {
-						const message = appErrorMessage(toAppError(cause, fallback));
+						const message = appErrorMessage(MESSAGES, toAppError(cause, fallback));
 						expect(COPY.has(message)).toBe(true);
 						if (!COPY.has(text)) expect(message).not.toBe(text);
 					}
@@ -222,12 +224,14 @@ describe('marketplace request failures', () => {
 	});
 
 	it('distinguishes compute and transaction-index recovery', () => {
-		expect(requestFailureMessage('compute', 'rate-limited')).toContain('review the AO Core settings in the header');
-		expect(requestFailureMessage('index', 'rate-limited')).toBe(
+		expect(requestFailureMessage(MESSAGES, 'compute', 'rate-limited')).toContain(
+			'review the AO Core settings in the header'
+		);
+		expect(requestFailureMessage(MESSAGES, 'index', 'rate-limited')).toBe(
 			'Arweave’s transaction index is temporarily rate-limiting requests. Wait briefly and retry.'
 		);
-		expect(requestFailureMessage('compute', 'unavailable')).toContain('Live state could not be read');
-		expect(requestFailureMessage('index', 'unavailable')).toBe(
+		expect(requestFailureMessage(MESSAGES, 'compute', 'unavailable')).toContain('Live state could not be read');
+		expect(requestFailureMessage(MESSAGES, 'index', 'unavailable')).toBe(
 			'Arweave’s transaction index could not be read. Retry shortly.'
 		);
 	});

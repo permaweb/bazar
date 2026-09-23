@@ -1,2 +1,7 @@
 export type { ProfileIdentityProps } from './ProfileIdentity';
-export { ProfileAvatar, default as ProfileIdentity, shortProfileAddress } from './ProfileIdentity';
+export {
+	profileAccessibleName,
+	ProfileAvatar,
+	default as ProfileIdentity,
+	shortProfileAddress,
+} from './ProfileIdentity';

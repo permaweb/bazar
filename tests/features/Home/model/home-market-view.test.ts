@@ -7,7 +7,8 @@ import {
 	replaceHiddenCollectionAssetIndex,
 } from 'api/collections';
 
-import type { HomeMarketSummary } from 'features/Home/model/home-market';
+import { HOME_MESSAGES } from 'features/Home/messages';
+import { homeCollectionDescription, type HomeMarketSummary } from 'features/Home/model/home-market';
 import {
 	homeCollectionActivityKey,
 	homeCollectionSummaryKey,
@@ -59,6 +60,8 @@ function shell(asset: AssetSummary, price = '1 AR', height = 10): HomeListingShe
 beforeEach(() => replaceHiddenCollectionAssetIndex(READY_HIDDEN_COLLECTION_INDEX));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
+const describeCollection = (collection: Collection) => homeCollectionDescription(collection, HOME_MESSAGES.en);
+
 describe('home collections view', () => {
 	it('keeps non-token collections that match the search and orders them by recent activity', () => {
 		const older = { ...imageCollection('older', []), name: 'Older art' };
@@ -69,17 +72,24 @@ describe('home collections view', () => {
 		};
 
 		expect(
-			homeVisibleCollections([tokens, older, newer], '', null, 'recent', activity).map(
+			homeVisibleCollections([tokens, older, newer], '', null, 'recent', activity, describeCollection).map(
 				(collection) => collection.id
 			)
 		).toEqual(['newer', 'older']);
 		expect(
-			homeVisibleCollections([older, newer], 'newer', null, 'recent', activity).map((item) => item.id)
-		).toEqual(['newer']);
-		expect(
-			homeVisibleCollections([older], 'unrelated', new Map([[older, [first]]]), 'recent', {}).map(
+			homeVisibleCollections([older, newer], 'newer', null, 'recent', activity, describeCollection).map(
 				(item) => item.id
 			)
+		).toEqual(['newer']);
+		expect(
+			homeVisibleCollections(
+				[older],
+				'unrelated',
+				new Map([[older, [first]]]),
+				'recent',
+				{},
+				describeCollection
+			).map((item) => item.id)
 		).toEqual(['older']);
 	});
 

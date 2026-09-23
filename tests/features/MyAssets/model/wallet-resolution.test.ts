@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AssetCandidate, ResolvedAsset } from 'api/discovery';
 
+import { MY_ASSETS_MESSAGES } from 'features/MyAssets/messages';
 import { listedUniquePrice } from 'features/MyAssets/model/wallet-assets';
 import {
 	candidateCheckOutcome,
@@ -27,11 +28,18 @@ import {
 	type WalletResolutionStatus,
 } from 'features/MyAssets/model/wallet-resolution';
 import { appError, appErrorMessage, requestFailureMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 import {
 	assetGroupRevealAnnouncement,
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from 'helpers/progressive-assets';
+
+const language = MY_ASSETS_MESSAGES.en;
+const revealMessages = {
+	complete: language.myAssetsGroupRevealComplete,
+	partial: language.myAssetsGroupRevealPartial,
+};
 
 const processId = 'P'.repeat(43);
 
@@ -94,8 +102,12 @@ describe('My assets retry bookkeeping', () => {
 	it('does not focus a completion summary after another asset arrives', () => {
 		expect(assetGroupRevealComplete(96, 96)).toBe(true);
 		expect(assetGroupRevealComplete(96, 97)).toBe(false);
-		expect(assetGroupRevealAnnouncement(96, 97, 'owned assets')).toBe('Showing 96 of 97 owned assets.');
-		expect(assetGroupRevealAnnouncement(97, 97, 'owned assets')).toBe('All 97 owned assets are shown.');
+		expect(assetGroupRevealAnnouncement(96, 97, 'owned assets', revealMessages)).toBe(
+			'Showing 96 of 97 owned assets.'
+		);
+		expect(assetGroupRevealAnnouncement(97, 97, 'owned assets', revealMessages)).toBe(
+			'All 97 owned assets are shown.'
+		);
 	});
 
 	it('resumes only the same in-memory discovery scope and replaces explicit refreshes', () => {
@@ -185,7 +197,8 @@ describe('My assets retry bookkeeping', () => {
 						...status,
 						revalidated: progress.revalidated,
 					},
-					''
+					'',
+					language
 				).announcement
 			);
 		}
@@ -315,10 +328,11 @@ describe('My assets retry bookkeeping', () => {
 				indexRateLimited: 4,
 				error: null,
 			},
-			'Arweave’s transaction index is temporarily rate-limiting requests.'
+			'Arweave’s transaction index is temporarily rate-limiting requests.',
+			language
 		);
 
-		expect(copy.heading).toBe('Candidate checks unavailable');
+		expect(copy.heading).toBe(language.myAssetsResolutionCandidateChecksUnavailable);
 		expect(copy.announcement).toContain('transaction index');
 		expect(copy.announcement).not.toContain('Live state resolved');
 	});
@@ -339,10 +353,11 @@ describe('My assets retry bookkeeping', () => {
 				revalidationTotal: 101,
 				error: null,
 			},
-			''
+			'',
+			language
 		);
 
-		expect(copy.heading).toBe('Confirming current ownership');
+		expect(copy.heading).toBe(language.myAssetsResolutionConfirmingOwnership);
 		expect(copy.announcement).toBe(
 			'Confirming current ownership. 80 of 101 visible assets rechecked without cached state.'
 		);
@@ -364,7 +379,7 @@ describe('My assets retry bookkeeping', () => {
 
 		expect(walletResolutionIsDeterminate(interrupted)).toBe(false);
 		expect(walletResolutionShowsProgress(interrupted)).toBe(false);
-		expect(walletResolutionCopy(interrupted, '').announcement).toBe('');
+		expect(walletResolutionCopy(interrupted, '', language).announcement).toBe('');
 		expect(
 			walletResolutionIsDeterminate({
 				...interrupted,
@@ -511,25 +526,37 @@ describe('wallet resolution state machine', () => {
 	it('reports discovery failures as transaction-index failures with the original classification', () => {
 		expect(walletDiscoveryError(appError('compute-rate-limited')).reason).toBe('index-rate-limited');
 		expect(walletDiscoveryError(new Error('network down')).reason).toBe('index-unavailable');
-		expect(appErrorMessage(walletDiscoveryError(new Error('network down')))).toBe(
-			requestFailureMessage('index', 'unavailable')
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, walletDiscoveryError(new Error('network down')))).toBe(
+			requestFailureMessage(APP_ERROR_MESSAGES.en, 'index', 'unavailable')
 		);
 	});
 
 	it('explains which service left candidates unavailable', () => {
 		const base = initialWalletResolutionStatus();
-		expect(walletResolutionFailureMessage(base)).toBe('');
+		expect(walletResolutionFailureMessage(base, APP_ERROR_MESSAGES.en)).toBe('');
 		expect(
-			walletResolutionFailureMessage({
-				...base,
-				failures: 2,
-				indexFailures: 2,
-				indexRateLimited: 1,
-				rateLimited: 1,
-			})
-		).toBe(requestFailureMessage('index', 'rate-limited'));
-		expect(walletResolutionFailureMessage({ ...base, failures: 3, indexFailures: 1, rateLimited: 1 })).toBe(
-			`${requestFailureMessage('index', 'unavailable')} ${requestFailureMessage('compute', 'rate-limited')}`
+			walletResolutionFailureMessage(
+				{
+					...base,
+					failures: 2,
+					indexFailures: 2,
+					indexRateLimited: 1,
+					rateLimited: 1,
+				},
+				APP_ERROR_MESSAGES.en
+			)
+		).toBe(requestFailureMessage(APP_ERROR_MESSAGES.en, 'index', 'rate-limited'));
+		expect(
+			walletResolutionFailureMessage(
+				{ ...base, failures: 3, indexFailures: 1, rateLimited: 1 },
+				APP_ERROR_MESSAGES.en
+			)
+		).toBe(
+			`${requestFailureMessage(APP_ERROR_MESSAGES.en, 'index', 'unavailable')} ${requestFailureMessage(
+				APP_ERROR_MESSAGES.en,
+				'compute',
+				'rate-limited'
+			)}`
 		);
 	});
 });

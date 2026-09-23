@@ -1,4 +1,4 @@
-export type { MintActivity } from './activity';
+export type { MintActivity, MintActivityPhase } from './activity';
 export {
 	advanceMintActivity,
 	loadMintActivities,

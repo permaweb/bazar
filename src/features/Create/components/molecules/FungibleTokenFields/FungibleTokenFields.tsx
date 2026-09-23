@@ -6,6 +6,10 @@ import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { TextInput } from 'components/atoms/TextInput';
 import { formatBytes } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { CREATE_MESSAGES } from '../../../messages';
 
 export default function FungibleTokenFields(props: {
 	name: string;
@@ -22,6 +26,7 @@ export default function FungibleTokenFields(props: {
 	/** Returns `false` when the logo was rejected. */
 	onLogoSelect: (logo: File | null) => boolean;
 }) {
+	const messages = useMessages(CREATE_MESSAGES);
 	const logoInput = React.useRef<HTMLInputElement>(null);
 
 	const handleLogoSelect = (next: File | null) => {
@@ -31,20 +36,23 @@ export default function FungibleTokenFields(props: {
 	return (
 		<>
 			<div className="create-field">
-				<label htmlFor="mint-ticker">Ticker</label>
+				<label htmlFor="mint-ticker">{messages.tokenTickerLabel}</label>
 				<TextInput
 					id="mint-ticker"
 					maxLength={props.limits.maxTickerLength}
-					placeholder="WEAVE"
+					placeholder={messages.tokenTickerPlaceholder}
 					value={props.ticker}
 					onChange={(event) => props.onTickerChange(event.target.value)}
 				/>
 				<span>
-					{props.ticker.length} / {props.limits.maxTickerLength}
+					{formatMessage(messages.createFieldCounter, {
+						length: props.ticker.length,
+						max: props.limits.maxTickerLength,
+					})}
 				</span>
 			</div>
 			<div className="create-field">
-				<label htmlFor="mint-supply">Total supply</label>
+				<label htmlFor="mint-supply">{messages.tokenSupplyLabel}</label>
 				<TextInput
 					id="mint-supply"
 					inputMode="numeric"
@@ -53,10 +61,12 @@ export default function FungibleTokenFields(props: {
 					value={props.wholeSupply}
 					onChange={(event) => props.onWholeSupplyChange(event.target.value)}
 				/>
-				<span>Maximum {props.limits.maxWholeSupply.toLocaleString()} whole tokens</span>
+				<span>
+					{formatMessage(messages.tokenSupplyMax, { max: props.limits.maxWholeSupply.toLocaleString() })}
+				</span>
 			</div>
 			<div className="create-field">
-				<label htmlFor="mint-denomination">Decimal places</label>
+				<label htmlFor="mint-denomination">{messages.tokenDenominationLabel}</label>
 				<TextInput
 					id="mint-denomination"
 					inputMode="numeric"
@@ -70,7 +80,7 @@ export default function FungibleTokenFields(props: {
 			</div>
 			<div className="create-field fungible-logo-field">
 				<label htmlFor="mint-logo">
-					Token logo <small>Optional</small>
+					{messages.tokenLogoLabel} <small>{messages.createOptional}</small>
 				</label>
 				<Button
 					className={`fungible-logo-dropzone${props.logoPreview ? ' has-file' : ''}`}
@@ -87,18 +97,22 @@ export default function FungibleTokenFields(props: {
 						<>
 							<img
 								src={props.logoPreview}
-								alt={`${props.name.trim() || props.ticker.trim() || 'Token'} logo preview`}
+								alt={formatMessage(messages.tokenLogoPreviewAlt, {
+									name: props.name.trim() || props.ticker.trim() || messages.tokenLogoFallbackName,
+								})}
 							/>
 							<span>
 								<strong>{props.logo.name}</strong>
-								<small>{formatBytes(props.logo.size)} · click or drop to replace</small>
+								<small>
+									{formatMessage(messages.tokenLogoMeta, { size: formatBytes(props.logo.size) })}
+								</small>
 							</span>
 						</>
 					) : (
 						<span>
 							<Upload aria-hidden="true" />
-							<strong>Choose a token logo</strong>
-							<small>PNG, JPG, WebP, or GIF · up to 10 MB</small>
+							<strong>{messages.tokenLogoChoose}</strong>
+							<small>{messages.tokenLogoHint}</small>
 						</span>
 					)}
 				</Button>
@@ -114,14 +128,14 @@ export default function FungibleTokenFields(props: {
 						<span>
 							{props.logoTxId ? (
 								<>
-									Transaction ID <code>{props.logoTxId}</code>
+									{messages.tokenLogoTransactionId} <code>{props.logoTxId}</code>
 								</>
 							) : (
-								'The transaction ID will appear here after the logo upload.'
+								messages.tokenLogoTransactionPending
 							)}
 						</span>
 						<Button type="button" size="custom" variant="danger" onClick={() => handleLogoSelect(null)}>
-							<Icon icon={X} size="sm" /> Remove
+							<Icon icon={X} size="sm" /> {messages.mintRemove}
 						</Button>
 					</div>
 				) : null}

@@ -10,7 +10,9 @@ import {
 	withContinuingPaymentObservation,
 } from 'api/transactions';
 
-import { type AppError, type AppErrorReason, appErrorReasonMessage } from 'helpers/app-error';
+import { type AppError, type AppErrorMessages, type AppErrorReason, appErrorReasonMessage } from 'helpers/app-error';
+
+import type { OperationsMessages } from '../messages';
 
 import { atomicOperationFailureMessage, type OperationFailureKind, operationFailureKind } from './atomic-operation';
 
@@ -96,10 +98,22 @@ export function operationResumesAutomatically(operation: Operation): boolean {
  * The atomic operation state machine. An attempt only completes or fails while it is working, and the dialog only
  * leaves a finished attempt for the form; progress reports from the running attempt update its observations.
  */
-export function operationFlowReducer(state: OperationFlowState, event: OperationFlowEvent): OperationFlowState {
+export function createOperationFlowReducer(
+	messages: OperationsMessages,
+	errorMessages: AppErrorMessages
+): (state: OperationFlowState, event: OperationFlowEvent) => OperationFlowState {
+	return (state, event) => operationFlowReducer(state, event, messages, errorMessages);
+}
+
+export function operationFlowReducer(
+	state: OperationFlowState,
+	event: OperationFlowEvent,
+	messages: OperationsMessages,
+	errorMessages: AppErrorMessages
+): OperationFlowState {
 	switch (event.type) {
 		case 'validation-failed':
-			return { ...state, message: appErrorReasonMessage(event.reason) };
+			return { ...state, message: appErrorReasonMessage(errorMessages, event.reason) };
 		case 'submitted':
 			return { ...state, message: '', failureKind: null, phase: 'working' };
 		case 'purchase-progressed':
@@ -139,7 +153,7 @@ export function operationFlowReducer(state: OperationFlowState, event: Operation
 			return {
 				...state,
 				confirmations: ATOMIC_ACTION_CONFIRMATION_TARGET,
-				message: 'Five confirmations reached. Waiting for the scheduler safety depth and live asset state…',
+				message: messages.confirmationTargetReached,
 			};
 		case 'completed':
 			return state.phase === 'working' ? { ...state, phase: 'done' } : state;
@@ -149,7 +163,7 @@ export function operationFlowReducer(state: OperationFlowState, event: Operation
 				...state,
 				...(event.discardTransaction ? { transaction: null } : {}),
 				failureKind: operationFailureKind(event.error),
-				message: atomicOperationFailureMessage(event.error, event.signer),
+				message: atomicOperationFailureMessage(event.error, event.signer, messages, errorMessages),
 				phase: 'error',
 			};
 		case 'returned-to-form':

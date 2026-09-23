@@ -7,6 +7,7 @@ import { purchaseObservationResumeState, purchaseStateFailure } from 'api/transa
 
 import AtomicOperationErrorAlert from 'features/Operations/components/molecules/AtomicOperationErrorAlert/AtomicOperationErrorAlert';
 import AtomicPurchaseSequence from 'features/Operations/components/molecules/AtomicPurchaseSequence/AtomicPurchaseSequence';
+import { OPERATIONS_MESSAGES } from 'features/Operations/messages';
 import {
 	atomicOperationFailureMessage,
 	atomicOperationFormError,
@@ -24,19 +25,25 @@ import {
 	purchaseStatusMessage,
 } from 'features/Operations/model/atomic-operation';
 import { appError, appErrorReasonMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+
+const messages = OPERATIONS_MESSAGES.en;
 
 function formError(...args: Parameters<typeof atomicOperationFormError>) {
 	const reason = atomicOperationFormError(...args);
-	return reason ? appErrorReasonMessage(reason) : '';
+	return reason ? appErrorReasonMessage(APP_ERROR_MESSAGES.en, reason) : '';
 }
 
 describe('atomic operation error semantics', () => {
 	it('reports the actual confirmation depth after continuing early', () => {
 		expect(
-			purchaseStatusMessage({
-				stage: 'registration-accepting',
-				registration: { consensus: { confirmations: 2 } },
-			} as any)
+			purchaseStatusMessage(
+				{
+					stage: 'registration-accepting',
+					registration: { consensus: { confirmations: 2 } },
+				} as any,
+				APP_ERROR_MESSAGES.en
+			)
 		).toContain('2 registration confirmations');
 	});
 
@@ -55,8 +62,8 @@ describe('atomic operation error semantics', () => {
 	it('distinguishes the connected signer from another pending listing signer', () => {
 		const signer = 'S'.repeat(43);
 		const transaction = 'T'.repeat(43);
-		const own = pendingListingMessage({ id: transaction, actor: signer }, signer);
-		const other = pendingListingMessage({ id: transaction, actor: 'O'.repeat(43) }, signer);
+		const own = pendingListingMessage({ id: transaction, actor: signer }, signer, messages);
+		const other = pendingListingMessage({ id: transaction, actor: 'O'.repeat(43) }, signer, messages);
 
 		expect(own).toBe(
 			'You already submitted listing transaction TTTTTT…TTTTT; waiting for live asset state. No new wallet approval was requested.'
@@ -77,7 +84,9 @@ describe('atomic operation error semantics', () => {
 			retryable: false,
 			detail: { transactionId: offer.id, actor: signer },
 		});
-		expect(atomicOperationFailureMessage(failure, signer)).toBe(pendingListingMessage(offer, signer));
+		expect(atomicOperationFailureMessage(failure, signer, messages, APP_ERROR_MESSAGES.en)).toBe(
+			pendingListingMessage(offer, signer, messages)
+		);
 		expect(pendingListingFailure({ ...offer, actor: 'O'.repeat(43) }, signer).reason).toBe(
 			'asset-listing-pending-other'
 		);
@@ -110,11 +119,21 @@ describe('atomic operation error semantics', () => {
 	});
 
 	it('explains ordinary failures with the shared copy', () => {
-		expect(atomicOperationFailureMessage(appError('asset-order-reservation-rejected'), 'S'.repeat(43))).toContain(
-			'may have lost a race'
-		);
 		expect(
-			atomicOperationFailureMessage(appError('asset-order-reservation-rejected'), 'S'.repeat(43))
+			atomicOperationFailureMessage(
+				appError('asset-order-reservation-rejected'),
+				'S'.repeat(43),
+				messages,
+				APP_ERROR_MESSAGES.en
+			)
+		).toContain('may have lost a race');
+		expect(
+			atomicOperationFailureMessage(
+				appError('asset-order-reservation-rejected'),
+				'S'.repeat(43),
+				messages,
+				APP_ERROR_MESSAGES.en
+			)
 		).not.toContain('Another buyer claimed');
 	});
 });
@@ -288,15 +307,15 @@ describe('atomic purchase failure trace', () => {
 			})
 		);
 
-		expect(steps.map((step) => [step.key, step.label, step.state])).toEqual([
-			['sign', 'Sign reservation', 'done'],
-			['reserve', 'Reserve asset', 'done'],
-			['pay', 'Pay seller', 'active'],
-			['verify', 'Verify ownership', 'next'],
+		expect(steps.map((step) => [step.key, step.state])).toEqual([
+			['sign', 'done'],
+			['reserve', 'done'],
+			['pay', 'active'],
+			['verify', 'next'],
 		]);
-		expect(sequence).toContain('aria-label="Asset purchase transaction sequence"');
-		expect(sequence).toContain('Reserve asset');
-		expect(sequence).toContain('Verify ownership');
+		expect(sequence).toContain(`aria-label="${messages.purchaseSequenceLabel}"`);
+		expect(sequence).toContain(messages.purchaseStepReserve);
+		expect(sequence).toContain(messages.purchaseStepVerify);
 	});
 
 	it('keeps reservation signing active until the first NFT transaction is prepared', () => {
@@ -349,26 +368,38 @@ describe('atomic purchase failure trace', () => {
 	});
 
 	it('identifies the furthest known settlement stage', () => {
-		expect(atomicPurchaseFailureStage(null)).toBe('Before reservation');
+		expect(atomicPurchaseFailureStage(null, messages)).toBe('Before reservation');
 		expect(
-			atomicPurchaseFailureStage({
-				registration: { id: 'reservation', dispatched: false },
-			} as any)
+			atomicPurchaseFailureStage(
+				{
+					registration: { id: 'reservation', dispatched: false },
+				} as any,
+				messages
+			)
 		).toBe('Reservation dispatch');
 		expect(
-			atomicPurchaseFailureStage({
-				registration: { id: 'reservation', dispatched: true },
-			} as any)
+			atomicPurchaseFailureStage(
+				{
+					registration: { id: 'reservation', dispatched: true },
+				} as any,
+				messages
+			)
 		).toBe('Reservation confirmation or acceptance');
 		expect(
-			atomicPurchaseFailureStage({
-				payment: { id: 'payment', dispatched: false },
-			} as any)
+			atomicPurchaseFailureStage(
+				{
+					payment: { id: 'payment', dispatched: false },
+				} as any,
+				messages
+			)
 		).toBe('Payment release');
 		expect(
-			atomicPurchaseFailureStage({
-				payment: { id: 'payment', dispatched: true },
-			} as any)
+			atomicPurchaseFailureStage(
+				{
+					payment: { id: 'payment', dispatched: true },
+				} as any,
+				messages
+			)
 		).toBe('Payment confirmation or ownership');
 	});
 

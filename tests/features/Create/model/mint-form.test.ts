@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CollectionMintEstimate, MintEstimate } from 'api/mint';
 
+import { CREATE_MESSAGES } from 'features/Create/messages';
 import {
 	assetMintInput,
 	fallbackAssetName,
@@ -17,6 +18,9 @@ import {
 	safeAudioMetadata,
 	selectedAssetContentType,
 } from 'features/Create/model/mint-form';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
+
+const messages = CREATE_MESSAGES.en;
 
 function file(name: string, type: string, size = 8) {
 	return new File([new Uint8Array(size)], name, { type });
@@ -137,17 +141,23 @@ describe('token inputs', () => {
 describe('submission gating', () => {
 	it('explains what each mode still needs before any wallet request', () => {
 		const empty = { file: null, collectionFiles: [], fungibleInput: fungibleMintInput(validToken), logo: null };
-		expect(mintSubmissionError('asset', empty)).toBe('Choose an image, MP3, or WAV file to continue.');
-		expect(mintSubmissionError('collection', empty)).toBe('Choose at least one collection image.');
-		expect(mintSubmissionError('fungible', empty)).toBeNull();
+		expect(mintSubmissionError('asset', empty, messages, APP_ERROR_MESSAGES.en)).toBe(messages.mintChooseFileError);
+		expect(mintSubmissionError('collection', empty, messages, APP_ERROR_MESSAGES.en)).toBe(
+			messages.mintChooseCollectionImageError
+		);
+		expect(mintSubmissionError('fungible', empty, messages, APP_ERROR_MESSAGES.en)).toBeNull();
 		expect(
-			mintSubmissionError('fungible', {
-				...empty,
-				fungibleInput: fungibleMintInput({ ...validToken, ticker: '' }),
-			})
+			mintSubmissionError(
+				'fungible',
+				{ ...empty, fungibleInput: fungibleMintInput({ ...validToken, ticker: '' }) },
+				messages,
+				APP_ERROR_MESSAGES.en
+			)
 		).toBe('Enter a token ticker between 1 and 32 characters.');
-		expect(mintSubmissionError('asset', { ...empty, file: image })).toBeNull();
-		expect(mintSubmissionError('collection', { ...empty, collectionFiles: [image] })).toBeNull();
+		expect(mintSubmissionError('asset', { ...empty, file: image }, messages, APP_ERROR_MESSAGES.en)).toBeNull();
+		expect(
+			mintSubmissionError('collection', { ...empty, collectionFiles: [image] }, messages, APP_ERROR_MESSAGES.en)
+		).toBeNull();
 	});
 
 	it('waits for metadata and estimates only once a wallet is connected', () => {

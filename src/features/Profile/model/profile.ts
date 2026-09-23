@@ -7,10 +7,12 @@ import {
 	type ProfileUpdate,
 } from 'api/profile';
 
-import { type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
+import { type AppErrorMessages, type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
 import { type AsyncState } from 'helpers/async-state';
 import type { ProfileSummary } from 'types/profile';
+
+import type { ProfileMessages } from '../messages';
 
 export type { AccountProfileRecord };
 
@@ -28,9 +30,13 @@ export type ProfileEditUpdate = {
 export type ProfileSaveStage = 'picture' | 'profile';
 export type ProfileUploadPhase = 'signing' | 'uploading';
 
-export function profileImageError(file: File): string {
-	if (!PROFILE_AVATAR_CONTENT_TYPES.includes(file.type)) return appErrorReasonMessage('invalid-profile-avatar-type');
-	if (!file.size || file.size > PROFILE_AVATAR_MAX_BYTES) return appErrorReasonMessage('invalid-profile-avatar-size');
+export function profileImageError(file: File, errorMessages: AppErrorMessages): string {
+	if (!PROFILE_AVATAR_CONTENT_TYPES.includes(file.type)) {
+		return appErrorReasonMessage(errorMessages, 'invalid-profile-avatar-type');
+	}
+	if (!file.size || file.size > PROFILE_AVATAR_MAX_BYTES) {
+		return appErrorReasonMessage(errorMessages, 'invalid-profile-avatar-size');
+	}
 	return '';
 }
 
@@ -42,9 +48,9 @@ const PROFILE_UPDATE_FAILURES = new Set<AppErrorReason>([
 	'profile-wallet-account-changed',
 ]);
 
-export function profileUpdateError(cause: unknown): string {
+export function profileUpdateError(cause: unknown, errorMessages: AppErrorMessages): string {
 	const { reason } = toAppError(cause, 'profile-update-failed');
-	return appErrorReasonMessage(PROFILE_UPDATE_FAILURES.has(reason) ? reason : 'profile-update-failed');
+	return appErrorReasonMessage(errorMessages, PROFILE_UPDATE_FAILURES.has(reason) ? reason : 'profile-update-failed');
 }
 
 /**
@@ -58,12 +64,16 @@ export function profileUpdateFields(update: ProfileEditUpdate, uploadedAvatar?: 
 	};
 }
 
-export function profileSaveStatus(stage: ProfileSaveStage, phase: ProfileUploadPhase): string {
-	if (stage === 'picture') return phase === 'signing' ? 'Approve picture…' : 'Uploading picture…';
-	return phase === 'signing' ? 'Approve profile…' : 'Publishing profile…';
+export function profileSaveStatus(
+	stage: ProfileSaveStage,
+	phase: ProfileUploadPhase,
+	messages: ProfileMessages
+): string {
+	if (stage === 'picture') {
+		return phase === 'signing' ? messages.profileSaveApprovePicture : messages.profileSaveUploadingPicture;
+	}
+	return phase === 'signing' ? messages.profileSaveApproveProfile : messages.profileSavePublishingProfile;
 }
-
-export const PROFILE_SAVE_PREPARING_STATUS = 'Preparing profile…';
 
 /** Display-ready identity for a profile page, falling back to the bare address while nothing is published. */
 export function accountProfileSummary(
@@ -83,11 +93,12 @@ export function accountProfileSummary(
 /** The loading and failure notice a profile page shows for an address and its read state. */
 export function accountProfileNotice(
 	address: string,
-	state: AccountProfileState
+	state: AccountProfileState,
+	messages: ProfileMessages
 ): { isLoading: boolean; error: string } {
-	if (!isArweaveId(address)) return { isLoading: false, error: 'This is not a valid Arweave profile address.' };
+	if (!isArweaveId(address)) return { isLoading: false, error: messages.profileInvalidAddress };
 	if (state.status === 'error' || state.status === 'stale') {
-		return { isLoading: false, error: 'This profile could not be read from Arweave.' };
+		return { isLoading: false, error: messages.profileUnreadable };
 	}
 	return { isLoading: state.status === 'loading' || state.status === 'idle', error: '' };
 }

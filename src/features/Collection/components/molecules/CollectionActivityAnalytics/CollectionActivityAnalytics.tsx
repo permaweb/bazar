@@ -1,39 +1,53 @@
 import { History } from 'lucide-react';
 
+import { useMessages } from 'providers/LanguageProvider';
+
+import { COLLECTION_MESSAGES } from '../../../messages';
+
 export default function CollectionActivityAnalytics(props: {
 	error: boolean;
 	events: number;
 	loading: boolean;
 	pages: number;
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
 	return (
-		<aside className="collection-analytics collection-activity-analytics" aria-label="Activity analytics">
+		<aside
+			className="collection-analytics collection-activity-analytics"
+			aria-label={language.activityAnalyticsLabel}
+		>
 			<div className="collection-analytics-heading">
 				<div>
-					<span>Market</span>
-					<h2>Analytics</h2>
+					<span>{language.analyticsEyebrow}</span>
+					<h2>{language.analyticsHeading}</h2>
 				</div>
 				<History aria-hidden="true" />
 			</div>
 			<div className="collection-analytics-tabs">
-				<span>Activity</span>
+				<span>{language.analyticsActivityTab}</span>
 			</div>
 			<div className="collection-activity-summary">
 				<div>
-					<span>Indexed events</span>
+					<span>{language.analyticsIndexedEvents}</span>
 					<strong>{props.events.toLocaleString()}</strong>
 				</div>
 				<div>
-					<span>Batches checked</span>
+					<span>{language.analyticsBatchesChecked}</span>
 					<strong>{props.pages.toLocaleString()}</strong>
 				</div>
 				<div>
-					<span>Source</span>
-					<strong>Arweave index</strong>
+					<span>{language.analyticsSource}</span>
+					<strong>{language.analyticsSourceArweaveIndex}</strong>
 				</div>
 				<div>
-					<span>Status</span>
-					<strong>{props.error ? 'Needs retry' : props.loading ? 'Refreshing' : 'Current'}</strong>
+					<span>{language.analyticsStatus}</span>
+					<strong>
+						{props.error
+							? language.activityStatusNeedsRetry
+							: props.loading
+							? language.activityStatusRefreshing
+							: language.activityStatusCurrent}
+					</strong>
 				</div>
 			</div>
 		</aside>

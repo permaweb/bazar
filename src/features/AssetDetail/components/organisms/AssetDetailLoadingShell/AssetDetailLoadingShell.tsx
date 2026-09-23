@@ -9,9 +9,11 @@ import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { ErrorPanel, type ErrorPanelAction } from 'components/molecules/ErrorPanel';
 import { isAudioContentType } from 'helpers/asset-media';
 import { formatTickerLabel } from 'helpers/token-display';
+import { useMessages } from 'providers/LanguageProvider';
 import { useWallet } from 'providers/WalletProvider';
 
-import { assetDetailLoadingShellView } from '../../../model/asset-detail';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
+import { assetDetailLoadingShellView, audioArtworkLabel } from '../../../model/asset-detail';
 
 export default function AssetDetailLoadingShell(props: {
 	asset?: AssetSummary;
@@ -21,11 +23,14 @@ export default function AssetDetailLoadingShell(props: {
 	onRetry?: () => void;
 	secondaryAction?: ErrorPanelAction;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const wallet = useWallet();
 	const { kind, device, detailClass, collectionName } = assetDetailLoadingShellView(
 		props.collection,
-		props.collectionId
+		props.collectionId,
+		messages
 	);
+	const retryAction = props.onRetry ? { label: messages.assetDetailRetry, onClick: props.onRetry } : undefined;
 
 	if (kind === 'tokens') {
 		return (
@@ -45,7 +50,7 @@ export default function AssetDetailLoadingShell(props: {
 					<div className="fungible-token-identity">
 						<div className="fungible-token-title">
 							{props.asset ? (
-								<h1>{formatTickerLabel(props.asset.ticker)}</h1>
+								<h1>{formatTickerLabel(props.asset.ticker, messages.validationDefaultTicker)}</h1>
 							) : (
 								<span className="layout-placeholder layout-placeholder-title" />
 							)}
@@ -57,26 +62,40 @@ export default function AssetDetailLoadingShell(props: {
 							) : (
 								<span>{collectionName}</span>
 							)}
-							<span>token@1.0</span>
+							<span>{device}</span>
 						</div>
 					</div>
 					<div aria-hidden="true" className="fungible-token-balance">
-						<span>{wallet.address ? 'Your liquid balance' : 'Circulating supply'}</span>
+						<span>
+							{wallet.address
+								? messages.loadingShellYourLiquidBalance
+								: messages.loadingShellCirculatingSupply}
+						</span>
 						<strong className="layout-placeholder asset-loading-balance" />
 					</div>
 				</header>
 				{props.error ? (
-					<ErrorPanel message={props.error} onRetry={props.onRetry} secondaryAction={props.secondaryAction} />
+					<ErrorPanel
+						heading={messages.assetDetailErrorHeading}
+						message={props.error}
+						retryAction={retryAction}
+						secondaryAction={props.secondaryAction}
+					/>
 				) : (
 					<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
-						<span aria-hidden="true" /> Computing current state…
+						<span aria-hidden="true" /> {messages.assetDetailComputingState}
 					</div>
 				)}
 				<div className="asset-detail-layout">
 					<div className="asset-commerce-column asset-commerce-primary">
 						<section aria-hidden="true" className="asset-commerce-card asset-commerce-card-loading">
 							<div className="asset-market-stats asset-loading-market-stats">
-								{['Current unit price', 'For sale', 'Your listed', 'Holders'].map((label) => (
+								{[
+									messages.fungibleStatCurrentUnitPrice,
+									messages.fungibleStatForSale,
+									messages.fungibleStatYourListed,
+									messages.fungibleStatHolders,
+								].map((label) => (
 									<div key={label}>
 										<span>{label}</span>
 										<i className="layout-placeholder" />
@@ -85,19 +104,19 @@ export default function AssetDetailLoadingShell(props: {
 							</div>
 							<div className="fungible-trade-switcher">
 								<div className="segmented-tabs fungible-trade-tabs asset-loading-trade-tabs">
-									<span>Buy</span>
-									<span>List</span>
-									<span>Transfer</span>
+									<span>{messages.fungibleTradeBuy}</span>
+									<span>{messages.fungibleTradeSell}</span>
+									<span>{messages.fungibleTradeTransfer}</span>
 								</div>
 							</div>
 							<div className="asset-loading-trade-composer">
 								<div>
-									<span>You buy</span>
+									<span>{messages.loadingShellYouBuy}</span>
 									<i className="layout-placeholder" />
 									<small className="layout-placeholder" />
 								</div>
 								<div>
-									<span>You pay</span>
+									<span>{messages.loadingShellYouPay}</span>
 									<i className="layout-placeholder" />
 									<small className="layout-placeholder" />
 								</div>
@@ -110,15 +129,15 @@ export default function AssetDetailLoadingShell(props: {
 							aria-hidden="true"
 							className="home-market-tabs asset-detail-tabs asset-section-tabs-loading"
 						>
-							<span>Market</span>
-							<span>Holders</span>
-							<span>About</span>
+							<span>{messages.fungibleTabMarket}</span>
+							<span>{messages.fungibleTabHolders}</span>
+							<span>{messages.fungibleTabAbout}</span>
 						</nav>
 						<div aria-hidden="true" className="fungible-market-panel asset-loading-market-panel">
 							<section className="token-price-chart asset-loading-chart">
 								<div className="token-price-chart-heading">
 									<div className="asset-loading-chart-quote">
-										<span>Indexed ask history</span>
+										<span>{messages.loadingShellIndexedAskHistory}</span>
 										<strong className="layout-placeholder" />
 									</div>
 									<div className="asset-loading-chart-ranges">
@@ -135,11 +154,11 @@ export default function AssetDetailLoadingShell(props: {
 							</section>
 							<div className="orderbook-table fungible-orderbook asset-loading-orderbook">
 								<div className="orderbook-head">
-									<span>Price</span>
-									<span>Size</span>
-									<span>Value</span>
-									<span>Seller</span>
-									<span>State</span>
+									<span>{messages.uniqueOrderColumnPrice}</span>
+									<span>{messages.loadingShellOrderbookSize}</span>
+									<span>{messages.loadingShellOrderbookValue}</span>
+									<span>{messages.orderbookColumnSeller}</span>
+									<span>{messages.orderbookColumnState}</span>
 								</div>
 								{Array.from({ length: 3 }, (_, row) => (
 									<div className="orderbook-row" key={row}>
@@ -150,7 +169,7 @@ export default function AssetDetailLoadingShell(props: {
 								))}
 							</div>
 							<section className="asset-loading-activity">
-								<h2>Activity</h2>
+								<h2>{messages.loadingShellActivity}</h2>
 								{Array.from({ length: 3 }, (_, row) => (
 									<div key={row}>
 										<span className="layout-placeholder" />
@@ -186,17 +205,18 @@ export default function AssetDetailLoadingShell(props: {
 							<span className="layout-placeholder layout-placeholder-title" />
 						)}
 						<div className="asset-owner-line">
-							<span>Loading ownership and market state</span>
+							<span>{messages.loadingShellOwnership}</span>
 						</div>
 						<div className="asset-token-tags" aria-hidden="true">
 							<span>{device}</span>
-							<span>Arweave</span>
-							<span>Supply 1</span>
+							<span>{messages.uniqueProtocolNetwork}</span>
+							<span>{messages.uniqueProtocolSupply}</span>
 						</div>
 						{props.error ? (
 							<ErrorPanel
+								heading={messages.assetDetailErrorHeading}
 								message={props.error}
-								onRetry={props.onRetry}
+								retryAction={retryAction}
 								secondaryAction={props.secondaryAction}
 							/>
 						) : (
@@ -205,7 +225,7 @@ export default function AssetDetailLoadingShell(props: {
 								className="state-verification asset-loading-verification"
 								role="status"
 							>
-								<span aria-hidden="true" /> Computing current state…
+								<span aria-hidden="true" /> {messages.assetDetailComputingState}
 							</div>
 						)}
 						<section aria-hidden="true" className="asset-commerce-card asset-commerce-card-loading">
@@ -227,9 +247,14 @@ export default function AssetDetailLoadingShell(props: {
 								alt={props.asset.name}
 								fetchPriority="high"
 								loading="eager"
+								unavailableLabel={messages.assetDetailArtworkUnavailable}
 							/>
 						) : props.asset && isAudioContentType(props.asset.contentType) ? (
-							<AudioArtwork contentType={props.asset.contentType} name={props.asset.name} />
+							<AudioArtwork
+								contentType={props.asset.contentType}
+								label={audioArtworkLabel(props.asset, messages)}
+								typeLabel={messages.assetDetailAudioArtworkType}
+							/>
 						) : kind === 'names' && props.asset ? (
 							<NameArtwork name={props.asset.name} />
 						) : (
@@ -239,9 +264,9 @@ export default function AssetDetailLoadingShell(props: {
 				</div>
 				<div className="asset-commerce-column asset-commerce-secondary">
 					<nav aria-hidden="true" className="home-market-tabs asset-detail-tabs asset-section-tabs-loading">
-						<span>Details</span>
-						<span>Orders</span>
-						<span>Activity</span>
+						<span>{messages.loadingShellDetails}</span>
+						<span>{messages.loadingShellOrders}</span>
+						<span>{messages.loadingShellActivity}</span>
 					</nav>
 					<div aria-hidden="true" className="asset-loading-panel">
 						<span className="layout-placeholder" />

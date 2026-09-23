@@ -1,6 +1,13 @@
 import { type Collection, isVisibleAssetId } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 
+import { formatMessage, type MessageValues, type PluralMessage } from 'helpers/i18n';
+
+import type { ActivityMessages } from '../messages';
+
+/** The plural formatter `usePlural()` returns, passed in so this model stays React-independent. */
+export type ActivityPluralFormatter = (message: PluralMessage, count: number, values?: MessageValues) => string;
+
 const globalActivityCollections = new WeakMap<Collection[], Map<string, Collection>>();
 
 export function globalActivityCollection(collections: Collection[], processId: string) {
@@ -53,13 +60,15 @@ export function globalActivityRevealDescription(
 	matchingCount: number,
 	_loadedCount: number,
 	filtered: boolean,
+	messages: ActivityMessages,
 	_limit = GLOBAL_ACTIVITY_WINDOW_SIZE
 ) {
 	const shown = Math.max(0, Math.floor(shownCount));
 	const matching = Math.max(0, Math.floor(matchingCount));
-	return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()} loaded${
-		filtered ? ' matching' : ''
-	} events.`;
+	return formatMessage(filtered ? messages.globalActivityRevealFiltered : messages.globalActivityReveal, {
+		shown: shown.toLocaleString(),
+		matching: matching.toLocaleString(),
+	});
 }
 
 export function collectionActivityVersion(collection: Collection) {
@@ -134,33 +143,34 @@ export function collectionCandidateMembership(collection: Collection) {
 	return (processId: string) => isVisibleAssetId(processId) && assetIds.has(processId);
 }
 
-export function collectionActivityScanAnnouncement({
-	error,
-	events,
-	loading,
-	pages,
-	preservingEvents,
-}: {
-	error: boolean;
-	events: number;
-	loading: boolean;
-	pages: number;
-	preservingEvents: boolean;
-}) {
+export function collectionActivityScanAnnouncement(
+	{
+		error,
+		events,
+		loading,
+		pages,
+		preservingEvents,
+	}: {
+		error: boolean;
+		events: number;
+		loading: boolean;
+		pages: number;
+		preservingEvents: boolean;
+	},
+	messages: ActivityMessages,
+	plural: ActivityPluralFormatter
+) {
 	if (!loading) {
-		return error
-			? `Activity scanning stopped. ${events.toLocaleString()} previously indexed ${
-					events === 1 ? 'event remains' : 'events remain'
-			  } visible.`
-			: `Activity scan complete. ${events.toLocaleString()} indexed ${events === 1 ? 'event' : 'events'} found.`;
+		return plural(error ? messages.activityScanStopped : messages.activityScanComplete, events, {
+			count: events.toLocaleString(),
+		});
 	}
 	if (pages === 0) {
-		return preservingEvents
-			? 'Refreshing indexed activity from Arweave. Existing events remain visible.'
-			: 'Reading indexed activity from Arweave.';
+		return preservingEvents ? messages.activityScanRefreshing : messages.activityScanReading;
 	}
 	const milestone = pages < 10 ? 1 : Math.floor(pages / 10) * 10;
-	return `${preservingEvents ? 'Activity refresh' : 'Activity scan'} checked ${milestone.toLocaleString()} ${
-		milestone === 1 ? 'batch' : 'batches'
-	} so far.`;
+	return plural(messages.activityScanProgress, milestone, {
+		count: milestone.toLocaleString(),
+		scan: preservingEvents ? messages.activityScanRefreshName : messages.activityScanName,
+	});
 }

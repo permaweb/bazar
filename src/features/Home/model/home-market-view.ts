@@ -90,7 +90,8 @@ export function homeVisibleCollections(
 	normalizedQuery: string,
 	matches: HomeSearchMatches | null,
 	sort: HomeCollectionSort,
-	activityByCollection: Record<string, HomeListingActivity>
+	activityByCollection: Record<string, HomeListingActivity>,
+	describeCollection: (collection: Collection) => string
 ) {
 	const activity = new Map(Object.entries(activityByCollection));
 	return collections
@@ -98,7 +99,7 @@ export function homeVisibleCollections(
 			if (collection.kind === 'tokens') return false;
 			if (!normalizedQuery) return true;
 			return (
-				`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
+				`${collection.name} ${describeCollection(collection)}`.toLowerCase().includes(normalizedQuery) ||
 				Boolean(matches?.get(collection)?.length)
 			);
 		})

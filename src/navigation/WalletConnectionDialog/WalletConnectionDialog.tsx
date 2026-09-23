@@ -6,11 +6,16 @@ import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { IconButton } from 'components/atoms/IconButton';
 import { Dialog } from 'components/organisms/Dialog';
-import { appErrorMessage } from 'helpers/app-error';
+import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
 import { useWalletConnectionFlow } from 'hooks/useWalletConnectionFlow';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { WALLET_CONNECTION_DIALOG_MESSAGES } from './messages';
 
 // Wallet connection, generation, and keyfile import dialog opened through the wallet provider.
 export default function WalletConnectionDialog() {
+	const language = useMessages(WALLET_CONNECTION_DIALOG_MESSAGES);
+	const errorMessage = useAppErrorMessage();
 	const flow = useWalletConnectionFlow();
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const pending = flow.state.step === 'choose' ? flow.state.pending : null;
@@ -36,11 +41,11 @@ export default function WalletConnectionDialog() {
 		>
 			<div className="dialog-heading wallet-connect-heading">
 				<div>
-					<h2 id="wallet-connect-title">Connect wallet</h2>
+					<h2 id="wallet-connect-title">{language.walletConnectTitle}</h2>
 				</div>
 				<IconButton
 					icon={X}
-					label="Close wallet options"
+					label={language.walletConnectClose}
 					onClick={flow.close}
 					disabled={Boolean(generatedWallet)}
 					className="close"
@@ -51,13 +56,13 @@ export default function WalletConnectionDialog() {
 					<div>
 						<Icon icon={KeyRound} />
 						<div>
-							<strong>Keyfile generated</strong>
-							<span>Download this keyfile before closing.</span>
+							<strong>{language.walletConnectGeneratedTitle}</strong>
+							<span>{language.walletConnectGeneratedDetail}</span>
 						</div>
 					</div>
 					<div className="generated-wallet-address">
 						<div>
-							<span>Address</span>
+							<span>{language.walletConnectAddress}</span>
 							<code>{generatedWallet.address}</code>
 						</div>
 						<Button
@@ -67,7 +72,7 @@ export default function WalletConnectionDialog() {
 							size="custom"
 						>
 							<Icon icon={Copy} size="sm" />
-							{copied ? 'Copied' : 'Copy'}
+							{copied ? language.walletConnectCopied : language.walletConnectCopy}
 						</Button>
 					</div>
 					<Button
@@ -78,11 +83,10 @@ export default function WalletConnectionDialog() {
 						variant="primary"
 					>
 						<Icon icon={Download} size="sm" />
-						Download keyfile
+						{language.walletConnectDownload}
 					</Button>
 					<p className="wallet-keyfile-warning">
-						<strong>Keep this file safe.</strong> Anyone with it controls the wallet, and it cannot be
-						recovered if lost.
+						<strong>{language.walletConnectKeepSafeTitle}</strong> {language.walletConnectKeepSafeDetail}
 					</p>
 				</div>
 			) : (
@@ -92,8 +96,8 @@ export default function WalletConnectionDialog() {
 							<div className="wallet-option-copy">
 								<Icon icon={Wallet} />
 								<div>
-									<strong>PermawebOS</strong>
-									<span>Permaweb wallet extension</span>
+									<strong>{language.walletConnectPermawebOs}</strong>
+									<span>{language.walletConnectPermawebOsDetail}</span>
 								</div>
 							</div>
 							<Button
@@ -104,15 +108,17 @@ export default function WalletConnectionDialog() {
 								size="custom"
 								variant="primary"
 							>
-								{pending === 'permaweb-os' ? 'Connecting…' : 'Connect'}
+								{pending === 'permaweb-os'
+									? language.walletConnectConnecting
+									: language.walletConnectConnect}
 							</Button>
 						</div>
 						<div className="wallet-option">
 							<div className="wallet-option-copy">
 								<Icon icon={Wallet} />
 								<div>
-									<strong>Wander</strong>
-									<span>Browser extension wallet</span>
+									<strong>{language.walletConnectWander}</strong>
+									<span>{language.walletConnectWanderDetail}</span>
 								</div>
 							</div>
 							<Button
@@ -122,15 +128,17 @@ export default function WalletConnectionDialog() {
 								size="custom"
 								variant="primary"
 							>
-								{pending === 'wander' ? 'Connecting…' : 'Connect'}
+								{pending === 'wander'
+									? language.walletConnectConnecting
+									: language.walletConnectConnect}
 							</Button>
 						</div>
 						<div className="wallet-option">
 							<div className="wallet-option-copy">
 								<Icon icon={KeyRound} />
 								<div>
-									<strong>Generate keyfile</strong>
-									<span>Create a new local wallet</span>
+									<strong>{language.walletConnectGenerateTitle}</strong>
+									<span>{language.walletConnectGenerateDetail}</span>
 								</div>
 							</div>
 							<Button
@@ -139,15 +147,17 @@ export default function WalletConnectionDialog() {
 								type="button"
 								size="custom"
 							>
-								{pending === 'generate' ? 'Generating…' : 'Generate'}
+								{pending === 'generate'
+									? language.walletConnectGenerating
+									: language.walletConnectGenerate}
 							</Button>
 						</div>
 						<div className="wallet-option">
 							<div className="wallet-option-copy">
 								<Icon icon={FileUp} />
 								<div>
-									<strong>Import keyfile</strong>
-									<span>Load an existing Arweave keyfile</span>
+									<strong>{language.walletConnectImportTitle}</strong>
+									<span>{language.walletConnectImportDetail}</span>
 								</div>
 							</div>
 							<Button
@@ -156,7 +166,7 @@ export default function WalletConnectionDialog() {
 								type="button"
 								size="custom"
 							>
-								{pending === 'import' ? 'Importing…' : 'Import'}
+								{pending === 'import' ? language.walletConnectImporting : language.walletConnectImport}
 							</Button>
 							<FileInput
 								ref={fileInput}
@@ -168,7 +178,7 @@ export default function WalletConnectionDialog() {
 					</div>
 					{error ? (
 						<p className="wallet-connect-error" role="alert">
-							{appErrorMessage(error)}
+							{errorMessage(error)}
 						</p>
 					) : null}
 				</>

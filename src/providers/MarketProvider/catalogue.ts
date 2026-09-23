@@ -1,4 +1,5 @@
 import {
+	type AssetSummary,
 	type Collection,
 	hiddenCollectionAssetIndexComplete,
 	isVisibleCollectionId,
@@ -9,13 +10,27 @@ import {
 } from 'api/collections';
 import { CREATED_COLLECTION_ID, createdCollection, loadMintedAssets, loadMintedCollections } from 'api/mint';
 
-export function initialMarketCollections() {
-	replaceHiddenCollectionAssetIndex(loadHiddenCollectionAssetIndex(window.localStorage));
-	if (!hiddenCollectionAssetIndexComplete()) return [];
-	return storedMarketCollections();
+import type { MarketProviderMessages } from './messages';
+
+/**
+ * The local "created on Bazar" collection, with the catalogue's display copy. `api/mint` owns its stable id and the
+ * name that matches Arweave `base-collection` tags; the name and description shown here are copy.
+ */
+export function displayCreatedCollection(assets: AssetSummary[], messages: MarketProviderMessages): Collection {
+	return {
+		...createdCollection(assets),
+		name: messages.marketCreatedCollectionName,
+		description: messages.marketCreatedCollectionDescription,
+	};
 }
 
-export function storedMarketCollections() {
+export function initialMarketCollections(messages: MarketProviderMessages) {
+	replaceHiddenCollectionAssetIndex(loadHiddenCollectionAssetIndex(window.localStorage));
+	if (!hiddenCollectionAssetIndexComplete()) return [];
+	return storedMarketCollections(messages);
+}
+
+export function storedMarketCollections(messages: MarketProviderMessages) {
 	const cached = loadMarketShellSnapshot(window.localStorage);
 	const localCollections = loadMintedCollections();
 	const mintedAssets = loadMintedAssets();
@@ -25,7 +40,9 @@ export function storedMarketCollections() {
 	return marketCatalogueCollections([
 		...cached,
 		...localAdditions,
-		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
+		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
+			? [displayCreatedCollection(mintedAssets, messages)]
+			: []),
 	]);
 }
 

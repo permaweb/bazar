@@ -2,8 +2,10 @@ import { UserRound } from 'lucide-react';
 
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useProfilePictureUpdate } from '../../../hooks/useProfilePictureUpdate';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 
 export default function SetProfilePictureButton(props: {
 	assetId: string;
@@ -11,6 +13,7 @@ export default function SetProfilePictureButton(props: {
 	image: string;
 	owner: string;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const update = useProfilePictureUpdate({ assetId: props.assetId, owner: props.owner, image: props.image });
 	return (
 		<>
@@ -23,14 +26,14 @@ export default function SetProfilePictureButton(props: {
 			>
 				<Icon icon={UserRound} size="sm" />
 				{update.status === 'checking'
-					? 'Checking ownership…'
+					? messages.profilePictureChecking
 					: update.status === 'signing'
-					? 'Approve profile…'
+					? messages.profilePictureSigning
 					: update.status === 'uploading'
-					? 'Publishing profile…'
+					? messages.profilePictureUploading
 					: update.status === 'done'
-					? 'Profile picture set'
-					: 'Set as profile picture'}
+					? messages.profilePictureDone
+					: messages.profilePictureIdle}
 			</Button>
 			{update.error ? (
 				<small className="profile-picture-error" role="alert">

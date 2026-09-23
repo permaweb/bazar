@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 import type { Collection } from 'api/collections';
 
 import TokenMarketRow from 'components/molecules/TokenMarketRow/TokenMarketRow';
+import { HOME_MESSAGES } from 'features/Home/messages';
+
+const language = HOME_MESSAGES.en;
 
 const collection: Collection = {
 	id: 'fungible-tokens',
@@ -33,6 +36,7 @@ describe('TokenMarketRow', () => {
 					context: 'Fungible token',
 					metric: { label: 'Unit price', value: '0.1 AR / TRUNKY', tone: 'positive' },
 					secondaryMetric: { label: '24h change', value: '-12.5%', tone: 'negative' },
+					tickerFallback: language.homeTokenRowTickerFallback,
 				})
 			)
 		);
@@ -59,6 +63,7 @@ describe('TokenMarketRow', () => {
 						ticker: 'MINTA',
 					},
 					collection,
+					tickerFallback: language.homeTokenRowTickerFallback,
 				})
 			)
 		);

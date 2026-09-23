@@ -15,8 +15,11 @@ import { WalletAddress } from 'components/organisms/WalletAddress';
 import { quorumConfirmationDepth } from 'features/TransactionSync';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import type { FungibleOperationFlow } from '../../../hooks/useFungibleOperationFlow';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import type { FungibleOperation } from '../../../model/fungible-operation';
 import type { FungibleOperationDraftView, FungibleOperationOutcome } from '../../../model/fungible-operation-view';
@@ -33,6 +36,7 @@ export default function FungibleOperationReceipt(props: {
 	visible: boolean;
 	onClose(): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const transaction = props.flow.transaction;
 	const purchaseSteps = props.flow.purchaseSync.steps;
 	return (
@@ -42,13 +46,15 @@ export default function FungibleOperationReceipt(props: {
 				detail={props.outcome.detail}
 				status={
 					props.operation.kind === 'buy'
-						? `Confirmations: ${quorumConfirmationDepth(purchaseSteps.find((step) => step.key === 'pay'))}`
+						? formatMessage(messages.receiptConfirmations, {
+								depth: quorumConfirmationDepth(purchaseSteps.find((step) => step.key === 'pay')),
+						  })
 						: undefined
 				}
 			>
 				{props.operation.kind === 'buy' || props.operation.kind === 'sell' ? (
 					<OperationOutcomeSubject
-						label={props.operation.kind === 'buy' ? 'You received' : 'You listed'}
+						label={props.operation.kind === 'buy' ? messages.receiptYouReceived : messages.receiptYouListed}
 						title={
 							props.operation.kind === 'buy'
 								? tokenLabel(props.outcome.purchasedQuantity.toString(), props.state)
@@ -58,7 +64,7 @@ export default function FungibleOperationReceipt(props: {
 						}
 						detail={
 							props.operation.kind === 'sell' && props.draft.listingQuote
-								? `${props.draft.listingQuote} AR total`
+								? formatMessage(messages.receiptListingTotal, { total: props.draft.listingQuote })
 								: props.asset.name
 						}
 						media={
@@ -78,17 +84,19 @@ export default function FungibleOperationReceipt(props: {
 							activeStep="pay"
 							startedAt={props.flow.startedAt}
 							steps={purchaseSteps}
-							subject={`${props.asset.name} · ${tokenLabel(
-								props.flow.activeOrder?.quantity ?? '0',
-								props.state
-							)}`}
+							subject={formatMessage(messages.progressSubject, {
+								name: props.asset.name,
+								amount: tokenLabel(props.flow.activeOrder?.quantity ?? '0', props.state),
+							})}
 						/>
 					</div>
 				) : null}
 			</OperationOutcome>
 			{transaction && props.operation.kind !== 'transfer' ? (
 				<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-					<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
+					<OperationExternalLink>
+						{formatMessage(messages.receiptViewTransaction, { id: short(transaction.id) })}
+					</OperationExternalLink>
 				</a>
 			) : null}
 			{props.operation.kind === 'buy' ? (
@@ -102,16 +110,22 @@ export default function FungibleOperationReceipt(props: {
 			) : props.operation.kind === 'transfer' && transaction && props.draft.enteredQuantity ? (
 				<div className="settlement-receipt">
 					<div>
-						<span>Quantity</span>
+						<span>{messages.receiptQuantity}</span>
 						<strong>{tokenLabel(props.draft.enteredQuantity.toString(), props.state)}</strong>
 					</div>
 					<div>
-						<span>Recipient</span>
-						<WalletAddress address={props.draft.transferRecipient} full label="recipient" />
+						<span>{messages.receiptRecipient}</span>
+						<WalletAddress
+							address={props.draft.transferRecipient}
+							full
+							label={messages.assetDetailWalletLabelRecipient}
+						/>
 					</div>
 					<div className="settlement-receipt-links">
 						<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-							<OperationExternalLink>Transaction {short(transaction.id)}</OperationExternalLink>
+							<OperationExternalLink>
+								{formatMessage(messages.receiptTransaction, { id: short(transaction.id) })}
+							</OperationExternalLink>
 						</a>
 					</div>
 				</div>
@@ -123,7 +137,7 @@ export default function FungibleOperationReceipt(props: {
 				size="custom"
 				variant="primary"
 			>
-				<Icon icon={ArrowLeft} size="sm" /> View updated token
+				<Icon icon={ArrowLeft} size="sm" /> {messages.receiptViewUpdatedToken}
 			</Button>
 		</div>
 	);

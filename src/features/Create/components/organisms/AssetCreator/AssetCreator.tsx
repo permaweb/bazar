@@ -13,14 +13,18 @@ import { MintTransactionReceipt } from 'components/molecules/MintTransactionRece
 import { winstonToAr } from 'helpers/ar-units';
 import { asyncData } from 'helpers/async-state';
 import { formatBytes } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { useAssetCreator } from '../../../hooks/useAssetCreator';
+import { CREATE_MESSAGES } from '../../../messages';
 import {
 	fungibleMintError,
 	fungibleMintPhase,
 	fungibleMintResult,
 	mintReceiptEntries,
 	mintResultPath,
+	mintTransactionAddressCopy,
 } from '../../../model/mint-flow';
 import { type CreatorMode, isWholeTokenSupply } from '../../../model/mint-form';
 import { FungibleTokenFields } from '../../molecules/FungibleTokenFields';
@@ -28,7 +32,12 @@ import { FungibleMintDialog } from '../FungibleMintDialog';
 import { MintMediaPicker } from '../MintMediaPicker';
 import { UdlLicenseEditor } from '../UdlLicenseEditor';
 
+/** Field limits the counters report; they must match the inputs' own `maxLength`. */
+const NAME_MAX_LENGTH = 80;
+const DESCRIPTION_MAX_LENGTH = 600;
+
 export default function AssetCreator() {
+	const messages = useMessages(CREATE_MESSAGES);
 	const navigate = useNavigate();
 	const creator = useAssetCreator();
 	const fungibleProgressButton = React.useRef<HTMLButtonElement>(null);
@@ -51,39 +60,36 @@ export default function AssetCreator() {
 		<section className="create-page">
 			<div className="create-heading">
 				<div>
-					<Eyebrow>Create on Arweave</Eyebrow>
-					<h1>Upload and mint</h1>
+					<Eyebrow>{messages.createEyebrow}</Eyebrow>
+					<h1>{messages.createTitle}</h1>
 				</div>
 				<p>
 					{mode === 'asset'
-						? 'Your media, metadata, and one-of-one marketplace process are stored together under one Arweave transaction ID.'
+						? messages.createIntroAsset
 						: mode === 'collection'
-						? 'Mint a group of atomic one-of-one assets and submit a carrier whose value is their permanent manifest.'
-						: 'Publish one atomic fungible-token process. The whole supply is minted to your connected wallet; dispatch it to holders afterwards.'}
+						? messages.createIntroCollection
+						: messages.createIntroFungible}
 				</p>
 			</div>
 
 			<SegmentedTabs<CreatorMode>
 				active={mode}
-				ariaLabel="Create type"
+				ariaLabel={messages.createModeLabel}
 				className="create-mode"
 				idPrefix="create-mode"
 				onChange={creator.setMode}
 				tabs={[
-					{ value: 'asset', label: 'Unique 1/1' },
-					{ value: 'collection', label: 'Collection' },
-					{ value: 'fungible', label: 'Token' },
+					{ value: 'asset', label: messages.createModeAsset },
+					{ value: 'collection', label: messages.createModeCollection },
+					{ value: 'fungible', label: messages.createModeFungible },
 				]}
 			/>
 
 			{mode === 'asset' && flow.draft ? (
 				<div className="mint-recovery" role="status">
 					<div>
-						<strong>Finish your previous mint</strong>
-						<span>
-							The earlier media upload for “{flow.draft.name}” was accepted. Bazar can reuse its bytes to
-							finish a self-contained atomic asset.
-						</span>
+						<strong>{messages.createDraftTitle}</strong>
+						<span>{formatMessage(messages.createDraftDetail, { name: flow.draft.name })}</span>
 					</div>
 					<div>
 						<Button
@@ -92,10 +98,10 @@ export default function AssetCreator() {
 							disabled={creator.working}
 							size="custom"
 						>
-							Finish mint
+							{messages.createDraftFinish}
 						</Button>
 						<Button type="button" onClick={creator.dismissDraft} disabled={creator.working} size="custom">
-							Dismiss
+							{messages.createDraftDismiss}
 						</Button>
 					</div>
 				</div>
@@ -129,47 +135,61 @@ export default function AssetCreator() {
 				<form className="create-form" onSubmit={handleSubmit}>
 					<div className="create-field">
 						<label htmlFor="mint-name">
-							{mode === 'asset' ? 'Name' : mode === 'collection' ? 'Collection name' : 'Token name'}
+							{mode === 'asset'
+								? messages.createNameLabelAsset
+								: mode === 'collection'
+								? messages.createNameLabelCollection
+								: messages.createNameLabelFungible}
 						</label>
 						<TextInput
 							id="mint-name"
-							maxLength={80}
+							maxLength={NAME_MAX_LENGTH}
 							placeholder={
 								mode === 'asset'
-									? 'Name your asset'
+									? messages.createNamePlaceholderAsset
 									: mode === 'collection'
-									? 'Name your collection'
-									: 'Name your token'
+									? messages.createNamePlaceholderCollection
+									: messages.createNamePlaceholderFungible
 							}
 							value={fields.name}
 							onChange={(event) => creator.setName(event.target.value)}
 						/>
-						<span>{fields.name.length} / 80</span>
+						<span>
+							{formatMessage(messages.createFieldCounter, {
+								length: fields.name.length,
+								max: NAME_MAX_LENGTH,
+							})}
+						</span>
 					</div>
 					<div className="create-field">
 						<label htmlFor="mint-description">
 							{mode === 'asset'
-								? 'Description'
+								? messages.createDescriptionLabelAsset
 								: mode === 'collection'
-								? 'Collection description'
-								: 'Token description'}{' '}
-							<small>Optional</small>
+								? messages.createDescriptionLabelCollection
+								: messages.createDescriptionLabelFungible}{' '}
+							<small>{messages.createOptional}</small>
 						</label>
 						<TextArea
 							id="mint-description"
-							maxLength={600}
+							maxLength={DESCRIPTION_MAX_LENGTH}
 							placeholder={
 								mode === 'asset'
-									? 'Tell collectors about this work'
+									? messages.createDescriptionPlaceholderAsset
 									: mode === 'collection'
-									? 'Describe this collection'
-									: 'Describe this token'
+									? messages.createDescriptionPlaceholderCollection
+									: messages.createDescriptionPlaceholderFungible
 							}
 							rows={5}
 							value={fields.description}
 							onChange={(event) => creator.setDescription(event.target.value)}
 						/>
-						<span>{fields.description.length} / 600</span>
+						<span>
+							{formatMessage(messages.createFieldCounter, {
+								length: fields.description.length,
+								max: DESCRIPTION_MAX_LENGTH,
+							})}
+						</span>
 					</div>
 
 					{mode === 'fungible' ? (
@@ -204,28 +224,37 @@ export default function AssetCreator() {
 
 					<div className="mint-summary">
 						<div>
-							<span>{mode === 'asset' ? 'Edition' : mode === 'collection' ? 'Assets' : 'Supply'}</span>
+							<span>
+								{mode === 'asset'
+									? messages.createSummaryEdition
+									: mode === 'collection'
+									? messages.createSummaryAssets
+									: messages.createSummarySupply}
+							</span>
 							<strong>
 								{mode === 'asset'
-									? '1 of 1'
+									? messages.createSummaryOneOfOne
 									: mode === 'collection'
 									? fields.collectionFiles.length || '—'
 									: isWholeTokenSupply(fields.wholeSupply)
-									? `${fields.wholeSupply} ${fields.ticker.trim() || 'tokens'}`
+									? formatMessage(messages.createSummaryTokenSupply, {
+											supply: fields.wholeSupply,
+											ticker: fields.ticker.trim() || messages.mintTokenSupplyFallbackTicker,
+									  })
 									: '—'}
 							</strong>
 						</div>
 						<div>
 							<span>
 								{mode === 'asset'
-									? 'Storage target'
+									? messages.createSummaryStorageTarget
 									: mode === 'collection'
-									? 'Transactions'
-									: 'Ticker'}
+									? messages.createSummaryTransactions
+									: messages.createSummaryTicker}
 							</span>
 							<strong>
 								{mode === 'asset'
-									? '1 atomic asset'
+									? messages.createSummaryAtomicAsset
 									: mode === 'collection'
 									? collectionEstimate
 										? collectionEstimate.transactionCount
@@ -234,14 +263,16 @@ export default function AssetCreator() {
 							</strong>
 						</div>
 						<div>
-							<span>Estimated network cost</span>
+							<span>{messages.createSummaryEstimatedCost}</span>
 							<strong>
 								{creator.estimates.estimating ? (
-									'Checking…'
+									messages.createSummaryChecking
 								) : cost.estimate ? (
-									<ArCurrencyText>{`${winstonToAr(
-										cost.estimate.total.toString()
-									)} AR`}</ArCurrencyText>
+									<ArCurrencyText>
+										{formatMessage(messages.createCostAmount, {
+											amount: winstonToAr(cost.estimate.total.toString()),
+										})}
+									</ArCurrencyText>
 								) : (
 									'—'
 								)}
@@ -250,20 +281,22 @@ export default function AssetCreator() {
 					</div>
 
 					{cost.estimate && cost.highCost ? (
-						<section className="mint-cost-note" aria-label="Estimated storage cost">
+						<section className="mint-cost-note" aria-label={messages.createCostNoteLabel}>
 							<Icon icon={Info} />
 							<div>
 								<strong>
 									<ArCurrencyText>
-										{`${winstonToAr(cost.estimate.total.toString())} AR estimated storage cost`}
+										{formatMessage(messages.createCostNoteTitle, {
+											amount: winstonToAr(cost.estimate.total.toString()),
+										})}
 									</ArCurrencyText>
 								</strong>
 								<span>
-									Based on{' '}
 									{cost.uploadBytes
-										? `${formatBytes(cost.uploadBytes)} of permanent media`
-										: 'the selected assets'}{' '}
-									and current network pricing.
+										? formatMessage(messages.createCostNoteWithBytes, {
+												bytes: formatBytes(cost.uploadBytes),
+										  })
+										: messages.createCostNoteWithoutBytes}
 								</span>
 							</div>
 						</section>
@@ -273,17 +306,17 @@ export default function AssetCreator() {
 						<span>
 							{mode === 'asset'
 								? fields.artwork
-									? 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
-									: 'Your wallet will request one signature for an atomic transaction containing the media, metadata, and tradeable process.'
+									? messages.createNoticeAssetWithArtwork
+									: messages.createNoticeAsset
 								: mode === 'fungible'
-								? `${
-										fields.logo && !fields.logoTxId
-											? 'Your wallet will request two signatures: one for the logo and one for the atomic token process.'
-											: 'Your wallet will request one signature for the atomic token process.'
-								  } The whole supply is minted to your connected wallet; the token becomes readable and dispatchable once the scheduler sequences it (~20 minutes).`
+								? fields.logo && !fields.logoTxId
+									? messages.createNoticeFungibleWithLogo
+									: messages.createNoticeFungible
 								: collectionEstimate
-								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and carrier process.`
-								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and carrier process to Arweave.'}
+								? formatMessage(messages.createNoticeCollectionEstimated, {
+										count: collectionEstimate.transactionCount,
+								  })
+								: messages.createNoticeCollection}
 						</span>
 					</div>
 					{flow.error ? (
@@ -307,22 +340,26 @@ export default function AssetCreator() {
 							<div>
 								<strong>
 									{flow.assetResult && creator.assetResultLive
-										? 'Live on Bazar'
-										: 'Submitted to Arweave'}
+										? messages.createResultLive
+										: messages.createResultSubmitted}
 								</strong>
 								<p>
 									{flow.collectionResult
-										? 'The collection receipt is ready to verify.'
+										? messages.createResultCollectionDetail
 										: creator.assetResultLive
-										? 'The asset is available through the selected gateway.'
-										: 'Submitted and accepted by Arweave. It is safe to leave this page; Bazar will keep watching in Activity.'}
+										? messages.createResultAssetLiveDetail
+										: messages.createResultPendingDetail}
 								</p>
-								<MintTransactionReceipt entries={mintReceiptEntries(flow)} />
+								<MintTransactionReceipt
+									addressLabels={mintTransactionAddressCopy(messages)}
+									ariaLabel={messages.mintReceiptsLabel}
+									entries={mintReceiptEntries(flow, messages)}
+								/>
 							</div>
 							<div className="mint-success-actions">
 								{flow.assetResult && !creator.assetResultLive ? (
 									<Button type="button" size="custom" onClick={() => navigate('/')}>
-										Continue browsing <Icon icon={ArrowRight} size="sm" />
+										{messages.createContinueBrowsing} <Icon icon={ArrowRight} size="sm" />
 									</Button>
 								) : null}
 								<Button
@@ -333,12 +370,11 @@ export default function AssetCreator() {
 										if (resultPath) navigate(resultPath);
 									}}
 								>
-									View{' '}
 									{flow.collectionResult
-										? 'collection'
+										? messages.createViewCollection
 										: creator.assetResultLive
-										? 'asset'
-										: 'when available'}{' '}
+										? messages.createViewAsset
+										: messages.createViewWhenAvailable}{' '}
 									{flow.assetResult && !creator.assetResultLive ? (
 										<Icon icon={InfinityIcon} size="sm" />
 									) : (
@@ -356,10 +392,10 @@ export default function AssetCreator() {
 							onClick={() => creator.setFungibleDialogVisible(true)}
 						>
 							{fungibleError
-								? 'Review mint error'
+								? messages.createFungibleReviewError
 								: creator.fungibleResultLive
-								? 'View mint result'
-								: 'View mint progress'}
+								? messages.createFungibleViewResult
+								: messages.createFungibleViewProgress}
 							{fungibleError || creator.fungibleResultLive ? (
 								<Icon icon={ArrowRight} />
 							) : (
@@ -372,11 +408,11 @@ export default function AssetCreator() {
 								? creator.phaseLabel
 								: creator.walletConnected
 								? mode === 'asset'
-									? 'Upload and mint'
+									? messages.createSubmitAsset
 									: mode === 'collection'
-									? 'Mint collection'
-									: 'Mint token'
-								: 'Connect wallet to create'}
+									? messages.createSubmitCollection
+									: messages.createSubmitFungible
+								: messages.createSubmitConnectWallet}
 							{!creator.working ? <Icon icon={ArrowRight} /> : null}
 						</Button>
 					)}

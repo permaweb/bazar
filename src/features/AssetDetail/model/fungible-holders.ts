@@ -1,5 +1,9 @@
 import { type AssetState, isBalanceIdentity, liveOrdersOfAsset } from 'api/marketplace';
 
+import { formatMessage } from 'helpers/i18n';
+
+import type { AssetDetailMessages } from '../messages';
+
 export type FungibleHolder = {
 	address: string;
 	liquid: string;
@@ -60,7 +64,11 @@ export type FungibleHolderChartSlice = Omit<FungibleHolder, 'address'> & {
 	label: string;
 };
 
-export function fungibleHolderChartSlices(holders: FungibleHolder[], maximumSlices = 12): FungibleHolderChartSlice[] {
+export function fungibleHolderChartSlices(
+	holders: FungibleHolder[],
+	messages: AssetDetailMessages,
+	maximumSlices = 12
+): FungibleHolderChartSlice[] {
 	const limit = Math.max(2, maximumSlices);
 	if (holders.length <= limit) {
 		return holders.map((holder) => ({
@@ -91,7 +99,7 @@ export function fungibleHolderChartSlices(holders: FungibleHolder[], maximumSlic
 		{
 			holderCount,
 			key: 'other-holders',
-			label: `Other ${holderCount.toLocaleString()} holders`,
+			label: formatMessage(messages.holderChartOtherHolders, { count: holderCount.toLocaleString() }),
 			liquid: remainder.liquid.toString(),
 			listed: remainder.listed.toString(),
 			total: remainder.total.toString(),

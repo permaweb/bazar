@@ -3,7 +3,9 @@ import type { AssetState, OrderFill } from 'api/marketplace';
 import { ArCurrencyLabel } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { winstonToArDecimal } from 'helpers/ar-units';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { batchPurchaseRecoveryApprovalCopy, batchPurchaseRecoveryApprovalCount } from '../../../model/fungible-batch';
 import type { BatchEntry } from '../../../model/fungible-operation';
 import { fungiblePurchaseTotals } from '../../../model/fungible-operation-view';
@@ -15,7 +17,9 @@ export default function FungibleRecoveryApproval(props: {
 	state: AssetState;
 	onContinue(): void;
 }) {
-	const copy = batchPurchaseRecoveryApprovalCopy(props.entries);
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const plural = usePlural();
+	const copy = batchPurchaseRecoveryApprovalCopy(props.entries, messages, plural);
 	const totals = fungiblePurchaseTotals(props.fills.map((fill) => fill.order));
 	return (
 		<div className="recovery-approval">
@@ -25,21 +29,21 @@ export default function FungibleRecoveryApproval(props: {
 			</div>
 			<div className="batch-quote">
 				<div>
-					<span>Listings</span>
+					<span>{messages.recoveryApprovalListings}</span>
 					<strong>{props.fills.length}</strong>
 				</div>
 				<div>
-					<span>Sellers</span>
+					<span>{messages.recoveryApprovalSellers}</span>
 					<strong>{totals.sellers}</strong>
 				</div>
 				<div>
-					<span>Seller subtotal</span>
+					<span>{messages.recoveryApprovalSubtotal}</span>
 					<strong>
 						{winstonToArDecimal(totals.asking.toString())} <ArCurrencyLabel />
 					</strong>
 				</div>
 				<div>
-					<span>New approvals</span>
+					<span>{messages.recoveryApprovalNewApprovals}</span>
 					<strong>{batchPurchaseRecoveryApprovalCount(props.entries)}</strong>
 				</div>
 			</div>

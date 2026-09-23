@@ -41,8 +41,11 @@ import {
 
 import { type AppError, appError, toAppError } from 'helpers/app-error';
 import { arToWinston } from 'helpers/ar-units';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import type { OperationActivity } from 'providers/OperationActivityProvider';
 
+import { OPERATIONS_MESSAGES } from '../messages';
 import {
 	atomicOperationFormError,
 	atomicOperationStateError,
@@ -53,9 +56,9 @@ import {
 } from '../model/atomic-operation';
 import {
 	ATOMIC_ACTION_CONFIRMATION_TARGET,
+	createOperationFlowReducer,
 	initialOperationFlowState,
 	type OperationFlowEvent,
-	operationFlowReducer,
 	type OperationFlowState,
 	operationResumesAutomatically,
 } from '../model/operation-flow';
@@ -530,7 +533,10 @@ export function useAtomicOperationFlow(input: {
 	onOperation(operation: Operation): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }): AtomicOperationFlow {
-	const [flow, dispatch] = React.useReducer(operationFlowReducer, input.operation, initialOperationFlowState);
+	const messages = useMessages(OPERATIONS_MESSAGES);
+	const errorMessages = useAppErrorMessages();
+	const reducer = React.useMemo(() => createOperationFlowReducer(messages, errorMessages), [errorMessages, messages]);
+	const [flow, dispatch] = React.useReducer(reducer, input.operation, initialOperationFlowState);
 	const purchaseRef = React.useRef<SwapPurchase | null>(null);
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
@@ -546,6 +552,8 @@ export function useAtomicOperationFlow(input: {
 		assetName: input.asset.name,
 		owner: input.owner,
 		value: input.value,
+		messages,
+		errorMessages,
 	});
 	const operationKind = input.operation.kind;
 	const paymentId = flow.purchaseState?.payment?.id;
@@ -611,7 +619,7 @@ export function useAtomicOperationFlow(input: {
 			input.taskId,
 			{
 				phase: view.phase,
-				status: view.reportedStatus,
+				status: { text: view.reportedStatus },
 				confirmations: view.activityConfirmations,
 				confirmationTarget: view.confirmationTarget,
 			},

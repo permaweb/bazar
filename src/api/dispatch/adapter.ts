@@ -26,7 +26,28 @@ type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export type HolderRow = { address: string; quantity: string };
 
-export type ParsedHolderList = { rows: HolderRow[]; errors: string[] };
+/** Which JSON entry or CSV line an issue came from; both are numbered from 1 for display. */
+export type HolderListSource = { kind: 'entry' | 'line'; number: number };
+
+/**
+ * Why a pasted holder list could not be used, as stable codes and values. The UI owns the wording: see
+ * `features/Dispatch/model/holder-list-issue.ts`.
+ */
+export type HolderListIssue =
+	| { code: 'list-empty' }
+	| { code: 'list-without-entries' }
+	| { code: 'duplicate-addresses'; addresses: string[] }
+	| { code: 'invalid-json' }
+	| { code: 'invalid-json-root' }
+	| { code: 'invalid-entry-shape'; source: HolderListSource }
+	| { code: 'invalid-line-shape'; source: HolderListSource }
+	| { code: 'invalid-address'; source: HolderListSource; value: string }
+	| { code: 'invalid-quantity'; source: HolderListSource; denomination: number };
+
+export type ParsedHolderList = { rows: HolderRow[]; errors: HolderListIssue[] };
+
+/** Addresses are echoed back to the holder list author; keep the same cut-off the message always used. */
+const ADDRESS_ECHO_LENGTH = 60;
 
 export type DispatchRowStatus = 'unsent' | 'posted' | 'settled';
 
@@ -60,23 +81,14 @@ export function parseHolderList(text: string, denomination: number): ParsedHolde
 	// Validate the process precision once even when the pasted list is empty.
 	parseTokenAmount('1', denomination);
 	const trimmed = text.trim();
-	if (!trimmed) return { rows: [], errors: ['The holder list is empty.'] };
+	if (!trimmed) return { rows: [], errors: [{ code: 'list-empty' }] };
 	const result = /^[[{]/.test(trimmed)
 		? parseJsonHolders(trimmed, denomination)
 		: parseCsvHolders(trimmed, denomination);
 	if (result.errors.length) return { rows: [], errors: result.errors };
 	const duplicates = [...new Set(result.rows.map((row) => row.address).filter(duplicated(result.rows)))];
-	if (duplicates.length) {
-		return {
-			rows: [],
-			errors: [
-				`Duplicate address${duplicates.length === 1 ? '' : 'es'} — merge into one row each: ${duplicates.join(
-					', '
-				)}`,
-			],
-		};
-	}
-	if (!result.rows.length) return { rows: [], errors: ['The holder list contains no entries.'] };
+	if (duplicates.length) return { rows: [], errors: [{ code: 'duplicate-addresses', addresses: duplicates }] };
+	if (!result.rows.length) return { rows: [], errors: [{ code: 'list-without-entries' }] };
 	return result;
 }
 
@@ -91,61 +103,59 @@ function parseJsonHolders(text: string, denomination: number): ParsedHolderList 
 	try {
 		parsed = JSON.parse(text);
 	} catch {
-		return {
-			rows: [],
-			errors: ['Invalid JSON. Paste [{"address","quantity"}], [[address, quantity]], or {address: quantity}.'],
-		};
+		return { rows: [], errors: [{ code: 'invalid-json' }] };
 	}
 	const rows: HolderRow[] = [];
-	const errors: string[] = [];
+	const errors: HolderListIssue[] = [];
 	if (Array.isArray(parsed)) {
 		parsed.forEach((entry, index) => {
-			const label = `Entry ${index + 1}`;
+			const source: HolderListSource = { kind: 'entry', number: index + 1 };
 			if (Array.isArray(entry) && entry.length === 2) {
-				collectRow(rows, errors, label, entry[0], entry[1], denomination);
+				collectRow(rows, errors, source, entry[0], entry[1], denomination);
 			} else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
 				const record = entry as Record<string, unknown>;
-				collectRow(rows, errors, label, record.address, record.quantity, denomination);
+				collectRow(rows, errors, source, record.address, record.quantity, denomination);
 			} else {
-				errors.push(`${label}: expected {"address","quantity"} or [address, quantity].`);
+				errors.push({ code: 'invalid-entry-shape', source });
 			}
 		});
 	} else if (parsed && typeof parsed === 'object') {
 		Object.entries(parsed as Record<string, unknown>).forEach(([address, quantity], index) => {
-			collectRow(rows, errors, `Entry ${index + 1}`, address, quantity, denomination);
+			collectRow(rows, errors, { kind: 'entry', number: index + 1 }, address, quantity, denomination);
 		});
 	} else {
-		errors.push('Expected a JSON array or object of address/quantity pairs.');
+		errors.push({ code: 'invalid-json-root' });
 	}
 	return { rows, errors };
 }
 
 function parseCsvHolders(text: string, denomination: number): ParsedHolderList {
 	const rows: HolderRow[] = [];
-	const errors: string[] = [];
+	const errors: HolderListIssue[] = [];
 	text.split(/\r?\n/).forEach((line, index) => {
 		const content = line.trim();
 		if (!content || content.startsWith('#')) return;
+		const source: HolderListSource = { kind: 'line', number: index + 1 };
 		const fields = content.split(',').map((field) => field.trim());
 		if (fields.length !== 2) {
-			errors.push(`Line ${index + 1}: expected "address,quantity".`);
+			errors.push({ code: 'invalid-line-shape', source });
 			return;
 		}
-		collectRow(rows, errors, `Line ${index + 1}`, fields[0], fields[1], denomination);
+		collectRow(rows, errors, source, fields[0], fields[1], denomination);
 	});
 	return { rows, errors };
 }
 
 function collectRow(
 	rows: HolderRow[],
-	errors: string[],
-	label: string,
+	errors: HolderListIssue[],
+	source: HolderListSource,
 	address: unknown,
 	quantity: unknown,
 	denomination: number
 ): void {
 	if (typeof address !== 'string' || !isArweaveId(address)) {
-		errors.push(`${label}: "${String(address).slice(0, 60)}" is not a 43-character Arweave address.`);
+		errors.push({ code: 'invalid-address', source, value: String(address).slice(0, ADDRESS_ECHO_LENGTH) });
 		return;
 	}
 	const humanAmount =
@@ -159,11 +169,7 @@ function collectRow(
 		atomicAmount = parseTokenAmount(humanAmount, denomination);
 		if (BigInt(atomicAmount) < 1n) throw appError('invalid-input', { message: 'invalid-token-amount' });
 	} catch {
-		errors.push(
-			`${label}: quantity must be a positive token amount${
-				denomination ? ` with no more than ${denomination} decimal places` : ' in whole tokens'
-			}. Use a JSON string for fractional quantities.`
-		);
+		errors.push({ code: 'invalid-quantity', source, denomination });
 		return;
 	}
 	rows.push({ address, quantity: atomicAmount });

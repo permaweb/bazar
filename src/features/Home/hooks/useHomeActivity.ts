@@ -4,6 +4,7 @@ import type { Collection } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 
 import {
+	ACTIVITY_MESSAGES,
 	createGlobalActivityPager,
 	filterGlobalActivity,
 	type GlobalActivityFilter,
@@ -11,7 +12,9 @@ import {
 } from 'features/Activity';
 import { type AppError, toAppError } from 'helpers/app-error';
 import { arweaveGraphqlEndpoint } from 'helpers/config';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { HOME_MESSAGES } from '../messages';
 import {
 	HOME_ACTIVITY_REVEAL_STEP,
 	homeActivityLoadedAnnouncement,
@@ -47,6 +50,8 @@ export type HomeActivityFeed = {
  * its exact cursor.
  */
 export function useHomeActivity(collections: Collection[], marketLoading: boolean): HomeActivityFeed {
+	const messages = useMessages(HOME_MESSAGES);
+	const activityMessages = useMessages(ACTIVITY_MESSAGES);
 	const [filter, setFilter] = React.useState<GlobalActivityFilter>('all');
 	const [limit, setLimit] = React.useState(HOME_ACTIVITY_REVEAL_STEP);
 	const [request, setRequest] = React.useState(INITIAL_HOME_ACTIVITY_REQUEST);
@@ -91,7 +96,7 @@ export function useHomeActivity(collections: Collection[], marketLoading: boolea
 				setEvents(current.events);
 				setHasNextPage(current.hasNextPage);
 				if (request.kind === 'more') setLimit((revealed) => revealed + HOME_ACTIVITY_REVEAL_STEP);
-				setAnnouncement(homeActivityLoadedAnnouncement(current.events.length));
+				setAnnouncement(homeActivityLoadedAnnouncement(current.events.length, messages));
 			} catch (cause) {
 				if (controller.signal.aborted) return;
 				setError(toAppError(cause, 'index-unavailable'));
@@ -101,7 +106,7 @@ export function useHomeActivity(collections: Collection[], marketLoading: boolea
 			setLoading(false);
 		})();
 		return () => controller.abort();
-	}, [filter, marketLoading, pager, recipientCount, request]);
+	}, [filter, marketLoading, messages, pager, recipientCount, request]);
 
 	const filteredEvents = filterGlobalActivity(events, filter);
 
@@ -119,7 +124,13 @@ export function useHomeActivity(collections: Collection[], marketLoading: boolea
 		const nextLimit = Math.min(filteredEvents.length, limit + HOME_ACTIVITY_REVEAL_STEP);
 		setLimit(nextLimit);
 		setAnnouncement(
-			globalActivityRevealDescription(nextLimit, filteredEvents.length, events.length, filter !== 'all')
+			globalActivityRevealDescription(
+				nextLimit,
+				filteredEvents.length,
+				events.length,
+				filter !== 'all',
+				activityMessages
+			)
 		);
 	}
 

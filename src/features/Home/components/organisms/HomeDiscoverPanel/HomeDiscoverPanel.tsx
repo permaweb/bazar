@@ -5,7 +5,10 @@ import { Eyebrow } from 'components/atoms/Eyebrow';
 import { Icon } from 'components/atoms/Icon';
 import { Loading } from 'components/atoms/Loading';
 import { Pagination } from 'components/molecules/Pagination';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { HOME_MESSAGES } from '../../../messages';
 import type { HomeAssetType, HomeAssetView } from '../../../model/home-market';
 import type { HomeDiscoverView, HomeMarketEntry } from '../../../model/home-market-view';
 import { HomeAssetTile } from '../../molecules/HomeAssetTile';
@@ -19,6 +22,7 @@ export default function HomeDiscoverPanel(props: {
 	onTokenPageChange(page: number): void;
 	onAssetPageChange(page: number): void;
 }) {
+	const messages = useMessages(HOME_MESSAGES);
 	const renderTokenList = (items: HomeMarketEntry[]) => (
 		<div className="token-market-list" role="list">
 			{items.map(({ asset, collection }, index) => (
@@ -56,7 +60,7 @@ export default function HomeDiscoverPanel(props: {
 		>
 			{props.discover.initialLoading ? (
 				<div className="home-market-loading">
-					<Loading label="Loading marketplace assets…" />
+					<Loading label={messages.homeDiscoverLoading} />
 				</div>
 			) : props.discover.displayed.length ? (
 				props.assetType === 'all' ? (
@@ -64,11 +68,11 @@ export default function HomeDiscoverPanel(props: {
 						<section className="discover-market-section token-section">
 							<div className="discover-market-heading">
 								<div>
-									<Eyebrow>Fungible assets</Eyebrow>
-									<h2>Tokens</h2>
+									<Eyebrow>{messages.homeTokensEyebrow}</Eyebrow>
+									<h2>{messages.homeTokensHeading}</h2>
 								</div>
 								<Button size="custom" onClick={() => props.onAssetTypeChange('tokens')}>
-									View all tokens
+									{messages.homeViewAllTokens}
 									<Icon icon={ArrowRight} size="xs" />
 								</Button>
 							</div>
@@ -76,32 +80,35 @@ export default function HomeDiscoverPanel(props: {
 								<>
 									{renderTokenList(props.discover.tokenPagination.items)}
 									<Pagination
-										ariaLabel="Token overview pages"
+										ariaLabel={messages.homeTokenOverviewPages}
 										className="discover-token-pagination"
+										nextLabel={messages.homePaginationNext}
+										pageLabel={(page) => formatMessage(messages.homePaginationPage, { page })}
+										previousLabel={messages.homePaginationPrevious}
 										onPageChange={props.onTokenPageChange}
 										page={props.discover.tokenPagination.page}
 										pageCount={props.discover.tokenPagination.pageCount}
 									/>
 								</>
 							) : (
-								<p className="discover-section-empty">No tokens match this view.</p>
+								<p className="discover-section-empty">{messages.homeNoTokens}</p>
 							)}
 						</section>
 						<section className="discover-market-section collectible-section">
 							<div className="discover-market-heading">
 								<div>
-									<Eyebrow>1/1 assets</Eyebrow>
-									<h2>Uniques</h2>
+									<Eyebrow>{messages.homeUniquesEyebrow}</Eyebrow>
+									<h2>{messages.homeUniquesHeading}</h2>
 								</div>
 								<Button size="custom" onClick={() => props.onAssetTypeChange('atomic')}>
-									View all Uniques
+									{messages.homeViewAllUniques}
 									<Icon icon={ArrowRight} size="xs" />
 								</Button>
 							</div>
 							{props.discover.collectibles.length ? (
 								renderCollectibleGrid(props.discover.collectibles.slice(0, 12))
 							) : (
-								<p className="discover-section-empty">No Uniques match this view.</p>
+								<p className="discover-section-empty">{messages.homeNoUniques}</p>
 							)}
 						</section>
 					</div>
@@ -111,8 +118,13 @@ export default function HomeDiscoverPanel(props: {
 							? renderTokenList(props.discover.assetPagination.items)
 							: renderCollectibleGrid(props.discover.assetPagination.items)}
 						<Pagination
-							ariaLabel={props.assetType === 'tokens' ? 'Token pages' : 'Unique pages'}
+							ariaLabel={
+								props.assetType === 'tokens' ? messages.homeTokenPages : messages.homeUniquePages
+							}
 							className="home-asset-pagination"
+							nextLabel={messages.homePaginationNext}
+							pageLabel={(page) => formatMessage(messages.homePaginationPage, { page })}
+							previousLabel={messages.homePaginationPrevious}
 							onPageChange={props.onAssetPageChange}
 							page={props.discover.assetPagination.page}
 							pageCount={props.discover.assetPagination.pageCount}
@@ -121,7 +133,7 @@ export default function HomeDiscoverPanel(props: {
 				)
 			) : props.discover.failed ? null : (
 				<div className="home-assets-empty">
-					{props.assetView === 'all' ? 'No records match this type.' : 'No live listings match this type.'}
+					{props.assetView === 'all' ? messages.homeNoRecords : messages.homeNoListings}
 				</div>
 			)}
 		</div>

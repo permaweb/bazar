@@ -5,6 +5,10 @@ import type { Collection } from 'api/collections';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { EmptyState } from 'components/molecules/EmptyState';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { COLLECTION_MESSAGES } from '../../../messages';
 
 // Explains why no assets or live listings match, and offers to clear the search and letter filters.
 export default function CollectionMarketEmptyState(props: {
@@ -20,6 +24,7 @@ export default function CollectionMarketEmptyState(props: {
 	gateway: string;
 	onClearFilters(): void;
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
 	if (props.matchCount) return null;
 	const filtered = Boolean(props.query) || props.initial !== 'all';
 	const pagedTokenScope = props.collection.kind === 'tokens' && props.collection.hasMore;
@@ -29,32 +34,34 @@ export default function CollectionMarketEmptyState(props: {
 			<EmptyState
 				title={
 					props.query
-						? `No live listings match “${props.query}”`
+						? formatMessage(language.listingsEmptyQueryTitle, { query: props.query })
 						: props.initial !== 'all'
-						? `No live listings begin with ${props.initial}`
+						? formatMessage(language.listingsEmptyInitialTitle, { initial: props.initial })
 						: props.failures
-						? 'No live listings yet'
+						? language.listingsEmptyFailuresTitle
 						: pagedTokenScope
-						? 'No live listings in loaded tokens'
-						: 'No live listings found'
+						? language.listingsEmptyLoadedTokensTitle
+						: language.listingsEmptyTitle
 				}
 				action={
 					filtered ? (
 						<Button type="button" onClick={props.onClearFilters} size="custom">
-							Clear filters
+							{language.clearFilters}
 						</Button>
 					) : null
 				}
 			>
 				{filtered
-					? 'Clear the current filters to see every live listing.'
+					? language.listingsEmptyFilteredDetail
 					: props.failures
-					? 'Some candidates could not be checked through the configured AO peers. Retry them before treating this as an empty market.'
+					? language.listingsEmptyFailuresDetail
 					: pagedTokenScope
-					? `Every offer candidate among the ${props.collection.assets.length.toLocaleString()} loaded tokens was checked against current process state. Load more tokens to extend this market view.`
+					? formatMessage(language.listingsEmptyLoadedTokensDetail, {
+							count: props.collection.assets.length.toLocaleString(),
+					  })
 					: props.candidates
-					? `Every indexed offer candidate was checked against current process state through ${props.gateway}; none remains live.`
-					: 'Arweave returned no indexed offer candidates for this collection window. Live state remains the marketplace truth once a candidate is found.'}
+					? formatMessage(language.listingsEmptyCandidatesDetail, { gateway: props.gateway })
+					: language.listingsEmptyDetail}
 			</EmptyState>
 		);
 	}
@@ -65,25 +72,28 @@ export default function CollectionMarketEmptyState(props: {
 			</span>
 			<h3>
 				{props.query
-					? pagedTokenScope
-						? `No loaded tokens match “${props.query}”`
-						: `No assets match “${props.query}”`
+					? formatMessage(
+							pagedTokenScope
+								? language.assetsEmptyLoadedTokensQueryTitle
+								: language.assetsEmptyQueryTitle,
+							{ query: props.query }
+					  )
 					: props.initial !== 'all'
-					? `No names beginning with ${props.initial}`
-					: 'Nothing here yet'}
+					? formatMessage(language.assetsEmptyInitialTitle, { initial: props.initial })
+					: language.assetsEmptyTitle}
 			</h3>
 			<p>
 				{props.query
 					? pagedTokenScope
-						? 'Search the next token records or clear the current query.'
-						: 'Try a shorter search or clear the current query.'
+						? language.assetsEmptyLoadedTokensQueryDetail
+						: language.assetsEmptyQueryDetail
 					: props.initial !== 'all'
-					? 'Try another letter or return to all names.'
-					: 'This collection does not contain any indexed assets yet.'}
+					? language.assetsEmptyInitialDetail
+					: language.assetsEmptyDetail}
 			</p>
 			{filtered ? (
 				<Button type="button" onClick={props.onClearFilters} size="custom">
-					{props.initial !== 'all' ? 'View all names' : 'Clear search'}
+					{props.initial !== 'all' ? language.viewAllNames : language.clearSearch}
 				</Button>
 			) : null}
 		</div>

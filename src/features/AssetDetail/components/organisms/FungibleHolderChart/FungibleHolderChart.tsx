@@ -2,6 +2,10 @@ import React from 'react';
 
 import type { AssetState } from 'api/marketplace';
 
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import {
 	FungibleHolder,
 	fungibleHolderChartSlices,
@@ -18,8 +22,9 @@ export default function FungibleHolderChart(props: {
 	holders: FungibleHolder[];
 	state: AssetState;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const patternPrefix = React.useId().replace(/:/g, '');
-	const slices = React.useMemo(() => fungibleHolderChartSlices(props.holders), [props.holders]);
+	const slices = React.useMemo(() => fungibleHolderChartSlices(props.holders, messages), [messages, props.holders]);
 	const [activeKey, setActiveKey] = React.useState(slices[0]?.key ?? '');
 	React.useEffect(() => {
 		if (!slices.some((slice) => slice.key === activeKey)) setActiveKey(slices[0]?.key ?? '');
@@ -56,7 +61,11 @@ export default function FungibleHolderChart(props: {
 	return (
 		<section aria-labelledby="fungible-holder-chart-title" className="fungible-holder-chart-card">
 			<div className="fungible-holder-chart-visual">
-				<svg aria-label={`${props.assetName} supply distribution`} role="list" viewBox="0 0 240 240">
+				<svg
+					aria-label={formatMessage(messages.holderChartLabel, { name: props.assetName })}
+					role="list"
+					viewBox="0 0 240 240"
+				>
 					<defs>
 						{chartSlices.map((slice) => (
 							<pattern
@@ -76,7 +85,11 @@ export default function FungibleHolderChart(props: {
 					{chartSlices.map((slice) => {
 						const share = fungibleHoldingPercentage(slice.total, props.state.totalSupply);
 						const offered = fungibleOfferedPercentage(slice.listed, slice.total);
-						const label = `${slice.label}: ${share} of supply; ${offered} offered for sale`;
+						const label = formatMessage(messages.holderChartSliceLabel, {
+							label: slice.label,
+							share,
+							offered,
+						});
 						return (
 							<g
 								aria-label={label}
@@ -130,20 +143,24 @@ export default function FungibleHolderChart(props: {
 						{activeShare}
 					</text>
 					<text className="fungible-holder-chart-label" textAnchor="middle" x="120" y="136">
-						of supply
+						{messages.holderChartOfSupply}
 					</text>
 				</svg>
 			</div>
 			<div className="fungible-holder-chart-detail">
 				<header>
 					<div>
-						<h2 id="fungible-holder-chart-title">Supply distribution</h2>
-						<p>Select a ring segment to inspect a holder.</p>
+						<h2 id="fungible-holder-chart-title">{messages.holderChartTitle}</h2>
+						<p>{messages.holderChartHint}</p>
 					</div>
-					<span>{props.holders.length.toLocaleString()} holders</span>
+					<span>
+						{formatMessage(messages.holderChartHolderCount, {
+							count: props.holders.length.toLocaleString(),
+						})}
+					</span>
 				</header>
 				<div className="fungible-holder-chart-identity">
-					<span>Selected holder</span>
+					<span>{messages.holderChartSelectedHolder}</span>
 					{active.address ? (
 						<FungibleHolderIdentity address={active.address} />
 					) : (
@@ -152,30 +169,34 @@ export default function FungibleHolderChart(props: {
 				</div>
 				<dl>
 					<div>
-						<dt>Supply share</dt>
+						<dt>{messages.holderChartSupplyShare}</dt>
 						<dd>{activeShare}</dd>
 					</div>
 					<div>
-						<dt>Offered for sale</dt>
+						<dt>{messages.holderChartOfferedForSale}</dt>
 						<dd>{activeOffered}</dd>
 					</div>
 				</dl>
 				<div className="fungible-holder-chart-balances">
 					<div>
-						<span>Total balance</span>
+						<span>{messages.holderChartTotalBalance}</span>
 						<strong>{tokenLabel(active.total, props.state)}</strong>
 					</div>
 					<div>
-						<span>Listed</span>
-						<strong>{BigInt(active.listed) > 0n ? tokenLabel(active.listed, props.state) : 'None'}</strong>
+						<span>{messages.holderChartListed}</span>
+						<strong>
+							{BigInt(active.listed) > 0n
+								? tokenLabel(active.listed, props.state)
+								: messages.holderChartNone}
+						</strong>
 					</div>
 				</div>
-				<div aria-label="Chart legend" className="fungible-holder-chart-legend">
+				<div aria-label={messages.holderChartLegend} className="fungible-holder-chart-legend">
 					<span>
-						<i aria-hidden="true" /> Held
+						<i aria-hidden="true" /> {messages.holderChartLegendHeld}
 					</span>
 					<span>
-						<i aria-hidden="true" className="is-listed" /> Listed
+						<i aria-hidden="true" className="is-listed" /> {messages.holderChartLegendListed}
 					</span>
 				</div>
 			</div>

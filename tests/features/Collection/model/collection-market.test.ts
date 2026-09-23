@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { replaceHiddenCollectionAssetIndex } from 'api/collections';
 
 import { orderPriceLabel } from 'features/Catalogue';
+import { COLLECTION_MESSAGES } from 'features/Collection/messages';
 import {
 	collectionAssetWindowVersion,
 	collectionCandidateIndex,
@@ -20,6 +21,7 @@ import {
 	unavailableCollectionPriceIds,
 } from 'features/Collection/model/collection-market';
 import { appError, appErrorMessage, requestFailureMessage } from 'helpers/app-error';
+import { APP_ERROR_MESSAGES } from 'helpers/app-error.messages';
 
 import {
 	assetStateFixture,
@@ -31,6 +33,8 @@ import {
 	READY_HIDDEN_COLLECTION_INDEX,
 	resolvedFixture,
 } from '../../../fixtures/collection';
+
+const language = COLLECTION_MESSAGES.en;
 
 beforeEach(() => replaceHiddenCollectionAssetIndex(READY_HIDDEN_COLLECTION_INDEX));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
@@ -56,17 +60,21 @@ function filter(options: Partial<Parameters<typeof filterCollectionAssets>[1]> =
 
 describe('collection identity', () => {
 	it('names token collections generically and others by name', () => {
-		expect(collectionIdentity(collectionFixture([], { kind: 'tokens', name: 'Fungible' }))).toEqual({
-			name: 'Tokens',
-			eyebrow: 'Fungible tokens',
+		expect(collectionIdentity(collectionFixture([], { kind: 'tokens', name: 'Fungible' }), language)).toEqual({
+			name: language.collectionTokensName,
+			eyebrow: language.collectionEyebrowTokens,
 			monogram: 'T',
 		});
-		expect(collectionIdentity(collectionFixture([], { name: 'Waves' }))).toEqual({
+		expect(collectionIdentity(collectionFixture([], { name: 'Waves' }), language)).toEqual({
 			name: 'Waves',
-			eyebrow: 'Permanent artwork',
+			eyebrow: language.collectionEyebrowImages,
 			monogram: 'W',
 		});
-		expect(collectionIdentity(collectionFixture([], { kind: 'names', name: '' })).monogram).toBe('');
+		expect(collectionIdentity(collectionFixture([], { kind: 'names', name: '' }), language)).toEqual({
+			name: '',
+			eyebrow: language.collectionEyebrowNames,
+			monogram: '',
+		});
 	});
 });
 
@@ -74,10 +82,14 @@ describe('collection index failures', () => {
 	it('keeps rate limiting distinct from other index failures, with the same copy as before', () => {
 		const limited = collectionIndexFailure(appError('rate-limited'));
 		expect(limited.reason).toBe('index-rate-limited');
-		expect(appErrorMessage(limited)).toBe(requestFailureMessage('index', 'rate-limited'));
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, limited)).toBe(
+			requestFailureMessage(APP_ERROR_MESSAGES.en, 'index', 'rate-limited')
+		);
 		const unavailable = collectionIndexFailure(new TypeError('Failed to fetch'));
 		expect(unavailable.reason).toBe('index-unavailable');
-		expect(appErrorMessage(unavailable)).toBe(requestFailureMessage('index', 'unavailable'));
+		expect(appErrorMessage(APP_ERROR_MESSAGES.en, unavailable)).toBe(
+			requestFailureMessage(APP_ERROR_MESSAGES.en, 'index', 'unavailable')
+		);
 	});
 });
 
@@ -157,12 +169,16 @@ describe('collection card prices', () => {
 	});
 
 	it('labels each price state', () => {
-		expect(collectionCardPriceLabel({ status: 'unavailable', kind: 'unavailable' }, false)).toBe('Unavailable');
-		expect(collectionCardPriceLabel({ status: 'unindexed' }, false)).toBe('Unlisted');
-		expect(collectionCardPriceLabel({ status: 'resolved', label: '1 AR' }, true)).toBe('1 AR');
-		expect(collectionCardPriceLabel({ status: 'resolved', label: null }, false)).toBe('Not listed');
-		expect(collectionCardPriceLabel(undefined, true)).toBe('Unavailable');
-		expect(collectionCardPriceLabel(undefined, false)).toBe('Checking…');
+		expect(collectionCardPriceLabel({ status: 'unavailable', kind: 'unavailable' }, false, language)).toBe(
+			language.priceUnavailable
+		);
+		expect(collectionCardPriceLabel({ status: 'unindexed' }, false, language)).toBe(language.priceUnlisted);
+		expect(collectionCardPriceLabel({ status: 'resolved', label: '1 AR' }, true, language)).toBe('1 AR');
+		expect(collectionCardPriceLabel({ status: 'resolved', label: null }, false, language)).toBe(
+			language.priceNotListed
+		);
+		expect(collectionCardPriceLabel(undefined, true, language)).toBe(language.priceUnavailable);
+		expect(collectionCardPriceLabel(undefined, false, language)).toBe(language.priceChecking);
 		expect(collectionCardPriceListed({ status: 'resolved', label: '1 AR' })).toBe(true);
 		expect(collectionCardPriceListed({ status: 'resolved', label: null })).toBe(false);
 		expect(collectionCardPriceListed(undefined)).toBe(false);

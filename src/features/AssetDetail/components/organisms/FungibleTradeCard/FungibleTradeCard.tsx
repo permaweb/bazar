@@ -8,9 +8,15 @@ import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { type SegmentedTab, SegmentedTabs } from 'components/atoms/SegmentedTabs';
 import { ConnectWalletButton } from 'components/organisms/ConnectWalletButton';
-import { AssetBalanceStateNotice, assetOperationPendingActionLabel, AssetOperationStatus } from 'features/Operations';
+import {
+	AssetBalanceStateNotice,
+	AssetOperationStatus,
+	useAssetOperationPendingActionLabel,
+} from 'features/Operations';
+import { useMessages } from 'providers/LanguageProvider';
 
 import type { FungibleOperationActivities } from '../../../hooks/useFungibleOperationActivities';
+import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
 import { orderPriceLabel, type purchaseAmountMatch, tokenLabel } from '../../../model/fungible-market';
 import type { FungibleListingDraft, FungibleMarketView } from '../../../model/fungible-market-view';
 import { fungibleActivityPhaseStatus } from '../../../model/fungible-operation';
@@ -19,26 +25,28 @@ import { FungiblePurchaseComposer } from '../../molecules/FungiblePurchaseCompos
 
 export type FungibleTradeMode = 'buy' | 'sell' | 'transfer';
 
-const TRADE_TABS: SegmentedTab<FungibleTradeMode>[] = [
-	{
-		value: 'buy',
-		label: 'Buy',
-		icon: <Icon icon={ShoppingCart} />,
-		panelId: 'fungible-trade-buy',
-	},
-	{
-		value: 'sell',
-		label: 'List',
-		icon: <Icon icon={Tag} />,
-		panelId: 'fungible-trade-sell',
-	},
-	{
-		value: 'transfer',
-		label: 'Transfer',
-		icon: <Icon icon={Send} />,
-		panelId: 'fungible-trade-transfer',
-	},
-];
+function tradeTabs(messages: AssetDetailMessages): SegmentedTab<FungibleTradeMode>[] {
+	return [
+		{
+			value: 'buy',
+			label: messages.fungibleTradeBuy,
+			icon: <Icon icon={ShoppingCart} />,
+			panelId: 'fungible-trade-buy',
+		},
+		{
+			value: 'sell',
+			label: messages.fungibleTradeSell,
+			icon: <Icon icon={Tag} />,
+			panelId: 'fungible-trade-sell',
+		},
+		{
+			value: 'transfer',
+			label: messages.fungibleTradeTransfer,
+			icon: <Icon icon={Send} />,
+			panelId: 'fungible-trade-transfer',
+		},
+	];
+}
 
 export default function FungibleTradeCard(props: {
 	activities: FungibleOperationActivities;
@@ -64,44 +72,52 @@ export default function FungibleTradeCard(props: {
 	onTradeModeChange(mode: FungibleTradeMode): void;
 	onTransfer(): void;
 }) {
+	const pendingActionLabel = useAssetOperationPendingActionLabel();
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const blockedByState = !props.market.holderBalancesAvailable || props.loading || Boolean(props.error);
 	return (
 		<section aria-busy={props.activities.hasBusyWalletActivities} className="asset-commerce-card">
 			<AssetBalanceStateNotice state={props.state} />
 			<div className="asset-market-stats">
 				<div>
-					<span>Current unit price</span>
+					<span>{messages.fungibleStatCurrentUnitPrice}</span>
 					<strong>
 						{props.market.best ? (
 							<ArCurrencyText>{orderPriceLabel(props.market.best, props.state)}</ArCurrencyText>
 						) : (
-							'Not listed'
+							messages.fungibleStatNotListed
 						)}
 					</strong>
 				</div>
 				<div>
-					<span>For sale</span>
+					<span>{messages.fungibleStatForSale}</span>
 					<strong>{tokenLabel(props.market.forSale, props.state)}</strong>
 				</div>
 				<div>
-					<span>Your listed</span>
-					<strong>{props.walletAddress ? tokenLabel(props.market.listed, props.state) : '—'}</strong>
+					<span>{messages.fungibleStatYourListed}</span>
+					<strong>
+						{props.walletAddress
+							? tokenLabel(props.market.listed, props.state)
+							: messages.fungibleStatEmptyValue}
+					</strong>
 				</div>
 				<div>
-					<span>Holders</span>
+					<span>{messages.fungibleStatHolders}</span>
 					<strong>
-						{props.market.holderBalancesAvailable ? props.holderCount.toLocaleString() : 'Unavailable'}
+						{props.market.holderBalancesAvailable
+							? props.holderCount.toLocaleString()
+							: messages.fungibleUnavailable}
 					</strong>
 				</div>
 			</div>
 			<div className="fungible-trade-switcher">
 				<SegmentedTabs<FungibleTradeMode>
 					active={props.tradeMode}
-					ariaLabel="Trade action"
+					ariaLabel={messages.fungibleTradeAriaLabel}
 					className="fungible-trade-tabs"
 					idPrefix="fungible-trade"
 					onChange={props.onTradeModeChange}
-					tabs={TRADE_TABS}
+					tabs={tradeTabs(messages)}
 				/>
 			</div>
 			{props.tradeMode === 'buy' ? (
@@ -124,9 +140,9 @@ export default function FungibleTradeCard(props: {
 						/>
 					) : (
 						<div className="asset-buy-summary asset-buy-summary-empty">
-							<span>Purchase amount</span>
-							<h1>No purchasable listings</h1>
-							<small>No open listings are available to this wallet.</small>
+							<span>{messages.fungiblePurchaseAmount}</span>
+							<h1>{messages.fungibleNoPurchasableListings}</h1>
+							<small>{messages.fungibleNoPurchasableListingsDetail}</small>
 						</div>
 					)}
 				</div>
@@ -152,20 +168,20 @@ export default function FungibleTradeCard(props: {
 						/>
 					) : (
 						<div className="asset-buy-summary asset-buy-summary-empty">
-							<span>Listing amount</span>
+							<span>{messages.fungibleListingAmount}</span>
 							<h1>
 								{props.walletAddress
 									? props.market.holderBalancesAvailable
-										? 'No liquid tokens'
-										: 'Balance unavailable'
-									: 'Connect to list'}
+										? messages.fungibleNoLiquidTokens
+										: messages.fungibleBalanceUnavailable
+									: messages.fungibleConnectToList}
 							</h1>
 							<small>
 								{props.walletAddress
 									? props.market.holderBalancesAvailable
-										? 'Tokens already listed for sale are not available for a new listing.'
-										: 'Complete holder balance state is required before listing tokens.'
-									: 'Connect your wallet to see the tokens available to list.'}
+										? messages.fungibleListedNotAvailable
+										: messages.fungibleBalanceRequiredToList
+									: messages.fungibleConnectToSeeListable}
 							</small>
 						</div>
 					)}
@@ -178,24 +194,24 @@ export default function FungibleTradeCard(props: {
 					role="tabpanel"
 				>
 					<div className="asset-buy-summary asset-buy-summary-empty">
-						<span>Available to transfer</span>
+						<span>{messages.fungibleAvailableToTransfer}</span>
 						<h1>
 							{props.walletAddress
 								? !props.market.holderBalancesAvailable
-									? 'Balance unavailable'
+									? messages.fungibleBalanceUnavailable
 									: props.market.hasLiquidTokens
 									? tokenLabel(props.market.liquid, props.state)
-									: 'No liquid tokens'
-								: 'Connect to transfer'}
+									: messages.fungibleNoLiquidTokens
+								: messages.fungibleConnectToTransfer}
 						</h1>
 						<small>
 							{props.walletAddress
 								? !props.market.holderBalancesAvailable
-									? 'Complete holder balance state is required before transferring tokens.'
+									? messages.fungibleBalanceRequiredToTransfer
 									: props.market.hasLiquidTokens
-									? 'Choose a recipient and amount in the transfer review.'
-									: 'Tokens listed for sale are not available to transfer.'
-								: 'Connect your wallet to see the tokens available to transfer.'}
+									? messages.fungibleChooseRecipient
+									: messages.fungibleListedNotTransferable
+								: messages.fungibleConnectToSeeTransferable}
 						</small>
 					</div>
 				</div>
@@ -205,7 +221,7 @@ export default function FungibleTradeCard(props: {
 					key={activity.id}
 					kind={activity.operation.kind}
 					phase={activity.phase ?? 'form'}
-					status={fungibleActivityPhaseStatus(activity.phase ?? 'form')}
+					status={{ text: fungibleActivityPhaseStatus(activity.phase ?? 'form', messages) }}
 					onView={() => props.activities.show(activity.id)}
 				/>
 			))}
@@ -223,10 +239,10 @@ export default function FungibleTradeCard(props: {
 					>
 						<Icon icon={ShoppingCart} size="sm" />{' '}
 						{props.activities.activePurchaseActivity
-							? assetOperationPendingActionLabel('buy')
+							? pendingActionLabel('buy')
 							: props.purchaseMatch.match
-							? 'Buy tokens'
-							: 'Enter an amount'}
+							? messages.fungibleBuyTokens
+							: messages.fungibleEnterAmount}
 					</Button>
 				) : null}
 				{props.tradeMode === 'sell' &&
@@ -241,10 +257,10 @@ export default function FungibleTradeCard(props: {
 					>
 						<Icon icon={Tag} size="sm" />{' '}
 						{props.activities.activeAssetActivity?.operation.kind === 'sell'
-							? assetOperationPendingActionLabel('sell')
+							? pendingActionLabel('sell')
 							: props.listing.ready
-							? 'Review listing'
-							: 'Enter listing details'}
+							? messages.fungibleReviewListing
+							: messages.fungibleEnterListingDetails}
 					</Button>
 				) : null}
 				{props.tradeMode === 'transfer' &&
@@ -259,8 +275,8 @@ export default function FungibleTradeCard(props: {
 					>
 						<Icon icon={Send} size="sm" />{' '}
 						{props.activities.activeAssetActivity?.operation.kind === 'transfer'
-							? assetOperationPendingActionLabel('transfer')
-							: 'Transfer tokens'}
+							? pendingActionLabel('transfer')
+							: messages.fungibleTransferTokens}
 					</Button>
 				) : null}
 			</div>

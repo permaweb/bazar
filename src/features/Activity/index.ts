@@ -2,7 +2,8 @@ export { DeferredMarketActivityList } from './components/organisms/DeferredMarke
 export { GlobalActivityCharts } from './components/organisms/GlobalActivityCharts';
 export { GlobalActivitySummary } from './components/organisms/GlobalActivitySummary';
 export { MarketActivityList } from './components/organisms/MarketActivityList';
-export type { GlobalActivityFilter } from './model/activity-window';
+export { ACTIVITY_MESSAGES, type ActivityMessages } from './messages';
+export type { ActivityPluralFormatter, GlobalActivityFilter } from './model/activity-window';
 export {
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,

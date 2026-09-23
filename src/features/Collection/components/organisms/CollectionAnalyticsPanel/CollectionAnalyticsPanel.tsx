@@ -6,7 +6,10 @@ import type { Collection } from 'api/collections';
 
 import { LiveRegion } from 'components/atoms/LiveRegion';
 import { VisuallyHidden } from 'components/atoms/VisuallyHidden';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { COLLECTION_MESSAGES } from '../../../messages';
 import type { CollectionLiveListingRow } from '../../../model/collection-market';
 
 export default function CollectionAnalyticsPanel(props: {
@@ -14,35 +17,34 @@ export default function CollectionAnalyticsPanel(props: {
 	loading: boolean;
 	rows: CollectionLiveListingRow[];
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
 	return (
-		<aside className="collection-analytics" aria-label="Collection analytics">
+		<aside className="collection-analytics" aria-label={language.analyticsLabel}>
 			<div className="collection-analytics-heading">
 				<div>
-					<span>Market</span>
-					<h2>Analytics</h2>
+					<span>{language.analyticsEyebrow}</span>
+					<h2>{language.analyticsHeading}</h2>
 				</div>
 				<BarChart3 aria-hidden="true" />
 			</div>
 			<div className="collection-analytics-tabs">
-				<span>Live offers</span>
+				<span>{language.analyticsLiveOffersTab}</span>
 			</div>
 			{props.loading && !props.rows.length ? (
 				<div className="collection-analytics-empty">
 					<LoaderCircle className="spin" aria-hidden="true" />
-					<strong>Checking live offers</strong>
-					<p>Reading current asset state through the selected AO transport.</p>
+					<strong>{language.checkingLiveOffers}</strong>
+					<p>{language.checkingLiveOffersDetail}</p>
 				</div>
 			) : props.rows.length ? (
 				<div className="collection-orderbook">
-					{props.loading ? (
-						<LiveRegion>Refreshing live offer depth. Resolved offers remain visible.</LiveRegion>
-					) : null}
+					{props.loading ? <LiveRegion>{language.refreshingLiveOffers}</LiveRegion> : null}
 					<div className="collection-orderbook-head" aria-hidden="true">
-						<span>Price</span>
-						<span>Quantity</span>
-						<span>Total</span>
+						<span>{language.orderbookPrice}</span>
+						<span>{language.orderbookQuantity}</span>
+						<span>{language.orderbookTotal}</span>
 					</div>
-					<ul aria-label="Live offers">
+					<ul aria-label={language.orderbookLiveOffers}>
 						{props.rows.slice(0, 24).map((row, index) => (
 							<li key={`${row.asset.id}:${row.price}:${index}`}>
 								<Link
@@ -53,7 +55,11 @@ export default function CollectionAnalyticsPanel(props: {
 									<span>{row.price}</span>
 									<span>{row.quantity}</span>
 									<span>{row.total}</span>
-									<VisuallyHidden>{Math.round(row.depth)}% cumulative depth</VisuallyHidden>
+									<VisuallyHidden>
+										{formatMessage(language.orderbookCumulativeDepth, {
+											percent: Math.round(row.depth),
+										})}
+									</VisuallyHidden>
 								</Link>
 							</li>
 						))}
@@ -61,8 +67,8 @@ export default function CollectionAnalyticsPanel(props: {
 				</div>
 			) : (
 				<div className="collection-analytics-empty">
-					<strong>No live offers found</strong>
-					<p>No indexed offer currently survives live process-state verification.</p>
+					<strong>{language.noLiveOffersTitle}</strong>
+					<p>{language.noLiveOffersDetail}</p>
 				</div>
 			)}
 		</aside>

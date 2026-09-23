@@ -1,9 +1,4 @@
-type TokenArtworkProps = {
-	ticker: string;
-	className?: string;
-};
-
-export default function TokenArtwork(props: TokenArtworkProps) {
+export default function TokenArtwork(props: { className?: string; subtitle: string; ticker: string }) {
 	const visibleTicker = props.ticker.slice(0, 8);
 	return (
 		<span
@@ -13,7 +8,7 @@ export default function TokenArtwork(props: TokenArtworkProps) {
 			aria-hidden="true"
 		>
 			<strong>{visibleTicker}</strong>
-			<small>Arweave-native</small>
+			<small>{props.subtitle}</small>
 		</span>
 	);
 }

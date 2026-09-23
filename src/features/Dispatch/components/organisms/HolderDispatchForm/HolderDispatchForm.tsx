@@ -7,10 +7,17 @@ import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { winstonToAr } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
+import { DISPATCH_MESSAGES } from '../../../messages';
 import { formatDispatchTokenAmount, type HolderDispatchQuote, shortAddress } from '../../../model/dispatch';
 import type { HolderDraftRow } from '../../../model/holder-list';
+import { holderListIssueMessage } from '../../../model/holder-list-issue';
 import { HolderListField } from '../../molecules/HolderListField';
+
+/** Inline parse errors beyond this count collapse into a single "and N more" line. */
+const VISIBLE_HOLDER_LIST_ERRORS = 8;
 
 export default function HolderDispatchForm(props: {
 	token: AssetState | null;
@@ -25,6 +32,8 @@ export default function HolderDispatchForm(props: {
 	onCostApprovalToggle: () => void;
 	onSubmit: () => void;
 }) {
+	const messages = useMessages(DISPATCH_MESSAGES);
+	const plural = usePlural();
 	const parsed = props.quote.parsed;
 	const estimate = props.quote.estimate;
 
@@ -37,31 +46,35 @@ export default function HolderDispatchForm(props: {
 		<div className="create-layout dispatch-layout">
 			<form className="create-form" onSubmit={handleSubmit}>
 				<div className="create-field">
-					<label>Holder list</label>
+					<label>{messages.dispatchHolderListLabel}</label>
 					<HolderListField
 						rows={props.holderRows}
 						disabled={props.running}
 						denomination={props.token?.denomination ?? 0}
-						ticker={props.token?.ticker || 'tokens'}
+						ticker={props.token?.ticker || messages.dispatchTokenFallbackTicker}
 						onChange={props.onHolderRowsChange}
 					/>
 					<span>
 						{parsed?.rows.length
-							? `${parsed.rows.length} recipient${parsed.rows.length === 1 ? '' : 's'} parsed`
-							: 'Add rows, or paste a JSON/CSV list into any field to autofill'}
+							? plural(messages.dispatchParsedRecipients, parsed.rows.length)
+							: messages.dispatchHolderListHint}
 					</span>
 				</div>
 
 				{parsed?.errors.length ? (
 					<div className="inline-error">
 						<span>
-							{parsed.errors.slice(0, 8).map((entry, index) => (
+							{parsed.errors.slice(0, VISIBLE_HOLDER_LIST_ERRORS).map((entry, index) => (
 								<React.Fragment key={index}>
-									{entry}
+									{holderListIssueMessage(entry, messages, plural)}
 									<br />
 								</React.Fragment>
 							))}
-							{parsed.errors.length > 8 ? `…and ${parsed.errors.length - 8} more.` : null}
+							{parsed.errors.length > VISIBLE_HOLDER_LIST_ERRORS
+								? formatMessage(messages.dispatchMoreErrors, {
+										count: parsed.errors.length - VISIBLE_HOLDER_LIST_ERRORS,
+								  })
+								: null}
 						</span>
 					</div>
 				) : null}
@@ -72,8 +85,8 @@ export default function HolderDispatchForm(props: {
 							<table className="dispatch-table">
 								<thead>
 									<tr>
-										<th scope="col">Recipient</th>
-										<th scope="col">Token amount</th>
+										<th scope="col">{messages.dispatchTableRecipient}</th>
+										<th scope="col">{messages.dispatchTableTokenAmount}</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -90,7 +103,7 @@ export default function HolderDispatchForm(props: {
 											</td>
 											<td>
 												{props.token
-													? formatDispatchTokenAmount(row.quantity, props.token)
+													? formatDispatchTokenAmount(row.quantity, props.token, messages)
 													: '—'}
 											</td>
 										</tr>
@@ -100,45 +113,56 @@ export default function HolderDispatchForm(props: {
 						</div>
 						<div className="mint-summary">
 							<div>
-								<span>Recipients</span>
+								<span>{messages.dispatchSummaryRecipients}</span>
 								<strong>{parsed.rows.length}</strong>
 							</div>
 							<div>
-								<span>Total token amount</span>
+								<span>{messages.dispatchSummaryTotalTokenAmount}</span>
 								<strong>
 									{estimate && props.token
-										? formatDispatchTokenAmount(estimate.totalQuantity.toString(), props.token)
+										? formatDispatchTokenAmount(
+												estimate.totalQuantity.toString(),
+												props.token,
+												messages
+										  )
 										: '—'}
 								</strong>
 							</div>
 							<div>
-								<span>Total AR cost</span>
+								<span>{messages.dispatchSummaryTotalArCost}</span>
 								<strong>
-									{estimate ? `${winstonToAr(estimate.totalWinston.toString())} AR` : '—'}
+									{estimate
+										? formatMessage(messages.dispatchArAmount, {
+												amount: winstonToAr(estimate.totalWinston.toString()),
+										  })
+										: '—'}
 								</strong>
 							</div>
 						</div>
 						<div className="mint-notice">
 							<Icon icon={Info} />
 							<span>
-								Each recipient is one L1 transfer signed in your wallet ({parsed.rows.length} signature
-								{parsed.rows.length === 1 ? '' : 's'}, sent in batches of {props.quote.batchSize}).
-								Behind this form, each token amount is converted to atomic units. The AR quote includes
-								network rewards only.
+								{plural(messages.dispatchSignatureNotice, parsed.rows.length, {
+									batchSize: props.quote.batchSize,
+								})}
 							</span>
 						</div>
 						{props.quote.needsCostApproval ? (
 							<section className="mint-cost-warning" aria-labelledby="dispatch-cost-warning-title">
 								<div>
 									<strong id="dispatch-cost-warning-title">
-										This dispatch costs more than 0.1 AR
+										{messages.dispatchCostWarningTitle}
 									</strong>
 									<span>
-										Expected{' '}
-										<b>{estimate ? winstonToAr(estimate.totalWinston.toString()) : '0'} AR</b> in
-										real AR spend
+										{messages.dispatchCostWarningExpected}{' '}
+										<b>
+											{formatMessage(messages.dispatchArAmount, {
+												amount: estimate ? winstonToAr(estimate.totalWinston.toString()) : '0',
+											})}
+										</b>{' '}
+										{messages.dispatchCostWarningSpend}
 									</span>
-									<small>Approve the network quote to enable sending.</small>
+									<small>{messages.dispatchCostWarningHint}</small>
 								</div>
 								<Button
 									type="button"
@@ -148,7 +172,7 @@ export default function HolderDispatchForm(props: {
 									onClick={props.onCostApprovalToggle}
 								>
 									{props.costApproved ? <Icon icon={Check} size="sm" /> : null}
-									{props.costApproved ? 'Approved' : 'Approve quote'}
+									{props.costApproved ? messages.dispatchCostApproved : messages.dispatchCostApprove}
 								</Button>
 							</section>
 						) : null}
@@ -176,15 +200,13 @@ export default function HolderDispatchForm(props: {
 					}
 				>
 					{props.running
-						? 'Dispatching…'
+						? messages.dispatchSubmitRunning
 						: props.walletConnected
-						? 'Sign and dispatch'
-						: 'Connect wallet to dispatch'}
+						? messages.dispatchSubmit
+						: messages.dispatchSubmitConnectWallet}
 					{!props.running ? <Icon icon={ArrowRight} /> : null}
 				</Button>
-				<p className="mint-permanence">
-					Confirmed Arweave transfers are permanent. Review every address and quantity before signing.
-				</p>
+				<p className="mint-permanence">{messages.dispatchPermanenceNote}</p>
 			</form>
 		</div>
 	);

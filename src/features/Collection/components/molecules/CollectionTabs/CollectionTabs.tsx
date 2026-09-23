@@ -5,7 +5,10 @@ import type { Collection } from 'api/collections';
 
 import { Icon } from 'components/atoms/Icon';
 import { Pressable } from 'components/atoms/Pressable';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { COLLECTION_MESSAGES } from '../../../messages';
 import { collectionIdentity } from '../../../model/collection-market';
 
 export default function CollectionTabs(props: {
@@ -14,8 +17,15 @@ export default function CollectionTabs(props: {
 	onSelectAssets?(): void;
 	onSelectOffers?(): void;
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
+	const assetsLabel = props.collection.kind === 'tokens' ? language.tabTokens : language.tabItems;
 	return (
-		<nav className="collection-tabs" aria-label={`${collectionIdentity(props.collection).name} views`}>
+		<nav
+			className="collection-tabs"
+			aria-label={formatMessage(language.tabsLabel, {
+				name: collectionIdentity(props.collection, language).name,
+			})}
+		>
 			{props.onSelectAssets ? (
 				<Pressable
 					aria-current={props.active === 'assets' ? 'page' : undefined}
@@ -23,7 +33,7 @@ export default function CollectionTabs(props: {
 					onClick={props.onSelectAssets}
 					type="button"
 				>
-					{props.collection.kind === 'tokens' ? 'Tokens' : 'Items'}
+					{assetsLabel}
 				</Pressable>
 			) : (
 				<Link
@@ -31,7 +41,7 @@ export default function CollectionTabs(props: {
 					className={props.active === 'assets' ? 'active' : ''}
 					to={`/collection/${props.collection.id}`}
 				>
-					{props.collection.kind === 'tokens' ? 'Tokens' : 'Items'}
+					{assetsLabel}
 				</Link>
 			)}
 			{props.onSelectOffers ? (
@@ -41,7 +51,7 @@ export default function CollectionTabs(props: {
 					onClick={props.onSelectOffers}
 					type="button"
 				>
-					Offers
+					{language.tabOffers}
 				</Pressable>
 			) : (
 				<Link
@@ -49,7 +59,7 @@ export default function CollectionTabs(props: {
 					className={props.active === 'offers' ? 'active' : ''}
 					to={`/collection/${props.collection.id}?view=offers`}
 				>
-					Offers
+					{language.tabOffers}
 				</Link>
 			)}
 			<Link
@@ -57,7 +67,7 @@ export default function CollectionTabs(props: {
 				className={props.active === 'activity' ? 'active' : ''}
 				to={`/collection/${props.collection.id}/activity`}
 			>
-				<Icon icon={History} size="sm" /> Activity
+				<Icon icon={History} size="sm" /> {language.tabActivity}
 			</Link>
 		</nav>
 	);

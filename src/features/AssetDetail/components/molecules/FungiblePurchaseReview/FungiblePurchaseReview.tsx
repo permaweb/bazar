@@ -5,8 +5,11 @@ import { LiveRegion } from 'components/atoms/LiveRegion';
 import { RetryNotice } from 'components/molecules/RetryNotice';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { asyncData, type AsyncState } from 'helpers/async-state';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages, usePlural } from 'providers/LanguageProvider';
 
 import type { FungiblePurchaseQuote } from '../../../hooks/useFungiblePurchaseQuote';
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import { fungiblePurchaseTotals } from '../../../model/fungible-operation-view';
 
@@ -17,6 +20,8 @@ export default function FungiblePurchaseReview(props: {
 	state: AssetState;
 	onRetryQuote(): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const plural = usePlural();
 	const totals = fungiblePurchaseTotals(props.orders);
 	const quote = asyncData(props.quote);
 	const quoteFailed = props.quote.status === 'error';
@@ -27,65 +32,80 @@ export default function FungiblePurchaseReview(props: {
 				<section
 					aria-busy={props.quote.status === 'loading'}
 					className="purchase-confirmation"
-					aria-label="Purchase summary"
+					aria-label={messages.purchaseSummaryLabel}
 				>
 					<div className="purchase-confirmation-amount">
-						<span>You receive</span>
+						<span>{messages.purchaseYouReceive}</span>
 						<strong>{tokenLabel(totals.quantity.toString(), props.state)}</strong>
 					</div>
 					<dl className="purchase-confirmation-facts">
 						<div>
-							<dt>Seller total</dt>
+							<dt>{messages.purchaseSellerTotal}</dt>
 							<dd>
 								{winstonToArDecimal(totals.asking.toString())} <ArCurrencyLabel />
 							</dd>
 						</div>
 						<div>
-							<dt>Network fees</dt>
+							<dt>{messages.purchaseNetworkFees}</dt>
 							<dd>
 								{quoteFailed ? (
-									'Unavailable'
+									messages.purchaseUnavailable
 								) : quote ? (
-									<ArCurrencyText>{`${winstonToArDecimal(
-										(BigInt(quote.total) - totals.asking).toString()
-									)} AR`}</ArCurrencyText>
+									<ArCurrencyText>
+										{formatMessage(messages.orderbookValueAr, {
+											amount: winstonToArDecimal(
+												(BigInt(quote.total) - totals.asking).toString()
+											),
+										})}
+									</ArCurrencyText>
 								) : (
-									'Checking…'
+									messages.purchaseChecking
 								)}
 							</dd>
 						</div>
 						<div className="purchase-confirmation-total">
-							<dt>Maximum total</dt>
+							<dt>{messages.purchaseMaximumTotal}</dt>
 							<dd>
 								{quoteFailed ? (
-									'Quote unavailable'
+									messages.purchaseQuoteUnavailable
 								) : quote ? (
-									<ArCurrencyText>{`${winstonToArDecimal(quote.total)} AR`}</ArCurrencyText>
+									<ArCurrencyText>
+										{formatMessage(messages.orderbookValueAr, {
+											amount: winstonToArDecimal(quote.total),
+										})}
+									</ArCurrencyText>
 								) : (
-									'Checking…'
+									messages.purchaseChecking
 								)}
 							</dd>
 						</div>
 						<div>
-							<dt>Wallet after</dt>
+							<dt>{messages.purchaseWalletAfter}</dt>
 							<dd>
 								{quoteFailed ? (
-									'—'
+									messages.purchaseWalletAfterEmpty
 								) : quote?.canAfford === false ? (
-									<ArCurrencyText>Insufficient AR</ArCurrencyText>
+									<ArCurrencyText>{messages.purchaseInsufficientAr}</ArCurrencyText>
 								) : quote ? (
-									<ArCurrencyText>{`${winstonToArDecimal(
-										(BigInt(quote.walletBalance) - BigInt(quote.total)).toString()
-									)} AR`}</ArCurrencyText>
+									<ArCurrencyText>
+										{formatMessage(messages.orderbookValueAr, {
+											amount: winstonToArDecimal(
+												(BigInt(quote.walletBalance) - BigInt(quote.total)).toString()
+											),
+										})}
+									</ArCurrencyText>
 								) : (
-									'Checking…'
+									messages.purchaseChecking
 								)}
 							</dd>
 						</div>
 					</dl>
 					<p className="purchase-confirmation-meta">
-						{props.orders.length} {props.orders.length === 1 ? 'order' : 'orders'} · {totals.sellers}{' '}
-						{totals.sellers === 1 ? 'seller' : 'sellers'} · {props.orders.length * 2} wallet approvals
+						{formatMessage(messages.purchaseMeta, {
+							orders: plural(messages.purchaseMetaOrders, props.orders.length),
+							sellers: plural(messages.purchaseMetaSellers, totals.sellers),
+							approvals: props.orders.length * 2,
+						})}
 					</p>
 				</section>
 			) : null}
@@ -93,23 +113,30 @@ export default function FungiblePurchaseReview(props: {
 				<LiveRegion as="p" id={props.quoteStatusId}>
 					<ArCurrencyText>
 						{props.quote.status === 'success' && quote
-							? `Purchase quote ready. Maximum total ${winstonToArDecimal(quote.total)} AR.${
-									quote.canAfford ? '' : ' This wallet has insufficient AR.'
-							  }`
+							? formatMessage(
+									quote.canAfford
+										? messages.purchaseQuoteReady
+										: messages.purchaseQuoteReadyInsufficient,
+									{ total: winstonToArDecimal(quote.total) }
+							  )
 							: quoteFailed
-							? 'Purchase quote unavailable. Retry the cost check before buying.'
-							: 'Checking the wallet balance and network fees.'}
+							? messages.purchaseQuoteFailed
+							: messages.purchaseQuoteChecking}
 					</ArCurrencyText>
 				</LiveRegion>
 			) : null}
 			{props.orders.length && quoteFailed ? (
-				<RetryNotice onRetry={() => props.onRetryQuote()} retryDescribedBy={props.quoteStatusId} />
+				<RetryNotice
+					onRetry={() => props.onRetryQuote()}
+					retryDescribedBy={props.quoteStatusId}
+					retryLabel={messages.purchaseQuoteRetryLabel}
+				>
+					{messages.purchaseQuoteRetry}
+				</RetryNotice>
 			) : null}
 			{quote?.canAfford === false ? (
 				<p className="purchase-form-error" role="alert">
-					<ArCurrencyText>
-						This wallet does not have enough AR for the purchase and network fees.
-					</ArCurrencyText>
+					<ArCurrencyText>{messages.purchaseInsufficientDetail}</ArCurrencyText>
 				</p>
 			) : null}
 		</>

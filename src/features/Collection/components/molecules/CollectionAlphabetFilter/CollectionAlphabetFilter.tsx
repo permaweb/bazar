@@ -2,8 +2,11 @@ import React from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 import { Button } from 'components/atoms/Button';
+import { formatMessage } from 'helpers/i18n';
 import { optionalMotionBehavior } from 'helpers/motion';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { COLLECTION_MESSAGES } from '../../../messages';
 import { alphabetBrowseIndex, alphabetFilterIndex, COLLECTION_ALPHABET } from '../../../model/collection-market';
 
 // A roving-tabindex letter filter that scrolls horizontally, with edge controls that page by several letters.
@@ -13,6 +16,7 @@ export default function CollectionAlphabetFilter(props: {
 	onFocusChange(letter: string): void;
 	onSelect(letter: string): void;
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
 	const letterRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 	const scrollerRef = React.useRef<HTMLElement>(null);
 	const [edges, setEdges] = React.useState({ start: true, end: false });
@@ -72,13 +76,17 @@ export default function CollectionAlphabetFilter(props: {
 		<div className={`alphabet-filter-shell${edges.start ? ' at-start' : ''}${edges.end ? ' at-end' : ''}`}>
 			<nav
 				className="alphabet-filter"
-				aria-label="Filter names by first letter"
+				aria-label={language.alphabetFilterLabel}
 				id="name-initial-filter"
 				ref={scrollerRef}
 			>
 				{COLLECTION_ALPHABET.map((letter, index, options) => (
 					<Button
-						aria-label={letter === 'all' ? 'All names' : `Names beginning with ${letter}`}
+						aria-label={
+							letter === 'all'
+								? language.alphabetAllNamesLabel
+								: formatMessage(language.alphabetLetterLabel, { letter })
+						}
 						aria-pressed={props.initial === letter}
 						className={props.initial === letter ? 'active' : undefined}
 						key={letter}
@@ -101,14 +109,14 @@ export default function CollectionAlphabetFilter(props: {
 						}}
 						tabIndex={props.focus === letter ? 0 : -1}
 					>
-						{letter === 'all' ? 'All' : letter}
+						{letter === 'all' ? language.alphabetAll : letter}
 					</Button>
 				))}
 			</nav>
 			{!edges.start ? (
 				<Button
 					aria-controls="name-initial-filter"
-					aria-label="Browse earlier letters"
+					aria-label={language.alphabetBrowsePrevious}
 					className="alphabet-scroll alphabet-scroll-previous"
 					size="icon"
 					onClick={() => handleBrowse('previous')}
@@ -120,7 +128,7 @@ export default function CollectionAlphabetFilter(props: {
 			{!edges.end ? (
 				<Button
 					aria-controls="name-initial-filter"
-					aria-label="Browse later letters"
+					aria-label={language.alphabetBrowseNext}
 					className="alphabet-scroll alphabet-scroll-next"
 					size="icon"
 					onClick={() => handleBrowse('next')}

@@ -3,7 +3,10 @@ import React from 'react';
 import type { AssetState } from 'api/marketplace';
 
 import { Button } from 'components/atoms/Button';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { type FungibleHolder, fungibleHoldingPercentage } from '../../../model/fungible-holders';
 import { tokenLabel } from '../../../model/fungible-market';
 import { FungibleHolderIdentity } from '../../molecules/FungibleHolderIdentity';
@@ -17,6 +20,7 @@ export default function FungibleHolderTable(props: {
 	state: AssetState;
 	onLimitChange(limit: number): void;
 }) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const revealStatusRef = React.useRef<HTMLParagraphElement>(null);
 	const visibleRows = props.holders.slice(0, props.limit);
 
@@ -31,37 +35,39 @@ export default function FungibleHolderTable(props: {
 	return (
 		<>
 			<div
-				aria-label={`${props.assetName} token holders`}
+				aria-label={formatMessage(messages.holderTableLabel, { name: props.assetName })}
 				className="orderbook-table fungible-holder-table"
 				role="table"
 			>
 				<div className="orderbook-head" role="row">
-					<span role="columnheader">Holder</span>
-					<span role="columnheader">Total balance</span>
-					<span role="columnheader">Share</span>
-					<span role="columnheader">Listed</span>
+					<span role="columnheader">{messages.holderColumnHolder}</span>
+					<span role="columnheader">{messages.holderColumnTotalBalance}</span>
+					<span role="columnheader">{messages.holderColumnShare}</span>
+					<span role="columnheader">{messages.holderColumnListed}</span>
 				</div>
 				{visibleRows.map((holder) => (
 					<div className="orderbook-row" key={holder.address} role="row">
-						<span data-label="Holder" role="cell">
+						<span data-label={messages.holderColumnHolder} role="cell">
 							<FungibleHolderIdentity address={holder.address} />
 						</span>
-						<strong data-label="Total balance" role="cell">
+						<strong data-label={messages.holderColumnTotalBalance} role="cell">
 							{tokenLabel(holder.total, props.state)}
 						</strong>
-						<span className="fungible-holder-share" data-label="Share" role="cell">
+						<span className="fungible-holder-share" data-label={messages.holderColumnShare} role="cell">
 							{fungibleHoldingPercentage(holder.total, props.state.totalSupply)}
 						</span>
-						<span data-label="Listed" role="cell">
-							{BigInt(holder.listed) > 0n ? tokenLabel(holder.listed, props.state) : '—'}
+						<span data-label={messages.holderColumnListed} role="cell">
+							{BigInt(holder.listed) > 0n
+								? tokenLabel(holder.listed, props.state)
+								: messages.holderEmptyValue}
 						</span>
 					</div>
 				))}
 				{!props.holders.length ? (
 					<div className="orderbook-empty" role="row">
 						<div aria-colspan={4} className="orderbook-empty-cell" role="cell">
-							<strong>No holders found</strong>
-							<span>The current process state does not contain a positive balance.</span>
+							<strong>{messages.holderEmptyTitle}</strong>
+							<span>{messages.holderEmptyDetail}</span>
 						</div>
 					</div>
 				) : null}
@@ -69,14 +75,19 @@ export default function FungibleHolderTable(props: {
 			{props.holders.length > HOLDER_REVEAL_STEP ? (
 				<div className="orderbook-reveal">
 					<p aria-atomic="true" aria-live="polite" ref={revealStatusRef} role="status" tabIndex={-1}>
-						Showing {visibleRows.length.toLocaleString()} of {props.holders.length.toLocaleString()}{' '}
-						holders.
+						{formatMessage(messages.holderTableShowing, {
+							visible: visibleRows.length.toLocaleString(),
+							total: props.holders.length.toLocaleString(),
+						})}
 					</p>
 					{visibleRows.length < props.holders.length ? (
 						<Button type="button" size="custom" onClick={handleReveal}>
-							Show{' '}
-							{Math.min(HOLDER_REVEAL_STEP, props.holders.length - visibleRows.length).toLocaleString()}{' '}
-							more holders
+							{formatMessage(messages.holderTableShowMore, {
+								count: Math.min(
+									HOLDER_REVEAL_STEP,
+									props.holders.length - visibleRows.length
+								).toLocaleString(),
+							})}
 						</Button>
 					) : null}
 				</div>

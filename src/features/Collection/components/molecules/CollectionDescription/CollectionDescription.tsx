@@ -3,8 +3,12 @@ import { ChevronDown } from 'lucide-react';
 
 import { Button } from 'components/atoms/Button';
 import { formatTokenDescription } from 'helpers/token-display';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { COLLECTION_MESSAGES } from '../../../messages';
 
 export default function CollectionDescription(props: { description: string }) {
+	const language = useMessages(COLLECTION_MESSAGES);
 	const text = formatTokenDescription(props.description);
 	const contentId = React.useId();
 	const paragraphRef = React.useRef<HTMLParagraphElement>(null);
@@ -47,7 +51,7 @@ export default function CollectionDescription(props: { description: string }) {
 					size="custom"
 					variant="ghost"
 				>
-					Show {expanded ? 'less' : 'more'}
+					{expanded ? language.descriptionShowLess : language.descriptionShowMore}
 					<ChevronDown aria-hidden="true" />
 				</Button>
 			) : null}

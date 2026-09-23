@@ -1,11 +1,14 @@
 import { RefreshCw } from 'lucide-react';
 
-import { ArCurrencyLabel, ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
+import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { LiveRegion } from 'components/atoms/LiveRegion';
 import { WalletAddress } from 'components/organisms/WalletAddress';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { OPERATIONS_MESSAGES } from '../../../messages';
 import type { PurchaseQuoteView } from '../../../model/operation-view';
 
 // The seller price, reservation minimum, fees, maximum total, and remaining balance of a new purchase, with a
@@ -19,60 +22,66 @@ export default function PurchaseQuoteSummary(props: {
 	statusId: string;
 	onRetry(): void;
 }) {
+	const messages = useMessages(OPERATIONS_MESSAGES);
 	const quote = props.quote;
 	return (
 		<>
 			<div className="operation-summary">
-				<span>Seller</span>
-				<WalletAddress address={props.seller} className="operation-summary-link" full label="seller" />
-				<span>Seller price</span>
+				<span>{messages.labelSeller}</span>
+				<WalletAddress
+					address={props.seller}
+					className="operation-summary-link"
+					full
+					label={messages.walletLabelSeller}
+				/>
+				<span>{messages.quoteSellerPrice}</span>
 				<strong>
 					<ArCurrencyText>{props.sellerPrice}</ArCurrencyText>
 				</strong>
 				{props.reservationMinimum ? (
 					<>
-						<span>Reservation minimum (included)</span>
+						<span>{messages.quoteReservationMinimum}</span>
 						<strong>
 							<ArCurrencyText>{props.reservationMinimum}</ArCurrencyText>
 						</strong>
 					</>
 				) : null}
-				<span>{props.reservationMinimum ? 'Total fees' : 'Network fees'}</span>
+				<span>{props.reservationMinimum ? messages.quoteTotalFees : messages.quoteNetworkFees}</span>
 				<strong>
 					{quote.status === 'unavailable' ? (
-						'Unavailable'
+						messages.quoteUnavailable
 					) : quote.status === 'ready' ? (
 						<ArCurrencyText>{quote.networkFees}</ArCurrencyText>
 					) : (
-						'Checking…'
+						messages.quoteChecking
 					)}
 				</strong>
-				<span>Maximum total</span>
+				<span>{messages.quoteMaximumTotal}</span>
 				<strong>
 					{quote.status === 'unavailable' ? (
-						'Unavailable'
+						messages.quoteUnavailable
 					) : quote.status === 'ready' ? (
 						<ArCurrencyText>{quote.maximumTotal}</ArCurrencyText>
 					) : (
-						'Checking…'
+						messages.quoteChecking
 					)}
 				</strong>
-				<span>Wallet after purchase</span>
+				<span>{messages.quoteWalletAfterPurchase}</span>
 				<strong>
 					{quote.status === 'unavailable' ? (
-						'Unavailable'
+						messages.quoteUnavailable
 					) : quote.status === 'ready' ? (
 						quote.walletAfterPurchase ? (
 							<ArCurrencyText>{quote.walletAfterPurchase}</ArCurrencyText>
 						) : (
-							<ArCurrencyText>Insufficient AR</ArCurrencyText>
+							<ArCurrencyText>{messages.quoteInsufficientBalance}</ArCurrencyText>
 						)
 					) : (
-						'Checking…'
+						messages.quoteChecking
 					)}
 				</strong>
 				<small>
-					One asset · native <ArCurrencyLabel /> settlement
+					<ArCurrencyText>{messages.quoteSettlementNote}</ArCurrencyText>
 				</small>
 			</div>
 			<LiveRegion as="p" id={props.statusId}>
@@ -80,10 +89,13 @@ export default function PurchaseQuoteSummary(props: {
 					{quote.status === 'unavailable'
 						? quote.message
 						: quote.status === 'ready'
-						? `Purchase quote ready. Maximum total ${quote.maximumTotal}.${
-								quote.affordable ? '' : ' This wallet has insufficient AR.'
-						  }`
-						: 'Checking the exact purchase cost.'}
+						? formatMessage(
+								quote.affordable
+									? messages.quoteAnnouncementReady
+									: messages.quoteAnnouncementReadyInsufficient,
+								{ total: quote.maximumTotal }
+						  )
+						: messages.quoteAnnouncementChecking}
 				</ArCurrencyText>
 			</LiveRegion>
 			<div
@@ -94,9 +106,9 @@ export default function PurchaseQuoteSummary(props: {
 					{quote.status === 'unavailable' ? (
 						<ArCurrencyText>{quote.message}</ArCurrencyText>
 					) : quote.status === 'ready' ? (
-						'Costs checked.'
+						messages.quoteCostsChecked
 					) : (
-						'Checking wallet balance and network fees…'
+						messages.quoteCheckingBalance
 					)}
 				</span>
 				{quote.status !== 'checking' && (quote.status !== 'unavailable' || quote.retryable) ? (
@@ -108,7 +120,7 @@ export default function PurchaseQuoteSummary(props: {
 						onClick={props.onRetry}
 					>
 						<Icon icon={RefreshCw} size="sm" />{' '}
-						{quote.status === 'ready' ? 'Refresh costs' : 'Retry cost check'}
+						{quote.status === 'ready' ? messages.quoteRefreshCosts : messages.quoteRetryCostCheck}
 					</Button>
 				) : null}
 			</div>

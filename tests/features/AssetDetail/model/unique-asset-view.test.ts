@@ -4,6 +4,7 @@ import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetInd
 import type { CollectionActivityEvent } from 'api/discovery';
 import type { AssetState, SwapOrder } from 'api/marketplace';
 
+import { ASSET_DETAIL_MESSAGES } from 'features/AssetDetail/messages';
 import { uniqueAssetView } from 'features/AssetDetail/model/unique-asset-view';
 
 const assetId = 'A'.repeat(43);
@@ -64,6 +65,7 @@ function view(overrides: Partial<Parameters<typeof uniqueAssetView>[0]> = {}) {
 		error: null,
 		operationPhase: null,
 		hasUnavailableRecovery: false,
+		messages: ASSET_DETAIL_MESSAGES.en,
 		...overrides,
 	});
 }

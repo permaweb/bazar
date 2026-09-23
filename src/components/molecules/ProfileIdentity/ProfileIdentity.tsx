@@ -7,6 +7,8 @@ import * as S from './styles';
 export type ProfileIdentityProps = {
 	className?: string;
 	href?: string;
+	/** The link's accessible name, already resolved: a molecule may not read the language provider. */
+	label: string;
 	profile: ProfileSummary;
 	showAvatar?: boolean;
 	size?: 'large' | 'medium' | 'small';
@@ -19,6 +21,12 @@ export function shortProfileAddress(address: string) {
 
 export function profilePath(address: string) {
 	return `#/profile/${encodeURIComponent(address)}`;
+}
+
+/** How a profile names itself to assistive technology: its display name with the full address, or the address. */
+export function profileAccessibleName(profile: ProfileSummary) {
+	const displayName = profile.displayName?.trim();
+	return displayName ? `${displayName}, ${profile.address}` : profile.address;
 }
 
 function profileInitial(profile: ProfileSummary) {
@@ -60,12 +68,11 @@ export function ProfileAvatar(props: Pick<ProfileIdentityProps, 'className' | 'p
 export default function ProfileIdentity(props: ProfileIdentityProps) {
 	const displayName = props.profile.displayName?.trim();
 	const address = shortProfileAddress(props.profile.address);
-	const accessibleLabel = displayName ? `${displayName}, ${props.profile.address}` : props.profile.address;
 
 	return (
 		<S.Identity
 			$size={props.size ?? 'small'}
-			aria-label={`View profile for ${accessibleLabel}`}
+			aria-label={props.label}
 			className={['profile-identity', `profile-identity--${props.size ?? 'small'}`, props.className ?? '']
 				.filter(Boolean)
 				.join(' ')}

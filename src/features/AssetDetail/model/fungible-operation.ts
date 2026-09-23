@@ -19,10 +19,19 @@ import {
 import { formatArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import type { TransactionDialogPhase } from 'components/molecules/TransactionDialogControl';
 import { type ArweaveSyncStep, quorumConfirmationDepth } from 'features/TransactionSync';
-import { type AppError, appErrorMessage, type AppErrorReason, appErrorReasonMessage } from 'helpers/app-error';
+import {
+	type AppError,
+	appErrorMessage,
+	type AppErrorMessages,
+	type AppErrorReason,
+	appErrorReasonMessage,
+} from 'helpers/app-error';
 import { winstonToArDecimal } from 'helpers/ar-units';
 import { isArweaveId } from 'helpers/arweave-id';
 import { short } from 'helpers/format';
+import { formatMessage } from 'helpers/i18n';
+
+import type { AssetDetailMessages, AssetDetailPlural } from '../messages';
 
 import { orderPriceLabel, tokenLabel } from './fungible-market';
 
@@ -109,49 +118,55 @@ export function operationFailureNeedsManualReview(error: AppError | null) {
 }
 
 /** Operation copy for an application error; a settlement batch lists each lot's distinct failure. */
-export function fungibleOperationFailureMessage(error: AppError): string {
+export function fungibleOperationFailureMessage(
+	error: AppError,
+	messages: AssetDetailMessages,
+	errorMessages: AppErrorMessages
+): string {
 	const { failedCount, totalCount, failureReasons = [] } = error.detail ?? {};
 	if (error.reason !== 'purchase-settlement-incomplete' || failedCount === undefined || totalCount === undefined) {
-		return appErrorMessage(error);
+		return appErrorMessage(errorMessages, error);
 	}
 	return [
-		`${failedCount} of ${totalCount} settlements need attention.`,
-		...failureReasons.map(appErrorReasonMessage),
+		formatMessage(messages.failureSettlementsNeedAttention, { failed: failedCount, total: totalCount }),
+		...failureReasons.map((reason) => appErrorReasonMessage(errorMessages, reason)),
 	].join(' ');
 }
 
-export function fungibleActivityPhaseStatus(phase: TransactionDialogPhase) {
+export function fungibleActivityPhaseStatus(phase: TransactionDialogPhase, messages: AssetDetailMessages) {
 	return {
-		form: 'Waiting for details',
-		approval: 'Waiting for wallet approval',
-		working: 'Transaction in progress',
-		done: 'Complete',
-		error: 'Needs attention',
+		form: messages.phaseStatusForm,
+		approval: messages.phaseStatusApproval,
+		working: messages.phaseStatusWorking,
+		done: messages.phaseStatusDone,
+		error: messages.phaseStatusError,
 	}[phase];
 }
 
 export function fungibleOperationActivityProgress(
 	phase: TransactionDialogPhase,
+	messages: AssetDetailMessages,
 	activeStep?: ArweaveSyncStep
 ): Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'> {
 	if (phase === 'working' && activeStep?.transaction) {
 		const confirmationTarget = Math.max(1, activeStep.target);
 		return {
 			phase,
-			status: 'Watching Arweave confirmations…',
+			status: { text: messages.phaseStatusConfirming },
 			confirmations: Math.min(confirmationTarget, quorumConfirmationDepth(activeStep)),
 			confirmationTarget,
 		};
 	}
-	return { phase, status: fungibleActivityPhaseStatus(phase) };
+	return { phase, status: { text: fungibleActivityPhaseStatus(phase, messages) } };
 }
 
 export function fungibleOperationWorkingStatus(
 	operationKind: FungibleOperation['kind'],
 	message: string,
+	errorMessages: AppErrorMessages,
 	purchase?: PurchaseState
 ): string {
-	return operationKind === 'buy' ? message || purchaseLifecycleStatus(purchase ?? null) : message;
+	return operationKind === 'buy' ? message || purchaseLifecycleStatus(purchase ?? null, errorMessages) : message;
 }
 
 export type FungiblePurchaseSequenceStep = {
@@ -171,7 +186,9 @@ const PAYMENT_PURCHASE_STAGES = new Set([
 
 export function fungiblePurchaseSequence(
 	states: Array<PurchaseState | undefined>,
-	listingCount: number
+	listingCount: number,
+	messages: AssetDetailMessages,
+	plural: AssetDetailPlural
 ): FungiblePurchaseSequenceStep[] {
 	const total = Math.max(1, listingCount);
 	const known = states.filter((state): state is PurchaseState => Boolean(state));
@@ -187,31 +204,60 @@ export function fungiblePurchaseSequence(
 	const steps: Array<Omit<FungiblePurchaseSequenceStep, 'state'>> = [
 		{
 			key: 'sign',
-			label: 'Sign',
-			detail: `${total * 2} wallet ${total * 2 === 1 ? 'approval' : 'approvals'}`,
+			label: messages.sequenceSign,
+			detail: plural(messages.sequenceApprovals, total * 2),
 		},
-		{ key: 'reserve', label: 'Reserve', detail: `${reserved}/${total} accepted` },
-		{ key: 'pay', label: 'Pay', detail: `${paid}/${total} confirmed` },
-		{ key: 'verify', label: 'Verify', detail: `${verified}/${total} verified` },
+		{
+			key: 'reserve',
+			label: messages.sequenceReserve,
+			detail: formatMessage(messages.sequenceReserveDetail, { done: reserved, total }),
+		},
+		{
+			key: 'pay',
+			label: messages.sequencePay,
+			detail: formatMessage(messages.sequencePayDetail, { done: paid, total }),
+		},
+		{
+			key: 'verify',
+			label: messages.sequenceVerify,
+			detail: formatMessage(messages.sequenceVerifyDetail, { done: verified, total }),
+		},
 	];
 	return steps.map((step, index) => ({
 		...step,
 		state: index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'next',
-		...(index === 0 && signed < total ? { detail: `Preparing ${total * 2} wallet approvals` } : {}),
+		...(index === 0 && signed < total
+			? { detail: formatMessage(messages.sequencePreparingApprovals, { count: total * 2 }) }
+			: {}),
 		...(index > 0 && progress[index] === total ? { state: 'done' as const } : {}),
 	}));
 }
 
-export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
-	const lot = formatArCurrencyText(`${tokenLabel(order.quantity, state)} for ${winstonToArDecimal(order.asking)} AR`);
-	return action === 'buy' ? `Buy ${lot} from ${order.creator}` : `Cancel listing of ${lot}`;
+export function fungibleOrderActionLabel(
+	action: 'buy' | 'cancel',
+	order: SwapOrder,
+	state: AssetState,
+	messages: AssetDetailMessages
+) {
+	const lot = formatArCurrencyText(
+		formatMessage(messages.orderActionLot, {
+			quantity: tokenLabel(order.quantity, state),
+			asking: winstonToArDecimal(order.asking),
+		})
+	);
+	return action === 'buy'
+		? formatMessage(messages.orderActionBuy, { lot, seller: order.creator })
+		: formatMessage(messages.orderActionCancel, { lot });
 }
 
-export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState) {
+export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState, messages: AssetDetailMessages) {
 	return formatArCurrencyText(
-		`${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToArDecimal(
-			order.asking
-		)} AR total, seller ${order.creator}`
+		formatMessage(messages.listingAccessibleLabel, {
+			quantity: tokenLabel(order.quantity, state),
+			price: orderPriceLabel(order, state),
+			total: winstonToArDecimal(order.asking),
+			seller: order.creator,
+		})
 	);
 }
 
@@ -260,55 +306,81 @@ export function fungibleTransferSubmitLabel(
 	quantity: string,
 	state: AssetState,
 	recipient: string,
+	messages: AssetDetailMessages,
 	fullRecipient = false
 ) {
-	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : short(recipient)}`;
+	return formatMessage(messages.submitTransfer, {
+		quantity: tokenLabel(quantity, state),
+		recipient: fullRecipient ? recipient : short(recipient),
+	});
 }
 
-export function operationLabel(kind: FungibleOperation['kind']) {
-	return { sell: 'List tokens', buy: 'Buy tokens', cancel: 'Cancel listing', transfer: 'Transfer tokens' }[kind];
+export function operationLabel(kind: FungibleOperation['kind'], messages: AssetDetailMessages) {
+	return {
+		sell: messages.operationLabelSell,
+		buy: messages.operationLabelBuy,
+		cancel: messages.operationLabelCancel,
+		transfer: messages.operationLabelTransfer,
+	}[kind];
 }
 
-export function batchStageLabel(state?: PurchaseState) {
-	if (!state) return 'Preparing';
-	if (state.stage === 'complete') return 'Settled ✓';
-	if (state.stage === 'failed') return 'Needs attention';
-	if (state.stage === 'registration-accepting') return 'Checking reservation';
-	if (state.stage === 'ownership-verifying') return 'Checking receipt';
+export function batchStageLabel(messages: AssetDetailMessages, state?: PurchaseState) {
+	if (!state) return messages.batchStagePreparing;
+	if (state.stage === 'complete') return messages.batchStageSettled;
+	if (state.stage === 'failed') return messages.batchStageNeedsAttention;
+	if (state.stage === 'registration-accepting') return messages.batchStageCheckingReservation;
+	if (state.stage === 'ownership-verifying') return messages.batchStageCheckingReceipt;
 	if (state.stage.includes('payment')) {
-		return `Pay ${Math.min(state.payment?.consensus.confirmations ?? 0, 5)}/5`;
+		return formatMessage(messages.batchStagePaying, {
+			confirmations: Math.min(state.payment?.consensus.confirmations ?? 0, 5),
+		});
 	}
-	if (state.stage === 'signing' || state.stage === 'idle') return 'Preparing';
-	return `Reserve ${Math.min(state.registration?.consensus.confirmations ?? 0, 5)}/5`;
+	if (state.stage === 'signing' || state.stage === 'idle') return messages.batchStagePreparing;
+	return formatMessage(messages.batchStageReserving, {
+		confirmations: Math.min(state.registration?.consensus.confirmations ?? 0, 5),
+	});
 }
 
-export function activityDetail(event: CollectionActivityEvent, state: AssetState) {
+export function activityDetail(event: CollectionActivityEvent, messages: AssetDetailMessages) {
 	if (event.action === 'make-offer') {
-		return event.asking ? `${winstonToArDecimal(event.asking)} AR total` : '';
+		return event.asking
+			? formatMessage(messages.activityDetailOfferTotal, { amount: winstonToArDecimal(event.asking) })
+			: '';
 	}
 	if (event.action === 'transfer') {
-		return event.recipient ? `To ${short(event.recipient)}` : '';
+		return event.recipient
+			? formatMessage(messages.activityDetailTransferTo, { recipient: short(event.recipient) })
+			: '';
 	}
-	if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
-	if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
+	if (event.action === 'register-interest' && event.orderId) {
+		return formatMessage(messages.activityDetailOrder, { id: short(event.orderId) });
+	}
+	if (event.action === 'cancel-order' && event.orderId) {
+		return formatMessage(messages.activityDetailOrder, { id: short(event.orderId) });
+	}
 	return '';
 }
 
-export function fungibleActivityAmount(event: CollectionActivityEvent, state: AssetState) {
+export function fungibleActivityAmount(
+	event: CollectionActivityEvent,
+	state: AssetState,
+	messages: AssetDetailMessages
+) {
 	if (!event.quantity) return '';
 	const quantity = tokenLabel(event.quantity, state);
 	return event.action === 'make-offer' && event.asking
-		? `${quantity} for ${winstonToArDecimal(event.asking)} AR`
+		? formatMessage(messages.activityAmountForAr, { quantity, amount: winstonToArDecimal(event.asking) })
 		: quantity;
 }
 
 export function fungiblePurchaseActivityAmount(
 	event: CollectionActivityEvent,
 	events: CollectionActivityEvent[],
-	state: AssetState
+	state: AssetState,
+	messages: AssetDetailMessages
 ) {
 	if (event.action !== 'register-interest' || !event.orderId || !event.quantity) {
-		return fungibleActivityAmount(event, state);
+		return fungibleActivityAmount(event, state, messages);
 	}
 	const indexedListing = events.find(
 		(candidate) =>
@@ -320,15 +392,18 @@ export function fungiblePurchaseActivityAmount(
 	const liveListing = state.orders?.[event.orderId];
 	const asking = indexedListing?.asking ?? liveListing?.asking;
 	const listedQuantity = indexedListing?.quantity ?? liveListing?.quantity;
-	if (!asking || !listedQuantity) return fungibleActivityAmount(event, state);
+	if (!asking || !listedQuantity) return fungibleActivityAmount(event, state, messages);
 	try {
 		const fill = BigInt(event.quantity);
 		const lot = BigInt(listedQuantity);
-		if (fill <= 0n || lot <= 0n || fill > lot) return fungibleActivityAmount(event, state);
+		if (fill <= 0n || lot <= 0n || fill > lot) return fungibleActivityAmount(event, state, messages);
 		const paid = (BigInt(asking) * fill + lot - 1n) / lot;
-		return `${tokenLabel(event.quantity, state)} for ${winstonToArDecimal(paid.toString())} AR`;
+		return formatMessage(messages.activityAmountForAr, {
+			quantity: tokenLabel(event.quantity, state),
+			amount: winstonToArDecimal(paid.toString()),
+		});
 	} catch {
-		return fungibleActivityAmount(event, state);
+		return fungibleActivityAmount(event, state, messages);
 	}
 }
 

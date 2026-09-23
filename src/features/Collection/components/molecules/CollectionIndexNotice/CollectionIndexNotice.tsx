@@ -5,6 +5,9 @@ import type { Collection } from 'api/collections';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { VisuallyHidden } from 'components/atoms/VisuallyHidden';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { COLLECTION_MESSAGES } from '../../../messages';
 
 export default function CollectionIndexNotice(props: {
 	collection: Collection;
@@ -12,11 +15,10 @@ export default function CollectionIndexNotice(props: {
 	directlyVerified?: boolean;
 	onRetry(): void;
 }) {
+	const language = useMessages(COLLECTION_MESSAGES);
 	if (props.collection.indexSource !== 'compiled-fallback') return null;
-	const message = props.checking
-		? 'Checking compute. This page remains available while the check finishes.'
-		: 'Compute hasn’t completed yet. Please try again.';
-	const compactMessage = props.checking ? 'Checking compute…' : 'Compute hasn’t completed yet. Please try again.';
+	const message = props.checking ? language.indexNoticeChecking : language.computeIncompleteNotice;
+	const compactMessage = props.checking ? language.indexNoticeCheckingCompact : language.computeIncompleteNotice;
 	return (
 		<div className="collection-source-notice collection-index-notice retry-notice">
 			<span role="status">
@@ -30,7 +32,7 @@ export default function CollectionIndexNotice(props: {
 			</span>
 			<Button
 				aria-disabled={props.checking}
-				aria-label="Retry"
+				aria-label={language.retry}
 				className="with-icon"
 				size="custom"
 				type="button"
@@ -40,10 +42,10 @@ export default function CollectionIndexNotice(props: {
 			>
 				<Icon icon={RefreshCw} size="sm" />
 				<span aria-hidden="true" className="collection-index-action-full">
-					Retry
+					{language.retry}
 				</span>
 				<span aria-hidden="true" className="collection-index-action-compact">
-					Retry
+					{language.retry}
 				</span>
 			</Button>
 		</div>

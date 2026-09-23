@@ -8,9 +8,16 @@ import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { ConnectWalletButton } from 'components/organisms/ConnectWalletButton';
-import { AssetBalanceStateNotice, assetOperationPendingActionLabel, AssetOperationStatus } from 'features/Operations';
+import {
+	AssetBalanceStateNotice,
+	AssetOperationStatus,
+	useAssetOperationPendingActionLabel,
+} from 'features/Operations';
 import { winstonToAr } from 'helpers/ar-units';
+import { formatMessage } from 'helpers/i18n';
+import { useMessages } from 'providers/LanguageProvider';
 
+import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import type { UniqueAssetView } from '../../../model/unique-asset-view';
 import { SetProfilePictureButton } from '../../molecules/SetProfilePictureButton';
 
@@ -24,6 +31,8 @@ export default function UniqueAssetCommerceCard(props: {
 	onOpenOperation(operation: Operation): void;
 	onShowOperation(id: string): void;
 }) {
+	const pendingActionLabel = useAssetOperationPendingActionLabel();
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const order = props.view.order;
 	return (
 		<section aria-busy={props.view.operationIsBusy} className="asset-commerce-card">
@@ -31,13 +40,25 @@ export default function UniqueAssetCommerceCard(props: {
 			{/* One price leads the card; supply, order status, and protocol details live under Blockchain. */}
 			<div className="asset-purchase-summary">
 				<div className="asset-buy-summary">
-					<span>{order?.status === 'reserved' ? 'Reserved at' : order ? 'Price' : 'Market status'}</span>
+					<span>
+						{order?.status === 'reserved'
+							? messages.uniqueCommerceReservedAt
+							: order
+							? messages.uniqueCommercePrice
+							: messages.uniqueCommerceMarketStatus}
+					</span>
 					<strong>
-						{order ? <ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText> : 'Not listed'}
+						{order ? (
+							<ArCurrencyText>
+								{formatMessage(messages.orderbookValueAr, { amount: winstonToAr(order.asking) })}
+							</ArCurrencyText>
+						) : (
+							messages.uniqueCommerceNotListed
+						)}
 					</strong>
-					{order ? <small>Network fees are shown before you approve.</small> : null}
+					{order ? <small>{messages.uniqueCommerceFeeNote}</small> : null}
 				</div>
-				<span className="asset-edition">1 of 1</span>
+				<span className="asset-edition">{messages.uniqueCommerceEdition}</span>
 			</div>
 			{props.operationActivity ? (
 				<AssetOperationStatus
@@ -52,8 +73,8 @@ export default function UniqueAssetCommerceCard(props: {
 			{props.view.externalReservation && order && !props.operationActivity ? (
 				<div className="external-reservation-notice" role="status">
 					<div>
-						<strong>Your reservation is ready</strong>
-						<p>Close the other Bazar tab, then continue here with one seller-payment approval.</p>
+						<strong>{messages.uniqueCommerceReservationReady}</strong>
+						<p>{messages.uniqueCommerceReservationDetail}</p>
 					</div>
 					<Button
 						disabled={props.view.liveActionBlocked}
@@ -72,7 +93,7 @@ export default function UniqueAssetCommerceCard(props: {
 						}}
 						type="button"
 					>
-						Continue purchase
+						{messages.uniqueCommerceContinuePurchase}
 					</Button>
 				</div>
 			) : null}
@@ -90,7 +111,7 @@ export default function UniqueAssetCommerceCard(props: {
 						}}
 					>
 						<Icon icon={ShoppingCart} size="sm" />{' '}
-						{props.operation?.kind === 'buy' ? assetOperationPendingActionLabel('buy') : 'Buy now'}
+						{props.operation?.kind === 'buy' ? pendingActionLabel('buy') : messages.uniqueCommerceBuyNow}
 					</Button>
 				) : null}
 				{props.walletAddress && props.view.mine && !order ? (
@@ -102,7 +123,9 @@ export default function UniqueAssetCommerceCard(props: {
 						onClick={() => props.onOpenOperation({ kind: 'sell' })}
 					>
 						<Icon icon={Tag} size="sm" />{' '}
-						{props.operation?.kind === 'sell' ? assetOperationPendingActionLabel('sell') : 'List for sale'}
+						{props.operation?.kind === 'sell'
+							? pendingActionLabel('sell')
+							: messages.uniqueCommerceListForSale}
 					</Button>
 				) : null}
 				{props.walletAddress && props.view.mine && order?.status === 'open' ? (
@@ -115,8 +138,8 @@ export default function UniqueAssetCommerceCard(props: {
 					>
 						<Icon icon={CircleX} size="sm" />{' '}
 						{props.operation?.kind === 'cancel'
-							? assetOperationPendingActionLabel('cancel')
-							: 'Cancel listing'}
+							? pendingActionLabel('cancel')
+							: messages.uniqueCommerceCancelListing}
 					</Button>
 				) : null}
 				{props.walletAddress && props.view.mine && !order ? (
@@ -128,8 +151,8 @@ export default function UniqueAssetCommerceCard(props: {
 					>
 						<Icon icon={Send} size="sm" />{' '}
 						{props.operation?.kind === 'transfer'
-							? assetOperationPendingActionLabel('transfer')
-							: 'Transfer'}
+							? pendingActionLabel('transfer')
+							: messages.uniqueCommerceTransfer}
 					</Button>
 				) : null}
 				{props.walletAddress && props.view.mine && props.asset.image ? (

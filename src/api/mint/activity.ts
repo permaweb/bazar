@@ -17,7 +17,6 @@ export type MintActivity = {
 	arweaveGateway: string;
 	computeGateway: string;
 	phase: MintActivityPhase;
-	status: string;
 	createdAt: number;
 };
 
@@ -40,7 +39,6 @@ export function acceptedMintActivity(input: {
 		id: mintActivityId(input.owner, input.asset.id),
 		transactionIds: [...new Set(input.transactionIds)],
 		phase: 'accepted',
-		status: 'Submitted; accepted by Arweave. Safe to leave this page.',
 		createdAt: Date.now(),
 	};
 }
@@ -103,19 +101,10 @@ export function mintActivityNeedsAttention(activity: MintActivity, now = Date.no
 	return activity.phase !== 'complete' && now - activity.createdAt >= MINT_ACTIVITY_ATTENTION_AFTER_MS;
 }
 
-export function mintActivityStatus(phase: MintActivityPhase) {
-	return {
-		accepted: 'Submitted; accepted by Arweave. Safe to leave this page.',
-		mined: 'Mined on Arweave. Waiting for live process state.',
-		applied: 'Applied to live process state. Finishing Bazar indexing.',
-		complete: 'Live on Bazar.',
-	}[phase];
-}
-
 export function advanceMintActivity(activity: MintActivity, phase: MintActivityPhase): MintActivity {
 	const order: MintActivityPhase[] = ['accepted', 'mined', 'applied', 'complete'];
 	if (order.indexOf(phase) < order.indexOf(activity.phase)) return activity;
-	return { ...activity, phase, status: mintActivityStatus(phase) };
+	return { ...activity, phase };
 }
 
 function parseMintActivity(value: unknown): MintActivity | null {
@@ -134,7 +123,6 @@ function parseMintActivity(value: unknown): MintActivity | null {
 		typeof activity.arweaveGateway !== 'string' ||
 		typeof activity.computeGateway !== 'string' ||
 		!['accepted', 'mined', 'applied', 'complete'].includes(activity.phase) ||
-		typeof activity.status !== 'string' ||
 		!Number.isSafeInteger(activity.createdAt)
 	) {
 		return null;

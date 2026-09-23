@@ -151,7 +151,7 @@ describe('useFungibleOperationActivities', () => {
 					operationKind: 'sell',
 					owner: SELLER,
 					phase: 'form',
-					status: 'Waiting for details',
+					status: { text: 'Waiting for details' },
 				}),
 			},
 		]);
@@ -179,7 +179,7 @@ describe('useFungibleOperationActivities', () => {
 		React.act(() =>
 			view.change(id, {
 				phase: 'working',
-				status: 'Watching Arweave confirmations…',
+				status: { text: 'Watching Arweave confirmations…' },
 				confirmations: 2,
 				confirmationTarget: 5,
 			})
@@ -191,7 +191,7 @@ describe('useFungibleOperationActivities', () => {
 		});
 		expect(refresh).not.toHaveBeenCalled();
 
-		React.act(() => view.change(id, { phase: 'done', status: 'Complete' }));
+		React.act(() => view.change(id, { phase: 'done', status: { text: 'Complete' } }));
 		expect(announcements.at(-1)).toEqual({ type: 'remove', id, owner: SELLER });
 		expect(refresh).toHaveBeenCalledTimes(1);
 		await settle();

@@ -78,33 +78,29 @@ export function purchaseRecoveryApprovalCount(snapshot?: PurchaseSnapshot | null
 	return 2;
 }
 
-export function purchaseRecoveryApprovalCopy(
+/** Which approvals a saved purchase still needs, so the UI can name them in the reader's language. */
+export type PurchaseRecoveryApprovalPrompt =
+	/** Only the seller payment is missing; `reservation` says what happened to the signed reservation. */
+	| { kind: 'seller-payment'; reservation: 'external-tab' | 'dispatched' | 'saved' }
+	| { kind: 'all-transactions'; approvals: number };
+
+export function purchaseRecoveryApprovalPrompt(
 	snapshot?: PurchaseSnapshot | null,
 	options: { externalOrigin?: boolean } = {}
-) {
+): PurchaseRecoveryApprovalPrompt {
 	const approvals = purchaseRecoveryApprovalCount(snapshot);
 	const hasReservation = isArweaveId(snapshot?.registration?.id ?? '');
 	if (approvals === 1 && hasReservation) {
-		if (options.externalOrigin) {
-			return {
-				title: 'Continue your purchase',
-				detail: 'Close the other Bazar tab, then approve the seller payment to continue.',
-				action: 'Approve seller payment and continue',
-			};
-		}
 		return {
-			title: 'Continue your purchase',
-			detail: snapshot?.registration?.dispatched
-				? 'Your reservation is confirmed. Approve the seller payment to continue.'
-				: 'Your reservation is saved. Approve the seller payment to continue.',
-			action: 'Approve seller payment and continue',
+			kind: 'seller-payment',
+			reservation: options.externalOrigin
+				? 'external-tab'
+				: snapshot?.registration?.dispatched
+				? 'dispatched'
+				: 'saved',
 		};
 	}
-	return {
-		title: `${approvals} wallet approvals needed to resume`,
-		detail: 'Bazar could not recover usable signatures for the reservation or seller payment. Continuing will ask your wallet to approve both transactions before either one is submitted. Nothing will be signed or sent until you choose Continue.',
-		action: `Approve ${approvals} transactions and continue`,
-	};
+	return { kind: 'all-transactions', approvals };
 }
 
 export function shouldAutomaticallyResumePurchase(snapshot?: PurchaseSnapshot | null) {

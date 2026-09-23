@@ -17,8 +17,11 @@ import { DISPLAY_STATE_CACHE, readAssetStateCached, servingNodeOrigin } from 'ap
 
 import { requestFailureKind, toAppError } from 'helpers/app-error';
 import { scheduleIdleTask } from 'helpers/idle';
+import { useAppErrorMessages } from 'hooks/useAppErrorMessage';
+import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
+import { MY_ASSETS_MESSAGES } from '../messages';
 import { sortWalletResults } from '../model/wallet-assets';
 import {
 	candidateCheckOutcome,
@@ -67,6 +70,8 @@ export type WalletAssetDiscovery = {
  * render progressively (one frame per batch) and cached states are revalidated at zero age before completion.
  */
 export function useWalletAssetDiscovery(address: string): WalletAssetDiscovery {
+	const language = useMessages(MY_ASSETS_MESSAGES);
+	const errorMessages = useAppErrorMessages();
 	const market = useMarketProvider();
 	const gateway = servingNodeOrigin(window.location);
 	const [retry, setRetry] = React.useState(0);
@@ -439,14 +444,15 @@ export function useWalletAssetDiscovery(address: string): WalletAssetDiscovery {
 		status,
 		requestedSessionScope
 	);
-	const failureMessage = walletResolutionFailureMessage(status);
+	const failureMessage = walletResolutionFailureMessage(status, errorMessages);
 	const resolutionCopy = walletResolutionCopy(
 		{
 			...status,
 			discovered: walletAnnouncementProgress.current.discovered,
 			revalidated: walletAnnouncementProgress.current.revalidated,
 		},
-		failureMessage
+		failureMessage,
+		language
 	);
 
 	return {

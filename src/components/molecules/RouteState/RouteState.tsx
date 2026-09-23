@@ -9,14 +9,15 @@ export default function RouteState(props: {
 	children: React.ReactNode;
 	title: string;
 	backTo?: string;
-	backLabel?: string;
+	backLabel: string;
+	eyebrow: string;
 }) {
 	return (
 		<section className="route-state-shell">
 			<Link className="back" to={props.backTo ?? '/'}>
-				<Icon icon={ArrowLeft} size="sm" /> {props.backLabel ?? 'All collections'}
+				<Icon icon={ArrowLeft} size="sm" /> {props.backLabel}
 			</Link>
-			<Eyebrow>Arweave marketplace</Eyebrow>
+			<Eyebrow>{props.eyebrow}</Eyebrow>
 			<h1>{props.title}</h1>
 			{props.children}
 		</section>
