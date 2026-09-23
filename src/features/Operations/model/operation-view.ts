@@ -37,7 +37,14 @@ export type PurchaseQuote = { estimate: PurchaseCostEstimate; balance: bigint };
 
 export type PurchaseQuoteView =
 	| { status: 'checking'; affordable: null }
-	| { status: 'unavailable'; affordable: null }
+	| {
+			status: 'unavailable';
+			affordable: null;
+			/** What could not be checked, in the buyer's words. */
+			message: string;
+			/** Whether checking again can succeed; a rejected listing is the seller's to fix. */
+			retryable: boolean;
+	  }
 	| {
 			status: 'ready';
 			affordable: boolean;
@@ -62,6 +69,8 @@ export type AtomicOperationView = {
 	actionLabel: string;
 	result: { title: string; detail: string };
 	sellerPrice: string;
+	/** The seller's reservation fee, when the listing declares one; it is included in the purchase total. */
+	reservationMinimum: string | null;
 	recoveryApprovalCount: number;
 	recoveryApprovalCopy: { title: string; detail: string; action: string } | null;
 	steps: ArweaveSyncStep[];
@@ -192,6 +201,8 @@ export function atomicOperationView(input: {
 			operation.kind === 'buy' || operation.kind === 'cancel'
 				? `${winstonToAr(purchaseOrderOf(operation).asking)} AR`
 				: '',
+		reservationMinimum:
+			operation.kind === 'buy' ? orderReservationMinimum(purchaseOrderOf(operation).minimumFee) : null,
 		recoveryApprovalCount: resumingPurchase ? purchaseRecoveryApprovalCount(resumingPurchase) : 0,
 		recoveryApprovalCopy:
 			resumingPurchase && operation.kind === 'buy'
@@ -217,9 +228,21 @@ export function atomicOperationView(input: {
 	};
 }
 
+/** A listing's declared reservation fee as a display amount, or `null` when it declares none. */
+export function orderReservationMinimum(minimumFee: string): string | null {
+	return /^[1-9]\d*$/.test(minimumFee) ? `${winstonToAr(minimumFee)} AR` : null;
+}
+
 /** What the purchase form shows while the exact cost and wallet balance are checked. */
 export function purchaseQuoteView(state: AsyncState<PurchaseQuote>): PurchaseQuoteView {
-	if (state.status === 'error' || state.status === 'stale') return { status: 'unavailable', affordable: null };
+	if (state.status === 'error' || state.status === 'stale') {
+		return {
+			status: 'unavailable',
+			affordable: null,
+			message: appErrorMessage(state.error),
+			retryable: state.error.retryable,
+		};
+	}
 	if (state.status === 'idle' || state.status === 'loading') return { status: 'checking', affordable: null };
 	const total = BigInt(state.data.estimate.total);
 	const affordable = state.data.balance >= total;

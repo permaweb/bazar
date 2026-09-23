@@ -8,10 +8,13 @@ import { WalletAddress } from 'components/organisms/WalletAddress';
 
 import type { PurchaseQuoteView } from '../../../model/operation-view';
 
-// The seller price, network fees, maximum total, and remaining balance of a new purchase, with a cost re-check.
+// The seller price, reservation minimum, fees, maximum total, and remaining balance of a new purchase, with a
+// cost re-check. A listing the network cannot quote explains why, and offers a retry only when one can help.
 export default function PurchaseQuoteSummary(props: {
 	seller: string;
 	sellerPrice: string;
+	/** The seller's declared reservation fee, already included in the fee total. */
+	reservationMinimum: string | null;
 	quote: PurchaseQuoteView;
 	statusId: string;
 	onRetry(): void;
@@ -26,7 +29,15 @@ export default function PurchaseQuoteSummary(props: {
 				<strong>
 					<ArCurrencyText>{props.sellerPrice}</ArCurrencyText>
 				</strong>
-				<span>Network fees</span>
+				{props.reservationMinimum ? (
+					<>
+						<span>Reservation minimum (included)</span>
+						<strong>
+							<ArCurrencyText>{props.reservationMinimum}</ArCurrencyText>
+						</strong>
+					</>
+				) : null}
+				<span>{props.reservationMinimum ? 'Total fees' : 'Network fees'}</span>
 				<strong>
 					{quote.status === 'unavailable' ? (
 						'Unavailable'
@@ -67,7 +78,7 @@ export default function PurchaseQuoteSummary(props: {
 			<LiveRegion as="p" id={props.statusId}>
 				<ArCurrencyText>
 					{quote.status === 'unavailable'
-						? 'Purchase quote unavailable. Retry the cost check before buying.'
+						? quote.message
 						: quote.status === 'ready'
 						? `Purchase quote ready. Maximum total ${quote.maximumTotal}.${
 								quote.affordable ? '' : ' This wallet has insufficient AR.'
@@ -80,22 +91,26 @@ export default function PurchaseQuoteSummary(props: {
 				role={quote.status === 'unavailable' ? 'status' : undefined}
 			>
 				<span>
-					{quote.status === 'unavailable'
-						? 'Compute hasn’t completed yet. Please try again.'
-						: quote.status === 'ready'
-						? 'Costs checked.'
-						: 'Checking wallet balance and network fees…'}
+					{quote.status === 'unavailable' ? (
+						<ArCurrencyText>{quote.message}</ArCurrencyText>
+					) : quote.status === 'ready' ? (
+						'Costs checked.'
+					) : (
+						'Checking wallet balance and network fees…'
+					)}
 				</span>
-				<Button
-					aria-describedby={props.statusId}
-					aria-disabled={quote.status === 'checking'}
-					className="with-icon"
-					size="custom"
-					type="button"
-					onClick={props.onRetry}
-				>
-					<Icon icon={RefreshCw} size="sm" /> Retry
-				</Button>
+				{quote.status !== 'checking' && (quote.status !== 'unavailable' || quote.retryable) ? (
+					<Button
+						aria-describedby={props.statusId}
+						className="with-icon"
+						size="custom"
+						type="button"
+						onClick={props.onRetry}
+					>
+						<Icon icon={RefreshCw} size="sm" />{' '}
+						{quote.status === 'ready' ? 'Refresh costs' : 'Retry cost check'}
+					</Button>
+				) : null}
 			</div>
 		</>
 	);

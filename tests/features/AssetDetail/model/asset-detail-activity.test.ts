@@ -41,7 +41,6 @@ describe('asset activity feed', () => {
 				type: 'page-received',
 				assetId,
 				page: page([event('live', 4)], 'cursor-1'),
-				pending: false,
 			}
 		);
 		expect(assetActivityFeedView(paginated)).toMatchObject({ hasNextPage: true, totalCount: 42 });
@@ -85,20 +84,13 @@ describe('asset activity feed', () => {
 		});
 	});
 
-	it('stays loading through purchase confirmation and settles on confirmed events', () => {
+	it('settles a received page without waiting for any purchase verification', () => {
 		const received = reduce(
 			scoped,
 			{ type: 'page-requested' },
-			{
-				type: 'page-received',
-				assetId,
-				page: page([event('offer', 5)], null),
-				pending: true,
-			}
+			{ type: 'page-received', assetId, page: page([event('offer', 5)], null) }
 		);
-		expect(assetActivityFeedView(received)).toMatchObject({ loading: true, events: [event('offer', 5)] });
-		const confirmed = reduce(received, { type: 'page-confirmed', assetId, events: [event('confirmed', 5)] });
-		expect(assetActivityFeedView(confirmed)).toMatchObject({ loading: false, events: [event('confirmed', 5)] });
+		expect(assetActivityFeedView(received)).toMatchObject({ loading: false, events: [event('offer', 5)] });
 	});
 
 	it('ignores responses for a previously selected asset', () => {
@@ -108,7 +100,6 @@ describe('asset activity feed', () => {
 				type: 'page-received',
 				assetId: 'B'.repeat(43),
 				page: page([event('other', 9)], null),
-				pending: false,
 			})
 		).toBe(loading);
 		expect(
@@ -124,7 +115,6 @@ describe('asset activity feed', () => {
 				type: 'page-received',
 				assetId,
 				page: page([event('newest', 9)], 'cursor-1'),
-				pending: false,
 			}
 		);
 		expect(assetActivityCanLoadOlder(loaded)).toBe(true);
@@ -136,7 +126,6 @@ describe('asset activity feed', () => {
 			type: 'older-received',
 			assetId,
 			page: page([event('older', 2)], null, false),
-			pending: false,
 		});
 		expect(assetActivityFeedView(merged)).toMatchObject({
 			events: [event('newest', 9), event('older', 2)],
@@ -147,30 +136,19 @@ describe('asset activity feed', () => {
 		expect(assetActivityCanLoadOlder(merged)).toBe(false);
 	});
 
-	it('confirms an older ask page before it stops loading', () => {
+	it('stops loading an older ask page as soon as the index answers', () => {
 		const loaded = reduce(
 			scoped,
 			{ type: 'page-requested' },
-			{
-				type: 'page-received',
-				assetId,
-				page: page([event('newest', 9)], 'cursor-1'),
-				pending: false,
-			}
+			{ type: 'page-received', assetId, page: page([event('newest', 9)], 'cursor-1') }
 		);
 		const older = reduce(
 			loaded,
 			{ type: 'older-requested' },
-			{
-				type: 'older-received',
-				assetId,
-				page: page([event('older', 2)], null, false),
-				pending: true,
-			}
+			{ type: 'older-received', assetId, page: page([event('older', 2)], null, false) }
 		);
-		expect(assetActivityFeedView(older).loadingMore).toBe(true);
-		const confirmed = reduce(older, { type: 'older-confirmed', assetId, events: [event('older', 2)] });
-		expect(assetActivityFeedView(confirmed).loadingMore).toBe(false);
+		expect(assetActivityFeedView(older).loadingMore).toBe(false);
+		expect(assetActivityFeedView(older).events.map((item) => item.id)).toEqual(['newest', 'older']);
 	});
 
 	it('keeps loaded events when an older page fails and clears that failure on the next attempt', () => {
@@ -181,7 +159,6 @@ describe('asset activity feed', () => {
 				type: 'page-received',
 				assetId,
 				page: page([event('newest', 9)], 'cursor-1'),
-				pending: false,
 			}
 		);
 		const failed = reduce(

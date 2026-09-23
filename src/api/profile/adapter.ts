@@ -6,7 +6,12 @@ import { signWithWallet } from 'api/wallet/errors';
 
 import { appError, isAppError } from 'helpers/app-error';
 import { isArweaveId } from 'helpers/arweave-id';
-import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveDataUrl,
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+} from 'helpers/config';
 
 export const ACCOUNT_PROFILE_PROTOCOL = 'Account-0.3';
 export const PROFILE_AVATAR_CONTENT_TYPES: ReadonlyArray<string> = [
@@ -334,7 +339,7 @@ function normalizeAvatar(value: string): string {
 async function fetchAccountProfile(address: string, options: ProfileReadOptions): Promise<AccountProfile | null> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const gateway = options.gateway ?? arweaveGatewayFromLocation();
-	const response = await profileRead(fetcher, `${gateway}/graphql`, options.signal, {
+	const response = await profileRead(fetcher, arweaveGraphqlEndpoint(gateway), options.signal, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({

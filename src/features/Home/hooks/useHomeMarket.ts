@@ -114,6 +114,9 @@ export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 		() => homeDisplayListings(listingShells, market.collections),
 		[listingShells, market.collections]
 	);
+	const rememberSearchAssets = market.rememberSearchAssets;
+	// Listings shown on Discover stay searchable from the header and from Home, without any catalogue-wide fetch.
+	React.useEffect(() => rememberSearchAssets(displayListings), [displayListings, rememberSearchAssets]);
 	const loadedAssetLimit = React.useMemo(
 		() => homeLoadedAssetLimit(market.collections, displayListings.length),
 		[displayListings.length, market.collections]
@@ -123,6 +126,7 @@ export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 			homeAssetCandidates({
 				collections: market.collections,
 				displayListings,
+				searchAssets: market.searchAssets,
 				verifiedListings: summaries.verifiedListings,
 				normalizedQuery,
 				assetView,
@@ -134,6 +138,7 @@ export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 			displayListings,
 			loadedAssetLimit,
 			market.collections,
+			market.searchAssets,
 			normalizedQuery,
 			searchMatches,
 			summaries.verifiedListings,
@@ -193,6 +198,7 @@ export function useHomeMarket(tab: HomeTab, query: string): HomeMarketData {
 		active: loadsAssetSummaries,
 		assets: selection.summaryAssets,
 		assetKey: summaryAssetKey,
+		priorityKey: selection.summaryPriorityKey,
 		assetPrices: summaries.assetPrices,
 		listingById,
 		listingStateKey,

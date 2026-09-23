@@ -10,22 +10,11 @@ import { type HomeActivityFeed, useHomeActivity } from 'features/Home/hooks/useH
 
 import { assetId, imageCollection, READY_HIDDEN_COLLECTION_INDEX } from '../../../fixtures/home-market';
 
-const confirmPurchaseActivity = vi.hoisted(() => vi.fn());
-const discoverAllCollectionActivityBatched = vi.hoisted(() => vi.fn());
-const loadMarketActivity = vi.hoisted(() => vi.fn());
-const saveMarketActivity = vi.hoisted(() => vi.fn());
+const discoverCollectionActivityPage = vi.hoisted(() => vi.fn());
 
 vi.mock('api/discovery', async (importOriginal) => ({
 	...(await importOriginal<typeof import('api/discovery')>()),
-	confirmPurchaseActivity,
-	discoverAllCollectionActivityBatched,
-	loadMarketActivity,
-	saveMarketActivity,
-}));
-
-vi.mock('api/network', async (importOriginal) => ({
-	...(await importOriginal<typeof import('api/network')>()),
-	operationWithDeadline: (run: (signal: AbortSignal) => Promise<unknown>, signal: AbortSignal) => run(signal),
+	discoverCollectionActivityPage,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,6 +24,10 @@ const collection = imageCollection('art', [asset]);
 
 function event(id: string, action: CollectionActivityEvent['action'] = 'transfer'): CollectionActivityEvent {
 	return { id, processId: asset.id, action, actor: assetId('W'), height: 1, timestamp: 1 };
+}
+
+function page(events: CollectionActivityEvent[], cursor: string | null = null, hasNextPage = false) {
+	return { events, cursor, hasNextPage, totalCount: null };
 }
 
 let host: HTMLElement;
@@ -58,16 +51,12 @@ async function settle() {
 	await React.act(async () => {
 		await Promise.resolve();
 		await Promise.resolve();
-		await new Promise((resolve) => window.requestAnimationFrame(resolve));
 	});
 }
 
 beforeEach(() => {
 	replaceHiddenCollectionAssetIndex(READY_HIDDEN_COLLECTION_INDEX);
-	confirmPurchaseActivity.mockReset().mockResolvedValue([]);
-	discoverAllCollectionActivityBatched.mockReset().mockResolvedValue([]);
-	loadMarketActivity.mockReset().mockReturnValue([]);
-	saveMarketActivity.mockReset();
+	discoverCollectionActivityPage.mockReset().mockResolvedValue(page([]));
 	host = document.createElement('div');
 	document.body.append(host);
 	root = createRoot(host);
@@ -80,99 +69,125 @@ afterEach(() => {
 });
 
 describe('useHomeActivity', () => {
-	it('waits for the market catalogue before scanning', async () => {
+	it('waits for the market catalogue before requesting a page', async () => {
 		render({ marketLoading: true });
 		await settle();
 
-		expect(discoverAllCollectionActivityBatched).not.toHaveBeenCalled();
+		expect(discoverCollectionActivityPage).not.toHaveBeenCalled();
 		expect(feed.loading).toBe(true);
 	});
 
-	it('renders cached events immediately, then the complete indexed history', async () => {
-		loadMarketActivity.mockReturnValue([event('cached')]);
-		discoverAllCollectionActivityBatched.mockImplementation(
-			async (options: { onPage(page: CollectionActivityEvent[]): void }) => {
-				options.onPage([event('scanned')]);
-				return [event('cached'), event('scanned')];
-			}
-		);
-
-		render();
-		expect(feed.events.map((item) => item.id)).toEqual(['cached']);
-		expect(feed.loading).toBe(true);
-
-		await settle();
-
-		expect(discoverAllCollectionActivityBatched).toHaveBeenCalledWith(
-			expect.objectContaining({ concurrency: 2, recipients: [asset.id] })
-		);
-		expect(feed.events.map((item) => item.id).sort()).toEqual(['cached', 'scanned']);
-		expect(feed.loading).toBe(false);
-		expect(saveMarketActivity).toHaveBeenCalledWith(window.localStorage, feed.scope, feed.events);
-	});
-
-	it('keeps loaded events beside an index failure and rescans on retry', async () => {
-		loadMarketActivity.mockReturnValue([event('cached')]);
-		discoverAllCollectionActivityBatched.mockRejectedValue(new Error('index down'));
+	it('requests one bounded native page without a count field or a recipient predicate', async () => {
+		discoverCollectionActivityPage.mockResolvedValue(page([event('first')], 'tail', true));
 
 		render();
 		await settle();
 
-		expect(feed.events.map((item) => item.id)).toEqual(['cached']);
+		expect(discoverCollectionActivityPage).toHaveBeenCalledTimes(1);
+		expect(discoverCollectionActivityPage).toHaveBeenCalledWith(
+			expect.objectContaining({ includeCount: false, pageSize: 100, cursor: null, actions: undefined })
+		);
+		expect(feed.events.map((item) => item.id)).toEqual(['first']);
+		expect(feed).toMatchObject({ loading: false, hasNextPage: true, limit: 20 });
+		expect(feed.announcement).toBe('1 indexed events loaded.');
+	});
+
+	it('keeps marketplace membership local to the browser', async () => {
+		discoverCollectionActivityPage.mockResolvedValue(
+			page([event('mine'), { ...event('other'), processId: assetId('Z') }])
+		);
+
+		render();
+		await settle();
+
+		const accept = discoverCollectionActivityPage.mock.calls[0][0].acceptProcessId;
+		expect(accept(asset.id)).toBe(true);
+		expect(accept(assetId('Z'))).toBe(false);
+	});
+
+	it('keeps independent cursors per filter and never rereads another filter from its own cursor', async () => {
+		discoverCollectionActivityPage.mockResolvedValue(page([event('all-one')], 'all-tail', true));
+		render();
+		await settle();
+
+		discoverCollectionActivityPage.mockResolvedValue(page([event('listing', 'make-offer')], 'listing-tail', true));
+		React.act(() => feed.setFilter('make-offer'));
+		await settle();
+
+		expect(discoverCollectionActivityPage.mock.calls[1][0]).toMatchObject({
+			cursor: null,
+			actions: ['make-offer'],
+		});
+
+		React.act(() => feed.setFilter('all'));
+		await settle();
+
+		// Returning to a loaded filter shows its own page again without another request.
+		expect(discoverCollectionActivityPage).toHaveBeenCalledTimes(2);
+		expect(feed.events.map((item) => item.id)).toEqual(['all-one']);
+
+		discoverCollectionActivityPage.mockResolvedValue(page([event('all-two')], 'all-tail-2', true));
+		React.act(() => feed.requestPage('more'));
+		await settle();
+
+		expect(discoverCollectionActivityPage.mock.calls[2][0]).toMatchObject({ cursor: 'all-tail' });
+	});
+
+	it('extends the revealed window only when an older page request succeeds', async () => {
+		discoverCollectionActivityPage.mockResolvedValue(page([event('first')], 'tail', true));
+		render();
+		await settle();
+		expect(feed.limit).toBe(20);
+
+		discoverCollectionActivityPage.mockResolvedValue(page([event('second')], 'tail-2', true));
+		React.act(() => feed.requestPage('more'));
+		await settle();
+
+		expect(discoverCollectionActivityPage.mock.calls[1][0]).toMatchObject({ cursor: 'tail' });
+		expect(feed.limit).toBe(40);
+		expect(feed.events.map((item) => item.id)).toEqual(['first', 'second']);
+	});
+
+	it('keeps the last good page beside a failure and retries its exact cursor', async () => {
+		discoverCollectionActivityPage.mockResolvedValue(page([event('first')], 'tail', true));
+		render();
+		await settle();
+
+		discoverCollectionActivityPage.mockRejectedValue(new Error('index down'));
+		React.act(() => feed.requestPage('more'));
+		await settle();
+
+		expect(feed.events.map((item) => item.id)).toEqual(['first']);
 		expect(feed.error?.reason).toBe('index-unavailable');
 
-		discoverAllCollectionActivityBatched.mockResolvedValue([event('cached'), event('scanned')]);
-		React.act(() => feed.retry());
+		discoverCollectionActivityPage.mockResolvedValue(page([event('second')]));
+		React.act(() => feed.requestPage('more'));
 		await settle();
 
+		expect(discoverCollectionActivityPage.mock.calls.at(-1)?.[0]).toMatchObject({ cursor: 'tail' });
 		expect(feed.error).toBeUndefined();
 		expect(feed.events).toHaveLength(2);
 	});
 
-	it('verifies unproven purchases without holding the history loader open', async () => {
-		discoverAllCollectionActivityBatched.mockResolvedValue([event('purchase', 'register-interest')]);
-		let failVerification: (cause: unknown) => void = () => undefined;
-		confirmPurchaseActivity.mockImplementation(
-			() =>
-				new Promise((_resolve, reject) => {
-					failVerification = reject;
-				})
-		);
-
-		render();
-		await settle();
-
-		expect(confirmPurchaseActivity).toHaveBeenCalled();
-		expect(feed.loading).toBe(false);
-		expect(feed.verifyingPurchases).toBe(true);
-
-		failVerification(new Error('verification unavailable'));
-		await settle();
-
-		expect(feed.verifyingPurchases).toBe(false);
-		expect(feed.purchaseVerificationIncomplete).toBe(true);
-		expect(feed.events).toHaveLength(1);
-	});
-
-	it('clears the feed when the catalogue has no collections', async () => {
+	it('reports no further pages when the catalogue has no marketplace assets', async () => {
 		render({ collections: [] });
 		await settle();
 
-		expect(discoverAllCollectionActivityBatched).not.toHaveBeenCalled();
-		expect(feed).toMatchObject({ events: [], loading: false, recipientCount: 0 });
+		expect(discoverCollectionActivityPage).not.toHaveBeenCalled();
+		expect(feed).toMatchObject({ events: [], loading: false, hasNextPage: false });
 	});
 
-	it('aborts its scan on unmount', async () => {
-		let scanSignal: AbortSignal | undefined;
-		discoverAllCollectionActivityBatched.mockImplementation(async (options: { signal: AbortSignal }) => {
-			scanSignal = options.signal;
-			return [];
+	it('aborts its request on unmount', async () => {
+		let pageSignal: AbortSignal | undefined;
+		discoverCollectionActivityPage.mockImplementation(async (options: { signal: AbortSignal }) => {
+			pageSignal = options.signal;
+			return page([]);
 		});
 
 		render();
 		React.act(() => root.unmount());
 		root = createRoot(host);
 
-		expect(scanSignal?.aborted).toBe(true);
+		expect(pageSignal?.aborted).toBe(true);
 	});
 });

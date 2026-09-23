@@ -12,6 +12,7 @@ import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { RetryNotice } from 'components/molecules/RetryNotice';
 import { RouteState } from 'components/molecules/RouteState';
 import { ConnectWalletButton } from 'components/organisms/ConnectWalletButton';
+import { appErrorMessage } from 'helpers/app-error';
 import { useMarketProvider } from 'providers/MarketProvider';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -100,7 +101,7 @@ export default function MyAssets(
 			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
 				<div className="my-assets-heading-status retry-notice">
 					<span role="status">
-						Compute hasn’t completed yet. Please try again. {status.failures.toLocaleString()}{' '}
+						{discovery.failureMessage} {status.failures.toLocaleString()}{' '}
 						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
 						remain visible.
 					</span>
@@ -118,7 +119,9 @@ export default function MyAssets(
 					</div>
 				</div>
 			) : null}
-			{status.error ? <RetryNotice onRetry={discovery.retryDiscovery} /> : null}
+			{status.error ? (
+				<RetryNotice onRetry={discovery.retryDiscovery}>{appErrorMessage(status.error)}</RetryNotice>
+			) : null}
 			{!working || discovery.results.length ? (
 				<>
 					<WalletAssetGroup
@@ -162,7 +165,7 @@ export default function MyAssets(
 					}
 				>
 					{status.failures
-						? `Compute hasn’t completed yet. Please try again. ${status.failures} of ${status.total} candidates still need to be checked.`
+						? `${discovery.failureMessage} ${status.failures} of ${status.total} candidates still need to be checked.`
 						: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this profile opens; live state remains authoritative for every candidate found.'}
 				</EmptyState>
 			) : null}

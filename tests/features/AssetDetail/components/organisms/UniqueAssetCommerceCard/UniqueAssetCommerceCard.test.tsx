@@ -93,10 +93,26 @@ describe('unique asset commerce card', () => {
 	it('offers a purchase for an open order from another wallet', () => {
 		const html = markup({ order: openOrder, buyableOrder: openOrder, mine: false });
 		expect(html).toContain('Buy now');
-		expect(html).toContain('Buy for');
 		expect(html).toContain('ar-currency-label');
-		expect(html).toContain('open');
 		expect(html).not.toContain('List for sale');
+	});
+
+	it('leads with one price, the edition, and fee guidance instead of repeated market stats', () => {
+		const html = markup({ order: openOrder, buyableOrder: openOrder, mine: false });
+		expect(html).toContain('asset-purchase-summary');
+		expect(html).toContain('<span>Price</span>');
+		expect(html).toContain('1 of 1');
+		expect(html).toContain('Network fees are shown before you approve.');
+		expect(html).not.toContain('asset-market-stats');
+		expect(html).not.toContain('Current ask');
+		expect(html).not.toContain('Order status');
+		expect(html).not.toContain('License terms');
+	});
+
+	it('names a reserved order without repeating its price', () => {
+		const html = markup({ order: { ...openOrder, status: 'reserved' }, mine: false });
+		expect(html).toContain('Reserved at');
+		expect(html.match(/asset-buy-summary/g)).toHaveLength(1);
 	});
 
 	it('offers cancellation for the owner of an open listing', () => {

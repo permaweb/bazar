@@ -2,12 +2,11 @@ import React from 'react';
 
 import {
 	type CollectionActivityEvent,
-	confirmPurchaseActivity,
 	discoverCollectionActivityPage,
 	loadMarketActivity,
 	saveMarketActivity,
 } from 'api/discovery';
-import { type AssetState, readAssetStateCached } from 'api/marketplace';
+import type { AssetState } from 'api/marketplace';
 
 import type { TokenPricePoint } from '../components/organisms/TokenPriceChart';
 import { uniquePriceHistory } from '../model/asset-detail';
@@ -26,7 +25,7 @@ const ASK_ACTIONS: CollectionActivityEvent['action'][] = ['make-offer', 'registe
 export type AssetDetailActivity = {
 	/** Indexed market history for the asset. */
 	activity: AssetActivityFeedView;
-	/** Indexed listings and purchases, with purchases confirmed against live state, for ask history. */
+	/** Indexed listing and reservation submissions, for ask history. Registrations are never inferred as sales. */
 	asks: AssetActivityFeedView;
 	askPricePoints: TokenPricePoint[];
 	/** Start loading both feeds; they stay idle until a section or flow needs them. */
@@ -59,18 +58,11 @@ function storeCachedActivity(assetId: string, events: CollectionActivityEvent[])
 	}
 }
 
-function confirmAsks(events: CollectionActivityEvent[], signal: AbortSignal) {
-	return confirmPurchaseActivity(events, {
-		signal,
-		verificationTimeoutMs: 15_000,
-		readCurrent: (processId, readSignal) => readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
-	});
-}
-
 /**
  * The asset's indexed activity and ask history. Both feeds wait until `requestActivity` (or a live reservation held
  * by the connected wallet) asks for them, reset when the asset changes, and ignore responses for a previous asset.
- * Activity renders from the browser cache first; older pages load on demand, one request at a time per feed.
+ * Activity renders from the browser cache first; older pages load on demand, one request at a time per feed. Neither
+ * feed runs historical purchase verification: a registration stays a submission until live state proves otherwise.
  */
 export function useAssetDetailActivity(input: {
 	assetId: string;
@@ -109,7 +101,7 @@ export function useAssetDetailActivity(input: {
 		void discoverCollectionActivityPage({ recipients: [assetId], signal: controller.signal, pageSize: 24 }).then(
 			(page) => {
 				if (controller.signal.aborted) return;
-				dispatchActivity({ type: 'page-received', assetId, page, pending: false });
+				dispatchActivity({ type: 'page-received', assetId, page });
 				storeCachedActivity(assetId, page.events);
 			},
 			(cause) => {
@@ -143,11 +135,7 @@ export function useAssetDetailActivity(input: {
 					signal: controller.signal,
 				});
 				if (controller.signal.aborted) return;
-				dispatchAsks({ type: 'page-received', assetId, page, pending: true });
-				const confirmed = await confirmAsks(page.events, controller.signal);
-				if (!controller.signal.aborted && askAssetRef.current === assetId) {
-					dispatchAsks({ type: 'page-confirmed', assetId, events: confirmed });
-				}
+				dispatchAsks({ type: 'page-received', assetId, page });
 			} catch (cause) {
 				if (!controller.signal.aborted) {
 					dispatchAsks({ type: 'page-failed', assetId, error: assetActivityError(cause) });
@@ -185,7 +173,7 @@ export function useAssetDetailActivity(input: {
 				signal: controller.signal,
 			});
 			if (controller.signal.aborted || activityAssetRef.current !== assetId) return;
-			dispatchActivity({ type: 'older-received', assetId, page, pending: false });
+			dispatchActivity({ type: 'older-received', assetId, page });
 		} catch (cause) {
 			if (!controller.signal.aborted) {
 				dispatchActivity({ type: 'older-failed', assetId, error: assetActivityError(cause) });
@@ -210,10 +198,7 @@ export function useAssetDetailActivity(input: {
 				signal: controller.signal,
 			});
 			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
-			dispatchAsks({ type: 'older-received', assetId, page, pending: true });
-			const confirmed = await confirmAsks(page.events, controller.signal);
-			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
-			dispatchAsks({ type: 'older-confirmed', assetId, events: confirmed });
+			dispatchAsks({ type: 'older-received', assetId, page });
 		} catch (cause) {
 			if (!controller.signal.aborted) {
 				dispatchAsks({ type: 'older-failed', assetId, error: assetActivityError(cause) });

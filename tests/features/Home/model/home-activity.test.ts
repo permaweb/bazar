@@ -1,146 +1,28 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { replaceHiddenCollectionAssetIndex } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
 
 import {
-	homeActivityHistoryError,
-	homeActivityReducer,
+	homeActivityAsset,
+	homeActivityLoadedAnnouncement,
+	homeActivityRevealLabel,
 	homeActivityScope,
-	type HomeActivityState,
-	homeActivityView,
-	INITIAL_HOME_ACTIVITY,
-	mergeHomeActivityEvents,
+	INITIAL_HOME_ACTIVITY_REQUEST,
+	nextHomeActivityRequest,
 } from 'features/Home/model/home-activity';
-import { appError } from 'helpers/app-error';
 
-import { assetId, imageCollection } from '../../../fixtures/home-market';
+import { assetId, imageCollection, READY_HIDDEN_COLLECTION_INDEX } from '../../../fixtures/home-market';
 
-function event(id: string, purchaseProof?: { transactionId: string; height: number }): CollectionActivityEvent {
-	return {
-		id,
-		processId: assetId('A'),
-		action: 'register-interest',
-		actor: assetId('W'),
-		height: 1,
-		timestamp: 1,
-		...(purchaseProof ? { purchaseProof } : {}),
-	};
+function event(processId: string): CollectionActivityEvent {
+	return { id: 'event', processId, action: 'transfer', actor: assetId('W'), height: 1, timestamp: 1 };
 }
 
-const cached = [event('cached')];
-const scanned = [event('cached'), event('scanned')];
-const indexError = appError('index-unavailable');
-
-function reduce(state: HomeActivityState, ...events: Parameters<typeof homeActivityReducer>[1][]) {
-	return events.reduce(homeActivityReducer, state);
-}
+beforeEach(() => replaceHiddenCollectionAssetIndex(READY_HIDDEN_COLLECTION_INDEX));
+afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('home activity feed', () => {
-	it('starts loading with no events and no failure', () => {
-		expect(homeActivityView(INITIAL_HOME_ACTIVITY)).toEqual({
-			events: [],
-			loading: true,
-			error: undefined,
-			verifyingPurchases: false,
-			purchaseVerificationFailures: 0,
-			purchaseVerificationIncomplete: false,
-		});
-	});
-
-	it('shows restored cached events while the scan keeps loading', () => {
-		const view = homeActivityView(reduce(INITIAL_HOME_ACTIVITY, { type: 'restored', events: cached }));
-		expect(view).toMatchObject({ events: cached, loading: true });
-	});
-
-	it('keeps visible events through a refresh and replaces them for a new scope', () => {
-		const loaded = reduce(
-			INITIAL_HOME_ACTIVITY,
-			{ type: 'published', events: cached },
-			{ type: 'history-finished' },
-			{ type: 'settled', failures: 0, incomplete: false }
-		);
-		expect(homeActivityView(loaded)).toMatchObject({ events: cached, loading: false });
-
-		const refreshing = homeActivityReducer(loaded, { type: 'started' });
-		expect(homeActivityView(refreshing)).toMatchObject({ events: cached, loading: true });
-
-		const rescoped = homeActivityReducer(refreshing, { type: 'started', events: [] });
-		expect(homeActivityView(rescoped)).toMatchObject({ events: [], loading: true });
-	});
-
-	it('finishes the history scan before verification and reports verification results', () => {
-		const scanning = reduce(INITIAL_HOME_ACTIVITY, { type: 'published', events: scanned });
-		const verifying = reduce(scanning, { type: 'history-finished' }, { type: 'verification-started' });
-		expect(homeActivityView(verifying)).toMatchObject({
-			events: scanned,
-			loading: false,
-			verifyingPurchases: true,
-		});
-
-		const settled = homeActivityReducer(verifying, { type: 'settled', failures: 2, incomplete: true });
-		expect(homeActivityView(settled)).toMatchObject({
-			verifyingPurchases: false,
-			purchaseVerificationFailures: 2,
-			purchaseVerificationIncomplete: true,
-		});
-	});
-
-	it('keeps loaded events visible beside an index failure and clears the failure on the next scan', () => {
-		const stale = reduce(
-			INITIAL_HOME_ACTIVITY,
-			{ type: 'published', events: scanned },
-			{ type: 'history-finished' },
-			{ type: 'settled', failures: 0, incomplete: false, error: indexError }
-		);
-		expect(homeActivityView(stale)).toMatchObject({ events: scanned, loading: false, error: indexError });
-
-		const retried = homeActivityReducer(stale, { type: 'started' });
-		expect(homeActivityView(retried)).toMatchObject({ events: scanned, loading: true, error: undefined });
-	});
-
-	it('reports a failed scan with no events as an error and keeps it while nothing is loaded', () => {
-		const failed = reduce(
-			INITIAL_HOME_ACTIVITY,
-			{ type: 'history-finished' },
-			{ type: 'settled', failures: 0, incomplete: false, error: indexError }
-		);
-		expect(homeActivityView(failed)).toMatchObject({ events: [], error: indexError });
-
-		const cleared = homeActivityReducer(failed, { type: 'cleared' });
-		expect(homeActivityView(cleared)).toMatchObject({ events: [], loading: false, error: indexError });
-
-		const restored = homeActivityReducer(failed, { type: 'restored', events: cached });
-		expect(homeActivityView(restored)).toMatchObject({ events: cached, error: indexError });
-	});
-
-	it('clears a successful feed when no collections remain', () => {
-		const loaded = reduce(
-			INITIAL_HOME_ACTIVITY,
-			{ type: 'published', events: cached },
-			{ type: 'history-finished' },
-			{ type: 'verification-started' }
-		);
-		expect(homeActivityView(homeActivityReducer(loaded, { type: 'cleared' }))).toEqual({
-			events: [],
-			loading: false,
-			error: undefined,
-			verifyingPurchases: false,
-			purchaseVerificationFailures: 0,
-			purchaseVerificationIncomplete: false,
-		});
-	});
-
-	it('keeps an existing purchase proof when the index returns the event again without one', () => {
-		const found = new Map<string, CollectionActivityEvent>();
-		mergeHomeActivityEvents(found, [event('a', { transactionId: 'settlement', height: 9 })]);
-		mergeHomeActivityEvents(found, [event('a')]);
-		expect(found.get('a')?.purchaseProof).toEqual({ transactionId: 'settlement', height: 9 });
-
-		mergeHomeActivityEvents(found, [event('a', { transactionId: 'newer', height: 10 })]);
-		expect(found.get('a')?.purchaseProof).toEqual({ transactionId: 'newer', height: 10 });
-	});
-
-	it('identifies the cached scope by collection and asset window', () => {
+	it('identifies the checked marketplace membership independently of collection order', () => {
 		const assets = [{ id: assetId('A'), name: 'First' }];
 		expect(homeActivityScope([imageCollection('art', assets), imageCollection('names', [])])).toBe(
 			homeActivityScope([imageCollection('names', []), imageCollection('art', assets)])
@@ -148,14 +30,40 @@ describe('home activity feed', () => {
 		expect(homeActivityScope([imageCollection('art', assets)])).not.toBe(
 			homeActivityScope([imageCollection('art', [])])
 		);
-		expect(homeActivityScope([])).toBe('');
+		expect(homeActivityScope([])).toBe('[]');
 	});
 
-	it('prefers rate limiting over other index outages, and reports nothing without failures', () => {
-		expect(homeActivityHistoryError([])).toBeUndefined();
-		expect(homeActivityHistoryError([new Error('offline')])?.reason).toBe('index-unavailable');
-		expect(homeActivityHistoryError([new Error('offline'), appError('rate-limited')])?.reason).toBe(
-			'index-rate-limited'
+	it('resolves a loaded asset only for collections that are part of the market', () => {
+		const asset = { id: assetId('A'), name: 'First' };
+		const collections = [imageCollection('art', [asset])];
+		expect(homeActivityAsset(collections, event(asset.id))).toEqual(asset);
+		expect(homeActivityAsset(collections, event(assetId('Z')))).toBeUndefined();
+	});
+
+	it('makes every page request distinct so repeating one still reloads', () => {
+		const first = nextHomeActivityRequest(INITIAL_HOME_ACTIVITY_REQUEST, 'more');
+		expect(first).toEqual({ kind: 'more', id: 1 });
+		expect(nextHomeActivityRequest(first, 'more')).toEqual({ kind: 'more', id: 2 });
+		expect(nextHomeActivityRequest(first, 'initial')).toEqual({ kind: 'initial', id: 2 });
+	});
+
+	it('describes the loaded events without claiming the whole indexed history', () => {
+		expect(homeActivityLoadedAnnouncement(1_500)).toBe('1,500 indexed events loaded.');
+		expect(homeActivityLoadedAnnouncement(0)).toBe('0 indexed events loaded.');
+	});
+
+	it('reveals loaded rows before offering an older page', () => {
+		expect(homeActivityRevealLabel({ loading: true, canReveal: true, revealCount: 20, matchingCount: 40 })).toBe(
+			'Loading activity…'
+		);
+		expect(homeActivityRevealLabel({ loading: false, canReveal: true, revealCount: 12, matchingCount: 32 })).toBe(
+			'Show 12 more events'
+		);
+		expect(homeActivityRevealLabel({ loading: false, canReveal: false, revealCount: 0, matchingCount: 32 })).toBe(
+			'Load older activity'
+		);
+		expect(homeActivityRevealLabel({ loading: false, canReveal: false, revealCount: 0, matchingCount: 0 })).toBe(
+			'Check older activity'
 		);
 	});
 });

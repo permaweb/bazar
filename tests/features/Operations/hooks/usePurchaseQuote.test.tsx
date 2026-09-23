@@ -100,14 +100,56 @@ describe('purchase quote', () => {
 		listing.unmount();
 	});
 
-	it('normalizes a failed check into an application error', async () => {
+	it('names the check that failed instead of reporting a generic outage', async () => {
 		mocks.estimate = vi.fn(() => Promise.reject(appError('compute-unavailable')));
 		const hook = quoteHook({ kind: 'buy', order: ORDER });
 		await hook.flush();
 
 		const failed = hook.current().state;
 		expect(failed).toMatchObject({ status: 'error' });
-		expect(failed.status === 'error' && failed.error.reason).toBe('compute-unavailable');
+		expect(failed.status === 'error' && failed.error).toMatchObject({
+			reason: 'purchase-quote-network-fee-unavailable',
+			retryable: true,
+		});
+		hook.unmount();
+	});
+
+	it('reports an unreadable wallet balance as its own failure', async () => {
+		mocks.balance = vi.fn(() => Promise.reject(appError('unavailable', { message: 'wallet-balance-503' })));
+		const hook = quoteHook({ kind: 'buy', order: ORDER });
+		await hook.flush();
+
+		const failed = hook.current().state;
+		expect(failed.status === 'error' && failed.error).toMatchObject({
+			reason: 'purchase-quote-balance-unavailable',
+			retryable: true,
+		});
+		hook.unmount();
+	});
+
+	it('keeps a listing Bazar will not quote out of the network retry loop', async () => {
+		mocks.estimate = vi.fn(() => Promise.reject(appError('asset-purchase-registration-fee-too-high')));
+		const hook = quoteHook({ kind: 'buy', order: ORDER });
+		await hook.flush();
+
+		const failed = hook.current().state;
+		expect(failed.status === 'error' && failed.error).toMatchObject({
+			reason: 'asset-purchase-registration-fee-too-high',
+			retryable: false,
+		});
+		hook.unmount();
+	});
+
+	it('reports an unreachable network as a connection failure', async () => {
+		mocks.estimate = vi.fn(() => Promise.reject(appError('offline', { message: 'transaction-price-unreachable' })));
+		const hook = quoteHook({ kind: 'buy', order: ORDER });
+		await hook.flush();
+
+		const failed = hook.current().state;
+		expect(failed.status === 'error' && failed.error).toMatchObject({
+			reason: 'purchase-quote-unavailable',
+			retryable: true,
+		});
 		hook.unmount();
 	});
 

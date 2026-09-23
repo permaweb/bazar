@@ -132,18 +132,14 @@ export function useHomeListingScan(options: {
 					readAssetStateCached(processId, {
 						signal,
 						maxAge: HOME_STATE_MAX_AGE,
+						includeBalances: false,
 						maxAttempts: 1,
 						staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
-						onRevalidated: (fresh) => {
-							if (controller.signal.aborted) return;
-							publications.push({
-								processId,
-								state: fresh.state,
-								provider: fresh.provider,
-								refresh: true,
-							});
-						},
 					}),
+				onRevalidated: (result, candidate, cause) => {
+					if (controller.signal.aborted || cause) return;
+					publications.push({ processId: candidate.processId, result });
+				},
 				onSettled: (result, candidate, cause) => {
 					if (controller.signal.aborted) return;
 					computeAttempts += 1;

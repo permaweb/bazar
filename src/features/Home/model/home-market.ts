@@ -504,7 +504,7 @@ export function homeAssetTypeMatches(collection: Collection, assetType: HomeAsse
 export function homeDiscoveryAssets(
 	collections: Collection[],
 	verifiedListings: Record<string, AssetSummary[]>,
-	limit: number,
+	fallbackLimit: number,
 	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'> & { activity?: HomeListingActivity }> = []
 ) {
 	const collectionsById = new Map(collections.map((collection) => [collection.id, collection]));
@@ -513,13 +513,18 @@ export function homeDiscoveryAssets(
 			...collection,
 			assets: verifiedListings[collection.id] ?? [],
 		})),
-		limit
+		Number.POSITIVE_INFINITY
 	).map(({ asset, collection }) => ({ asset, collection: collectionsById.get(collection.id)! }));
 	const fallback = interleaveCollectionAssets(
 		collections,
-		limit,
+		fallbackLimit,
 		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
 	);
+	// The preview budget only bounds speculative reads. Known listings and
+	// indexed tokens must survive until the view filters and pagination run.
+	const tokens = collections
+		.filter((collection) => collection.kind === 'tokens')
+		.flatMap((collection) => collection.assets.map((asset) => ({ asset, collection })));
 	const verifiedAssets = new Map(
 		Object.values(verifiedListings)
 			.flat()
@@ -535,14 +540,13 @@ export function homeDiscoveryAssets(
 			const asset = verifiedAssets.get(listing.asset.id);
 			return asset ? { ...listing, asset } : listing;
 		});
-	return [...portable, ...verified, ...fallback]
+	return [...portable, ...verified, ...tokens, ...fallback]
 		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);
 			return true;
-		})
-		.slice(0, limit);
+		});
 }
 
 export function homeAllAssets(

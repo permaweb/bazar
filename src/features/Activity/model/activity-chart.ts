@@ -26,7 +26,7 @@ function eventTimestamp(event: CollectionActivityEvent) {
 export function globalActivityChartStats(events: CollectionActivityEvent[]): GlobalActivityChartStats {
 	const dated = events
 		.map((event) => ({ event, timestamp: eventTimestamp(event) }))
-		.filter(({ timestamp }) => Number.isFinite(timestamp) && timestamp >= 0)
+		.filter(({ timestamp }) => Number.isFinite(timestamp) && timestamp > 0)
 		.sort((left, right) => left.timestamp - right.timestamp);
 	const participants = new Set(events.map((event) => event.actor).filter(Boolean));
 	const listings = events.filter((event) => event.action === 'make-offer').length;

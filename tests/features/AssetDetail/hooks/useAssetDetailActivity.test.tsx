@@ -14,14 +14,12 @@ const otherAssetId = 'B'.repeat(43);
 const wallet = 'W'.repeat(43);
 const orderId = 'O'.repeat(43);
 
-const confirmPurchaseActivity = vi.fn();
 const discoverCollectionActivityPage = vi.fn();
 const loadMarketActivity = vi.fn();
 const saveMarketActivity = vi.fn();
 
 vi.mock('api/discovery', async (importOriginal) => ({
 	...(await importOriginal<typeof import('api/discovery')>()),
-	confirmPurchaseActivity: (events: unknown, options: unknown) => confirmPurchaseActivity(events, options),
 	discoverCollectionActivityPage: (options: unknown) => discoverCollectionActivityPage(options),
 	loadMarketActivity: (storage: unknown, scope: string) => loadMarketActivity(storage, scope),
 	saveMarketActivity: (storage: unknown, scope: string, events: unknown) =>
@@ -70,7 +68,6 @@ const idle: ActivityInput = { assetId, resolvedAssetKey: null, state: null, wall
 const resolved: ActivityInput = { ...idle, resolvedAssetKey: assetId };
 
 beforeEach(() => {
-	confirmPurchaseActivity.mockReset().mockImplementation((events: CollectionActivityEvent[]) => events);
 	discoverCollectionActivityPage.mockReset().mockResolvedValue(page([]));
 	loadMarketActivity.mockReset().mockReturnValue([]);
 	saveMarketActivity.mockReset();
@@ -115,7 +112,8 @@ describe('asset detail activity', () => {
 		expect(harness.current().activity.loading).toBe(false);
 		expect(harness.current().asks.loading).toBe(false);
 		expect(saveMarketActivity).toHaveBeenCalledWith(window.localStorage, `asset:${assetId}`, [event('history', 2)]);
-		expect(confirmPurchaseActivity).toHaveBeenCalledTimes(1);
+		// Registrations stay submissions: neither feed runs a historical purchase verification pass.
+		expect(discoverCollectionActivityPage).toHaveBeenCalledTimes(2);
 		harness.unmount();
 	});
 

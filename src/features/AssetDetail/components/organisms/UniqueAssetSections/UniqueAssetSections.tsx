@@ -12,6 +12,7 @@ import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Loading } from 'components/atoms/Loading';
 import { RetryNotice } from 'components/molecules/RetryNotice';
+import { StateVerification } from 'components/molecules/StateVerification';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { DeferredMarketActivityList } from 'features/Activity';
 import { winstonToAr } from 'helpers/ar-units';
@@ -79,6 +80,11 @@ export default function UniqueAssetSections(props: {
 	activity: AssetActivityFeedView;
 	asks: AssetActivityFeedView;
 	askPricePoints: TokenPricePoint[];
+	/** The AO peer the current live state came from, shown with the protocol details under Blockchain. */
+	provider: string;
+	verifiedAt: number | null;
+	stateRefreshing: boolean;
+	stateFailed: boolean;
 	onChange(section: UniqueAssetSection): void;
 	onActivityRetry(): void;
 	onActivityLoadMore(): void;
@@ -87,11 +93,6 @@ export default function UniqueAssetSections(props: {
 	onPrefetchAsset(assetId: string): void;
 }) {
 	const order = props.view.order;
-	const ownerLabel = props.view.owner ? (
-		<WalletAddress address={props.view.owner} label="owner" />
-	) : (
-		<strong>{props.view.balanceStateAvailable ? 'Unassigned' : 'Ownership unavailable'}</strong>
-	);
 	return (
 		<>
 			<AssetDetailTabs<UniqueAssetSection>
@@ -111,14 +112,6 @@ export default function UniqueAssetSections(props: {
 				>
 					<p className="asset-description">{props.view.description}</p>
 					<div className="asset-detail-facts">
-						<div>
-							<span>Owner</span>
-							{ownerLabel}
-						</div>
-						<div>
-							<span>Collection</span>
-							<strong>{props.collection.name}</strong>
-						</div>
 						<div>
 							<span>Asset type</span>
 							<strong>{props.asset.contentType ?? props.state.device ?? 'process'}</strong>
@@ -319,6 +312,17 @@ export default function UniqueAssetSections(props: {
 					role="tabpanel"
 					tabIndex={0}
 				>
+					<div className="asset-token-tags" aria-label="Asset protocol details">
+						<span>{props.state.device || 'token@1.0'}</span>
+						<span>Arweave</span>
+						<span>Supply 1</span>
+					</div>
+					<StateVerification
+						provider={props.provider}
+						verifiedAt={props.verifiedAt}
+						refreshing={props.stateRefreshing}
+						failed={props.stateFailed}
+					/>
 					<dl className="asset-blockchain-details">
 						<div>
 							<dt>Process ID</dt>

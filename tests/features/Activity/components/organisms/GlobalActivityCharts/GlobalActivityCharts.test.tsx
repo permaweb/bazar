@@ -50,6 +50,16 @@ describe('GlobalActivityCharts', () => {
 		expect(markup).not.toContain('global-activity-counter-digit');
 	});
 
+	it('shows spinners instead of partial numbers until the independent summary is ready', () => {
+		const markup = renderToStaticMarkup(
+			<GlobalActivityCharts loading events={[event('one', 'make-offer', 'wallet', 100)]} />
+		);
+		expect(markup.match(/role="status"/g)).toHaveLength(3);
+		expect(markup).toContain('Loading market participants');
+		expect(markup).not.toContain('global-activity-counter-value');
+		expect(markup).not.toContain('role="img"');
+	});
+
 	it('keeps a focused chart readable when its history is cleared', () => {
 		React.act(() =>
 			root.render(<GlobalActivityCharts events={[event('listing', 'make-offer', 'wallet-a', 24 * 60 * 60)]} />)

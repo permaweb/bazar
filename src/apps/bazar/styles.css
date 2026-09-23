@@ -4036,6 +4036,26 @@ input:focus {
 	font-size: var(--type-body);
 	line-height: 1.5;
 }
+/* Unique asset purchases lead with one price; protocol details live in the Blockchain tab. */
+.asset-purchase-summary {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-4);
+}
+.asset-purchase-summary .asset-buy-summary {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+.asset-edition {
+	flex-shrink: 0;
+	padding: 5px 8px;
+	border-radius: 5px;
+	background: var(--surface-subtle);
+	color: var(--muted);
+	font-size: var(--type-small);
+}
 .asset-operation-status {
 	margin-top: 16px;
 	padding: 11px 12px;
@@ -4665,6 +4685,21 @@ input:focus {
 		scroll-snap-align: start;
 	}
 }
+.global-activity-stat-pending {
+	min-height: 190px;
+}
+
+.global-activity-stat-pending > .loading,
+.global-activity-stat-pending > p {
+	margin: auto;
+	padding: 24px;
+}
+
+.global-activity-stat-pending .loading {
+	min-height: 0;
+	font-size: 12px;
+}
+
 .global-activity-loading .loading {
 	padding: 0 0 9px;
 	gap: 8px;
@@ -7861,6 +7896,22 @@ body input:focus-visible {
 	min-height: 36px;
 	padding: 0;
 	justify-content: center;
+}
+.site-nav-primary > .create-link-tooltip {
+	display: inline-flex;
+}
+.site-nav-primary > .create-link-tooltip > .create-link {
+	width: auto;
+	padding: 0 10px;
+}
+@media (max-width: 600px) {
+	.create-link-label {
+		display: none;
+	}
+	.site-nav-primary > .create-link-tooltip > .create-link {
+		width: 36px;
+		padding: 0;
+	}
 }
 .site-nav-primary .gateway summary {
 	width: 36px;

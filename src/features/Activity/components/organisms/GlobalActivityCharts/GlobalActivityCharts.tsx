@@ -2,12 +2,14 @@ import React from 'react';
 
 import type { CollectionActivityEvent } from 'api/discovery';
 
+import { Loading } from 'components/atoms/Loading';
 import { VisuallyHidden } from 'components/atoms/VisuallyHidden';
 
 import {
 	chartHoverIndex,
 	formatActivityChartDate,
 	formatActivityChartValue,
+	type GlobalActivityChartStats,
 	globalActivityChartStats,
 } from '../../../model/activity-chart';
 
@@ -200,10 +202,32 @@ function StatCard(props: React.PropsWithChildren<{ label: string; value: number;
 	);
 }
 
-export default function GlobalActivityCharts(props: { events: CollectionActivityEvent[] }) {
-	const stats = React.useMemo(() => globalActivityChartStats(props.events), [props.events]);
+export default function GlobalActivityCharts(props: {
+	events?: CollectionActivityEvent[];
+	/** A summary read independently of the row feed; row filters never change these totals. */
+	stats?: GlobalActivityChartStats;
+	loading?: boolean;
+	unavailable?: boolean;
+}) {
+	const stats = React.useMemo(
+		() => props.stats ?? globalActivityChartStats(props.events ?? []),
+		[props.events, props.stats]
+	);
 	const latest = stats.buckets.at(-1);
 	const starts = stats.buckets.map((bucket) => bucket.start);
+	if (props.loading || props.unavailable)
+		return (
+			<section aria-label="Global market statistics" className="global-activity-stats">
+				{['Events', 'Listings submitted', 'Market participants'].map((label) => (
+					<article className="global-activity-stat global-activity-stat-pending" key={label}>
+						<div className="global-activity-stat-copy">
+							<h3>{label}</h3>
+						</div>
+						{props.loading ? <Loading label={`Loading ${label.toLowerCase()}…`} /> : <p>Unavailable</p>}
+					</article>
+				))}
+			</section>
+		);
 	return (
 		<section aria-label="Global market statistics" className="global-activity-stats">
 			<StatCard

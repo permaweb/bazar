@@ -227,7 +227,15 @@ describe('operation dialog', () => {
 		await render({ kind: 'buy', order: ORDER });
 
 		expect(text()).toContain('Checking wallet balance and network fees');
-		expect(button('Buy').getAttribute('disabled')).not.toBeNull();
+		expect(button('Checking purchase costs…').getAttribute('disabled')).not.toBeNull();
+	});
+
+	it('shows a declared reservation minimum inside the total fees', async () => {
+		await render({ kind: 'buy', order: { ...ORDER, minimumFee: '300000000000' } });
+
+		expect(text()).toContain('Reservation minimum (included)0.3 $AR');
+		expect(text()).toContain('Total fees');
+		expect(text()).not.toContain('Network fees');
 	});
 
 	it('shows the exact purchase cost once it is known', async () => {
@@ -243,11 +251,21 @@ describe('operation dialog', () => {
 	it('re-checks the cost on request after a failed check', async () => {
 		mocks.estimate.mockRejectedValueOnce(appError('compute-unavailable'));
 		await render({ kind: 'buy', order: ORDER });
-		expect(text()).toContain('Compute hasn’t completed yet. Please try again.');
+		expect(text()).toContain('Arweave network fees are unavailable. Retry the cost check before buying.');
 
-		await click('Retry');
+		await click('Retry cost check');
 		expect(mocks.estimate).toHaveBeenCalledTimes(2);
 		expect(text()).toContain('Costs checked.');
+		expect(text()).toContain('Refresh costs');
+	});
+
+	it('does not offer a retry for a listing the seller must correct', async () => {
+		mocks.estimate.mockRejectedValue(appError('asset-purchase-registration-fee-too-high'));
+		await render({ kind: 'buy', order: ORDER });
+
+		expect(text()).toContain('The seller needs to relist the asset with a lower fee.');
+		expect(text()).not.toContain('Retry cost check');
+		expect(button('Listing needs an update').getAttribute('disabled')).not.toBeNull();
 	});
 
 	it('blocks a purchase the wallet cannot afford', async () => {
@@ -263,9 +281,9 @@ describe('operation dialog', () => {
 		mocks.estimate.mockRejectedValue(appError('compute-unavailable'));
 		await render({ kind: 'buy', order: ORDER });
 
-		expect(text()).toContain('Compute hasn’t completed yet. Please try again.');
+		expect(text()).toContain('Arweave network fees are unavailable. Retry the cost check before buying.');
 		expect(host.querySelector('.inline-error')).not.toBeNull();
-		expect(button('Buy').getAttribute('disabled')).not.toBeNull();
+		expect(button('Cost check unavailable').getAttribute('disabled')).not.toBeNull();
 	});
 
 	it('validates a listing price before anything is signed', async () => {

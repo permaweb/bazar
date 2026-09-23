@@ -74,12 +74,19 @@ export function useAssetDetailResolution(collectionId: string, assetId: string):
 		return () => controller.abort();
 	}, [assetId, collectionId, market.visibilityReady]);
 
+	const indexedAtomic = indexedLookup.assetId === assetId ? asyncData(indexedLookup.result) ?? null : null;
+	const rememberSearchAssets = market.rememberSearchAssets;
+	// An asset reached directly stays searchable afterwards, without any catalogue-wide fetch.
+	React.useEffect(() => {
+		if (indexedAtomic) rememberSearchAssets([indexedAtomic]);
+	}, [indexedAtomic, rememberSearchAssets]);
+
 	const sources = assetDetailSources({
 		assetId,
 		collectionId,
 		collections: market.collections,
 		cachedAsset,
-		indexedAtomic: indexedLookup.assetId === assetId ? asyncData(indexedLookup.result) ?? null : null,
+		indexedAtomic,
 	});
 	const indexedCollectionKind = sources.indexedCollection?.kind;
 

@@ -232,12 +232,25 @@ describe('purchase quote view', () => {
 	});
 
 	it('reports an unavailable quote even when an earlier one is known', () => {
-		expect(purchaseQuoteView({ status: 'error', error: appError('unknown') })).toEqual({
+		expect(purchaseQuoteView({ status: 'error', error: appError('purchase-quote-balance-unavailable') })).toEqual({
 			status: 'unavailable',
 			affordable: null,
+			message: 'Your AR balance could not be checked. Retry the cost check before buying.',
+			retryable: true,
 		});
 		expect(purchaseQuoteView({ status: 'stale', data: quote, error: appError('unknown') }).status).toBe(
 			'unavailable'
 		);
+	});
+
+	it('marks a listing the seller must relist as not retryable', () => {
+		expect(
+			purchaseQuoteView({ status: 'error', error: appError('asset-purchase-registration-fee-too-high') })
+		).toMatchObject({
+			status: 'unavailable',
+			retryable: false,
+			message:
+				'This listing requires a reservation fee above Bazar’s purchase limit. The seller needs to relist the asset with a lower fee.',
+		});
 	});
 });

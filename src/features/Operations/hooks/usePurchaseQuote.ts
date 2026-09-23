@@ -8,6 +8,7 @@ import { toAppError } from 'helpers/app-error';
 import { type AsyncState, IDLE, LOADING } from 'helpers/async-state';
 
 import type { PurchaseQuote } from '../model/operation-view';
+import { purchaseQuoteFailure } from '../model/purchase-quote';
 
 /**
  * Checks the exact cost of a new atomic purchase and the buyer's wallet balance before anything is signed. Each check
@@ -34,9 +35,14 @@ export function usePurchaseQuote(input: { operation: Operation; assetId: string;
 		void loadAtomicTransactionRuntime()
 			.then(async ({ AssetTransactionClient }) => {
 				const client = new AssetTransactionClient();
+				// Each check reports its own failure, so the buyer is told exactly what could not be read.
 				return Promise.all([
-					client.estimatePurchaseCosts(quotedOrder, input.assetId, controller.signal),
-					client.walletBalance(input.owner, controller.signal),
+					client.estimatePurchaseCosts(quotedOrder, input.assetId, controller.signal).catch((cause) => {
+						throw purchaseQuoteFailure(cause, 'network-fee');
+					}),
+					client.walletBalance(input.owner, controller.signal).catch((cause) => {
+						throw purchaseQuoteFailure(cause, 'balance');
+					}),
 				]);
 			})
 			.then(
@@ -44,7 +50,9 @@ export function usePurchaseQuote(input: { operation: Operation; assetId: string;
 					if (!controller.signal.aborted) setState({ status: 'success', data: { estimate, balance } });
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setState({ status: 'error', error: toAppError(cause, 'unknown') });
+					if (!controller.signal.aborted) {
+						setState({ status: 'error', error: toAppError(cause, 'purchase-quote-unavailable') });
+					}
 				}
 			);
 		return () => controller.abort();

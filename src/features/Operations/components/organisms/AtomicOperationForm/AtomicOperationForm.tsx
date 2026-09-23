@@ -23,6 +23,8 @@ export default function AtomicOperationForm(props: {
 	formError: AppErrorReason | null;
 	seller: string;
 	sellerPrice: string;
+	/** The seller's declared reservation fee, already included in the fee total. */
+	reservationMinimum: string | null;
 	actionLabel: string;
 	quote: PurchaseQuoteView;
 	fieldHelpId: string;
@@ -48,6 +50,7 @@ export default function AtomicOperationForm(props: {
 				{props.kind === 'buy' ? (
 					<PurchaseQuoteSummary
 						quote={props.quote}
+						reservationMinimum={props.reservationMinimum}
 						seller={props.seller}
 						sellerPrice={props.sellerPrice}
 						statusId={props.quoteStatusId}
@@ -120,7 +123,7 @@ export default function AtomicOperationForm(props: {
 				) : null}
 				<p className="operation-disclosure">
 					{props.kind === 'buy'
-						? 'Your wallet will ask for two approvals: one reservation and one seller payment. The payment stays local until the reservation is accepted by the network.'
+						? 'You’ll approve twice in your wallet: reserve the asset, then pay the seller. Payment is sent only after the network accepts your reservation.'
 						: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
 				</p>
 			</div>
@@ -143,7 +146,15 @@ export default function AtomicOperationForm(props: {
 				) : props.kind === 'sell' ? (
 					<Icon icon={Tag} size="sm" />
 				) : null}
-				{props.kind === 'buy' && props.quote.affordable === false ? (
+				{props.kind === 'buy' && props.quote.status === 'unavailable' ? (
+					props.quote.retryable ? (
+						'Cost check unavailable'
+					) : (
+						'Listing needs an update'
+					)
+				) : props.kind === 'buy' && props.quote.status === 'checking' ? (
+					'Checking purchase costs…'
+				) : props.kind === 'buy' && props.quote.affordable === false ? (
 					<ArCurrencyText>Insufficient AR</ArCurrencyText>
 				) : props.kind === 'buy' && props.quote.status === 'ready' ? (
 					<ArCurrencyText>{`Buy · up to ${props.quote.maximumTotal}`}</ArCurrencyText>

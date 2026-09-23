@@ -34,13 +34,10 @@ export type AssetActivityFeedEvent =
 	/** The feed is not needed yet: stop showing progress or errors. */
 	| { type: 'paused' }
 	| { type: 'page-requested' }
-	/** `pending` keeps the feed loading while the page's purchases are still being confirmed. */
-	| { type: 'page-received'; assetId: string; page: AssetActivityPage; pending: boolean }
-	| { type: 'page-confirmed'; assetId: string; events: CollectionActivityEvent[] }
+	| { type: 'page-received'; assetId: string; page: AssetActivityPage }
 	| { type: 'page-failed'; assetId: string; error: AppError }
 	| { type: 'older-requested' }
-	| { type: 'older-received'; assetId: string; page: AssetActivityPage; pending: boolean }
-	| { type: 'older-confirmed'; assetId: string; events: CollectionActivityEvent[] }
+	| { type: 'older-received'; assetId: string; page: AssetActivityPage }
 	| { type: 'older-failed'; assetId: string; error: AppError };
 
 const NO_EVENTS: CollectionActivityEvent[] = [];
@@ -96,15 +93,11 @@ export function assetActivityFeedReducer(feed: AssetActivityFeed, event: AssetAc
 		case 'page-received':
 			return {
 				...feed,
-				events: event.pending
-					? { status: 'refreshing', data: event.page.events }
-					: { status: 'success', data: event.page.events },
+				events: { status: 'success', data: event.page.events },
 				cursor: event.page.cursor,
 				hasNextPage: event.page.hasNextPage,
 				totalCount: event.page.totalCount,
 			};
-		case 'page-confirmed':
-			return { ...feed, events: { status: 'success', data: event.events } };
 		case 'page-failed':
 			return { ...feed, events: failLoad(feed.events, event.error) };
 		case 'older-requested':
@@ -115,12 +108,6 @@ export function assetActivityFeedReducer(feed: AssetActivityFeed, event: AssetAc
 				events: withEvents(feed.events, mergeAssetActivityPages(current, event.page.events)),
 				cursor: event.page.cursor,
 				hasNextPage: event.page.hasNextPage,
-				loadingMore: event.pending,
-			};
-		case 'older-confirmed':
-			return {
-				...feed,
-				events: withEvents(feed.events, mergeAssetActivityPages(current, event.events)),
 				loadingMore: false,
 			};
 		case 'older-failed':
