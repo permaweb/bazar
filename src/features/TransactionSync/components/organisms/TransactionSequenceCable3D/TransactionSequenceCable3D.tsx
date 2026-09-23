@@ -6,57 +6,25 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
-import {
-	type ArweaveRecallContent,
-	type ArweaveRecallContentKind,
-	canPreviewRecallImage,
-	fetchBoundedRecallImage,
-} from 'api/mining-telemetry';
-import type { ObserverView } from 'api/transactions';
+import type { ArweaveRecallContent } from 'api/mining-telemetry';
 
 import { TRANSACTION_SEQUENCE_COLORS } from 'helpers/theme';
 
+import { useBoundedRecallImage } from '../../../hooks/useBoundedRecallImage';
 import {
 	ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS,
 	acceptedProofAnnotationIsVisible,
 	acceptedProofAnnotationOpacity,
 } from '../../../model/acceptedProofs';
 import { progressColorRgb } from '../../../model/progressColors';
+import { recallContentPreview } from '../../../model/recallPreview';
 import { sequencePhaseBounds } from '../../../model/sequence';
-import { ObserverTooltipCard, type ObserverTooltipStage } from '../ArweaveTransactionSync/ObserverTooltipCard';
+import type { CableMiningActivity, CableTelemetry, Infinity3DLane, ObserverTooltipStage } from '../../../types';
+import { ObserverTooltipCard } from '../ArweaveTransactionSync/ObserverTooltipCard';
 import { RaceTooltip as RaceTooltipContainer } from '../ArweaveTransactionSync/styles';
 import { TransactionRendererFallback } from '../ArweaveTransactionSync/TransactionVisualizerFallback';
 
 export { TransactionRendererFallback } from '../ArweaveTransactionSync/TransactionVisualizerFallback';
-
-type Marker = {
-	kind: 'event' | 'proof';
-	confirmation: boolean;
-	progress: number;
-	state: ObserverView['state'];
-	confirmations: number;
-	error: boolean;
-	detail: string;
-	observedAt?: number;
-};
-
-export type Infinity3DLane = {
-	observerUrl: string;
-	label: string;
-	detail: string;
-	statusLabel: string;
-	stages: ObserverTooltipStage[];
-	progress: number;
-	phases: Array<{
-		progress: number;
-		started: boolean;
-		complete: boolean;
-	}>;
-	state: ObserverView['state'];
-	confirmations: number;
-	error: boolean;
-	markers: Marker[];
-};
 
 type Props = {
 	lanes: Infinity3DLane[];
@@ -64,42 +32,7 @@ type Props = {
 	phaseLabels: string[];
 	active?: boolean;
 	layout?: 'spread' | 'bundle';
-	miningActivity?: {
-		candidateRate?: number;
-		acceptedProofs: Array<{
-			key: string;
-			height: number;
-			observedAt: number;
-			label: string;
-			meta: string;
-			recalls: Array<{
-				key: string;
-				content?: ArweaveRecallContent;
-				fallback: string;
-				contentLabel: string;
-				meta?: string;
-			}>;
-		}>;
-	};
-};
-
-export type CableTelemetry = {
-	heading: string;
-	liveLabel: string;
-	metrics: Array<{ label: string; value: string }>;
-	activityLabel: string;
-	activity: Array<{
-		key: string;
-		label: string;
-		detail: string;
-		kind: 'proof' | 'status' | 'confirmation' | 'error';
-		typeLabel: string;
-	}>;
-	mining: {
-		heading: string;
-		status: string;
-		metrics: Array<{ label: string; value: string }>;
-	};
+	miningActivity?: CableMiningActivity;
 };
 
 type LaneHover = {
@@ -978,56 +911,23 @@ export default function TransactionSequenceCable3D(props: Props) {
 }
 
 function RecallContentPreview(props: { content?: ArweaveRecallContent; fallback: string }) {
-	if (!props.content) return <AcceptedProofPayloadText>{props.fallback}</AcceptedProofPayloadText>;
-	const title = props.content.contentType ?? props.fallback;
-	if (canPreviewRecallImage(props.content)) {
-		return <img src={props.content.contentUrl} alt={title} loading={'lazy'} />;
+	const preview = recallContentPreview(props.content, props.fallback);
+	if (preview.kind === 'image') return <img src={preview.src} alt={preview.title} loading={'lazy'} />;
+	if (preview.kind === 'bounded-image') {
+		return <BoundedRecallImagePreview content={preview.content} title={preview.title} />;
 	}
-	if (props.content.kind === 'image' && props.content.contentLength === undefined) {
-		return <BoundedRecallImagePreview content={props.content} title={title} />;
-	}
-	return (
-		<AcceptedProofPayloadText>
-			{props.content.metadata?.length ? props.content.metadata.join(' · ') : contentSymbol(props.content.kind)}
-		</AcceptedProofPayloadText>
-	);
+	return <AcceptedProofPayloadText>{preview.text}</AcceptedProofPayloadText>;
 }
 
 function BoundedRecallImagePreview(props: { content: ArweaveRecallContent; title: string }) {
-	const [imageUrl, setImageUrl] = React.useState<string>();
-
-	React.useEffect(() => {
-		const controller = new AbortController();
-		let objectUrl: string | undefined;
-		setImageUrl(undefined);
-		void fetchBoundedRecallImage(props.content, controller.signal)
-			.then((image) => {
-				if (!image || controller.signal.aborted) return;
-				objectUrl = URL.createObjectURL(image);
-				setImageUrl(objectUrl);
-			})
-			.catch(() => undefined);
-		return () => {
-			controller.abort();
-			if (objectUrl) URL.revokeObjectURL(objectUrl);
-		};
-	}, [props.content]);
+	const image = useBoundedRecallImage(props.content);
+	const imageUrl = image.status === 'success' ? image.data : null;
 
 	return imageUrl ? (
 		<img src={imageUrl} alt={props.title} />
 	) : (
 		<AcceptedProofPayloadText aria-label={'Loading image preview'}>Image</AcceptedProofPayloadText>
 	);
-}
-
-function contentSymbol(kind: ArweaveRecallContentKind): string {
-	if (kind === 'audio') return '♪';
-	if (kind === 'video') return '▶';
-	if (kind === 'html') return '</>';
-	if (kind === 'pdf') return 'PDF';
-	if (kind === 'json') return '{}';
-	if (kind === 'text') return 'Aa';
-	return '◫';
 }
 
 export function CableTelemetryPanel(props: { telemetry: CableTelemetry; active?: boolean }) {

@@ -2,9 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CircleX, Images, Upload } from 'lucide-react';
 
-import { CREATED_COLLECTION_ID, type MintActivity } from 'api/mint';
-import type { AssetObserverNetworkLease } from 'api/observers';
-import { loadAssetObserverRuntime } from 'api/transactions';
+import type { MintActivity } from 'api/mint';
 
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
@@ -12,16 +10,14 @@ import { LiveRegion } from 'components/atoms/LiveRegion';
 import { Loading } from 'components/atoms/Loading';
 import { DialogHeading } from 'components/molecules/DialogHeading';
 import { MintTransactionReceipt } from 'components/molecules/MintTransactionReceipt';
-import {
-	prepareTransactionDialogHide,
-	TRANSACTION_DIALOG_HIDE_DURATION_MS,
-	TransactionDialogControl,
-} from 'components/molecules/TransactionDialogControl';
+import { TransactionDialogControl } from 'components/molecules/TransactionDialogControl';
 import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
-import { UploadActivity, UploadObserverState } from 'providers/OperationActivityProvider';
+import type { UploadActivity } from 'providers/OperationActivityProvider';
 
-import { uploadActivitySyncSteps } from '../../../model/upload-activity';
+import { useTransactionDialogHide } from '../../../hooks/useTransactionDialogHide';
+import { useUploadObservers } from '../../../hooks/useUploadObservers';
+import { isUploadActivityWorking, uploadActivityDestination, uploadActivityView } from '../../../model/upload-activity';
 
 export default function UploadActivityPanel(props: {
 	activity: UploadActivity;
@@ -31,126 +27,38 @@ export default function UploadActivityPanel(props: {
 	onClose(): void;
 }) {
 	const navigate = useNavigate();
-	const dialogRef = React.useRef<HTMLElement | null>(null);
-	const [hiding, setHiding] = React.useState(false);
-	const [observerState, setObserverState] = React.useState<UploadObserverState>({});
-	const hideTimerRef = React.useRef<number | null>(null);
+	const dialogHide = useTransactionDialogHide(props.visible, props.onHide);
 	const titleId = React.useId();
-	const working = props.activity.phase === 'working' || props.activity.phase === 'tracking';
-	const primaryMintActivity =
-		props.relatedMintActivities.find((candidate) => candidate.asset.id === props.activity.assetId) ??
-		props.relatedMintActivities[props.relatedMintActivities.length - 1];
-	const displayedStatus =
-		props.activity.phase === 'tracking'
-			? primaryMintActivity?.status ?? props.activity.status
-			: props.activity.status;
-	const syncSteps = uploadActivitySyncSteps(props.activity, props.relatedMintActivities, observerState);
-	const activeSyncStep =
-		[...syncSteps].reverse().find((step) => (step.confirmations ?? 0) < step.target) ??
-		syncSteps[syncSteps.length - 1];
-	const closeOrHide = React.useCallback(() => {
-		if (!working) {
+	const observerState = useUploadObservers(
+		props.activity.transactions,
+		props.visible && isUploadActivityWorking(props.activity)
+	);
+	const view = uploadActivityView(props.activity, props.relatedMintActivities, observerState);
+
+	function handleDismiss() {
+		if (!view.working) {
 			props.onClose();
 			return;
 		}
-		if (hiding) return;
-		if (dialogRef.current) {
-			prepareTransactionDialogHide(
-				dialogRef.current,
-				document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]')
-			);
-		}
-		setHiding(true);
-		hideTimerRef.current = window.setTimeout(() => {
-			hideTimerRef.current = null;
-			props.onHide();
-		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
-	}, [hiding, props.onClose, props.onHide, working]);
-	React.useEffect(() => {
-		if (props.visible) setHiding(false);
-	}, [props.visible]);
-	React.useEffect(() => {
-		if (!props.visible || !working || !props.activity.transactions.length) return;
-		let cancelled = false;
-		let lease: AssetObserverNetworkLease | undefined;
-		const watchers: Array<{ stop(): void }> = [];
-		const unsubscribe: Array<() => void> = [];
-		const observe = async () => {
-			const runtime = await loadAssetObserverRuntime();
-			if (cancelled) return;
-			lease = runtime.acquireAssetObserverNetwork();
-			await lease.ready;
-			if (cancelled) return;
-			for (const transaction of props.activity.transactions) {
-				const watcher = lease.network.watch(transaction.id, {
-					target: 1,
-					minObservers: 3,
-					propagation: 'all',
-					notFoundTimeout: 180_000,
-				});
-				const publish = (consensus = watcher.consensus()) => {
-					if (cancelled) return;
-					setObserverState((current) => ({
-						...current,
-						[transaction.id]: { views: watcher.views(), consensus },
-					}));
-				};
-				unsubscribe.push(
-					watcher.on('view', () => publish()),
-					watcher.on('consensus', publish)
-				);
-				watchers.push(watcher);
-				watcher.start();
-			}
-		};
-		void observe().catch(() => {
-			lease?.release();
-			lease = undefined;
-		});
-		return () => {
-			cancelled = true;
-			for (const off of unsubscribe) off();
-			for (const watcher of watchers) watcher.stop();
-			lease?.release();
-		};
-	}, [props.activity.transactions, props.visible, working]);
-	React.useEffect(
-		() => () => {
-			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
-		},
-		[]
-	);
-	const receiptEntries = props.activity.transactions.length
-		? props.activity.transactions.map((transaction) => ({
-				label: transaction.label,
-				transactionId: transaction.id,
-		  }))
-		: props.activity.transactionIds.map((transactionId, index) => ({
-				label:
-					props.activity.kind === 'collection'
-						? index === props.activity.transactionIds.length - 1
-							? props.activity.extended
-								? 'Collection update'
-								: 'Collection process'
-							: 'Collection manifest'
-						: index === props.activity.transactionIds.length - 1
-						? 'Asset transaction'
-						: 'Artwork transaction',
-				transactionId,
-		  }));
-	const dialogPhase =
-		props.activity.phase === 'error' ? 'error' : props.activity.phase === 'done' ? 'done' : 'working';
+		dialogHide.hide();
+	}
+
+	function handleViewResult() {
+		navigate(uploadActivityDestination(props.activity));
+		props.onClose();
+	}
+
 	return (
 		<Dialog
 			backdropClassName="dialog-backdrop operation-panel-backdrop"
 			className="dialog operation-side-panel upload-activity-panel"
 			focusKey={props.activity.phase}
-			hiding={hiding}
-			keepMounted={working}
+			hiding={dialogHide.hiding}
+			keepMounted={view.working}
 			labelledBy={titleId}
-			onDismiss={closeOrHide}
+			onDismiss={handleDismiss}
 			open={props.visible}
-			panelRef={dialogRef}
+			panelRef={dialogHide.panelRef}
 			restoreFallback={() =>
 				document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
 				document.getElementById('main-content')
@@ -166,42 +74,38 @@ export default function UploadActivityPanel(props: {
 						)}
 					</span>
 				}
-				control={<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />}
+				control={
+					<TransactionDialogControl hiding={dialogHide.hiding} phase={view.phase} onClick={handleDismiss} />
+				}
 				eyebrow={props.activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
 				layout="asset"
 				title={props.activity.name}
 				titleId={titleId}
 			/>
-			{working && !syncSteps.length ? (
+			{view.working && !view.syncSteps.length ? (
 				<div className="operation-preparing">
-					<Loading label={displayedStatus} />
+					<Loading label={view.status} />
 					<p>The network view will appear as soon as the first signed transaction is available.</p>
 				</div>
 			) : null}
-			{working && syncSteps.length ? (
+			{view.working && view.syncSteps.length ? (
 				<div className="operation-working">
-					<LiveRegion as="p">{displayedStatus}</LiveRegion>
+					<LiveRegion as="p">{view.status}</LiveRegion>
 					<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 						<LazyArweaveTransactionSync
 							active={props.visible}
-							activeStep={activeSyncStep?.key}
+							activeStep={view.activeStep}
 							miningTelemetryEnabled={false}
-							pendingAfterConfirmation={
-								primaryMintActivity?.phase === 'mined'
-									? 'Waiting for live process state'
-									: primaryMintActivity?.phase === 'applied'
-									? 'Finishing Bazar indexing'
-									: undefined
-							}
+							pendingAfterConfirmation={view.pendingAfterConfirmation}
 							startedAt={props.activity.createdAt}
-							steps={syncSteps}
+							steps={view.syncSteps}
 							subject={props.activity.name}
 							telemetryPanelEnabled={false}
 						/>
 					</React.Suspense>
 				</div>
 			) : null}
-			{!working ? (
+			{!view.working ? (
 				<div className={`upload-activity-state ${props.activity.phase}`}>
 					<span className="upload-activity-result-icon" aria-hidden="true">
 						{props.activity.phase === 'done' ? <Check /> : <CircleX />}
@@ -217,27 +121,14 @@ export default function UploadActivityPanel(props: {
 								: 'Upload needs attention'}
 						</strong>
 						<p aria-live="polite" role="status">
-							{displayedStatus}
+							{view.status}
 						</p>
 					</div>
 				</div>
 			) : null}
-			{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
+			{view.receiptEntries.length ? <MintTransactionReceipt entries={view.receiptEntries} /> : null}
 			{props.activity.phase === 'done' && props.activity.collectionId ? (
-				<Button
-					className="wide"
-					data-dialog-initial
-					onClick={() => {
-						navigate(
-							props.activity.kind === 'collection'
-								? `/collection/${props.activity.collectionId}`
-								: `/asset/${CREATED_COLLECTION_ID}/${props.activity.assetId}`
-						);
-						props.onClose();
-					}}
-					size="custom"
-					variant="primary"
-				>
+				<Button className="wide" data-dialog-initial onClick={handleViewResult} size="custom" variant="primary">
 					View {props.activity.kind === 'collection' ? 'collection' : 'asset'}
 				</Button>
 			) : null}

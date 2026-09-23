@@ -3,9 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ThemeProvider } from 'styled-components';
 import { describe, expect, it, vi } from 'vitest';
 
-import ArweaveTransactionSync, {
-	type ArweaveSyncStep,
-} from 'features/TransactionSync/components/organisms/ArweaveTransactionSync/ArweaveTransactionSync';
+import type { ArweaveSyncStep } from 'features/TransactionSync';
+import ArweaveTransactionSync from 'features/TransactionSync/components/organisms/ArweaveTransactionSync/ArweaveTransactionSync';
 import { theme } from 'helpers/theme';
 
 function renderControl(skipKind?: 'yolo' | 'skip', confirmations = 3) {

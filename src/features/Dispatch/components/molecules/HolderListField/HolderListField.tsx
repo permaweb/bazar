@@ -5,56 +5,14 @@ import { Pressable } from 'components/atoms/Pressable';
 import { TextInput } from 'components/atoms/TextInput';
 import { Tooltip } from 'components/atoms/Tooltip';
 
-export type HolderDraftRow = { address: string; quantity: string };
-
-const EMPTY_ROW: HolderDraftRow = { address: '', quantity: '' };
-
-// A single address/quantity pair typed or pasted into one field is left alone;
-// anything carrying a newline, comma, or JSON bracket is treated as a whole
-// list and expanded across rows (the "paste a blob, autofill the form" flow).
-function looksLikeBlob(text: string): boolean {
-	const trimmed = text.trim();
-	return /[\n,]/.test(trimmed) || /^[[{]/.test(trimmed);
-}
-
-// Lenient expansion for autofill only — it fills the grid so the user can see
-// and fix their data. Strict validation/dedup still runs downstream via
-// parseHolderList, which surfaces the inline errors.
-export function expandHolderBlob(text: string): HolderDraftRow[] {
-	const trimmed = text.trim();
-	if (!trimmed) return [];
-	if (/^[[{]/.test(trimmed)) {
-		try {
-			const parsed: unknown = JSON.parse(trimmed);
-			const rows: HolderDraftRow[] = [];
-			if (Array.isArray(parsed)) {
-				for (const entry of parsed) {
-					if (Array.isArray(entry) && entry.length === 2) {
-						rows.push({ address: String(entry[0] ?? ''), quantity: String(entry[1] ?? '') });
-					} else if (entry && typeof entry === 'object') {
-						const record = entry as Record<string, unknown>;
-						rows.push({ address: String(record.address ?? ''), quantity: String(record.quantity ?? '') });
-					}
-				}
-			} else if (parsed && typeof parsed === 'object') {
-				for (const [address, quantity] of Object.entries(parsed as Record<string, unknown>)) {
-					rows.push({ address, quantity: String(quantity ?? '') });
-				}
-			}
-			return rows;
-		} catch {
-			// Not valid JSON — fall through and try CSV.
-		}
-	}
-	const rows: HolderDraftRow[] = [];
-	for (const line of trimmed.split(/\r?\n/)) {
-		const content = line.trim();
-		if (!content || content.startsWith('#')) continue;
-		const [address = '', quantity = ''] = content.split(',').map((field) => field.trim());
-		rows.push({ address, quantity });
-	}
-	return rows;
-}
+import {
+	appendHolderRow,
+	editableHolderRows,
+	type HolderDraftRow,
+	pasteHolderRows,
+	removeHolderRow,
+	updateHolderRow,
+} from '../../../model/holder-list';
 
 export default function HolderListField(props: {
 	rows: HolderDraftRow[];
@@ -63,28 +21,21 @@ export default function HolderListField(props: {
 	denomination: number;
 	ticker: string;
 }) {
-	const editable = props.rows.length ? props.rows : [EMPTY_ROW];
+	const editable = editableHolderRows(props.rows);
 	const exampleAmount = props.denomination ? '250.5' : '250';
 
-	const setRow = (index: number, patch: Partial<HolderDraftRow>) => {
-		props.onChange(editable.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+	const handleRowChange = (index: number, patch: Partial<HolderDraftRow>) => {
+		props.onChange(updateHolderRow(editable, index, patch));
 	};
-	const removeRow = (index: number) => {
-		const next = editable.filter((_, i) => i !== index);
-		props.onChange(next.length ? next : [EMPTY_ROW]);
-	};
-	const addRow = () => props.onChange([...editable, EMPTY_ROW]);
+	const handleRowRemove = (index: number) => props.onChange(removeHolderRow(editable, index));
+	const handleRowAdd = () => props.onChange(appendHolderRow(editable));
 
 	const handlePaste = (index: number, event: React.ClipboardEvent<HTMLInputElement>) => {
-		const clip = event.clipboardData.getData('text');
-		if (!looksLikeBlob(clip)) return; // single value — let it land in the field
-		const expanded = expandHolderBlob(clip);
-		if (!expanded.length) return;
+		// A single value lands in the field; a pasted list expands across the rows.
+		const pasted = pasteHolderRows(editable, index, event.clipboardData.getData('text'));
+		if (!pasted) return;
 		event.preventDefault();
-		// Keep any rows the user already filled, then append the pasted list. If
-		// the grid was just the one empty starter row, this is a clean replace.
-		const kept = editable.filter((row, i) => i !== index && (row.address || row.quantity));
-		props.onChange([...kept, ...expanded]);
+		props.onChange(pasted);
 	};
 
 	return (
@@ -123,7 +74,7 @@ export default function HolderListField(props: {
 							value={row.address}
 							disabled={props.disabled}
 							onPaste={(event) => handlePaste(index, event)}
-							onChange={(event) => setRow(index, { address: event.target.value.trim() })}
+							onChange={(event) => handleRowChange(index, { address: event.target.value.trim() })}
 						/>
 						<TextInput
 							aria-label={`Quantity in ${props.ticker}, row ${index + 1}`}
@@ -134,21 +85,21 @@ export default function HolderListField(props: {
 							value={row.quantity}
 							disabled={props.disabled}
 							onPaste={(event) => handlePaste(index, event)}
-							onChange={(event) => setRow(index, { quantity: event.target.value.trim() })}
+							onChange={(event) => handleRowChange(index, { quantity: event.target.value.trim() })}
 						/>
 						<Pressable
 							type="button"
 							className="holder-list-remove"
 							aria-label={`Remove recipient row ${index + 1}`}
 							disabled={props.disabled || (editable.length === 1 && !row.address && !row.quantity)}
-							onClick={() => removeRow(index)}
+							onClick={() => handleRowRemove(index)}
 						>
 							<X aria-hidden="true" />
 						</Pressable>
 					</div>
 				))}
 			</div>
-			<Pressable type="button" className="holder-list-add" onClick={addRow} disabled={props.disabled}>
+			<Pressable type="button" className="holder-list-add" onClick={handleRowAdd} disabled={props.disabled}>
 				<Plus aria-hidden="true" /> Add recipient
 			</Pressable>
 		</div>

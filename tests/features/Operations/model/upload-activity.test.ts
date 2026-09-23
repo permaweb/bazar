@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest';
 import type { MintActivity } from 'api/mint';
 import type { ObserverView } from 'api/transactions';
 
-import { uploadActivitySyncSteps } from 'features/Operations/model/upload-activity';
+import {
+	isUploadActivityWorking,
+	mintUploadActivity,
+	standaloneMintActivities,
+	uploadActivityDestination,
+	uploadActivitySyncSteps,
+	uploadActivityView,
+	uploadRelatedMintActivities,
+} from 'features/Operations/model/upload-activity';
 import { type UploadActivity } from 'providers/OperationActivityProvider/OperationActivityProvider';
 
 const processId = 'P'.repeat(43);
@@ -75,5 +83,117 @@ describe('upload observer lanes', () => {
 			'bravo.example',
 			'charlie.example',
 		]);
+	});
+});
+
+describe('upload activity view', () => {
+	it('prefers the tracking mint status and names what is still pending', () => {
+		expect(uploadActivityView(upload, [mint], {})).toMatchObject({
+			working: true,
+			phase: 'working',
+			status: mint.status,
+			activeStep: processId,
+			pendingAfterConfirmation: 'Waiting for live process state',
+		});
+		expect(uploadActivityView(upload, [{ ...mint, phase: 'applied' }], {}).pendingAfterConfirmation).toBe(
+			'Finishing Bazar indexing'
+		);
+		expect(uploadActivityView(upload, [], {}).status).toBe(upload.status);
+	});
+
+	it('maps each upload stage to its dialog stage', () => {
+		expect(uploadActivityView({ ...upload, phase: 'done' }, [], {})).toMatchObject({
+			working: false,
+			phase: 'done',
+		});
+		expect(uploadActivityView({ ...upload, phase: 'error' }, [], {})).toMatchObject({
+			working: false,
+			phase: 'error',
+		});
+		expect(isUploadActivityWorking({ phase: 'working' })).toBe(true);
+		expect(isUploadActivityWorking({ phase: 'done' })).toBe(false);
+	});
+
+	it('labels receipts from recorded transactions, then from submitted ids', () => {
+		expect(uploadActivityView(upload, [], {}).receiptEntries).toEqual([
+			{ label: 'Asset transaction', transactionId: processId },
+		]);
+		const collection: UploadActivity = {
+			...upload,
+			kind: 'collection',
+			transactions: [],
+			transactionIds: ['M'.repeat(43), 'C'.repeat(43)],
+		};
+		expect(uploadActivityView(collection, [], {}).receiptEntries.map((entry) => entry.label)).toEqual([
+			'Collection manifest',
+			'Collection process',
+		]);
+		expect(
+			uploadActivityView({ ...collection, extended: true }, [], {}).receiptEntries.map((entry) => entry.label)
+		).toEqual(['Collection manifest', 'Collection update']);
+		expect(
+			uploadActivityView(
+				{ ...upload, transactions: [], transactionIds: ['I'.repeat(43), processId] },
+				[],
+				{}
+			).receiptEntries.map((entry) => entry.label)
+		).toEqual(['Artwork transaction', 'Asset transaction']);
+	});
+
+	it('routes to what the upload created', () => {
+		expect(uploadActivityDestination(upload)).toBe(`/asset/created-assets/${processId}`);
+		expect(uploadActivityDestination({ ...upload, kind: 'collection', collectionId: 'collection-1' })).toBe(
+			'/collection/collection-1'
+		);
+	});
+});
+
+describe('upload and mint activity pairing', () => {
+	const otherAsset = 'B'.repeat(43);
+	const otherMint: MintActivity = {
+		...mint,
+		id: 'mint-2',
+		asset: { ...mint.asset, id: otherAsset },
+		transactionIds: [otherAsset],
+	};
+
+	it('pairs mint activities with the upload that produced them', () => {
+		expect(uploadRelatedMintActivities(upload, [mint, otherMint])).toEqual([mint]);
+		expect(
+			uploadRelatedMintActivities({ ...upload, assetId: undefined, assetIds: [otherAsset] }, [otherMint])
+		).toEqual([otherMint]);
+		expect(
+			uploadRelatedMintActivities(
+				{ ...upload, assetId: undefined, transactions: [{ id: otherAsset, label: 'Asset transaction' }] },
+				[otherMint]
+			)
+		).toEqual([otherMint]);
+		expect(uploadRelatedMintActivities({ ...upload, assetId: 'Z'.repeat(43), transactions: [] }, [mint])).toEqual(
+			[]
+		);
+	});
+
+	it('shows restored mint activities that have no upload panel', () => {
+		expect(standaloneMintActivities([mint, otherMint], [upload])).toEqual([otherMint]);
+		expect(standaloneMintActivities([otherMint], [{ ...upload, assetIds: [otherAsset] }])).toEqual([]);
+		expect(mintUploadActivity(otherMint)).toEqual({
+			id: 'mint-2',
+			owner,
+			kind: 'asset',
+			name: otherMint.asset.name,
+			phase: 'tracking',
+			status: otherMint.status,
+			createdAt: otherMint.createdAt,
+			transactionIds: [otherAsset],
+			transactions: [{ id: otherAsset, label: 'Asset transaction' }],
+			assetId: otherAsset,
+			collectionId: otherMint.collectionId,
+		});
+		expect(mintUploadActivity({ ...otherMint, transactionIds: ['A'.repeat(43), otherAsset] }).transactions).toEqual(
+			[
+				{ id: 'A'.repeat(43), label: 'Artwork transaction' },
+				{ id: otherAsset, label: 'Asset transaction' },
+			]
+		);
 	});
 });

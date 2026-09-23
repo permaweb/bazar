@@ -1,31 +1,18 @@
 import React from 'react';
 import { Check, Info, Plus, RefreshCw, X } from 'lucide-react';
 
-import { normalizeServingNodeOrigins } from 'api/marketplace';
-
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { PortalIcon } from 'components/atoms/PortalIcon';
 import { TextInput } from 'components/atoms/TextInput';
 import { Tooltip } from 'components/atoms/Tooltip';
-import {
-	AO_TRANSPORT_QUERY_PARAMETER,
-	BAZAR_AO_TRANSPORT,
-	fallbackAoPeersFromLocation,
-	gatewaysFromLocation,
-	permawebOsAoAvailable,
-	usesPermawebOsAo,
-} from 'helpers/config';
+import { useAoPeerSettings } from 'hooks/useAoPeerSettings';
 import { useMarketProvider } from 'providers/MarketProvider';
 
 export default function GatewayControl() {
 	const { pageRefreshing } = useMarketProvider();
-	const permawebOsConnected = permawebOsAoAvailable();
-	const fallbackPeers = fallbackAoPeersFromLocation(window.location);
-	const [computeValues, setComputeValues] = React.useState(() => (fallbackPeers.length ? fallbackPeers : ['']));
-	const [usePermawebOs, setUsePermawebOs] = React.useState(() => usesPermawebOsAo(window.location));
+	const settings = useAoPeerSettings();
 	const [open, setOpen] = React.useState(false);
-	const [error, setError] = React.useState('');
 	const detailsRef = React.useRef<HTMLDetailsElement>(null);
 	const triggerRef = React.useRef<HTMLElement>(null);
 	const inputRefs = React.useRef<Array<HTMLInputElement | null>>([]);
@@ -49,28 +36,19 @@ export default function GatewayControl() {
 			document.removeEventListener('keydown', closeWithEscape, true);
 		};
 	}, [open]);
-	function apply(event: React.FormEvent) {
+	function handleApply(event: React.FormEvent) {
 		event.preventDefault();
-		const parsedPeers = computeValues.map((value) => normalizeServingNodeOrigins(value, window.location.protocol));
-		const computeOrigins =
-			parsedPeers.every((origins) => origins?.length === 1) && parsedPeers.length
-				? [...new Set(parsedPeers.flatMap((origins) => origins ?? []))]
-				: null;
-		if (!computeOrigins) {
-			setError('Enter one valid HTTP or HTTPS AO-Core peer in each field.');
-			return;
-		}
-		setError('');
-		const url = new URL(window.location.href);
-		url.searchParams.set('node', computeOrigins.join(','));
-		if (permawebOsConnected && usePermawebOs) {
-			url.searchParams.delete(AO_TRANSPORT_QUERY_PARAMETER);
-		} else {
-			url.searchParams.set(AO_TRANSPORT_QUERY_PARAMETER, BAZAR_AO_TRANSPORT);
-		}
-		window.location.assign(url);
+		settings.apply();
 	}
-	const activePeers = usePermawebOs && permawebOsConnected ? gatewaysFromLocation(window.location) : fallbackPeers;
+	function handleAddPeer() {
+		const nextIndex = settings.peers.length;
+		settings.addPeer();
+		window.requestAnimationFrame(() => inputRefs.current[nextIndex]?.focus());
+	}
+	function handleRemovePeer(index: number) {
+		settings.removePeer(index);
+		window.requestAnimationFrame(() => inputRefs.current[Math.max(0, index - 1)]?.focus());
+	}
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
@@ -92,7 +70,7 @@ export default function GatewayControl() {
 				<summary
 					aria-controls="gateway-panel"
 					aria-expanded={open}
-					aria-label={`AO-Core peers, ${activePeers.join(', ')}`}
+					aria-label={`AO-Core peers, ${settings.activePeers.join(', ')}`}
 					onClick={(event) => {
 						event.preventDefault();
 						setOpen((currentOpen) => !currentOpen);
@@ -116,12 +94,12 @@ export default function GatewayControl() {
 					</Tooltip>
 				</summary>
 				<div id="gateway-panel">
-					<form onSubmit={apply}>
-						{permawebOsConnected ? (
+					<form onSubmit={handleApply}>
+						{settings.permawebOsAvailable ? (
 							<Button
-								aria-checked={usePermawebOs}
+								aria-checked={settings.usesPermawebOs}
 								className="gateway-permaweb-os-toggle"
-								onClick={() => setUsePermawebOs((current) => !current)}
+								onClick={settings.togglePermawebOs}
 								role="switch"
 								size="custom"
 								type="button"
@@ -132,7 +110,7 @@ export default function GatewayControl() {
 									<small>Use its role-aware routes and shared request state.</small>
 								</span>
 								<span className="gateway-permaweb-os-toggle-control" aria-hidden="true">
-									{usePermawebOs ? <Icon icon={Check} size="sm" /> : null}
+									{settings.usesPermawebOs ? <Icon icon={Check} size="sm" /> : null}
 								</span>
 							</Button>
 						) : null}
@@ -142,25 +120,18 @@ export default function GatewayControl() {
 								Used by Bazar when PermawebOS is unavailable or disabled above.
 							</p>
 							<div className="gateway-peer-fields">
-								{computeValues.map((value, index) => (
+								{settings.peers.map((value, index) => (
 									<div className="gateway-peer-row" key={index}>
 										<label className="sr-only" htmlFor={`gateway-peer-${index}`}>
 											Fallback AO-Core peer {index + 1}
 										</label>
 										<TextInput
-											aria-describedby={error ? 'gateway-error' : undefined}
-											aria-invalid={Boolean(error)}
+											aria-describedby={settings.peersInvalid ? 'gateway-error' : undefined}
+											aria-invalid={settings.peersInvalid}
 											autoComplete="url"
 											id={`gateway-peer-${index}`}
 											inputMode="url"
-											onChange={(event) => {
-												setComputeValues((current) =>
-													current.map((peer, peerIndex) =>
-														peerIndex === index ? event.target.value : peer
-													)
-												);
-												setError('');
-											}}
+											onChange={(event) => settings.updatePeer(index, event.target.value)}
 											placeholder="https://peer.example"
 											ref={(node) => {
 												inputRefs.current[index] = node;
@@ -168,19 +139,11 @@ export default function GatewayControl() {
 											spellCheck={false}
 											value={value}
 										/>
-										{computeValues.length > 1 ? (
+										{settings.peers.length > 1 ? (
 											<Button
 												aria-label={`Remove fallback AO-Core peer ${index + 1}`}
 												className="gateway-peer-remove"
-												onClick={() => {
-													setComputeValues((current) =>
-														current.filter((_, peerIndex) => peerIndex !== index)
-													);
-													setError('');
-													window.requestAnimationFrame(() =>
-														inputRefs.current[Math.max(0, index - 1)]?.focus()
-													);
-												}}
+												onClick={() => handleRemovePeer(index)}
 												size="custom"
 												type="button"
 												variant="ghost"
@@ -193,12 +156,7 @@ export default function GatewayControl() {
 							</div>
 							<Button
 								className="gateway-peer-add with-icon"
-								onClick={() => {
-									const nextIndex = computeValues.length;
-									setComputeValues((current) => [...current, '']);
-									setError('');
-									window.requestAnimationFrame(() => inputRefs.current[nextIndex]?.focus());
-								}}
+								onClick={handleAddPeer}
 								size="custom"
 								type="button"
 								variant="ghost"
@@ -206,9 +164,9 @@ export default function GatewayControl() {
 								<Icon icon={Plus} size="sm" /> Add peer
 							</Button>
 						</fieldset>
-						{error ? (
+						{settings.peersInvalid ? (
 							<p className="gateway-error" id="gateway-error" role="alert">
-								{error}
+								Enter one valid HTTP or HTTPS AO-Core peer in each field.
 							</p>
 						) : null}
 						<div className="gateway-apply-row">

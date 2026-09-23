@@ -1,2 +1,1 @@
-export type { ProfileEditUpdate } from './ProfilePage';
-export { profileImageError, default as ProfilePage, profileUpdateError } from './ProfilePage';
+export { default as ProfilePage } from './ProfilePage';

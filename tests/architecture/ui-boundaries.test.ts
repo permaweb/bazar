@@ -17,8 +17,6 @@ const PRESENTATION = [
 // Temporary: components whose orchestration has not moved into hooks yet. Delete each entry as it migrates; the
 // architecture migration is complete only when this list is empty.
 const PENDING_ORCHESTRATION_MIGRATION = [
-	'src/features/Activity/components/',
-
 	'src/features/AssetDetail/components/molecules/FungiblePurchaseComposer/',
 
 	'src/features/AssetDetail/components/molecules/SetProfilePictureButton/',
@@ -35,25 +33,9 @@ const PENDING_ORCHESTRATION_MIGRATION = [
 
 	'src/features/AssetDetail/components/organisms/PendingAssetDetail/',
 
-	'src/features/Catalogue/components/',
-
 	'src/features/Collection/components/',
 
-	'src/features/Create/components/',
 
-	'src/features/Dispatch/components/',
-
-	'src/features/Home/components/',
-
-	'src/features/MyAssets/components/',
-
-	'src/features/Operations/components/',
-
-	'src/features/Profile/components/',
-
-	'src/features/TransactionSync/components/',
-
-	'src/navigation/',
 ];
 
 export function runtimeApiImports(fileName: string, sourceText: string): string[] {

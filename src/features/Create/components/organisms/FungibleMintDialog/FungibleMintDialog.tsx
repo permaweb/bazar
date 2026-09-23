@@ -1,7 +1,6 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
 
-import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import type { FungibleMintPhase, FungibleMintResult } from 'api/mint';
 import type { Consensus, ObserverView } from 'api/transactions';
 
@@ -12,7 +11,7 @@ import { Loading } from 'components/atoms/Loading';
 import { TokenArtwork } from 'components/atoms/TokenArtwork';
 import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { DialogHeading } from 'components/molecules/DialogHeading';
-import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/molecules/MintTransactionReceipt';
+import { MintTransactionReceipt } from 'components/molecules/MintTransactionReceipt';
 import {
 	OperationErrorAlert,
 	OperationOutcome,
@@ -28,7 +27,9 @@ import {
 import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
 
-type FungibleMintDialogProps = {
+import { fungibleMintView } from '../../../model/mint-flow';
+
+export default function FungibleMintDialog(props: {
 	error: string | null;
 	logoPreview: string;
 	name: string;
@@ -45,9 +46,7 @@ type FungibleMintDialogProps = {
 	views: ObserverView[];
 	consensus: Consensus | null;
 	confirmations: number;
-};
-
-export default function FungibleMintDialog(props: FungibleMintDialogProps) {
+}) {
 	const dialogRef = React.useRef<HTMLElement | null>(null);
 	const [hiding, setHiding] = React.useState(false);
 	const hideTimerRef = React.useRef<number | null>(null);
@@ -76,14 +75,14 @@ export default function FungibleMintDialog(props: FungibleMintDialogProps) {
 		[]
 	);
 
-	const tokenName = props.result?.name || props.name.trim() || 'Fungible token';
-	const tokenTicker = props.result?.ticker || props.ticker.trim() || 'TKN';
-	const receiptEntries: MintTransactionReceiptEntry[] = props.result
-		? [
-				...(props.result.logo ? [{ label: 'Token logo transaction', transactionId: props.result.logo }] : []),
-				{ label: 'Token process transaction', transactionId: props.result?.processId },
-		  ]
-		: [];
+	const view = fungibleMintView(props.result, props.name, props.ticker);
+	const tokenName = view.tokenName;
+	const tokenTicker = view.tokenTicker;
+	const receiptEntries = view.receiptEntries;
+
+	const handleNavigate = (path: string | null) => {
+		if (path) props.onNavigate(path);
+	};
 
 	return (
 		<Dialog
@@ -189,19 +188,13 @@ export default function FungibleMintDialog(props: FungibleMintDialogProps) {
 					<Button
 						className="with-icon"
 						data-dialog-initial
-						onClick={() =>
-							props.onNavigate(`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${props.result?.processId}`)
-						}
+						onClick={() => handleNavigate(view.tokenPath)}
 						size="custom"
 						variant="primary"
 					>
 						View token <Icon icon={ArrowRight} size="sm" />
 					</Button>
-					<Button
-						className="with-icon"
-						onClick={() => props.onNavigate(`/dispatch/${props.result?.processId}`)}
-						size="custom"
-					>
+					<Button className="with-icon" onClick={() => handleNavigate(view.dispatchPath)} size="custom">
 						Dispatch to holders <Icon icon={ArrowRight} size="sm" />
 					</Button>
 				</div>

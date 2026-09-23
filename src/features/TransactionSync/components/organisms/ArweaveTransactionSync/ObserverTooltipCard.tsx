@@ -1,22 +1,8 @@
-import type { ObserverView } from 'api/transactions';
+import type { ObserverTooltipStage } from '../../../types';
 
 import * as S from './styles';
 
-export type ObserverTooltipStage = {
-	label: string;
-	count: number;
-	target: number;
-	state: ObserverView['state'];
-	hasError: boolean;
-};
-
-type Props = {
-	observerLabel: string;
-	stages: ObserverTooltipStage[];
-	detail: string;
-};
-
-export function ObserverTooltipCard(props: Props) {
+export function ObserverTooltipCard(props: { observerLabel: string; stages: ObserverTooltipStage[]; detail: string }) {
 	return (
 		<>
 			<S.RaceTooltipObserver>{props.observerLabel}</S.RaceTooltipObserver>

@@ -7,7 +7,7 @@ import {
 	type WalletCandidateScan,
 } from 'api/discovery';
 
-import { requestFailureKind } from 'helpers/app-error';
+import { type AppError, appError, requestFailureKind, requestFailureMessage } from 'helpers/app-error';
 
 export type CandidateSupportFailure = { candidate: AssetCandidate; error: unknown };
 
@@ -23,8 +23,174 @@ export type WalletResolutionStatus = {
 	indexRateLimited: number;
 	revalidated?: number;
 	revalidationTotal?: number;
-	error: string | null;
+	error: AppError | null;
 };
+
+/** How one candidate check ended; rate limiting is counted separately so the retry copy can explain it. */
+export type CandidateCheckOutcome = 'resolved' | 'unavailable' | 'rate-limited';
+
+/**
+ * Transitions of one wallet discovery session. Counts are adjusted as candidates are found, screened, reopened by
+ * newer activity, resolved against live state, and retried; every decrement is clamped at zero.
+ */
+export type WalletResolutionEvent =
+	/** A new discovery scope or explicit refresh starts from nothing. */
+	| { type: 'reset' }
+	/** The same scope resumes discovery after a remount or retry. */
+	| { type: 'resumed' }
+	/** A cached state was shown while a zero-age read confirms it. */
+	| { type: 'revalidation-scheduled' }
+	| { type: 'candidate-settled'; outcome: CandidateCheckOutcome }
+	| { type: 'candidate-revalidated'; outcome: CandidateCheckOutcome }
+	/** Settled candidates reopened by newer activity, with the failures they no longer count. */
+	| {
+			type: 'candidates-reopened';
+			reopened: number;
+			failures: number;
+			indexFailures: number;
+			rateLimited: number;
+			indexRateLimited: number;
+	  }
+	/** A discovered page was screened; `counted` candidates are new and `resolving` is true when any need checks. */
+	| { type: 'page-screened'; discovered: number; counted: number; resolving: boolean }
+	/** Support checks settled `checked` candidates without compute; `unavailable` of them failed. */
+	| { type: 'support-checked'; checked: number; unavailable: number; rateLimited: number }
+	| { type: 'revalidating' }
+	| { type: 'completed'; discovered: number }
+	| { type: 'failed'; error: AppError }
+	/** A retry of unavailable candidates reopens their counts. */
+	| {
+			type: 'retry-started';
+			retried: number;
+			retriedIndex: number;
+			retriedRateLimited: number;
+			retriedIndexRateLimited: number;
+	  }
+	/** A retry finished; the remaining failure sets are authoritative. */
+	| {
+			type: 'retry-completed';
+			failures: number;
+			indexFailures: number;
+			rateLimited: number;
+			indexRateLimited: number;
+	  };
+
+export function candidateCheckOutcome(error?: unknown): CandidateCheckOutcome {
+	if (!error) return 'resolved';
+	return requestFailureKind(error) === 'rate-limited' ? 'rate-limited' : 'unavailable';
+}
+
+export function walletResolutionReducer(
+	status: WalletResolutionStatus,
+	event: WalletResolutionEvent
+): WalletResolutionStatus {
+	switch (event.type) {
+		case 'reset':
+			return initialWalletResolutionStatus();
+		case 'resumed':
+			return { ...status, phase: 'discovering', error: null };
+		case 'revalidation-scheduled':
+			return { ...status, revalidationTotal: (status.revalidationTotal ?? 0) + 1 };
+		case 'candidate-settled':
+			return {
+				...status,
+				resolved: status.resolved + 1,
+				failures: status.failures + (event.outcome === 'resolved' ? 0 : 1),
+				rateLimited: status.rateLimited + (event.outcome === 'rate-limited' ? 1 : 0),
+			};
+		case 'candidate-revalidated':
+			return {
+				...status,
+				revalidated: (status.revalidated ?? 0) + 1,
+				failures: status.failures + (event.outcome === 'resolved' ? 0 : 1),
+				rateLimited: status.rateLimited + (event.outcome === 'rate-limited' ? 1 : 0),
+			};
+		case 'candidates-reopened':
+			return {
+				...status,
+				resolved: Math.max(0, status.resolved - event.reopened),
+				failures: Math.max(0, status.failures - event.failures),
+				indexFailures: Math.max(0, status.indexFailures - event.indexFailures),
+				rateLimited: Math.max(0, status.rateLimited - event.rateLimited),
+				indexRateLimited: Math.max(0, status.indexRateLimited - event.indexRateLimited),
+			};
+		case 'page-screened':
+			return {
+				...status,
+				phase: event.resolving ? 'resolving' : status.phase,
+				discovered: event.discovered,
+				total: status.total + event.counted,
+			};
+		case 'support-checked':
+			return {
+				...status,
+				resolved: status.resolved + event.checked,
+				failures: status.failures + event.unavailable,
+				indexFailures: status.indexFailures + event.unavailable,
+				rateLimited: status.rateLimited + event.rateLimited,
+				indexRateLimited: status.indexRateLimited + event.rateLimited,
+			};
+		case 'revalidating':
+			return { ...status, phase: 'revalidating', discoveryComplete: true };
+		case 'completed':
+			return {
+				...status,
+				phase: 'done',
+				discoveryComplete: true,
+				discovered: event.discovered,
+				revalidated: undefined,
+				revalidationTotal: undefined,
+			};
+		case 'failed':
+			return { ...status, phase: 'error', error: event.error };
+		case 'retry-started':
+			return {
+				...status,
+				phase: 'resolving',
+				discoveryComplete: true,
+				resolved: Math.max(0, status.resolved - event.retried),
+				failures: Math.max(0, status.failures - event.retried),
+				indexFailures: Math.max(0, status.indexFailures - event.retriedIndex),
+				rateLimited: Math.max(0, status.rateLimited - event.retriedRateLimited - event.retriedIndexRateLimited),
+				indexRateLimited: Math.max(0, status.indexRateLimited - event.retriedIndexRateLimited),
+				error: null,
+			};
+		case 'retry-completed':
+			return {
+				...status,
+				phase: 'done',
+				failures: event.failures,
+				indexFailures: event.indexFailures,
+				rateLimited: event.rateLimited,
+				indexRateLimited: event.indexRateLimited,
+			};
+	}
+}
+
+/** A failed discovery pass is reported as a transaction-index failure, keeping its rate-limit classification. */
+export function walletDiscoveryError(cause: unknown): AppError {
+	return appError(requestFailureKind(cause) === 'rate-limited' ? 'index-rate-limited' : 'index-unavailable', {
+		cause,
+	});
+}
+
+export function walletResolutionIsWorking(status: WalletResolutionStatus) {
+	return status.phase === 'discovering' || status.phase === 'resolving' || status.phase === 'revalidating';
+}
+
+/** Explains which service (the transaction index, AO compute, or both) left candidates unavailable. */
+export function walletResolutionFailureMessage(status: WalletResolutionStatus): string {
+	const computeRateLimited = status.rateLimited - status.indexRateLimited;
+	const computeFailures = status.failures - status.indexFailures;
+	return [
+		status.indexFailures
+			? requestFailureMessage('index', status.indexRateLimited ? 'rate-limited' : 'unavailable')
+			: '',
+		computeFailures ? requestFailureMessage('compute', computeRateLimited ? 'rate-limited' : 'unavailable') : '',
+	]
+		.filter(Boolean)
+		.join(' ');
+}
 
 export function refreshCandidateRetryMetadata(
 	candidate: AssetCandidate,

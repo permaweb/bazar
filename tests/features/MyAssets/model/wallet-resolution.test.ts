@@ -2,23 +2,31 @@ import { describe, expect, it } from 'vitest';
 
 import type { AssetCandidate, ResolvedAsset } from 'api/discovery';
 
-import { listedUniquePrice } from 'features/MyAssets/components/organisms/MyAssets/MyAssets';
+import { listedUniquePrice } from 'features/MyAssets/model/wallet-assets';
 import {
+	candidateCheckOutcome,
 	type CandidateSupportFailure,
 	groupWalletResults,
+	initialWalletResolutionStatus,
 	nextWalletAnnouncementProgress,
 	refreshCandidateRetryMetadata,
 	reopenWalletCandidate,
 	trackRateLimitFailure,
 	updateWalletResolvedAsset,
+	walletDiscoveryError,
 	walletDiscoveryScope,
 	walletDiscoverySession,
 	walletDiscoverySessionIsCurrent,
 	walletResolutionCopy,
+	type WalletResolutionEvent,
+	walletResolutionFailureMessage,
 	walletResolutionIsDeterminate,
+	walletResolutionIsWorking,
+	walletResolutionReducer,
 	walletResolutionShowsProgress,
+	type WalletResolutionStatus,
 } from 'features/MyAssets/model/wallet-resolution';
-import { appError } from 'helpers/app-error';
+import { appError, appErrorMessage, requestFailureMessage } from 'helpers/app-error';
 import {
 	assetGroupRevealAnnouncement,
 	assetGroupRevealComplete,
@@ -351,7 +359,7 @@ describe('My assets retry bookkeeping', () => {
 			indexFailures: 0,
 			rateLimited: 0,
 			indexRateLimited: 0,
-			error: 'Discovery interrupted.',
+			error: appError('index-unavailable'),
 		};
 
 		expect(walletResolutionIsDeterminate(interrupted)).toBe(false);
@@ -372,5 +380,156 @@ describe('My assets retry bookkeeping', () => {
 				error: null,
 			})
 		).toBe(true);
+	});
+});
+
+function reduce(events: WalletResolutionEvent[], status: WalletResolutionStatus = initialWalletResolutionStatus()) {
+	return events.reduce(walletResolutionReducer, status);
+}
+
+describe('wallet resolution state machine', () => {
+	it('classifies each candidate check once for the failure counters', () => {
+		expect(candidateCheckOutcome()).toBe('resolved');
+		expect(candidateCheckOutcome(appError('compute-rate-limited'))).toBe('rate-limited');
+		expect(candidateCheckOutcome(appError('compute-unavailable'))).toBe('unavailable');
+		expect(candidateCheckOutcome(new Error('opaque provider failure'))).toBe('unavailable');
+	});
+
+	it('counts a discovery pass from screening through revalidated completion', () => {
+		const status = reduce([
+			{ type: 'page-screened', discovered: 3, counted: 3, resolving: true },
+			{ type: 'revalidation-scheduled' },
+			{ type: 'candidate-settled', outcome: 'resolved' },
+			{ type: 'candidate-settled', outcome: 'rate-limited' },
+			{ type: 'support-checked', checked: 1, unavailable: 1, rateLimited: 0 },
+			{ type: 'revalidating' },
+			{ type: 'candidate-revalidated', outcome: 'resolved' },
+		]);
+
+		expect(status).toMatchObject({
+			phase: 'revalidating',
+			discoveryComplete: true,
+			discovered: 3,
+			total: 3,
+			resolved: 3,
+			failures: 2,
+			indexFailures: 1,
+			rateLimited: 1,
+			indexRateLimited: 0,
+			revalidated: 1,
+			revalidationTotal: 1,
+		});
+		expect(walletResolutionIsWorking(status)).toBe(true);
+
+		const done = walletResolutionReducer(status, { type: 'completed', discovered: 4 });
+		expect(done).toMatchObject({ phase: 'done', discoveryComplete: true, discovered: 4 });
+		expect(done.revalidated).toBeUndefined();
+		expect(done.revalidationTotal).toBeUndefined();
+		expect(walletResolutionIsWorking(done)).toBe(false);
+	});
+
+	it('keeps the current phase when a screened page has nothing to resolve', () => {
+		const status = reduce([{ type: 'page-screened', discovered: 5, counted: 0, resolving: false }]);
+		expect(status.phase).toBe('discovering');
+		expect(status.total).toBe(0);
+		expect(status.discovered).toBe(5);
+	});
+
+	it('reopens settled candidates without letting any counter go negative', () => {
+		const status = reduce([
+			{ type: 'candidate-settled', outcome: 'rate-limited' },
+			{
+				type: 'candidates-reopened',
+				reopened: 3,
+				failures: 2,
+				indexFailures: 1,
+				rateLimited: 4,
+				indexRateLimited: 1,
+			},
+		]);
+
+		expect(status).toMatchObject({
+			resolved: 0,
+			failures: 0,
+			indexFailures: 0,
+			rateLimited: 0,
+			indexRateLimited: 0,
+		});
+	});
+
+	it('retries unavailable candidates and adopts the remaining failure sets as authoritative', () => {
+		const failed = reduce([
+			{ type: 'page-screened', discovered: 4, counted: 4, resolving: true },
+			{ type: 'candidate-settled', outcome: 'rate-limited' },
+			{ type: 'candidate-settled', outcome: 'unavailable' },
+			{ type: 'support-checked', checked: 2, unavailable: 2, rateLimited: 1 },
+			{ type: 'completed', discovered: 4 },
+			{ type: 'failed', error: appError('unknown') },
+		]);
+		const retrying = walletResolutionReducer(failed, {
+			type: 'retry-started',
+			retried: 4,
+			retriedIndex: 2,
+			retriedRateLimited: 1,
+			retriedIndexRateLimited: 1,
+		});
+
+		expect(retrying).toMatchObject({
+			phase: 'resolving',
+			discoveryComplete: true,
+			resolved: 0,
+			failures: 0,
+			indexFailures: 0,
+			rateLimited: 0,
+			indexRateLimited: 0,
+			error: null,
+		});
+
+		const settled = walletResolutionReducer(retrying, {
+			type: 'retry-completed',
+			failures: 1,
+			indexFailures: 1,
+			rateLimited: 1,
+			indexRateLimited: 1,
+		});
+		expect(settled).toMatchObject({ phase: 'done', failures: 1, indexFailures: 1, rateLimited: 1 });
+	});
+
+	it('resumes an interrupted pass and restarts from nothing on reset', () => {
+		const interrupted = reduce([
+			{ type: 'page-screened', discovered: 2, counted: 2, resolving: true },
+			{ type: 'failed', error: walletDiscoveryError(appError('index-rate-limited')) },
+		]);
+		expect(interrupted.phase).toBe('error');
+		expect(interrupted.error?.reason).toBe('index-rate-limited');
+
+		const resumed = walletResolutionReducer(interrupted, { type: 'resumed' });
+		expect(resumed).toMatchObject({ phase: 'discovering', error: null, discovered: 2, total: 2 });
+		expect(walletResolutionReducer(resumed, { type: 'reset' })).toEqual(initialWalletResolutionStatus());
+	});
+
+	it('reports discovery failures as transaction-index failures with the original classification', () => {
+		expect(walletDiscoveryError(appError('compute-rate-limited')).reason).toBe('index-rate-limited');
+		expect(walletDiscoveryError(new Error('network down')).reason).toBe('index-unavailable');
+		expect(appErrorMessage(walletDiscoveryError(new Error('network down')))).toBe(
+			requestFailureMessage('index', 'unavailable')
+		);
+	});
+
+	it('explains which service left candidates unavailable', () => {
+		const base = initialWalletResolutionStatus();
+		expect(walletResolutionFailureMessage(base)).toBe('');
+		expect(
+			walletResolutionFailureMessage({
+				...base,
+				failures: 2,
+				indexFailures: 2,
+				indexRateLimited: 1,
+				rateLimited: 1,
+			})
+		).toBe(requestFailureMessage('index', 'rate-limited'));
+		expect(walletResolutionFailureMessage({ ...base, failures: 3, indexFailures: 1, rateLimited: 1 })).toBe(
+			`${requestFailureMessage('index', 'unavailable')} ${requestFailureMessage('compute', 'rate-limited')}`
+		);
 	});
 });

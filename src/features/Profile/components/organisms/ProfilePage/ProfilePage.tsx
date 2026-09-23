@@ -1,18 +1,15 @@
 import React from 'react';
 import { Camera, MapPin, Pencil } from 'lucide-react';
 
-import { PROFILE_AVATAR_CONTENT_TYPES, PROFILE_AVATAR_MAX_BYTES } from 'api/profile';
-
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Pressable } from 'components/atoms/Pressable';
 import { ProfileAvatar, shortProfileAddress } from 'components/molecules/ProfileIdentity';
-import { type AppErrorReason, appErrorReasonMessage, toAppError } from 'helpers/app-error';
 import type { ProfileSummary } from 'types/profile';
 
 import './ProfileRoute.css';
 
-export type ProfileRouteProps = {
+export default function ProfilePage(props: {
 	action?: React.ReactNode;
 	children?: React.ReactNode;
 	error?: string | null;
@@ -20,9 +17,7 @@ export type ProfileRouteProps = {
 	onRetry?: () => void;
 	onEdit?: (trigger: HTMLButtonElement) => void;
 	profile: ProfileSummary;
-};
-
-export default function ProfilePage(props: ProfileRouteProps) {
+}) {
 	const name = props.profile.displayName?.trim() || shortProfileAddress(props.profile.address);
 
 	return (
@@ -87,30 +82,4 @@ export default function ProfilePage(props: ProfileRouteProps) {
 			{props.children ? <section className="profile-page__content">{props.children}</section> : null}
 		</section>
 	);
-}
-
-export type ProfileEditUpdate = {
-	displayName: string;
-	displayNameChanged: boolean;
-	avatarFile: File | null;
-	removeAvatar: boolean;
-};
-
-export function profileImageError(file: File) {
-	if (!PROFILE_AVATAR_CONTENT_TYPES.includes(file.type)) return appErrorReasonMessage('invalid-profile-avatar-type');
-	if (!file.size || file.size > PROFILE_AVATAR_MAX_BYTES) return appErrorReasonMessage('invalid-profile-avatar-size');
-	return '';
-}
-
-/** Failures a profile update explains specifically; every other failure keeps the general profile copy. */
-const PROFILE_UPDATE_FAILURES = new Set<AppErrorReason>([
-	'invalid-profile-avatar',
-	'invalid-profile-avatar-type',
-	'invalid-profile-avatar-size',
-	'profile-wallet-account-changed',
-]);
-
-export function profileUpdateError(cause: unknown) {
-	const { reason } = toAppError(cause, 'profile-update-failed');
-	return appErrorReasonMessage(PROFILE_UPDATE_FAILURES.has(reason) ? reason : 'profile-update-failed');
 }

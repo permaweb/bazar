@@ -9,7 +9,6 @@ import {
 	CableTelemetryPanel,
 	configureTransactionOrbitControls,
 	createWebGLRendererSafely,
-	type Infinity3DLane,
 	retainedPhaseProgress,
 	shouldClearTransactionInspection,
 	shouldRenderProofPins,
@@ -18,6 +17,7 @@ import {
 	StageViewport,
 	TransactionRendererFallback,
 } from 'features/TransactionSync/components/organisms/TransactionSequenceCable3D/TransactionSequenceCable3D';
+import type { Infinity3DLane } from 'features/TransactionSync/types';
 import { theme } from 'helpers/theme';
 
 function fallbackLane(statusLabel: string): Infinity3DLane {

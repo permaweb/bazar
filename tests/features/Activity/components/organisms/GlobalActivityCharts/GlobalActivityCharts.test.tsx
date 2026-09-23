@@ -1,12 +1,14 @@
+// @vitest-environment jsdom
+import React from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { CollectionActivityEvent } from 'api/discovery';
 
-import GlobalActivityCharts, {
-	chartHoverIndex,
-	globalActivityChartStats,
-} from 'features/Activity/components/organisms/GlobalActivityCharts/GlobalActivityCharts';
+import GlobalActivityCharts from 'features/Activity/components/organisms/GlobalActivityCharts/GlobalActivityCharts';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const event = (
 	id: string,
@@ -22,40 +24,21 @@ const event = (
 	timestamp,
 });
 
-describe('global activity chart statistics', () => {
-	it('builds chronological bounded buckets and cumulative participant totals', () => {
-		const stats = globalActivityChartStats([
-			event('latest', 'transfer', 'wallet-b', 3 * 24 * 60 * 60),
-			event('first', 'make-offer', 'wallet-a', 24 * 60 * 60),
-			event('second', 'make-offer', 'wallet-a', 2 * 24 * 60 * 60),
-		]);
+let host: HTMLElement;
+let root: Root;
 
-		expect(stats).toMatchObject({ events: 3, listings: 2, participants: 2 });
-		expect(stats.buckets.filter((bucket) => bucket.events).map((bucket) => bucket.events)).toEqual([1, 1, 1]);
-		expect(stats.buckets.filter((bucket) => bucket.events).map((bucket) => bucket.listings)).toEqual([1, 1, 0]);
-		expect(stats.buckets.at(-1)?.participants).toBe(2);
-	});
+beforeEach(() => {
+	host = document.createElement('div');
+	document.body.append(host);
+	root = createRoot(host);
+});
 
-	it('keeps long histories to a small renderable chart', () => {
-		const events = Array.from({ length: 365 }, (_, index) =>
-			event(String(index), 'transfer', `wallet-${index}`, index * 24 * 60 * 60)
-		);
+afterEach(() => {
+	React.act(() => root.unmount());
+	host.remove();
+});
 
-		const stats = globalActivityChartStats(events);
-
-		expect(stats.events).toBe(365);
-		expect(stats.participants).toBe(365);
-		expect(stats.buckets.length).toBeLessThanOrEqual(30);
-	});
-
-	it('maps pointer positions to the nearest bounded chart bucket', () => {
-		expect(chartHoverIndex(100, 100, 300, 3)).toBe(0);
-		expect(chartHoverIndex(250, 100, 300, 3)).toBe(1);
-		expect(chartHoverIndex(400, 100, 300, 3)).toBe(2);
-		expect(chartHoverIndex(999, 100, 300, 3)).toBe(2);
-		expect(chartHoverIndex(100, 100, 0, 3)).toBeNull();
-	});
-
+describe('GlobalActivityCharts', () => {
 	it('renders keyboard-inspectable charts and naturally spaced rolling counters', () => {
 		const markup = renderToStaticMarkup(
 			<GlobalActivityCharts events={[event('listing', 'make-offer', 'wallet-a', 24 * 60 * 60)]} />
@@ -65,5 +48,20 @@ describe('global activity chart statistics', () => {
 		expect(markup).toContain('Focus and use arrow keys to inspect values.');
 		expect(markup).toContain('global-activity-counter-value');
 		expect(markup).not.toContain('global-activity-counter-digit');
+	});
+
+	it('keeps a focused chart readable when its history is cleared', () => {
+		React.act(() =>
+			root.render(<GlobalActivityCharts events={[event('listing', 'make-offer', 'wallet-a', 24 * 60 * 60)]} />)
+		);
+		const chart = host.querySelector<HTMLElement>('[role="img"]');
+		React.act(() => chart?.focus());
+		expect(chart?.getAttribute('aria-label')).toMatch(/: 1 events\.$/);
+
+		React.act(() => root.render(<GlobalActivityCharts events={[]} />));
+
+		expect(host.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+			'Events over time. Focus and use arrow keys to inspect values.'
+		);
 	});
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 
-import type { Infinity3DLane } from '../TransactionSequenceCable3D';
+import type { Infinity3DLane } from '../../../types';
 
 type BoundaryProps = React.PropsWithChildren<{
 	fallback: React.ReactNode;

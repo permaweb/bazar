@@ -10,6 +10,7 @@ export {
 } from './activity';
 export type {
 	CollectionMintEstimate,
+	CollectionMintInput,
 	CollectionMintPhase,
 	CollectionMintResult,
 	FungibleMintEstimate,
@@ -18,6 +19,7 @@ export type {
 	FungibleMintResult,
 	MintDraft,
 	MintEstimate,
+	MintInput,
 	MintPhase,
 	MintUploadTransaction,
 	UdlPreset,

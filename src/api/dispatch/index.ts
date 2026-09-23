@@ -1,4 +1,4 @@
-export type { DispatchPlan } from './adapter';
+export type { DispatchCostEstimate, DispatchPlan, DispatchRowStatus, HolderRow, ParsedHolderList } from './adapter';
 export {
 	createDispatchPlan,
 	DEFAULT_DISPATCH_BATCH_SIZE,

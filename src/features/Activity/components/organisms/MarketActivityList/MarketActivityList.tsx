@@ -4,7 +4,7 @@ import { ArrowRight, ArrowUpRight, CircleX, ShoppingCart, Tag } from 'lucide-rea
 
 import type { AssetSummary, Collection } from 'api/collections';
 import type { CollectionActivityEvent } from 'api/discovery';
-import { type AssetState, parseSwapOrder } from 'api/marketplace';
+import type { AssetState } from 'api/marketplace';
 
 import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Icon } from 'components/atoms/Icon';
@@ -12,72 +12,9 @@ import { Tooltip } from 'components/atoms/Tooltip';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { transactionExplorerUrl } from 'helpers/explorer';
 
-const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
-const absoluteTime = new Intl.DateTimeFormat(undefined, {
-	month: 'short',
-	day: 'numeric',
-	year: 'numeric',
-	hour: 'numeric',
-	minute: '2-digit',
-});
-
-function CompactActivityAmount(props: { amount: string }) {
-	const containerRef = React.useRef<HTMLSpanElement>(null);
-	const textRef = React.useRef<HTMLSpanElement>(null);
-	const [ticker, setTicker] = React.useState({ active: false, shift: 0, duration: 0 });
-
-	React.useEffect(() => {
-		const container = containerRef.current;
-		const text = textRef.current;
-		if (!container || !text) return;
-		let disposed = false;
-		const update = () => {
-			if (disposed) return;
-			const active = text.scrollWidth > container.clientWidth + 1;
-			const shift = active ? text.scrollWidth + 24 : 0;
-			const duration = active ? Math.max(4, shift / 32) : 0;
-			setTicker((current) =>
-				current.active === active && current.shift === shift && current.duration === duration
-					? current
-					: { active, shift, duration }
-			);
-		};
-		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-		observer?.observe(container);
-		window.addEventListener('resize', update);
-		void document.fonts?.ready.then(update);
-		update();
-		return () => {
-			disposed = true;
-			observer?.disconnect();
-			window.removeEventListener('resize', update);
-		};
-	}, [props.amount]);
-
-	const value = <ArCurrencyText>{props.amount}</ArCurrencyText>;
-	return (
-		<span
-			className={`activity-compact-amount${ticker.active ? ' is-overflowing' : ''}`}
-			ref={containerRef}
-			style={
-				ticker.active
-					? ({
-							'--activity-ticker-duration': `${ticker.duration}s`,
-							'--activity-ticker-shift': `-${ticker.shift}px`,
-					  } as React.CSSProperties)
-					: undefined
-			}
-		>
-			<span className="activity-compact-amount-static" ref={textRef}>
-				{value}
-			</span>
-			<span aria-hidden="true" className="activity-compact-amount-track">
-				<span>{value}</span>
-				<span>{value}</span>
-			</span>
-		</span>
-	);
-}
+import { useMarketActivityNow } from '../../../hooks/useMarketActivityNow';
+import { marketActivityRow, shortActivityValue } from '../../../model/market-activity';
+import { CompactActivityAmount } from '../../molecules/CompactActivityAmount';
 
 export default function MarketActivityList(props: {
 	ariaLabel: string;
@@ -92,25 +29,7 @@ export default function MarketActivityList(props: {
 	resolveAsset(event: CollectionActivityEvent): AssetSummary | undefined;
 	resolveCollection?(event: CollectionActivityEvent): Pick<Collection, 'id' | 'name'> | undefined;
 }) {
-	const [now, setNow] = React.useState(() => Date.now());
-	React.useEffect(() => {
-		let timer: number | undefined;
-		const schedule = () => {
-			window.clearTimeout(timer);
-			if (document.visibilityState !== 'visible') return;
-			const current = Date.now();
-			setNow(current);
-			const delay = marketActivityRefreshDelay(props.events, current);
-			if (delay !== null) timer = window.setTimeout(schedule, delay);
-		};
-		const resume = () => schedule();
-		document.addEventListener('visibilitychange', resume);
-		schedule();
-		return () => {
-			window.clearTimeout(timer);
-			document.removeEventListener('visibilitychange', resume);
-		};
-	}, [props.events]);
+	const now = useMarketActivityNow(props.events);
 	return (
 		<ul
 			aria-busy={props.loading ?? false}
@@ -120,12 +39,18 @@ export default function MarketActivityList(props: {
 		>
 			{props.events.map((event) => {
 				const asset = props.resolveAsset(event);
-				const collection = props.resolveCollection?.(event);
-				const reservation = marketActivityReservation(event, props.reservationState);
-				const headline = reservation ? (
+				const row = marketActivityRow(event, {
+					now,
+					collection: props.resolveCollection?.(event),
+					collectionId: props.collectionId,
+					reservationState: props.reservationState,
+					describeEvent: props.describeEvent,
+					eventAmount: props.eventAmount,
+				});
+				const headline = row.reservation ? (
 					<>
-						Reserved. Payment deadline at block {reservation.deadline.toLocaleString()}.
-						{reservation.expired ? (
+						Reserved. Payment deadline at block {row.reservation.deadline.toLocaleString()}.
+						{row.reservation.expired ? (
 							<>
 								{' '}
 								<span className="activity-reservation-expired">(Expired)</span>
@@ -133,28 +58,8 @@ export default function MarketActivityList(props: {
 						) : null}
 					</>
 				) : (
-					marketActivityLabel(event.action, Boolean(event.purchaseProof))
+					row.label
 				);
-				const detail = [collection?.name, (props.describeEvent ?? marketActivityDetail)(event)]
-					.filter(Boolean)
-					.join(' · ');
-				const amount = props.eventAmount?.(event) ?? '';
-				const assetCollectionId = collection?.id ?? props.collectionId;
-				const transactionId = event.purchaseProof?.transactionId ?? event.id;
-				const transactionHeight = event.purchaseProof?.height ?? event.height;
-				const timestamp = event.timestamp
-					? formatMarketActivityTimestamp(event.timestamp, now)
-					: 'Pending confirmation';
-				const absoluteTimestamp = event.timestamp
-					? formatMarketActivityAbsoluteTimestamp(event.timestamp)
-					: undefined;
-				const timestampDateTime = event.timestamp ? new Date(event.timestamp * 1_000).toISOString() : undefined;
-				const transactionLabel =
-					transactionHeight > 0
-						? `View ${
-								event.purchaseProof ? 'settlement proof' : 'submitted transaction'
-						  } included in block ${transactionHeight.toLocaleString()}`
-						: 'View submitted transaction';
 				if (props.compact ?? false) {
 					return (
 						<li className="activity-row activity-row-compact" key={event.id}>
@@ -163,13 +68,13 @@ export default function MarketActivityList(props: {
 							</span>
 							<div className="activity-compact-summary">
 								<strong>{headline}</strong>
-								{detail ? (
+								{row.detail ? (
 									<small>
-										<ArCurrencyText>{detail}</ArCurrencyText>
+										<ArCurrencyText>{row.detail}</ArCurrencyText>
 									</small>
 								) : null}
 							</div>
-							<CompactActivityAmount amount={amount || '—'} />
+							<CompactActivityAmount amount={row.amount || '—'} />
 							<div className="activity-compact-actor">
 								{event.actor ? (
 									<WalletAddress address={event.actor} label="actor" />
@@ -177,21 +82,24 @@ export default function MarketActivityList(props: {
 									<span>Unknown</span>
 								)}
 							</div>
-							<Tooltip className="activity-compact-time-wrap" content={absoluteTimestamp ?? timestamp}>
+							<Tooltip
+								className="activity-compact-time-wrap"
+								content={row.absoluteTimestamp ?? row.timestamp}
+							>
 								{(tooltipId) => (
 									<time
 										aria-describedby={tooltipId}
 										className="activity-compact-time"
-										dateTime={timestampDateTime}
+										dateTime={row.timestampDateTime}
 									>
-										{timestamp}
+										{row.timestamp}
 									</time>
 								)}
 							</Tooltip>
 							<a
-								aria-label={transactionLabel}
+								aria-label={row.transactionLabel}
 								className="activity-compact-transaction"
-								href={transactionExplorerUrl(transactionId)}
+								href={transactionExplorerUrl(row.transactionId)}
 								target="_blank"
 								rel="noreferrer"
 							>
@@ -205,31 +113,34 @@ export default function MarketActivityList(props: {
 						<span aria-hidden="true" className={`activity-icon action-${event.action}`}>
 							{marketActivitySymbol(event.action)}
 						</span>
-						<div className={`activity-main${amount ? ' has-amount' : ''}`}>
+						<div className={`activity-main${row.amount ? ' has-amount' : ''}`}>
 							<div className="activity-main-copy">
 								<strong>{headline}</strong>
-								{asset && assetCollectionId ? (
-									<Link to={`/asset/${assetCollectionId}/${asset.id}`}>{asset.name}</Link>
+								{asset && row.assetCollectionId ? (
+									<Link to={`/asset/${row.assetCollectionId}/${asset.id}`}>{asset.name}</Link>
 								) : asset ? (
 									<span>{asset.name}</span>
 								) : (
 									<span>{shortActivityValue(event.processId)}</span>
 								)}
-								<small className={detail ? undefined : 'activity-time-only'}>
-									<ArCurrencyText>{detail}</ArCurrencyText>
-									<Tooltip className="activity-mobile-time" content={absoluteTimestamp ?? timestamp}>
+								<small className={row.detail ? undefined : 'activity-time-only'}>
+									<ArCurrencyText>{row.detail}</ArCurrencyText>
+									<Tooltip
+										className="activity-mobile-time"
+										content={row.absoluteTimestamp ?? row.timestamp}
+									>
 										{(tooltipId) => (
-											<time aria-describedby={tooltipId} dateTime={timestampDateTime}>
-												{detail ? ' · ' : ''}
-												{timestamp}
+											<time aria-describedby={tooltipId} dateTime={row.timestampDateTime}>
+												{row.detail ? ' · ' : ''}
+												{row.timestamp}
 											</time>
 										)}
 									</Tooltip>
 								</small>
 							</div>
-							{amount ? (
+							{row.amount ? (
 								<strong className="activity-amount">
-									<ArCurrencyText>{amount}</ArCurrencyText>
+									<ArCurrencyText>{row.amount}</ArCurrencyText>
 								</strong>
 							) : null}
 						</div>
@@ -243,25 +154,24 @@ export default function MarketActivityList(props: {
 								)}
 							</div>
 							<div className="activity-block">
-								<Tooltip className="activity-desktop-time" content={absoluteTimestamp ?? timestamp}>
+								<Tooltip
+									className="activity-desktop-time"
+									content={row.absoluteTimestamp ?? row.timestamp}
+								>
 									{(tooltipId) => (
-										<time aria-describedby={tooltipId} dateTime={timestampDateTime}>
-											{timestamp}
+										<time aria-describedby={tooltipId} dateTime={row.timestampDateTime}>
+											{row.timestamp}
 										</time>
 									)}
 								</Tooltip>
 								<a
-									aria-label={transactionLabel}
-									href={transactionExplorerUrl(transactionId)}
+									aria-label={row.transactionLabel}
+									href={transactionExplorerUrl(row.transactionId)}
 									target="_blank"
 									rel="noreferrer"
 								>
 									<span className="activity-transaction-long" aria-hidden="true">
-										{transactionHeight > 0
-											? `View ${
-													event.purchaseProof ? 'settlement proof' : 'submitted transaction'
-											  } · included in block ${transactionHeight.toLocaleString()}`
-											: 'View submitted transaction'}
+										{row.transactionSummary}
 									</span>
 									<span className="activity-transaction-short" aria-hidden="true">
 										View transaction
@@ -277,73 +187,6 @@ export default function MarketActivityList(props: {
 	);
 }
 
-export function marketActivityReservation(event: CollectionActivityEvent, state?: AssetState | null) {
-	if (event.action !== 'register-interest' || event.purchaseProof || !event.orderId || !state) return null;
-	const rawOrders = state.raw.orders;
-	if (!rawOrders || typeof rawOrders !== 'object' || Array.isArray(rawOrders)) return null;
-	const order = parseSwapOrder(event.orderId, (rawOrders as Record<string, unknown>)[event.orderId]);
-	const effectiveOrder = state.orders[event.orderId];
-	if (
-		order?.status !== 'reserved' ||
-		order.buyer !== event.actor ||
-		order.reservedUntil === undefined ||
-		!effectiveOrder ||
-		!['open', 'reserved'].includes(effectiveOrder.status)
-	) {
-		return null;
-	}
-	return { deadline: order.reservedUntil, expired: effectiveOrder.status === 'open' };
-}
-
-export function marketActivityLabel(action: CollectionActivityEvent['action'], purchaseConfirmed = false) {
-	return {
-		'make-offer': 'Listing submitted',
-		'register-interest': purchaseConfirmed ? 'Purchase confirmed' : 'Purchase submitted',
-		transfer: 'Transfer submitted',
-		'cancel-order': 'Cancellation submitted',
-	}[action];
-}
-
-export function marketActivityDetail(event: CollectionActivityEvent) {
-	if (event.action === 'make-offer' && event.asking) return `${winstonToAr(event.asking)} AR total`;
-	if (event.action === 'transfer' && event.recipient) return `To ${shortActivityValue(event.recipient)}`;
-	if (event.action === 'register-interest' && event.orderId) return `Order ${shortActivityValue(event.orderId)}`;
-	if (event.action === 'cancel-order' && event.orderId) return `Order ${shortActivityValue(event.orderId)}`;
-	return '';
-}
-
-export function formatMarketActivityTimestamp(timestamp: number, now = Date.now()) {
-	const elapsedSeconds = Math.max(1, Math.floor((now - timestamp * 1_000) / 1_000));
-	if (elapsedSeconds < 60) return relativeTime.format(-elapsedSeconds, 'second');
-	const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-	if (elapsedMinutes < 60) return relativeTime.format(-elapsedMinutes, 'minute');
-	const elapsedHours = Math.floor(elapsedMinutes / 60);
-	if (elapsedHours < 24) return relativeTime.format(-elapsedHours, 'hour');
-	const elapsedDays = Math.floor(elapsedHours / 24);
-	if (elapsedDays < 7) return relativeTime.format(-elapsedDays, 'day');
-	const elapsedWeeks = Math.floor(elapsedDays / 7);
-	if (elapsedWeeks < 4) return relativeTime.format(-elapsedWeeks, 'week');
-	const elapsedMonths = Math.max(1, Math.floor(elapsedDays / 30));
-	if (elapsedMonths < 12) return relativeTime.format(-elapsedMonths, 'month');
-	return relativeTime.format(-Math.floor(elapsedDays / 365), 'year');
-}
-
-export function formatMarketActivityAbsoluteTimestamp(timestamp: number) {
-	return absoluteTime.format(new Date(timestamp * 1000));
-}
-
-export function marketActivityRefreshDelay(events: CollectionActivityEvent[], now = Date.now()) {
-	let delay = Number.POSITIVE_INFINITY;
-	for (const event of events) {
-		if (!event.timestamp) continue;
-		const elapsed = Math.max(0, now - event.timestamp * 1_000);
-		const interval =
-			elapsed < 60_000 ? 1_000 : elapsed < 3_600_000 ? 60_000 : elapsed < 86_400_000 ? 3_600_000 : 86_400_000;
-		delay = Math.min(delay, interval - (elapsed % interval));
-	}
-	return Number.isFinite(delay) ? Math.max(250, delay + 20) : null;
-}
-
 function marketActivitySymbol(action: CollectionActivityEvent['action']) {
 	const ActivityIcon = {
 		'make-offer': Tag,
@@ -352,12 +195,4 @@ function marketActivitySymbol(action: CollectionActivityEvent['action']) {
 		'cancel-order': CircleX,
 	}[action];
 	return <ActivityIcon className="ui-icon" aria-hidden="true" />;
-}
-
-function shortActivityValue(value: string) {
-	return `${value.slice(0, 6)}…${value.slice(-5)}`;
-}
-
-function winstonToAr(value: string) {
-	return (Number(value) / 1_000_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 12 });
 }

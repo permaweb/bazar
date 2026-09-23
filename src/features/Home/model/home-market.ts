@@ -196,15 +196,29 @@ export function homeFloorScanSummary(scan: HomeFloorScan): HomeMarketSummary {
 	return { status: 'resolved', value: floor === null ? null : `${winstonToAr(floor.toString())} AR` };
 }
 
+export type HomeSummaryRetryGroup = 'assets' | 'collections';
+
 export type HomeSummaryRetryRun = {
 	token: number;
-	pending: Set<'assets' | 'collections'>;
+	pending: Set<HomeSummaryRetryGroup>;
 };
+
+// The next retry run over every group with failures, or null when nothing failed.
+export function startHomeSummaryRetry(
+	run: HomeSummaryRetryRun,
+	failedAssetIds: string[],
+	failedCollectionIds: string[]
+): HomeSummaryRetryRun | null {
+	const pending = new Set<HomeSummaryRetryGroup>();
+	if (failedAssetIds.length) pending.add('assets');
+	if (failedCollectionIds.length) pending.add('collections');
+	return pending.size ? { token: run.token + 1, pending } : null;
+}
 
 export function completeHomeSummaryRetryGroup(
 	run: HomeSummaryRetryRun,
 	token: number,
-	group: 'assets' | 'collections',
+	group: HomeSummaryRetryGroup,
 	activeRequests: number
 ) {
 	if (run.token !== token || activeRequests > 0 || !run.pending.has(group)) return false;
@@ -375,7 +389,31 @@ export function homeTokenPriceChangePercent(
 	return Number(scaled) / 100;
 }
 
-export function homeTokenPriceChangeLabel(change: number | null | 'unavailable') {
+export type HomeTokenPriceChange = number | null | 'unavailable';
+
+export const HOME_TOKEN_PRICE_EVENT_LIMIT = 200;
+
+// Each token's 24-hour ask change from one shared read of recent listings. A read that hit its event limit may have
+// missed older listings in the window, so it reports no change rather than a misleading one.
+export function homeTokenPriceChanges(
+	tokenIds: string[],
+	events: CollectionActivityEvent[],
+	now: number
+): Record<string, HomeTokenPriceChange> {
+	const windowComplete = events.length < HOME_TOKEN_PRICE_EVENT_LIMIT;
+	return Object.fromEntries(
+		tokenIds.map((tokenId) => [
+			tokenId,
+			homeTokenPriceChangePercent(
+				events.filter((event) => event.processId === tokenId),
+				now,
+				windowComplete
+			),
+		])
+	);
+}
+
+export function homeTokenPriceChangeLabel(change: HomeTokenPriceChange) {
 	if (change === null || change === 'unavailable' || !Number.isFinite(change)) return '—';
 	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 }

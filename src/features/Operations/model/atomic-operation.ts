@@ -56,6 +56,14 @@ export function atomicPurchaseSequence(state: PurchaseState | null): AtomicPurch
 	}));
 }
 
+export const ASSET_BALANCE_STATE_NOTICE =
+	'The configured AO routes returned token and order state without a complete holder balance table. Bazar cannot safely verify wallet ownership or liquid balances, so new purchases, listings, cancellations, transfers, and holder-list dispatches are paused. Saved signed actions remain available for recovery.';
+
+/** Why new mutations are paused for this asset state, or `null` when its holder balances can be verified. */
+export function assetBalanceStateNotice(state: Pick<AssetState, 'holderBalancesAvailable'>): string | null {
+	return assetBalanceStateAvailable(state) ? null : ASSET_BALANCE_STATE_NOTICE;
+}
+
 export function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
 	for (let index = 0; index < storage.length; index += 1) {
 		if (storage.key(index)?.startsWith('bazar-signed-transaction:')) return true;
@@ -212,6 +220,12 @@ export function pendingListingFailure(offer: PendingAssetOffer, signer: string):
 	});
 }
 
+/** The pending listing that blocks a new one, preferring the signer's own submission, as its refusal. */
+export function pendingListingsFailure(offers: PendingAssetOffer[], signer: string): AppError | null {
+	const offer = offers.find((candidate) => candidate.actor === signer) ?? offers[0];
+	return offer ? pendingListingFailure(offer, signer) : null;
+}
+
 /** Operation copy for an application error, naming the exact pending listing when one blocked signing. */
 export function atomicOperationFailureMessage(error: AppError, signer: string): string {
 	const pendingListing =
@@ -253,16 +267,6 @@ export function purchaseSnapshot(state: PurchaseState): PurchaseSnapshot {
 
 export function currentPurchaseGatewayContext() {
 	return { arweave: arweaveGatewayFromLocation(), compute: gatewayFromLocation() };
-}
-
-export function purchaseGatewayForRecovery(key: string) {
-	try {
-		const gateway = JSON.parse(localStorage.getItem(key) ?? 'null')?.gateway;
-		if (typeof gateway?.arweave === 'string' && typeof gateway?.compute === 'string') return gateway;
-	} catch {
-		// The recovery owner will discard malformed records before resuming them.
-	}
-	return currentPurchaseGatewayContext();
 }
 
 export function purchaseStatusMessage(state: PurchaseState | null) {

@@ -2,13 +2,14 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 import type { AssetSummary, Collection } from 'api/collections';
-import { prefetchAssetPage } from 'api/marketplace';
 
 import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { AudioArtwork } from 'components/atoms/AudioArtwork';
 import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { isAudioContentType } from 'helpers/asset-media';
 import { short } from 'helpers/format';
+
+import { useAssetPageWarmup } from '../../../hooks/useAssetPageWarmup';
 
 export const AssetCard = React.memo(function AssetCard(props: {
 	collection: Collection;
@@ -19,14 +20,15 @@ export const AssetCard = React.memo(function AssetCard(props: {
 	collectionContext?: boolean;
 	priority?: boolean;
 }) {
+	const warmAssetPage = useAssetPageWarmup(props.asset.id, props.collection.kind === 'tokens');
 	return (
 		<Link
 			className={`asset-card${props.collection.kind === 'tokens' ? ' token-asset-card' : ''}${
 				props.collectionContext ?? false ? ' collection-context' : ''
 			}`}
-			onFocus={() => prefetchAssetPage(props.asset.id, props.collection.kind === 'tokens')}
-			onMouseEnter={() => prefetchAssetPage(props.asset.id, props.collection.kind === 'tokens')}
-			onTouchStart={() => prefetchAssetPage(props.asset.id, props.collection.kind === 'tokens')}
+			onFocus={warmAssetPage}
+			onMouseEnter={warmAssetPage}
+			onTouchStart={warmAssetPage}
 			to={`/asset/${props.collection.id}/${props.asset.id}`}
 		>
 			<div className="asset-media">

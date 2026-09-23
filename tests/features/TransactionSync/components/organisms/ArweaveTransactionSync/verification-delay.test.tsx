@@ -4,9 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { ObserverView } from 'api/transactions';
 
-import ArweaveTransactionSync, {
-	type ArweaveSyncStep,
-} from 'features/TransactionSync/components/organisms/ArweaveTransactionSync/ArweaveTransactionSync';
+import type { ArweaveSyncStep } from 'features/TransactionSync';
+import ArweaveTransactionSync from 'features/TransactionSync/components/organisms/ArweaveTransactionSync/ArweaveTransactionSync';
 import { theme } from 'helpers/theme';
 import LanguageProvider from 'providers/LanguageProvider/LanguageProvider';
 
