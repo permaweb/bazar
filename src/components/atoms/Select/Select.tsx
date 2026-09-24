@@ -2,7 +2,8 @@ import React from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 
 import { ArCurrencyText, formatArCurrencyText } from '../ArCurrencyLabel';
-import { Button } from '../Button';
+
+import * as S from './styles';
 
 type SelectOption<Value extends string> = {
 	value: Value;
@@ -72,15 +73,15 @@ export default function Select<Value extends string>(props: {
 	};
 
 	return (
-		<div
+		<S.Root
 			className="market-select"
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
 			}}
 			ref={rootRef}
 		>
-			{props.showLabel ?? true ? <span className="market-select-label">{props.label}</span> : null}
-			<Button
+			{props.showLabel ?? true ? <S.Label className="market-select-label">{props.label}</S.Label> : null}
+			<S.Trigger
 				aria-controls={menuId}
 				aria-expanded={open}
 				aria-haspopup="listbox"
@@ -100,13 +101,13 @@ export default function Select<Value extends string>(props: {
 					<ArCurrencyText>{selected.label}</ArCurrencyText>
 				</span>
 				<ChevronDown aria-hidden="true" />
-			</Button>
+			</S.Trigger>
 			{open ? (
-				<div aria-label={props.label} className="market-select-menu" id={menuId} role="listbox">
+				<S.Menu aria-label={props.label} className="market-select-menu" id={menuId} role="listbox">
 					{props.options.map((option, index) => {
 						const active = option.value === props.value;
 						return (
-							<Button
+							<S.Option
 								aria-selected={active}
 								className={`market-select-option${active ? ' active' : ''}`}
 								key={option.value}
@@ -136,11 +137,11 @@ export default function Select<Value extends string>(props: {
 									<ArCurrencyText>{option.label}</ArCurrencyText>
 								</span>
 								{active ? <Check aria-hidden="true" /> : null}
-							</Button>
+							</S.Option>
 						);
 					})}
-				</div>
+				</S.Menu>
 			) : null}
-		</div>
+		</S.Root>
 	);
 }

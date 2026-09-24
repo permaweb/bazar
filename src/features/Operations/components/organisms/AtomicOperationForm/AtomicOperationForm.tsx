@@ -17,6 +17,8 @@ import { OPERATIONS_MESSAGES } from '../../../messages';
 import type { PurchaseQuoteView } from '../../../model/operation-view';
 import { PurchaseQuoteSummary } from '../../molecules/PurchaseQuoteSummary';
 
+import * as S from './styles';
+
 // The details form of an atomic buy, listing, cancellation, or transfer, submitted before any wallet approval.
 export default function AtomicOperationForm(props: {
 	kind: Operation['kind'];
@@ -51,7 +53,7 @@ export default function AtomicOperationForm(props: {
 	}
 
 	return (
-		<form className="operation-form" onSubmit={handleSubmit}>
+		<S.Form className="operation-form" onSubmit={handleSubmit}>
 			<div className="dialog-form-scroll">
 				{props.kind === 'buy' ? (
 					<PurchaseQuoteSummary
@@ -98,33 +100,33 @@ export default function AtomicOperationForm(props: {
 					</label>
 				) : null}
 				{props.kind === 'transfer' && props.operationValue && !props.formError ? (
-					<div className="operation-summary transfer-review">
+					<S.Summary className="operation-summary transfer-review">
 						<span>{messages.formRecipientLabel}</span>
 						<WalletIdentity address={props.operationValue} />
 						<small>{messages.formTransferReview}</small>
-					</div>
+					</S.Summary>
 				) : null}
 				{props.kind === 'cancel' ? (
-					<div className="operation-summary">
+					<S.Summary className="operation-summary">
 						<span>{messages.formOpenListing}</span>
 						<strong>
 							<ArCurrencyText>{props.sellerPrice}</ArCurrencyText>
 						</strong>
 						<small>{messages.formCancelNote}</small>
-					</div>
+					</S.Summary>
 				) : null}
 				{props.kind === 'sell' || props.kind === 'transfer' ? (
-					<p
+					<S.FieldHelp
 						id={props.fieldHelpId}
 						className={invalid ? 'field-help field-help-error' : 'field-help'}
 						role={invalid ? 'alert' : undefined}
 					>
 						{props.formError ? <ArCurrencyText>{reasonMessage(props.formError)}</ArCurrencyText> : null}
-					</p>
+					</S.FieldHelp>
 				) : null}
-				<p className="operation-disclosure">
+				<S.Disclosure className="operation-disclosure">
 					{props.kind === 'buy' ? messages.formPurchaseDisclosure : messages.formActionDisclosure}
-				</p>
+				</S.Disclosure>
 			</div>
 			<Button
 				aria-describedby={props.kind === 'buy' ? props.quoteStatusId : undefined}
@@ -163,6 +165,6 @@ export default function AtomicOperationForm(props: {
 					<ArCurrencyText>{props.actionLabel}</ArCurrencyText>
 				)}
 			</Button>
-		</form>
+		</S.Form>
 	);
 }

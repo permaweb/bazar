@@ -27,6 +27,8 @@ import { EMPTY_HOLDER_ROW, type HolderDraftRow, holderListText } from '../../../
 import { DispatchPlanPanel } from '../../molecules/DispatchPlanPanel';
 import { HolderDispatchForm } from '../HolderDispatchForm';
 
+import * as S from './styles';
+
 /** Dispatch for one valid token process. Keyed by process ID so every piece of state belongs to one token. */
 export default function TokenDispatch(props: { processId: string }) {
 	const messages = useMessages(DISPATCH_MESSAGES);
@@ -53,8 +55,8 @@ export default function TokenDispatch(props: { processId: string }) {
 	};
 
 	return (
-		<section className="create-page dispatch-page">
-			<div className="create-heading">
+		<S.Page className="create-page dispatch-page">
+			<S.Heading className="create-heading">
 				<div>
 					<Eyebrow>{messages.dispatchTokenEyebrow}</Eyebrow>
 					<h1>
@@ -64,11 +66,11 @@ export default function TokenDispatch(props: { processId: string }) {
 					</h1>
 				</div>
 				<p>{messages.dispatchTokenIntro}</p>
-			</div>
+			</S.Heading>
 
 			{isAsyncPending(dispatchToken.token) ? <Loading label={messages.dispatchTokenLoading} /> : null}
 			{asyncError(dispatchToken.token) ? (
-				<div className="mint-recovery" role="status">
+				<S.Recovery className="mint-recovery" role="status">
 					<div>
 						<strong>{messages.dispatchTokenUnreadableTitle}</strong>
 						<span>{messages.dispatchTokenUnreadableDetail}</span>
@@ -78,11 +80,11 @@ export default function TokenDispatch(props: { processId: string }) {
 							<Icon icon={RefreshCw} size="sm" /> {messages.dispatchTokenRetry}
 						</Button>
 					</div>
-				</div>
+				</S.Recovery>
 			) : null}
 
 			{token ? (
-				<div className="dispatch-token-summary">
+				<S.TokenSummary className="dispatch-token-summary">
 					<TokenArtwork
 						subtitle={messages.dispatchTokenArtworkSubtitle}
 						ticker={token.ticker || messages.dispatchArtworkFallbackTicker}
@@ -112,7 +114,7 @@ export default function TokenDispatch(props: { processId: string }) {
 						</div>
 					</dl>
 					<Link to={tokenPagePath(props.processId)}>{messages.dispatchTokenPageLink}</Link>
-				</div>
+				</S.TokenSummary>
 			) : null}
 			{token ? <AssetBalanceStateNotice state={token} /> : null}
 
@@ -146,6 +148,6 @@ export default function TokenDispatch(props: { processId: string }) {
 					<span>{runError}</span>
 				</div>
 			) : null}
-		</section>
+		</S.Page>
 	);
 }

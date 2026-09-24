@@ -7,6 +7,8 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { OPERATIONS_MESSAGES } from '../../../messages';
 
+import * as S from './styles';
+
 // Preparation and network observation of a signed atomic operation while it is working.
 export default function AtomicOperationProgress(props: {
 	purchase: boolean;
@@ -27,10 +29,10 @@ export default function AtomicOperationProgress(props: {
 	return (
 		<>
 			{!props.steps.length ? (
-				<div className="operation-preparing">
+				<S.Preparing className="operation-preparing">
 					<Loading label={props.recovering ? messages.progressRecovering : messages.progressPreparing} />
 					<p>{props.purchase ? messages.progressPurchaseDetail : messages.progressActionDetail}</p>
-				</div>
+				</S.Preparing>
 			) : null}
 			{props.observable ? (
 				<div className="operation-working">

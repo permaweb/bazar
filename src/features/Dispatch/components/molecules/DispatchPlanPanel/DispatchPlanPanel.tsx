@@ -18,6 +18,8 @@ import {
 	shortAddress,
 } from '../../../model/dispatch';
 
+import * as S from './styles';
+
 export default function DispatchPlanPanel(props: {
 	plan: DispatchPlan;
 	progress: DispatchPlanProgress;
@@ -29,8 +31,8 @@ export default function DispatchPlanPanel(props: {
 	const messages = useMessages(DISPATCH_MESSAGES);
 
 	return (
-		<div className="dispatch-plan">
-			<div className="dispatch-plan-heading">
+		<S.Plan className="dispatch-plan">
+			<S.PlanHeading className="dispatch-plan-heading">
 				<div>
 					<strong>
 						{props.progress.complete
@@ -71,7 +73,7 @@ export default function DispatchPlanPanel(props: {
 						{props.progress.complete ? messages.dispatchPlanClear : messages.dispatchPlanDiscard}
 					</Button>
 				</div>
-			</div>
+			</S.PlanHeading>
 			{props.progress.senderMismatch ? (
 				<div className="inline-error">
 					<span>
@@ -82,13 +84,13 @@ export default function DispatchPlanPanel(props: {
 				</div>
 			) : null}
 			{props.running && props.progress.posted ? (
-				<div className="mint-notice">
+				<S.Notice className="mint-notice">
 					<Icon icon={Info} />
 					<span>{messages.dispatchPlanSettlementNotice}</span>
-				</div>
+				</S.Notice>
 			) : null}
-			<div className="dispatch-table-wrapper">
-				<table className="dispatch-table">
+			<S.TableWrapper className="dispatch-table-wrapper">
+				<S.Table className="dispatch-table">
 					<thead>
 						<tr>
 							<th scope="col">{messages.dispatchTableRecipient}</th>
@@ -98,7 +100,7 @@ export default function DispatchPlanPanel(props: {
 					</thead>
 					<tbody>
 						{props.plan.rows.map((row) => (
-							<tr key={row.address} className={`dispatch-row-${row.status}`}>
+							<S.PlanRow key={row.address} className={`dispatch-row-${row.status}`}>
 								<td>
 									<Tooltip content={row.address} placement="top">
 										{(tooltipId) => (
@@ -113,13 +115,13 @@ export default function DispatchPlanPanel(props: {
 									{row.status === 'settled' ? <Icon icon={Check} size="sm" /> : null}{' '}
 									{dispatchRowStatusLabel(row.status, messages)}
 								</td>
-							</tr>
+							</S.PlanRow>
 						))}
 					</tbody>
-				</table>
-			</div>
+				</S.Table>
+			</S.TableWrapper>
 			{props.progress.complete ? (
-				<div className="mint-success">
+				<S.Success className="mint-success">
 					<span>
 						<Check aria-hidden="true" />
 					</span>
@@ -127,8 +129,8 @@ export default function DispatchPlanPanel(props: {
 						<strong>{messages.dispatchPlanSettledTitle}</strong>
 						<p>{messages.dispatchPlanSettledDetail}</p>
 					</div>
-				</div>
+				</S.Success>
 			) : null}
-		</div>
+		</S.Plan>
 	);
 }

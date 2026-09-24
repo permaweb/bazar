@@ -1,16 +1,15 @@
 import React from 'react';
 import { Camera, MapPin, Pencil } from 'lucide-react';
 
-import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Pressable } from 'components/atoms/Pressable';
 import { ProfileAvatar, shortProfileAddress } from 'components/molecules/ProfileIdentity';
 import { useMessages } from 'providers/LanguageProvider';
 import type { ProfileSummary } from 'types/profile';
 
-import './ProfileRoute.css';
-
 import { PROFILE_MESSAGES } from '../../../messages';
+
+import * as S from './styles';
 
 export default function ProfilePage(props: {
 	action?: React.ReactNode;
@@ -25,30 +24,30 @@ export default function ProfilePage(props: {
 	const name = props.profile.displayName?.trim() || shortProfileAddress(props.profile.address);
 
 	return (
-		<section className="profile-page">
-			<section className="profile-page__hero" aria-labelledby="profile-page-title">
-				<div className="profile-page__identity">
+		<S.Page className="profile-page">
+			<S.Hero className="profile-page__hero" aria-labelledby="profile-page-title">
+				<S.Identity className="profile-page__identity">
 					{props.onEdit ? (
-						<Pressable
+						<S.AvatarButton
 							aria-label={messages.profilePageEditAvatarLabel}
 							className="profile-page__avatar-button"
 							onClick={(event) => props.onEdit?.(event.currentTarget)}
 							type="button"
 						>
 							<ProfileAvatar className="profile-page__avatar" profile={props.profile} size="large" />
-							<span aria-hidden="true" className="profile-page__avatar-edit">
+							<S.AvatarEdit aria-hidden="true" className="profile-page__avatar-edit">
 								<Icon icon={Camera} />
-							</span>
-						</Pressable>
+							</S.AvatarEdit>
+						</S.AvatarButton>
 					) : (
 						<ProfileAvatar className="profile-page__avatar" profile={props.profile} size="large" />
 					)}
-					<div className="profile-page__heading">
-						<p className="profile-page__eyebrow">{messages.profilePageEyebrow}</p>
-						<div className="profile-page__title-row">
+					<S.Heading className="profile-page__heading">
+						<S.EyebrowText className="profile-page__eyebrow">{messages.profilePageEyebrow}</S.EyebrowText>
+						<S.TitleRow className="profile-page__title-row">
 							<h1 id="profile-page-title">{name}</h1>
 							{props.onEdit ? (
-								<Button
+								<S.EditButton
 									aria-label={messages.profilePageEditLabel}
 									className="profile-page__edit-button"
 									onClick={(event) => props.onEdit?.(event.currentTarget)}
@@ -56,34 +55,34 @@ export default function ProfilePage(props: {
 									variant="ghost"
 								>
 									<Icon icon={Pencil} />
-								</Button>
+								</S.EditButton>
 							) : null}
-						</div>
-						<p className="profile-page__address" title={props.profile.address}>
+						</S.TitleRow>
+						<S.Address className="profile-page__address" title={props.profile.address}>
 							{props.profile.address}
-						</p>
-					</div>
-					{props.action ? <div className="profile-page__action">{props.action}</div> : null}
-				</div>
-				{props.profile.bio ? <p className="profile-page__bio">{props.profile.bio}</p> : null}
-			</section>
+						</S.Address>
+					</S.Heading>
+					{props.action ? <S.Action className="profile-page__action">{props.action}</S.Action> : null}
+				</S.Identity>
+				{props.profile.bio ? <S.Bio className="profile-page__bio">{props.profile.bio}</S.Bio> : null}
+			</S.Hero>
 
 			{props.isLoading ?? false ? (
-				<div aria-live="polite" className="profile-page__notice">
+				<S.Notice aria-live="polite" className="profile-page__notice">
 					<MapPin aria-hidden="true" size={16} /> {messages.profilePageResolving}
-				</div>
+				</S.Notice>
 			) : null}
 			{props.error ? (
-				<div className="profile-page__notice profile-page__notice--error" role="alert">
+				<S.Notice className="profile-page__notice profile-page__notice--error" role="alert">
 					<span>{props.error}</span>
 					{props.onRetry ? (
 						<Pressable onClick={props.onRetry} type="button">
 							{messages.profilePageRetry}
 						</Pressable>
 					) : null}
-				</div>
+				</S.Notice>
 			) : null}
-			{props.children ? <section className="profile-page__content">{props.children}</section> : null}
-		</section>
+			{props.children ? <S.Content className="profile-page__content">{props.children}</S.Content> : null}
+		</S.Page>
 	);
 }

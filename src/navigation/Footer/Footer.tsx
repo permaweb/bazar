@@ -1,13 +1,14 @@
 import { useMessages } from 'providers/LanguageProvider';
 
 import { FOOTER_MESSAGES } from './messages';
+import * as S from './styles';
 
 export default function Footer() {
 	const language = useMessages(FOOTER_MESSAGES);
 	const [attributionLead, attributionTrail] = language.footerAttribution.split('{provider}');
 	return (
-		<footer className="site-footer">
-			<div className="site-footer-content max-view-wrapper">
+		<S.Wrapper className="site-footer">
+			<S.Content className="site-footer-content max-view-wrapper">
 				<span>{language.footerProduct}</span>
 				<span>
 					{attributionLead}
@@ -16,7 +17,7 @@ export default function Footer() {
 					</a>
 					{attributionTrail}
 				</span>
-			</div>
-		</footer>
+			</S.Content>
+		</S.Wrapper>
 	);
 }

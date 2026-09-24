@@ -19,6 +19,8 @@ import { useTheme } from 'providers/ThemeProvider';
 
 import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
 
+import * as S from './styles';
+
 export type TokenPricePoint = {
 	id: string;
 	timestamp: number;
@@ -347,58 +349,58 @@ export default function TokenPriceChart(props: {
 	}, [areaSeries, direction, resolvedTheme]);
 
 	return (
-		<section
+		<S.Chart
 			className="token-price-chart"
 			aria-busy={props.loading}
 			aria-label={formatMessage(messages.priceChartLabel, { ticker: props.ticker })}
 		>
-			<div className="token-price-chart-heading">
-				<div className="token-price-quote" aria-live="polite">
+			<S.Heading className="token-price-chart-heading">
+				<S.Quote className="token-price-quote" aria-live="polite">
 					<small>{messages.priceChartFloorPrice}</small>
 					<strong>
 						{props.floorValue ? props.formatValue(props.floorValue) : messages.priceChartNoOpenAsks}
 					</strong>
 					{visiblePoints.length ? (
-						<div className="token-price-context">
+						<S.Context className="token-price-context">
 							<span data-direction={direction}>{changeLabel(change, messages)}</span>
 							<small>
 								{formatMessage(messages.priceChartOverRange, {
 									range: messages[PRICE_RANGE_CONTEXT_KEYS[range]] as string,
 								})}
 							</small>
-						</div>
+						</S.Context>
 					) : null}
-				</div>
-			</div>
+				</S.Quote>
+			</S.Heading>
 
 			{visiblePoints.length ? (
-				<div
+				<S.Plot
 					aria-label={formatMessage(messages.priceChartPlotLabel, { ticker: props.ticker })}
 					className="token-price-plot"
 					role="img"
 				>
-					<div className="token-price-tradingview" ref={chartContainerRef} />
+					<S.TradingView className="token-price-tradingview" ref={chartContainerRef} />
 					{markerPosition && areaSeries.length ? (
-						<div
+						<S.CurrentMarker
 							aria-hidden="true"
 							className="token-price-current-marker"
 							data-direction={direction}
 							style={{ left: markerPosition.x, top: markerPosition.y }}
 						>
-							<span className="token-price-current-dot" />
+							<S.CurrentDot className="token-price-current-dot" />
 							<strong>{props.formatValue(markerPoint!.value)}</strong>
-						</div>
+						</S.CurrentMarker>
 					) : null}
-				</div>
+				</S.Plot>
 			) : props.loading ? (
-				<p className="token-price-empty">{messages.priceChartLoading}</p>
+				<S.Empty className="token-price-empty">{messages.priceChartLoading}</S.Empty>
 			) : props.error ? (
-				<p className="token-price-empty">{messages.priceChartError}</p>
+				<S.Empty className="token-price-empty">{messages.priceChartError}</S.Empty>
 			) : (
-				<p className="token-price-empty">{messages.priceChartEmpty}</p>
+				<S.Empty className="token-price-empty">{messages.priceChartEmpty}</S.Empty>
 			)}
 
-			<div aria-label={messages.priceChartRangeGroup} className="token-price-ranges" role="group">
+			<S.Ranges aria-label={messages.priceChartRangeGroup} className="token-price-ranges" role="group">
 				{PRICE_RANGE_ORDER.map((option) => (
 					<Pressable
 						aria-pressed={range === option}
@@ -411,9 +413,9 @@ export default function TokenPriceChart(props: {
 						{messages[PRICE_RANGE_LABEL_KEYS[option]] as string}
 					</Pressable>
 				))}
-			</div>
+			</S.Ranges>
 			{(props.hasNextPage ?? false) && props.onLoadMore ? (
-				<div className="token-price-history-footer">
+				<S.HistoryFooter className="token-price-history-footer">
 					<Button
 						disabled={props.loadingMore ?? false}
 						onClick={props.onLoadMore}
@@ -422,14 +424,14 @@ export default function TokenPriceChart(props: {
 					>
 						{props.loadingMore ?? false ? messages.priceChartLoadingOlder : messages.priceChartLoadOlder}
 					</Button>
-				</div>
+				</S.HistoryFooter>
 			) : props.error && props.onRetry ? (
-				<div className="token-price-history-footer">
+				<S.HistoryFooter className="token-price-history-footer">
 					<Button onClick={props.onRetry} size="custom" type="button">
 						{messages.priceChartRetry}
 					</Button>
-				</div>
+				</S.HistoryFooter>
 			) : null}
-		</section>
+		</S.Chart>
 	);
 }

@@ -5,6 +5,8 @@ import { ArCurrencyText } from '../../atoms/ArCurrencyLabel';
 import { Icon } from '../../atoms/Icon';
 import { LiveRegion } from '../../atoms/LiveRegion';
 
+import * as S from './styles';
+
 export default function OperationOutcomeAnnouncement(props: { active: boolean; title: string; detail: string }) {
 	return (
 		<LiveRegion as="div" atomic>
@@ -18,13 +20,13 @@ export function OperationOutcome(
 ) {
 	return (
 		<div className="result-outcome">
-			<div className="result-status-row">
-				<h3 className="result-status-heading">
+			<S.StatusRow className="result-status-row">
+				<S.StatusHeading className="result-status-heading">
 					<Icon icon={CircleCheck} className="result-status-icon" />
 					<ArCurrencyText>{props.title}</ArCurrencyText>
-				</h3>
-				{props.status ? <span className="result-status-meta">{props.status}</span> : null}
-			</div>
+				</S.StatusHeading>
+				{props.status ? <S.StatusMeta className="result-status-meta">{props.status}</S.StatusMeta> : null}
+			</S.StatusRow>
 			{props.children}
 			<p>
 				<ArCurrencyText>{props.detail}</ArCurrencyText>
@@ -35,24 +37,24 @@ export function OperationOutcome(
 
 export function OperationErrorAlert(props: { title: string; message: string }) {
 	return (
-		<div className="result-alert" role="alert">
-			<h3 className="result-status-heading">
+		<S.Alert className="result-alert" role="alert">
+			<S.StatusHeading className="result-status-heading">
 				<Icon icon={TriangleAlert} className="result-status-icon" />
 				<ArCurrencyText>{props.title}</ArCurrencyText>
-			</h3>
+			</S.StatusHeading>
 			<p>
 				<ArCurrencyText>{props.message}</ArCurrencyText>
 			</p>
-		</div>
+		</S.Alert>
 	);
 }
 
 export function OperationExternalLink(props: React.PropsWithChildren) {
 	return (
-		<span className="operation-external-link-label">
+		<S.ExternalLink className="operation-external-link-label">
 			{props.children}
 			<Icon icon={ArrowUpRight} size="xs" />
-		</span>
+		</S.ExternalLink>
 	);
 }
 
@@ -63,9 +65,11 @@ export function OperationOutcomeSubject(props: {
 	media?: React.ReactNode;
 }) {
 	return (
-		<div className="operation-outcome-subject">
-			{props.media ? <div className="operation-outcome-subject-media">{props.media}</div> : null}
-			<div className="operation-outcome-subject-copy">
+		<S.Subject className="operation-outcome-subject">
+			{props.media ? (
+				<S.SubjectMedia className="operation-outcome-subject-media">{props.media}</S.SubjectMedia>
+			) : null}
+			<S.SubjectCopy className="operation-outcome-subject-copy">
 				<span>{props.label}</span>
 				<strong>
 					<ArCurrencyText>{props.title}</ArCurrencyText>
@@ -75,7 +79,7 @@ export function OperationOutcomeSubject(props: {
 						<ArCurrencyText>{props.detail}</ArCurrencyText>
 					</small>
 				) : null}
-			</div>
-		</div>
+			</S.SubjectCopy>
+		</S.Subject>
 	);
 }

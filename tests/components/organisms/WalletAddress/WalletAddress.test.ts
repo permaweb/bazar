@@ -26,7 +26,7 @@ describe('wallet address rendering', () => {
 
 	it('can show a selectable exact identity without adding an interactive control', () => {
 		const markup = renderToStaticMarkup(React.createElement(WalletIdentity, { address }));
-		expect(markup).toContain('class="wallet-identity"');
+		expect(markup).toMatch(/class="[^"]*\bwallet-identity\b[^"]*"/);
 		expect(markup).toContain(`>${address}</span>`);
 		expect(markup).not.toContain('<button');
 	});

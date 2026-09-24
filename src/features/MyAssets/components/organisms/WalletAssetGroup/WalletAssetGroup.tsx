@@ -19,6 +19,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { MY_ASSETS_MESSAGES, type MyAssetsMessages } from '../../../messages';
 import { walletAssetHolding, type WalletAssetKind, type WalletAssetView } from '../../../model/wallet-assets';
 
+import * as S from './styles';
+
 export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 	title: string;
 	results: ResolvedAsset[];
@@ -57,9 +59,9 @@ export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 	}, [props.address, props.kind, props.view]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
 	return (
-		<section className="asset-group">
-			<div className="asset-group-title">
-				<div className="asset-group-heading">
+		<S.Group className="asset-group">
+			<S.Title className="asset-group-title">
+				<S.Heading className="asset-group-heading">
 					<h2
 						aria-label={formatMessage(language.myAssetsGroupHeading, {
 							title: props.title,
@@ -69,7 +71,7 @@ export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 						{props.title}
 					</h2>
 					<span aria-hidden="true">{props.results.length.toLocaleString()}</span>
-				</div>
+				</S.Heading>
 				<Select<'all' | 'listed'>
 					label={formatMessage(language.myAssetsGroupViewLabel, { title: props.title })}
 					onChange={props.onViewChange}
@@ -80,10 +82,10 @@ export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 					showLabel={false}
 					value={props.view}
 				/>
-			</div>
+			</S.Title>
 			{props.results.length ? (
 				<>
-					<div className="asset-grid" id={gridId}>
+					<S.Grid className="asset-grid" id={gridId}>
 						{props.results.slice(0, limit).map((result, index) => {
 							const holding = walletAssetHolding(result, props.address, props.view);
 							return (
@@ -106,8 +108,8 @@ export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 								/>
 							);
 						})}
-					</div>
-					<p
+					</S.Grid>
+					<S.RevealStatus
 						className={
 							props.results.length > pageSize && limit >= props.results.length
 								? 'collection-result-count reveal-complete'
@@ -126,19 +128,23 @@ export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 									count: props.results.length.toLocaleString(),
 									assets: assetLabel,
 							  })}
-					</p>
+					</S.RevealStatus>
 					<LiveRegion>{revealAnnouncement}</LiveRegion>
 				</>
 			) : (
-				<p className="asset-group-empty">
+				<S.Empty className="asset-group-empty">
 					{formatMessage(props.settled ? language.myAssetsGroupEmpty : language.myAssetsGroupChecking, {
 						assets: assetLabel,
 					})}
-				</p>
+				</S.Empty>
 			)}
 			{props.results.length && limit < props.results.length ? (
 				<>
-					<span aria-hidden="true" className="progressive-reveal-sentinel" ref={progressiveRevealRef} />
+					<S.RevealSentinel
+						aria-hidden="true"
+						className="progressive-reveal-sentinel"
+						ref={progressiveRevealRef}
+					/>
 					<Button
 						aria-controls={gridId}
 						className="load-more"
@@ -168,7 +174,7 @@ export const WalletAssetGroup = React.memo(function WalletAssetGroup(props: {
 					</Button>
 				</>
 			) : null}
-		</section>
+		</S.Group>
 	);
 });
 

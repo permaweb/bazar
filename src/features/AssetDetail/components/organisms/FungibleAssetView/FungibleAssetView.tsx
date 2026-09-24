@@ -34,6 +34,8 @@ import { FungibleOrderbook } from '../FungibleOrderbook';
 import { FungibleTradeCard, type FungibleTradeMode } from '../FungibleTradeCard';
 import { TokenPriceChart } from '../TokenPriceChart';
 
+import * as S from './styles';
+
 // The synchronization view loads as its own chunk; warm it as soon as the trading view loads.
 preloadArweaveTransactionSync();
 
@@ -183,13 +185,13 @@ export default function FungibleAssetView(props: Props) {
 	}
 
 	return (
-		<section className="asset-page asset-detail-page fungible-asset-page">
+		<S.FungiblePage className="asset-page asset-detail-page fungible-asset-page">
 			<FungibleRecoveryNotices
 				activities={activities}
 				onRefresh={() => void props.onRefresh()}
 				resumeButtonRef={resumeButtonRef}
 			/>
-			<header className="fungible-token-header">
+			<S.TokenHeader className="fungible-token-header">
 				<TokenAvatar
 					className="fungible-token-avatar"
 					fetchPriority="high"
@@ -197,22 +199,22 @@ export default function FungibleAssetView(props: Props) {
 					loading="eager"
 					ticker={identity.ticker}
 				/>
-				<div className="fungible-token-identity">
-					<div className="fungible-token-title">
+				<S.TokenIdentity className="fungible-token-identity">
+					<S.TokenTitle className="fungible-token-title">
 						<h1 ref={operationFocusFallbackRef} tabIndex={-1}>
 							{identity.tickerDisplay}
 						</h1>
-						<span className="fungible-token-name">{props.asset.name}</span>
-					</div>
-					<div className="fungible-token-meta" aria-label={messages.fungibleTokenProtocolDetails}>
+						<S.TokenName className="fungible-token-name">{props.asset.name}</S.TokenName>
+					</S.TokenTitle>
+					<S.TokenMeta className="fungible-token-meta" aria-label={messages.fungibleTokenProtocolDetails}>
 						<Link to={`/collection/${props.collection.id}`}>{identity.collectionName}</Link>
 						<span>{props.state.device}</span>
 						<span>
 							{formatMessage(messages.fungibleDecimals, { denomination: props.state.denomination })}
 						</span>
-					</div>
-				</div>
-				<div className="fungible-token-balance">
+					</S.TokenMeta>
+				</S.TokenIdentity>
+				<S.TokenBalance className="fungible-token-balance">
 					<span>
 						{props.loading || props.error
 							? wallet.address
@@ -227,8 +229,8 @@ export default function FungibleAssetView(props: Props) {
 							? messages.fungibleUnavailable
 							: tokenLabel(wallet.address ? market.liquid : props.state.totalSupply, props.state)}
 					</strong>
-				</div>
-			</header>
+				</S.TokenBalance>
+			</S.TokenHeader>
 			{props.loading ? <Loading label={messages.assetDetailComputingState} /> : null}
 			{props.error ? (
 				<ErrorPanel
@@ -238,8 +240,8 @@ export default function FungibleAssetView(props: Props) {
 					secondaryAction={props.stateRecoveryAction}
 				/>
 			) : null}
-			<div className="asset-detail-layout">
-				<div className="asset-commerce-column asset-commerce-primary">
+			<S.Layout className="asset-detail-layout">
+				<S.CommerceColumn className="asset-commerce-column asset-commerce-primary">
 					<FungibleTradeCard
 						activities={activities}
 						error={props.error}
@@ -266,8 +268,8 @@ export default function FungibleAssetView(props: Props) {
 						tradeMode={tradeMode}
 						walletAddress={wallet.address}
 					/>
-				</div>
-				<div className="asset-commerce-column asset-commerce-secondary">
+				</S.CommerceColumn>
+				<S.CommerceColumn className="asset-commerce-column asset-commerce-secondary">
 					{props.collectionIndexNotice}
 					<AssetDetailTabs<FungibleAssetSection>
 						active={activeSection}
@@ -277,7 +279,7 @@ export default function FungibleAssetView(props: Props) {
 						tabs={assetTabs}
 					/>
 					{activeSection === 'market' ? (
-						<section
+						<S.MarketTabPanel
 							aria-labelledby="fungible-asset-market-tab"
 							className="asset-tab-panel fungible-market-panel"
 							id="fungible-asset-market"
@@ -336,10 +338,10 @@ export default function FungibleAssetView(props: Props) {
 								state={props.state}
 								totalCount={props.activityTotalCount}
 							/>
-						</section>
+						</S.MarketTabPanel>
 					) : null}
 					{activeSection === 'holders' ? (
-						<section
+						<S.TabPanel
 							aria-labelledby="fungible-asset-holders-tab"
 							className="asset-tab-panel"
 							id="fungible-asset-holders"
@@ -358,11 +360,11 @@ export default function FungibleAssetView(props: Props) {
 								onLimitChange={(limit) => setHolderReveal({ assetId: props.asset.id, limit })}
 								state={props.state}
 							/>
-							<p className="market-note">{messages.fungibleHolderBalancesNote}</p>
-						</section>
+							<S.MarketNote className="market-note">{messages.fungibleHolderBalancesNote}</S.MarketNote>
+						</S.TabPanel>
 					) : null}
 					{activeSection === 'about' ? (
-						<section
+						<S.TabPanel
 							aria-labelledby="fungible-asset-about-tab"
 							className="asset-tab-panel"
 							id="fungible-asset-about"
@@ -370,10 +372,10 @@ export default function FungibleAssetView(props: Props) {
 							tabIndex={0}
 						>
 							<FungibleAboutPanel assetId={props.asset.id} identity={identity} state={props.state} />
-						</section>
+						</S.TabPanel>
 					) : null}
-				</div>
-			</div>
+				</S.CommerceColumn>
+			</S.Layout>
 			{activities.walletActivities.map((activity) => (
 				<FungibleOperationDialog
 					key={`${activity.id}:${activity.createdAt ?? 0}`}
@@ -390,6 +392,6 @@ export default function FungibleAssetView(props: Props) {
 					onClose={(resumeLater, refresh) => activities.close(activity, resumeLater, refresh)}
 				/>
 			))}
-		</section>
+		</S.FungiblePage>
 	);
 }

@@ -12,6 +12,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { COLLECTION_MESSAGES } from '../../../messages';
 import type { CollectionSort, CollectionViewMode } from '../../../model/collection-market';
 
+import * as S from './styles';
+
 // Layout, search, sort, and listing filters above a collection's assets; a single-token collection shows its count.
 export default function CollectionMarketTools(props: {
 	compact: boolean;
@@ -39,8 +41,8 @@ export default function CollectionMarketTools(props: {
 		);
 	}
 	return (
-		<div className="asset-tools collection-market-tools">
-			<div className="collection-view-toggle" aria-label={language.assetLayoutLabel}>
+		<S.Tools className="asset-tools collection-market-tools">
+			<S.ViewToggle className="collection-view-toggle" aria-label={language.assetLayoutLabel}>
 				<Button
 					aria-label={language.viewComfortable}
 					aria-pressed={props.viewMode === 'comfortable'}
@@ -74,8 +76,8 @@ export default function CollectionMarketTools(props: {
 				>
 					<List aria-hidden="true" />
 				</Button>
-			</div>
-			<label className="collection-search">
+			</S.ViewToggle>
+			<S.Search className="collection-search">
 				<Search aria-hidden="true" />
 				<VisuallyHidden>
 					{formatMessage(language.searchCollection, { name: props.collectionName })}
@@ -87,9 +89,9 @@ export default function CollectionMarketTools(props: {
 					onChange={(event) => props.onQueryChange(event.target.value)}
 					placeholder={language.searchPlaceholder}
 				/>
-			</label>
-			<div className="asset-tools-controls">
-				<div className="asset-filters">
+			</S.Search>
+			<S.Controls className="asset-tools-controls">
+				<S.Filters className="asset-filters">
 					<Select<CollectionSort>
 						label={language.sortLabel}
 						onChange={props.onSortChange}
@@ -112,12 +114,12 @@ export default function CollectionMarketTools(props: {
 						showLabel={false}
 						value={props.listedOnly ? 'listed' : 'all'}
 					/>
-				</div>
+				</S.Filters>
 				<span id={props.summaryId} ref={props.statusRef} tabIndex={-1}>
 					{props.summary}
 				</span>
-			</div>
+			</S.Controls>
 			<LiveRegion>{props.announcement}</LiveRegion>
-		</div>
+		</S.Tools>
 	);
 }

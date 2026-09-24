@@ -11,6 +11,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { activityDetail, fungiblePurchaseActivityAmount } from '../../../model/fungible-operation';
 
+import * as S from './styles';
+
 const ACTIVITY_REVEAL_STEP = 8;
 
 export default function FungibleMarketActivity(props: {
@@ -41,13 +43,13 @@ export default function FungibleMarketActivity(props: {
 			  });
 
 	return (
-		<section className="asset-market-activity" aria-labelledby="fungible-market-activity-title">
-			<div className="asset-market-activity-heading">
+		<S.Activity className="asset-market-activity" aria-labelledby="fungible-market-activity-title">
+			<S.Heading className="asset-market-activity-heading">
 				<div>
 					<h2 id="fungible-market-activity-title">{messages.fungibleActivityTitle}</h2>
 					{props.loading ? <span role="status">{messages.fungibleActivityRefreshing}</span> : null}
 				</div>
-			</div>
+			</S.Heading>
 			{props.error ? (
 				<RetryNotice onRetry={props.onRetry} retryLabel={messages.fungibleActivityRetryLabel}>
 					{messages.fungibleActivityRetry}{' '}
@@ -70,11 +72,11 @@ export default function FungibleMarketActivity(props: {
 				/>
 			) : null}
 			{!props.loading && !props.error && !props.activity.length ? (
-				<p className="asset-empty-copy">{messages.fungibleActivityEmpty}</p>
+				<S.EmptyCopy className="asset-empty-copy">{messages.fungibleActivityEmpty}</S.EmptyCopy>
 			) : null}
 			{visibleRows.length < props.activity.length ? (
-				<div className="asset-market-activity-footer">
-					<p className="market-note">{loadedNote}</p>
+				<S.MarketActivityFooter className="asset-market-activity-footer">
+					<S.MarketNote className="market-note">{loadedNote}</S.MarketNote>
 					<Button
 						type="button"
 						size="custom"
@@ -89,17 +91,17 @@ export default function FungibleMarketActivity(props: {
 							).toLocaleString(),
 						})}
 					</Button>
-				</div>
+				</S.MarketActivityFooter>
 			) : props.hasNextPage ? (
-				<div className="asset-market-activity-footer">
-					<p className="market-note">{loadedNote}</p>
+				<S.MarketActivityFooter className="asset-market-activity-footer">
+					<S.MarketNote className="market-note">{loadedNote}</S.MarketNote>
 					<Button disabled={props.loadingMore} onClick={props.onLoadMore} size="custom" type="button">
 						{props.loadingMore ? messages.fungibleActivityLoadingOlder : messages.fungibleActivityLoadOlder}
 					</Button>
-				</div>
+				</S.MarketActivityFooter>
 			) : props.activity.length ? (
-				<p className="market-note">{loadedNote}</p>
+				<S.MarketNote className="market-note">{loadedNote}</S.MarketNote>
 			) : null}
-		</section>
+		</S.Activity>
 	);
 }

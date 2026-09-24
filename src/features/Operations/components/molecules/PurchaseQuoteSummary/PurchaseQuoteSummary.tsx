@@ -4,12 +4,13 @@ import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { LiveRegion } from 'components/atoms/LiveRegion';
-import { WalletAddress } from 'components/organisms/WalletAddress';
 import { formatMessage } from 'helpers/i18n';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { OPERATIONS_MESSAGES } from '../../../messages';
 import type { PurchaseQuoteView } from '../../../model/operation-view';
+
+import * as S from './styles';
 
 // The seller price, reservation minimum, fees, maximum total, and remaining balance of a new purchase, with a
 // cost re-check. A listing the network cannot quote explains why, and offers a retry only when one can help.
@@ -26,9 +27,9 @@ export default function PurchaseQuoteSummary(props: {
 	const quote = props.quote;
 	return (
 		<>
-			<div className="operation-summary">
+			<S.Summary className="operation-summary">
 				<span>{messages.labelSeller}</span>
-				<WalletAddress
+				<S.SummaryLink
 					address={props.seller}
 					className="operation-summary-link"
 					full
@@ -83,7 +84,7 @@ export default function PurchaseQuoteSummary(props: {
 				<small>
 					<ArCurrencyText>{messages.quoteSettlementNote}</ArCurrencyText>
 				</small>
-			</div>
+			</S.Summary>
 			<LiveRegion as="p" id={props.statusId}>
 				<ArCurrencyText>
 					{quote.status === 'unavailable'
@@ -98,7 +99,7 @@ export default function PurchaseQuoteSummary(props: {
 						: messages.quoteAnnouncementChecking}
 				</ArCurrencyText>
 			</LiveRegion>
-			<div
+			<S.CheckAction
 				className={quote.status === 'unavailable' ? 'inline-error retry-notice' : 'quote-check-action'}
 				role={quote.status === 'unavailable' ? 'status' : undefined}
 			>
@@ -123,7 +124,7 @@ export default function PurchaseQuoteSummary(props: {
 						{quote.status === 'ready' ? messages.quoteRefreshCosts : messages.quoteRetryCostCheck}
 					</Button>
 				) : null}
-			</div>
+			</S.CheckAction>
 		</>
 	);
 }

@@ -1,3 +1,15 @@
-// Presentation for this component still comes from its class names in apps/bazar/styles.css.
-// Move those rules here as styled-components when the component is next restyled.
-export {};
+import styled from 'styled-components';
+
+export const AssetHeading = styled.div`
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+`;
+
+export const AssetHeadingCopy = styled.div`
+	min-width: 0;
+
+	.eyebrow {
+		margin-bottom: 4px;
+	}
+`;

@@ -8,6 +8,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { DISPATCH_MESSAGES } from '../../../messages';
 import { TokenDispatch } from '../TokenDispatch';
 
+import * as S from './styles';
+
 export default function HolderDispatch() {
 	const messages = useMessages(DISPATCH_MESSAGES);
 	const params = useParams();
@@ -15,15 +17,15 @@ export default function HolderDispatch() {
 
 	if (!isArweaveId(processId)) {
 		return (
-			<section className="create-page dispatch-page">
-				<div className="create-heading">
+			<S.Page className="create-page dispatch-page">
+				<S.Heading className="create-heading">
 					<div>
 						<Eyebrow>{messages.dispatchEyebrow}</Eyebrow>
 						<h1>{messages.dispatchUnknownTokenTitle}</h1>
 					</div>
 					<p>{messages.dispatchUnknownTokenDetail}</p>
-				</div>
-			</section>
+				</S.Heading>
+			</S.Page>
 		);
 	}
 

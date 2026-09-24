@@ -15,6 +15,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { audioArtworkLabel } from '../../../model/asset-detail';
 
+import * as S from './styles';
+
 const DeferredAudioWaveformPlayer = React.lazy(async () => {
 	const module = await import('../AudioWaveformPlayer');
 	return { default: module.AudioWaveformPlayer };
@@ -25,7 +27,7 @@ export default function UniqueAssetMedia(props: { asset: AssetSummary; collectio
 	const audio = isAudioContentType(props.asset.contentType);
 	const interactive = isHtmlContentType(props.asset.contentType);
 	return (
-		<div
+		<S.HeroMedia
 			className={`asset-hero-media${audio ? ' audio-hero-media' : ''}${
 				interactive ? ' interactive-hero-media' : ''
 			}`}
@@ -36,7 +38,7 @@ export default function UniqueAssetMedia(props: { asset: AssetSummary; collectio
 					title={formatMessage(messages.uniqueMediaInteractiveArtwork, { name: props.asset.name })}
 				/>
 			) : audio ? (
-				<div className="asset-audio-player">
+				<S.AudioPlayerFrame className="asset-audio-player">
 					{props.asset.image ? (
 						<ArtworkImage
 							src={props.asset.image}
@@ -57,7 +59,7 @@ export default function UniqueAssetMedia(props: { asset: AssetSummary; collectio
 							<DeferredAudioWaveformPlayer name={props.asset.name} src={props.asset.media} />
 						</React.Suspense>
 					) : null}
-				</div>
+				</S.AudioPlayerFrame>
 			) : props.asset.image ? (
 				<ArtworkImage
 					src={props.asset.image}
@@ -72,13 +74,13 @@ export default function UniqueAssetMedia(props: { asset: AssetSummary; collectio
 				<span>{props.asset.name.slice(0, 1)}</span>
 			)}
 			{props.collection.kind !== 'names' ? (
-				<div className="asset-media-label">
+				<S.MediaLabel className="asset-media-label">
 					<span>{messages.uniqueMediaPermanentAsset}</span>
 					<strong>
 						{props.asset.contentType ?? (props.asset.image ? 'image' : props.state.device ?? 'process')}
 					</strong>
-				</div>
+				</S.MediaLabel>
 			) : null}
-		</div>
+		</S.HeroMedia>
 	);
 }

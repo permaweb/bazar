@@ -13,6 +13,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import { fungiblePurchaseTotals } from '../../../model/fungible-operation-view';
 
+import * as S from './styles';
+
 export default function FungiblePurchaseReview(props: {
 	orders: SwapOrder[];
 	quote: AsyncState<FungiblePurchaseQuote>;
@@ -34,11 +36,11 @@ export default function FungiblePurchaseReview(props: {
 					className="purchase-confirmation"
 					aria-label={messages.purchaseSummaryLabel}
 				>
-					<div className="purchase-confirmation-amount">
+					<S.Amount className="purchase-confirmation-amount">
 						<span>{messages.purchaseYouReceive}</span>
 						<strong>{tokenLabel(totals.quantity.toString(), props.state)}</strong>
-					</div>
-					<dl className="purchase-confirmation-facts">
+					</S.Amount>
+					<S.Facts className="purchase-confirmation-facts">
 						<div>
 							<dt>{messages.purchaseSellerTotal}</dt>
 							<dd>
@@ -63,7 +65,7 @@ export default function FungiblePurchaseReview(props: {
 								)}
 							</dd>
 						</div>
-						<div className="purchase-confirmation-total">
+						<S.Total className="purchase-confirmation-total">
 							<dt>{messages.purchaseMaximumTotal}</dt>
 							<dd>
 								{quoteFailed ? (
@@ -78,7 +80,7 @@ export default function FungiblePurchaseReview(props: {
 									messages.purchaseChecking
 								)}
 							</dd>
-						</div>
+						</S.Total>
 						<div>
 							<dt>{messages.purchaseWalletAfter}</dt>
 							<dd>
@@ -99,14 +101,14 @@ export default function FungiblePurchaseReview(props: {
 								)}
 							</dd>
 						</div>
-					</dl>
-					<p className="purchase-confirmation-meta">
+					</S.Facts>
+					<S.Meta className="purchase-confirmation-meta">
 						{formatMessage(messages.purchaseMeta, {
 							orders: plural(messages.purchaseMetaOrders, props.orders.length),
 							sellers: plural(messages.purchaseMetaSellers, totals.sellers),
 							approvals: props.orders.length * 2,
 						})}
-					</p>
+					</S.Meta>
 				</section>
 			) : null}
 			{props.orders.length ? (
@@ -135,9 +137,9 @@ export default function FungiblePurchaseReview(props: {
 				</RetryNotice>
 			) : null}
 			{quote?.canAfford === false ? (
-				<p className="purchase-form-error" role="alert">
+				<S.FormError className="purchase-form-error" role="alert">
 					<ArCurrencyText>{messages.purchaseInsufficientDetail}</ArCurrencyText>
-				</p>
+				</S.FormError>
 			) : null}
 		</>
 	);

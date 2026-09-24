@@ -2,12 +2,14 @@ import React from 'react';
 
 import arLogo from 'assets/ar.svg';
 
+import * as S from './styles';
+
 export default function ArCurrencyLabel() {
 	return (
-		<span className="ar-currency-label">
+		<S.Label className="ar-currency-label">
 			<img alt="" aria-hidden="true" src={arLogo} />
 			$AR
-		</span>
+		</S.Label>
 	);
 }
 

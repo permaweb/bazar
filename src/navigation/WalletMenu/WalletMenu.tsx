@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Copy, LogOut, Monitor, Moon, Sun, SunDim, UserRound, Wallet } from 'lucide-react';
+import { Copy, LogOut, Monitor, Moon, Sun, SunDim, UserRound, Wallet } from 'lucide-react';
 
 import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
@@ -15,6 +15,7 @@ import { useTheme } from 'providers/ThemeProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { WALLET_MENU_MESSAGES, type WalletMenuMessages } from './messages';
+import * as S from './styles';
 
 const THEME_OPTIONS = [
 	{ id: 'system', labelKey: 'walletMenuThemeSystem', Icon: Monitor },
@@ -86,10 +87,10 @@ export default function WalletMenu() {
 	};
 
 	return (
-		<div className="wallet-menu" ref={root}>
+		<S.Menu className="wallet-menu" ref={root}>
 			<Tooltip content={wallet.address || language.walletMenuConnect} disabled={open}>
 				{(tooltipId) => (
-					<Button
+					<S.WalletButton
 						aria-describedby={tooltipId}
 						aria-expanded={wallet.address ? open : undefined}
 						aria-haspopup={wallet.address ? 'menu' : undefined}
@@ -113,20 +114,24 @@ export default function WalletMenu() {
 					>
 						<Icon icon={Wallet} size="sm" />
 						<span>{walletLabel}</span>
-					</Button>
+					</S.WalletButton>
 				)}
 			</Tooltip>
 			{open && wallet.address ? (
-				<div aria-label={language.walletMenuOptions} className="wallet-dropdown" role="menu">
-					<div className="wallet-dropdown-header">
+				<S.Dropdown aria-label={language.walletMenuOptions} className="wallet-dropdown" role="menu">
+					<S.DropdownHeader className="wallet-dropdown-header">
 						<Icon icon={Wallet} />
 						<div>
 							<span>{language.walletMenuConnected}</span>
 							<strong>{walletLabel}</strong>
 						</div>
-					</div>
-					<div aria-label={language.walletMenuBalances} className="wallet-dropdown-balances" role="group">
-						<div className="wallet-dropdown-balance">
+					</S.DropdownHeader>
+					<S.Balances
+						aria-label={language.walletMenuBalances}
+						className="wallet-dropdown-balances"
+						role="group"
+					>
+						<S.Balance className="wallet-dropdown-balance">
 							<span>{language.walletMenuArBalance}</span>
 							<strong aria-live="polite">
 								<ArCurrencyText>
@@ -139,9 +144,9 @@ export default function WalletMenu() {
 									)}
 								</ArCurrencyText>
 							</strong>
-						</div>
+						</S.Balance>
 						{wallet.aoBalanceStatus !== 'idle' ? (
-							<div className="wallet-dropdown-balance">
+							<S.Balance className="wallet-dropdown-balance">
 								<span>{language.walletMenuAoBalance}</span>
 								<strong aria-live="polite">
 									{tokenBalanceLabel(
@@ -152,10 +157,10 @@ export default function WalletMenu() {
 										language
 									)}
 								</strong>
-							</div>
+							</S.Balance>
 						) : null}
-					</div>
-					<div className="wallet-dropdown-actions">
+					</S.Balances>
+					<S.Actions className="wallet-dropdown-actions">
 						<Button
 							onClick={() => {
 								setOpen(false);
@@ -172,11 +177,15 @@ export default function WalletMenu() {
 							<Icon icon={Copy} size="sm" />
 							{copied ? language.walletMenuCopied : language.walletMenuCopyAddress}
 						</Button>
-					</div>
-					<div aria-labelledby={appearanceLabelId} className="wallet-dropdown-appearance" role="group">
-						<span className="wallet-dropdown-section-label" id={appearanceLabelId}>
+					</S.Actions>
+					<S.Appearance
+						aria-labelledby={appearanceLabelId}
+						className="wallet-dropdown-appearance"
+						role="group"
+					>
+						<S.SectionLabel className="wallet-dropdown-section-label" id={appearanceLabelId}>
 							{language.walletMenuAppearance}
-						</span>
+						</S.SectionLabel>
 						{THEME_OPTIONS.map(({ id, labelKey, Icon }) => {
 							const active = theme.preference === id;
 							return (
@@ -191,12 +200,14 @@ export default function WalletMenu() {
 								>
 									<Icon className="ui-icon ui-icon--sm" aria-hidden="true" />
 									{language[labelKey]}
-									{active ? <Check className="theme-option-check" aria-hidden="true" /> : null}
+									{active ? (
+										<S.ThemeOptionCheck className="theme-option-check" aria-hidden="true" />
+									) : null}
 								</Button>
 							);
 						})}
-					</div>
-					<div className="wallet-dropdown-footer">
+					</S.Appearance>
+					<S.DropdownFooter className="wallet-dropdown-footer">
 						<Button
 							disabled={disconnecting}
 							onClick={() => void disconnect()}
@@ -207,11 +218,11 @@ export default function WalletMenu() {
 							<Icon icon={LogOut} size="sm" />
 							{disconnecting ? language.walletMenuDisconnecting : language.walletMenuDisconnect}
 						</Button>
-					</div>
+					</S.DropdownFooter>
 					{error ? <p role="alert">{error}</p> : null}
-				</div>
+				</S.Dropdown>
 			) : null}
-		</div>
+		</S.Menu>
 	);
 }
 

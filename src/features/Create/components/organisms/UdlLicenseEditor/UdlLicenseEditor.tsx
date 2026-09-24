@@ -6,7 +6,6 @@ import type { UdlPreset, UdlTerms } from 'api/mint';
 import udlLogo from 'assets/udl.svg';
 import { ArCurrencyLabel } from 'components/atoms/ArCurrencyLabel';
 import { Icon } from 'components/atoms/Icon';
-import { Pressable } from 'components/atoms/Pressable';
 import { SegmentedTabs } from 'components/atoms/SegmentedTabs';
 import { Select } from 'components/atoms/Select';
 import { TextInput } from 'components/atoms/TextInput';
@@ -22,6 +21,8 @@ import {
 	type UdlGrantValue,
 	udlLicenseUrl,
 } from '../../../model/udl';
+
+import * as S from './styles';
 
 function WireframeGlobeIcon() {
 	const clipId = React.useId();
@@ -54,10 +55,10 @@ function FloatingPaymentIcon() {
 	return (
 		<svg aria-hidden="true" className="ui-icon ui-icon--sm udl-payment-icon" fill="none" viewBox="0 0 24 24">
 			<g className="udl-payment-icon__pluses" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35">
-				<path className="udl-payment-icon__plus" d="M4.5 7v3M3 8.5h3" />
-				<path className="udl-payment-icon__plus" d="M19.5 5.5v3M18 7h3" />
-				<path className="udl-payment-icon__plus" d="M4.5 15v3M3 16.5h3" />
-				<path className="udl-payment-icon__plus" d="M19.5 14v3M18 15.5h3" />
+				<S.PaymentPlus className="udl-payment-icon__plus" d="M4.5 7v3M3 8.5h3" />
+				<S.PaymentPlus className="udl-payment-icon__plus" d="M19.5 5.5v3M18 7h3" />
+				<S.PaymentPlus className="udl-payment-icon__plus" d="M4.5 15v3M3 16.5h3" />
+				<S.PaymentPlus className="udl-payment-icon__plus" d="M19.5 14v3M18 15.5h3" />
 			</g>
 			<g className="udl-payment-icon__coin" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5">
 				<circle cx="12" cy="11" r="6.75" />
@@ -74,7 +75,7 @@ function AnimatedCreditBadgeIcon() {
 			<g className="udl-credit-icon__badge" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5">
 				<polygon points="12,3.5 13.88,5 16.25,4.64 17.13,6.87 19.36,7.75 19,10.12 20.5,12 19,13.88 19.36,16.25 17.13,17.13 16.25,19.36 13.88,19 12,20.5 10.12,19 7.75,19.36 6.87,17.13 4.64,16.25 5,13.88 3.5,12 5,10.12 4.64,7.75 6.87,6.87 7.75,4.64 10.12,5" />
 			</g>
-			<path
+			<S.CreditCheck
 				className="udl-credit-icon__check"
 				d="m8.5 11.7 2.2 2.2 4.8-5"
 				stroke="currentColor"
@@ -83,10 +84,10 @@ function AnimatedCreditBadgeIcon() {
 				strokeWidth="1.7"
 			/>
 			<g className="udl-credit-icon__particles" fill="currentColor">
-				<circle className="udl-credit-icon__particle" cx="5" cy="5" r="1" />
-				<circle className="udl-credit-icon__particle" cx="19" cy="5.5" r="0.9" />
-				<circle className="udl-credit-icon__particle" cx="4" cy="18" r="0.8" />
-				<circle className="udl-credit-icon__particle" cx="20" cy="18" r="1" />
+				<S.CreditParticle className="udl-credit-icon__particle" cx="5" cy="5" r="1" />
+				<S.CreditParticle className="udl-credit-icon__particle" cx="19" cy="5.5" r="0.9" />
+				<S.CreditParticle className="udl-credit-icon__particle" cx="4" cy="18" r="0.8" />
+				<S.CreditParticle className="udl-credit-icon__particle" cx="20" cy="18" r="1" />
 			</g>
 		</svg>
 	);
@@ -127,9 +128,9 @@ function UdlGrantField(props: {
 	const messages = useMessages(CREATE_MESSAGES);
 	const needsValue = udlGrantNeedsValue(props.value);
 	return (
-		<div className={needsValue ? 'udl-field udl-grant-field has-value' : 'udl-field udl-grant-field'}>
+		<S.Field className={needsValue ? 'udl-field udl-grant-field has-value' : 'udl-field udl-grant-field'}>
 			<label>{props.label}</label>
-			<div className={needsValue ? 'udl-field-control with-value' : 'udl-field-control'}>
+			<S.FieldControl className={needsValue ? 'udl-field-control with-value' : 'udl-field-control'}>
 				<Select
 					label={props.label}
 					showLabel={false}
@@ -146,8 +147,8 @@ function UdlGrantField(props: {
 				{props.value && needsValue ? (
 					<UdlGrantValueInput label={props.label} value={props.value} onChange={props.onChange} />
 				) : null}
-			</div>
-		</div>
+			</S.FieldControl>
+		</S.Field>
 	);
 }
 
@@ -158,10 +159,10 @@ function UdlGrantValueInput(props: {
 }) {
 	const messages = useMessages(CREATE_MESSAGES);
 	return (
-		<label className="udl-value">
-			<span className="udl-value-label">
+		<S.Value className="udl-value">
+			<S.ValueLabel className="udl-value-label">
 				{props.value.grant === 'revenue-share' ? messages.udlValuePercent : messages.udlValueAmount}
-			</span>
+			</S.ValueLabel>
 			<TextInput
 				aria-label={formatMessage(messages.udlValueInputLabel, {
 					label: props.label,
@@ -180,11 +181,11 @@ function UdlGrantValueInput(props: {
 				onChange={(event) => props.onChange({ ...props.value, value: event.target.value || '1' })}
 			/>
 			{props.value.grant !== 'revenue-share' ? (
-				<span className="udl-value-suffix">
+				<S.ValueSuffix className="udl-value-suffix">
 					<ArCurrencyLabel />
-				</span>
+				</S.ValueSuffix>
 			) : null}
-		</label>
+		</S.Value>
 	);
 }
 
@@ -201,8 +202,8 @@ export default function UdlLicenseEditor(props: {
 }) {
 	const messages = useMessages(CREATE_MESSAGES);
 	return (
-		<section className="create-license" aria-labelledby="mint-license-heading">
-			<div className="create-license-heading">
+		<S.License className="create-license" aria-labelledby="mint-license-heading">
+			<S.Heading className="create-license-heading">
 				<div>
 					<strong id="mint-license-heading">{messages.udlHeading}</strong>
 					<span>
@@ -219,19 +220,19 @@ export default function UdlLicenseEditor(props: {
 					onChange={(value) => props.onEnabledChange(value === 'udl')}
 					showLabel={false}
 				/>
-			</div>
+			</S.Heading>
 
 			{props.license.enabled ? (
-				<div className="udl-options">
+				<S.Options className="udl-options">
 					<p>
 						<a href={udlLicenseUrl()} target="_blank" rel="noreferrer">
 							{messages.udlReadLink} <Icon icon={ArrowUpRight} size="sm" />
 						</a>
 					</p>
-					<img alt={messages.udlLogoAlt} className="udl-options-logo" src={udlLogo} />
-					<div aria-label={messages.udlPresetsLabel} className="udl-presets" role="group">
+					<S.OptionsLogo alt={messages.udlLogoAlt} className="udl-options-logo" src={udlLogo} />
+					<S.Presets aria-label={messages.udlPresetsLabel} className="udl-presets" role="group">
 						{UDL_PRESET_OPTIONS.map((preset) => (
-							<Pressable
+							<S.Preset
 								aria-pressed={
 									props.license.configurationMode === 'configured' &&
 									props.license.preset === preset.value
@@ -241,23 +242,23 @@ export default function UdlLicenseEditor(props: {
 								onClick={() => props.onPresetApply(preset.value)}
 								type="button"
 							>
-								<div className="udl-preset-title">
+								<S.PresetTitle className="udl-preset-title">
 									{preset.icon}
 									<strong>{messages[preset.labelKey]}</strong>
-								</div>
+								</S.PresetTitle>
 								<span>{messages[preset.detailKey]}</span>
-							</Pressable>
+							</S.Preset>
 						))}
-					</div>
+					</S.Presets>
 					{props.license.configurationMode === 'configured' &&
 					props.license.preset === 'share-with-payment' ? (
-						<div className="udl-preset-payment">
-							<div className="udl-preset-payment-copy">
+						<S.PresetPayment className="udl-preset-payment">
+							<S.PresetPaymentCopy className="udl-preset-payment-copy">
 								<strong>{messages.udlOneTimeFeeTitle}</strong>
 								<span>{messages.udlOneTimeFeeDetail}</span>
-							</div>
-							<label className="udl-value udl-preset-payment-value">
-								<span className="udl-value-label">{messages.udlValueAmount}</span>
+							</S.PresetPaymentCopy>
+							<S.Value className="udl-value udl-preset-payment-value">
+								<S.ValueLabel className="udl-value-label">{messages.udlValueAmount}</S.ValueLabel>
 								<TextInput
 									aria-label={messages.udlShareWithPaymentAmountLabel}
 									className="has-currency-suffix"
@@ -271,14 +272,14 @@ export default function UdlLicenseEditor(props: {
 									}}
 									onChange={(event) => props.onShareWithPaymentAmountChange(event.target.value)}
 								/>
-								<span className="udl-value-suffix">
+								<S.ValueSuffix className="udl-value-suffix">
 									<ArCurrencyLabel />
-								</span>
-							</label>
-						</div>
+								</S.ValueSuffix>
+							</S.Value>
+						</S.PresetPayment>
 					) : null}
 
-					<details className="udl-advanced">
+					<S.Advanced className="udl-advanced">
 						<summary>
 							{messages.udlAdvancedSummary}
 							{props.license.configurationMode === 'custom'
@@ -287,7 +288,7 @@ export default function UdlLicenseEditor(props: {
 								? ''
 								: messages.udlAdvancedCustomTerms}
 						</summary>
-						<div className="udl-advanced-content">
+						<S.AdvancedContent className="udl-advanced-content">
 							<SegmentedTabs<UdlConfigurationMode>
 								active={props.license.configurationMode}
 								ariaLabel={messages.udlSourceTabsLabel}
@@ -308,23 +309,26 @@ export default function UdlLicenseEditor(props: {
 								]}
 							/>
 							{props.license.configurationMode === 'configured' ? (
-								<div
+								<S.SourcePanel
 									aria-labelledby="udl-source-configured-tab"
 									className="udl-source-panel"
 									id="udl-configured-panel"
 									role="tabpanel"
 								>
-									<section className="udl-term-section" aria-labelledby="udl-payment-terms-heading">
-										<div className="udl-term-section-heading">
+									<S.TermSection
+										className="udl-term-section"
+										aria-labelledby="udl-payment-terms-heading"
+									>
+										<S.TermSectionHeading className="udl-term-section-heading">
 											<strong id="udl-payment-terms-heading">
 												{messages.udlPaymentTermsHeading}
 											</strong>
 											<span>{messages.udlPaymentTermsDetail}</span>
-										</div>
-										<div className="udl-grid udl-payment-terms-grid">
-											<div className="udl-field">
+										</S.TermSectionHeading>
+										<S.Grid className="udl-grid udl-payment-terms-grid">
+											<S.Field className="udl-field">
 												<label>{messages.udlAccessLabel}</label>
-												<div
+												<S.FieldControl
 													className={
 														props.license.terms.accessFee
 															? 'udl-field-control with-value'
@@ -349,10 +353,10 @@ export default function UdlLicenseEditor(props: {
 														}
 													/>
 													{props.license.terms.accessFee ? (
-														<label className="udl-value">
-															<span className="udl-value-label">
+														<S.Value className="udl-value">
+															<S.ValueLabel className="udl-value-label">
 																{messages.udlValueAmount}
-															</span>
+															</S.ValueLabel>
 															<TextInput
 																aria-label={messages.udlAccessFeeAmountLabel}
 																className="has-currency-suffix"
@@ -367,13 +371,13 @@ export default function UdlLicenseEditor(props: {
 																	})
 																}
 															/>
-															<span className="udl-value-suffix">
+															<S.ValueSuffix className="udl-value-suffix">
 																<ArCurrencyLabel />
-															</span>
-														</label>
+															</S.ValueSuffix>
+														</S.Value>
 													) : null}
-												</div>
-											</div>
+												</S.FieldControl>
+											</S.Field>
 											<UdlGrantField
 												label={messages.udlDerivativesLabel}
 												value={props.license.terms.derivation}
@@ -420,20 +424,23 @@ export default function UdlLicenseEditor(props: {
 													})
 												}
 											/>
-										</div>
-									</section>
+										</S.Grid>
+									</S.TermSection>
 
-									<section className="udl-term-section" aria-labelledby="udl-other-terms-heading">
-										<div className="udl-term-section-heading">
+									<S.TermSection
+										className="udl-term-section"
+										aria-labelledby="udl-other-terms-heading"
+									>
+										<S.TermSectionHeading className="udl-term-section-heading">
 											<strong id="udl-other-terms-heading">
 												{messages.udlOtherTermsHeading}
 											</strong>
 											<span>{messages.udlOtherTermsDetail}</span>
-										</div>
+										</S.TermSectionHeading>
 
-										<div className="udl-grid udl-other-terms-grid">
-											<div className="udl-field">
-												<div className="udl-field-control">
+										<S.Grid className="udl-grid udl-other-terms-grid">
+											<S.Field className="udl-field">
+												<S.FieldControl className="udl-field-control">
 													<Select<'included' | 'excluded'>
 														label={messages.udlUnknownRightsLabel}
 														value={props.license.terms.unknownUsageRights ?? 'included'}
@@ -454,11 +461,11 @@ export default function UdlLicenseEditor(props: {
 															})
 														}
 													/>
-												</div>
-											</div>
-											<div className="udl-field">
+												</S.FieldControl>
+											</S.Field>
+											<S.Field className="udl-field">
 												<label htmlFor="udl-expiry">{messages.udlExpiryLabel}</label>
-												<div className="udl-field-control with-suffix">
+												<S.FieldControl className="udl-field-control with-suffix">
 													<TextInput
 														id="udl-expiry"
 														inputMode="numeric"
@@ -474,23 +481,23 @@ export default function UdlLicenseEditor(props: {
 														}
 													/>
 													<span>{messages.udlExpiryYears}</span>
-												</div>
-											</div>
-										</div>
-									</section>
-								</div>
+												</S.FieldControl>
+											</S.Field>
+										</S.Grid>
+									</S.TermSection>
+								</S.SourcePanel>
 							) : (
-								<section
+								<S.TermSection
 									aria-labelledby="udl-source-custom-tab"
 									className="udl-term-section udl-custom-license"
 									id="udl-custom-panel"
 									role="tabpanel"
 								>
-									<div className="udl-term-section-heading">
+									<S.TermSectionHeading className="udl-term-section-heading">
 										<strong>{messages.udlCustomHeading}</strong>
 										<span>{messages.udlCustomDetail}</span>
-									</div>
-									<div className="udl-field">
+									</S.TermSectionHeading>
+									<S.Field className="udl-field">
 										<label htmlFor="udl-custom-license-id">{messages.udlCustomIdLabel}</label>
 										<TextInput
 											aria-describedby="udl-custom-license-help"
@@ -507,7 +514,7 @@ export default function UdlLicenseEditor(props: {
 											value={props.license.customLicenseId}
 											onChange={(event) => props.onCustomLicenseIdChange(event.target.value)}
 										/>
-										<span className="udl-field-help" id="udl-custom-license-help">
+										<S.FieldHelp className="udl-field-help" id="udl-custom-license-help">
 											{props.license.customLicenseIdValid ? (
 												<a
 													href={udlLicenseUrl(props.license.customLicenseId)}
@@ -520,16 +527,16 @@ export default function UdlLicenseEditor(props: {
 											) : (
 												messages.udlCustomIdHelp
 											)}
-										</span>
-									</div>
-								</section>
+										</S.FieldHelp>
+									</S.Field>
+								</S.TermSection>
 							)}
-						</div>
-					</details>
-				</div>
+						</S.AdvancedContent>
+					</S.Advanced>
+				</S.Options>
 			) : (
-				<p className="udl-none">{messages.udlNone}</p>
+				<S.None className="udl-none">{messages.udlNone}</S.None>
 			)}
-		</section>
+		</S.License>
 	);
 }

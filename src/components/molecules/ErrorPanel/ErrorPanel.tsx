@@ -1,8 +1,9 @@
 import { ArrowRight, RefreshCw } from 'lucide-react';
 
 import { ArCurrencyText, formatArCurrencyText } from '../../atoms/ArCurrencyLabel';
-import { Button } from '../../atoms/Button';
 import { Icon } from '../../atoms/Icon';
+
+import * as S from './styles';
 
 export type ErrorPanelAction = {
 	label: string;
@@ -18,7 +19,7 @@ export default function ErrorPanel(props: {
 	secondaryAction?: ErrorPanelAction;
 }) {
 	return (
-		<div className={`error-panel${props.retryAction ? ' retry-notice' : ''}`}>
+		<S.Panel className={`error-panel${props.retryAction ? ' retry-notice' : ''}`}>
 			<strong>{props.heading}</strong>
 			<span
 				aria-label={formatArCurrencyText(`${props.heading}. ${props.message}`)}
@@ -27,9 +28,9 @@ export default function ErrorPanel(props: {
 				<ArCurrencyText>{props.message}</ArCurrencyText>
 			</span>
 			{props.retryAction || props.secondaryAction ? (
-				<div className="error-panel-actions">
+				<S.Actions className="error-panel-actions">
 					{props.retryAction ? (
-						<Button
+						<S.Action
 							className="with-icon error-panel-retry"
 							onClick={() => {
 								props.retryAction?.onClick();
@@ -37,15 +38,15 @@ export default function ErrorPanel(props: {
 							}}
 						>
 							<Icon icon={RefreshCw} size="sm" /> {props.retryAction.label}
-						</Button>
+						</S.Action>
 					) : null}
 					{props.secondaryAction ? (
-						<Button className="with-icon error-panel-action" onClick={props.secondaryAction.onClick}>
+						<S.Action className="with-icon error-panel-action" onClick={props.secondaryAction.onClick}>
 							{props.secondaryAction.label} <Icon icon={ArrowRight} size="sm" />
-						</Button>
+						</S.Action>
 					) : null}
-				</div>
+				</S.Actions>
 			) : null}
-		</div>
+		</S.Panel>
 	);
 }

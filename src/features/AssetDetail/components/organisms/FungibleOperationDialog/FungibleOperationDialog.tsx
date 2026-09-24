@@ -17,7 +17,6 @@ import {
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/molecules/TransactionDialogControl';
-import { Dialog } from 'components/organisms/Dialog';
 import { asyncData } from 'helpers/async-state';
 import { formatMessage } from 'helpers/i18n';
 import { formatTickerLabel } from 'helpers/token-display';
@@ -45,6 +44,8 @@ import { FungibleTransferFields } from '../../molecules/FungibleTransferFields';
 import { FungibleOperationFailure } from '../FungibleOperationFailure';
 import { FungibleOperationProgress } from '../FungibleOperationProgress';
 import { FungibleOperationReceipt } from '../FungibleOperationReceipt';
+
+import * as S from './styles';
 
 export default function FungibleOperationDialog(props: {
 	asset: AssetSummary;
@@ -176,7 +177,7 @@ export default function FungibleOperationDialog(props: {
 
 	const compactPurchaseForm = flow.phase === 'form' && props.operation.kind === 'buy';
 	return (
-		<Dialog
+		<S.Panel
 			backdropClassName="dialog-backdrop operation-panel-backdrop"
 			className={`dialog operation-side-panel fungible-dialog${
 				flow.phase === 'form' ? ' dialog-form-phase' : ''
@@ -234,7 +235,7 @@ export default function FungibleOperationDialog(props: {
 				/>
 			) : null}
 			{flow.phase === 'form' ? (
-				<form className="trade-form" onSubmit={handleSubmit}>
+				<S.Form className="trade-form" onSubmit={handleSubmit}>
 					<div className="dialog-form-scroll">
 						{props.operation.kind === 'sell' ? (
 							<FungibleSellFields
@@ -273,7 +274,7 @@ export default function FungibleOperationDialog(props: {
 							/>
 						) : null}
 					</div>
-					<div className="trade-form-footer">
+					<S.FormFooter className="trade-form-footer">
 						<Button
 							className={`wide${
 								props.operation.kind === 'buy' || props.operation.kind === 'sell'
@@ -297,8 +298,8 @@ export default function FungibleOperationDialog(props: {
 							) : null}
 							<ArCurrencyText>{submitAction.label}</ArCurrencyText>
 						</Button>
-					</div>
-				</form>
+					</S.FormFooter>
+				</S.Form>
 			) : null}
 			{flow.phase === 'working' ? (
 				<FungibleOperationProgress
@@ -329,6 +330,6 @@ export default function FungibleOperationDialog(props: {
 					state={props.state}
 				/>
 			) : null}
-		</Dialog>
+		</S.Panel>
 	);
 }

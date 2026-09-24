@@ -5,7 +5,6 @@ import type { AssetSummary } from 'api/collections';
 import type { Operation } from 'api/operations';
 
 import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
-import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
 import { Loading } from 'components/atoms/Loading';
@@ -23,6 +22,8 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { OPERATIONS_MESSAGES } from '../../../messages';
 import { PurchaseSettlementReceipt } from '../PurchaseSettlementReceipt';
+
+import * as S from './styles';
 
 // The confirmed result of an atomic operation with its receipt and a route back to the updated asset.
 export default function AtomicOperationOutcome(props: {
@@ -81,7 +82,7 @@ export default function AtomicOperationOutcome(props: {
 						}
 						media={
 							props.asset.image ? (
-								<ArtworkImage
+								<S.SubjectArtwork
 									alt={artworkAlt}
 									className="operation-outcome-subject-artwork"
 									decoding="async"
@@ -90,13 +91,13 @@ export default function AtomicOperationOutcome(props: {
 									unavailableLabel={messages.operationArtworkUnavailable}
 								/>
 							) : (
-								<span
+								<S.SubjectArtworkFallback
 									aria-label={artworkAlt}
 									className="operation-outcome-subject-artwork operation-outcome-subject-artwork-fallback"
 									role="img"
 								>
 									{props.asset.name.slice(0, 1)}
-								</span>
+								</S.SubjectArtworkFallback>
 							)
 						}
 					/>

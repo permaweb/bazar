@@ -13,6 +13,8 @@ import type { FungibleOperation } from '../../../model/fungible-operation';
 import { FungiblePurchaseSequence } from '../../molecules/FungiblePurchaseSequence';
 import { DeferredTransactionSync as ArweaveTransactionSync } from '../DeferredTransactionSync';
 
+import * as S from './styles';
+
 export default function FungibleOperationProgress(props: {
 	assetName: string;
 	flow: FungibleOperationFlow;
@@ -40,7 +42,7 @@ export default function FungibleOperationProgress(props: {
 				/>
 			) : null}
 			{props.flow.signedWork && props.operationKind !== 'buy' ? (
-				<p className="sync-resume-note">{messages.progressResumeNote}</p>
+				<S.ResumeNote className="sync-resume-note">{messages.progressResumeNote}</S.ResumeNote>
 			) : null}
 			{props.flow.workingStatus ? <p className="scheduler-wait">{props.flow.workingStatus}</p> : null}
 			{props.operationKind === 'buy' && props.flow.visibleOrders.length ? (

@@ -20,6 +20,8 @@ import {
 } from '../../../model/fungible-market';
 import { fungibleOrderActionLabel } from '../../../model/fungible-operation';
 
+import * as S from './styles';
+
 const ORDER_REVEAL_STEP = 50;
 
 export default function FungibleOrderbook(props: {
@@ -52,12 +54,12 @@ export default function FungibleOrderbook(props: {
 
 	return (
 		<>
-			<div
+			<S.FungibleTable
 				aria-label={formatMessage(messages.orderbookLabel, { name: props.assetName })}
 				className="orderbook-table fungible-orderbook"
 				role="table"
 			>
-				<div className="orderbook-head" role="row">
+				<S.Head className="orderbook-head" role="row">
 					<span role="columnheader">{messages.orderbookColumnPrice}</span>
 					<span role="columnheader">
 						{formatMessage(messages.orderbookColumnSize, { ticker: tickerDisplay })}
@@ -66,11 +68,11 @@ export default function FungibleOrderbook(props: {
 					<span role="columnheader">{messages.orderbookColumnSeller}</span>
 					<span role="columnheader">{messages.orderbookColumnState}</span>
 					<span aria-label={messages.orderbookColumnActions} role="columnheader" />
-				</div>
+				</S.Head>
 				{visibleRows.map((order, index) => {
 					const own = order.creator === props.walletAddress;
 					return (
-						<div
+						<S.Row
 							className="orderbook-row orderbook-depth-row"
 							key={order.orderId}
 							role="row"
@@ -102,16 +104,16 @@ export default function FungibleOrderbook(props: {
 							<span data-label={messages.orderbookColumnSeller} role="cell">
 								<WalletAddress address={order.creator} label={messages.assetDetailWalletLabelSeller} />
 							</span>
-							<span
+							<S.Status
 								className={`order-status ${order.status}`}
 								data-label={messages.orderbookColumnState}
 								role="cell"
 							>
 								{order.status}
-							</span>
-							<span className="orderbook-action-cell" role="cell">
+							</S.Status>
+							<S.ActionCell className="orderbook-action-cell" role="cell">
 								{own && order.status === 'open' ? (
-									<Button
+									<S.OrderAction
 										aria-label={fungibleOrderActionLabel('cancel', order, props.state, messages)}
 										className="order-action"
 										disabled={props.cancelDisabled}
@@ -122,23 +124,23 @@ export default function FungibleOrderbook(props: {
 										{props.pendingCancelOrderId === order.orderId
 											? pendingActionLabel('cancel')
 											: messages.orderbookCancel}
-									</Button>
+									</S.OrderAction>
 								) : null}
-							</span>
-						</div>
+							</S.ActionCell>
+						</S.Row>
 					);
 				})}
 				{!props.orders.length ? (
-					<div className="orderbook-empty" role="row">
-						<div aria-colspan={6} className="orderbook-empty-cell" role="cell">
+					<S.Empty className="orderbook-empty" role="row">
+						<S.EmptyCell aria-colspan={6} className="orderbook-empty-cell" role="cell">
 							<strong>{messages.orderbookEmptyTitle}</strong>
 							<span>{messages.orderbookEmptyDetail}</span>
-						</div>
-					</div>
+						</S.EmptyCell>
+					</S.Empty>
 				) : null}
-			</div>
+			</S.FungibleTable>
 			{props.orders.length > ORDER_REVEAL_STEP ? (
-				<div className="orderbook-reveal">
+				<S.Reveal className="orderbook-reveal">
 					<p aria-atomic="true" aria-live="polite" ref={revealStatusRef} role="status" tabIndex={-1}>
 						{formatMessage(messages.orderbookShowing, {
 							visible: visibleRows.length.toLocaleString(),
@@ -155,7 +157,7 @@ export default function FungibleOrderbook(props: {
 							})}
 						</Button>
 					) : null}
-				</div>
+				</S.Reveal>
 			) : null}
 		</>
 	);

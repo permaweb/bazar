@@ -2,7 +2,6 @@ import React from 'react';
 import { Upload, X } from 'lucide-react';
 
 import { Button } from 'components/atoms/Button';
-import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { TextInput } from 'components/atoms/TextInput';
 import { formatBytes } from 'helpers/format';
@@ -10,6 +9,8 @@ import { formatMessage } from 'helpers/i18n';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { CREATE_MESSAGES } from '../../../messages';
+
+import * as S from './styles';
 
 export default function FungibleTokenFields(props: {
 	name: string;
@@ -35,7 +36,7 @@ export default function FungibleTokenFields(props: {
 
 	return (
 		<>
-			<div className="create-field">
+			<S.Field className="create-field">
 				<label htmlFor="mint-ticker">{messages.tokenTickerLabel}</label>
 				<TextInput
 					id="mint-ticker"
@@ -50,8 +51,8 @@ export default function FungibleTokenFields(props: {
 						max: props.limits.maxTickerLength,
 					})}
 				</span>
-			</div>
-			<div className="create-field">
+			</S.Field>
+			<S.Field className="create-field">
 				<label htmlFor="mint-supply">{messages.tokenSupplyLabel}</label>
 				<TextInput
 					id="mint-supply"
@@ -64,8 +65,8 @@ export default function FungibleTokenFields(props: {
 				<span>
 					{formatMessage(messages.tokenSupplyMax, { max: props.limits.maxWholeSupply.toLocaleString() })}
 				</span>
-			</div>
-			<div className="create-field">
+			</S.Field>
+			<S.Field className="create-field">
 				<label htmlFor="mint-denomination">{messages.tokenDenominationLabel}</label>
 				<TextInput
 					id="mint-denomination"
@@ -77,12 +78,12 @@ export default function FungibleTokenFields(props: {
 					value={props.denomination}
 					onChange={(event) => props.onDenominationChange(event.target.value)}
 				/>
-			</div>
-			<div className="create-field fungible-logo-field">
+			</S.Field>
+			<S.Field className="create-field fungible-logo-field">
 				<label htmlFor="mint-logo">
 					{messages.tokenLogoLabel} <small>{messages.createOptional}</small>
 				</label>
-				<Button
+				<S.LogoDropzone
 					className={`fungible-logo-dropzone${props.logoPreview ? ' has-file' : ''}`}
 					type="button"
 					size="custom"
@@ -115,8 +116,8 @@ export default function FungibleTokenFields(props: {
 							<small>{messages.tokenLogoHint}</small>
 						</span>
 					)}
-				</Button>
-				<FileInput
+				</S.LogoDropzone>
+				<S.HiddenFileInput
 					ref={logoInput}
 					className="mint-file-input"
 					id="mint-logo"
@@ -124,7 +125,7 @@ export default function FungibleTokenFields(props: {
 					onChange={(event) => handleLogoSelect(event.target.files?.[0] ?? null)}
 				/>
 				{props.logo ? (
-					<div className="fungible-logo-meta">
+					<S.LogoMeta className="fungible-logo-meta">
 						<span>
 							{props.logoTxId ? (
 								<>
@@ -137,9 +138,9 @@ export default function FungibleTokenFields(props: {
 						<Button type="button" size="custom" variant="danger" onClick={() => handleLogoSelect(null)}>
 							<Icon icon={X} size="sm" /> {messages.mintRemove}
 						</Button>
-					</div>
+					</S.LogoMeta>
 				) : null}
-			</div>
+			</S.Field>
 		</>
 	);
 }

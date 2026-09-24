@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 
 import type { Collection } from 'api/collections';
@@ -21,6 +20,8 @@ import {
 } from '../../../model/home-market';
 import { HomePendingMarketValue } from '../HomePendingMarketValue';
 
+import * as S from './styles';
+
 export default function HomeCollectionCard(props: {
 	collection: Collection;
 	floor: HomeMarketSummary | undefined;
@@ -31,8 +32,8 @@ export default function HomeCollectionCard(props: {
 	const image = props.collection.assets.find((asset) => asset.image)?.image;
 	const tokenPreview = props.collection.assets.find((asset) => asset.image) ?? props.collection.assets[0];
 	return (
-		<Link className={`home-feature-card feature-${props.index}`} to={`/collection/${props.collection.id}`}>
-			<div className="home-feature-art">
+		<S.Card className={`home-feature-card feature-${props.index}`} to={`/collection/${props.collection.id}`}>
+			<S.FeatureArt className="home-feature-art">
 				{props.collection.kind === 'tokens' ? (
 					<TokenAvatar
 						className="home-token-collection-art"
@@ -48,28 +49,28 @@ export default function HomeCollectionCard(props: {
 						fetchPriority={props.index === 0 ? 'high' : 'auto'}
 						loading={props.index === 0 ? 'eager' : 'lazy'}
 						fallback={
-							<span className="home-image-collection-fallback" aria-hidden="true">
+							<S.ImageFallback className="home-image-collection-fallback" aria-hidden="true">
 								<BazarMark />
 								<strong>{props.collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
 								<small>{messages.homeImageCollectionFallback}</small>
-							</span>
+							</S.ImageFallback>
 						}
 					/>
 				) : props.collection.kind === 'names' ? (
 					<NamesCubePreview />
 				) : (
-					<div className="home-name-art">
+					<S.NameArt className="home-name-art">
 						<BazarMark />
 						<span>{messages.homeArSymbol}</span>
-					</div>
+					</S.NameArt>
 				)}
-				<div className="home-feature-glow" />
-			</div>
-			<div className="home-feature-copy">
+				<S.Glow className="home-feature-glow" />
+			</S.FeatureArt>
+			<S.Copy className="home-feature-copy">
 				<h2>{props.collection.name}</h2>
 				<span>{homeCollectionDescription(props.collection, messages)}</span>
-			</div>
-			<div className="home-feature-stats">
+			</S.Copy>
+			<S.Stats className="home-feature-stats">
 				<div>
 					<span>
 						{props.collection.kind === 'names' && props.collection.hasMore
@@ -99,13 +100,13 @@ export default function HomeCollectionCard(props: {
 						)}
 					</strong>
 				</div>
-			</div>
-			<strong className="home-card-action">
+			</S.Stats>
+			<S.CardAction className="home-card-action">
 				{messages.homeOpenCollection}
 				<span>
 					<Icon icon={ArrowUpRight} size="xs" />
 				</span>
-			</strong>
-		</Link>
+			</S.CardAction>
+		</S.Card>
 	);
 }

@@ -23,6 +23,8 @@ import { fungibleActivityPhaseStatus } from '../../../model/fungible-operation';
 import { FungibleListingComposer } from '../../molecules/FungibleListingComposer';
 import { FungiblePurchaseComposer } from '../../molecules/FungiblePurchaseComposer';
 
+import * as S from './styles';
+
 export type FungibleTradeMode = 'buy' | 'sell' | 'transfer';
 
 function tradeTabs(messages: AssetDetailMessages): SegmentedTab<FungibleTradeMode>[] {
@@ -76,9 +78,13 @@ export default function FungibleTradeCard(props: {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const blockedByState = !props.market.holderBalancesAvailable || props.loading || Boolean(props.error);
 	return (
-		<section aria-busy={props.activities.hasBusyWalletActivities} className="asset-commerce-card">
+		<S.CommerceCard
+			as="section"
+			aria-busy={props.activities.hasBusyWalletActivities}
+			className="asset-commerce-card"
+		>
 			<AssetBalanceStateNotice state={props.state} />
-			<div className="asset-market-stats">
+			<S.MarketStats className="asset-market-stats">
 				<div>
 					<span>{messages.fungibleStatCurrentUnitPrice}</span>
 					<strong>
@@ -109,8 +115,8 @@ export default function FungibleTradeCard(props: {
 							: messages.fungibleUnavailable}
 					</strong>
 				</div>
-			</div>
-			<div className="fungible-trade-switcher">
+			</S.MarketStats>
+			<S.TradeSwitcher className="fungible-trade-switcher">
 				<SegmentedTabs<FungibleTradeMode>
 					active={props.tradeMode}
 					ariaLabel={messages.fungibleTradeAriaLabel}
@@ -119,9 +125,9 @@ export default function FungibleTradeCard(props: {
 					onChange={props.onTradeModeChange}
 					tabs={tradeTabs(messages)}
 				/>
-			</div>
+			</S.TradeSwitcher>
 			{props.tradeMode === 'buy' ? (
-				<div
+				<S.TradePanel
 					aria-labelledby="fungible-trade-buy-tab"
 					className="fungible-trade-panel"
 					id="fungible-trade-buy"
@@ -139,15 +145,15 @@ export default function FungibleTradeCard(props: {
 							state={props.state}
 						/>
 					) : (
-						<div className="asset-buy-summary asset-buy-summary-empty">
+						<S.BuySummaryEmpty className="asset-buy-summary asset-buy-summary-empty">
 							<span>{messages.fungiblePurchaseAmount}</span>
 							<h1>{messages.fungibleNoPurchasableListings}</h1>
 							<small>{messages.fungibleNoPurchasableListingsDetail}</small>
-						</div>
+						</S.BuySummaryEmpty>
 					)}
-				</div>
+				</S.TradePanel>
 			) : props.tradeMode === 'sell' ? (
-				<div
+				<S.TradePanel
 					aria-labelledby="fungible-trade-sell-tab"
 					className="fungible-trade-panel"
 					id="fungible-trade-sell"
@@ -167,7 +173,7 @@ export default function FungibleTradeCard(props: {
 							unitPriceError={props.listing.unitPriceError}
 						/>
 					) : (
-						<div className="asset-buy-summary asset-buy-summary-empty">
+						<S.BuySummaryEmpty className="asset-buy-summary asset-buy-summary-empty">
 							<span>{messages.fungibleListingAmount}</span>
 							<h1>
 								{props.walletAddress
@@ -183,17 +189,17 @@ export default function FungibleTradeCard(props: {
 										: messages.fungibleBalanceRequiredToList
 									: messages.fungibleConnectToSeeListable}
 							</small>
-						</div>
+						</S.BuySummaryEmpty>
 					)}
-				</div>
+				</S.TradePanel>
 			) : (
-				<div
+				<S.TradePanel
 					aria-labelledby="fungible-trade-transfer-tab"
 					className="fungible-trade-panel"
 					id="fungible-trade-transfer"
 					role="tabpanel"
 				>
-					<div className="asset-buy-summary asset-buy-summary-empty">
+					<S.BuySummaryEmpty className="asset-buy-summary asset-buy-summary-empty">
 						<span>{messages.fungibleAvailableToTransfer}</span>
 						<h1>
 							{props.walletAddress
@@ -213,8 +219,8 @@ export default function FungibleTradeCard(props: {
 									: messages.fungibleListedNotTransferable
 								: messages.fungibleConnectToSeeTransferable}
 						</small>
-					</div>
-				</div>
+					</S.BuySummaryEmpty>
+				</S.TradePanel>
 			)}
 			{props.activities.walletActivities.map((activity) => (
 				<AssetOperationStatus
@@ -225,7 +231,7 @@ export default function FungibleTradeCard(props: {
 					onView={() => props.activities.show(activity.id)}
 				/>
 			))}
-			<div className="asset-commerce-actions">
+			<S.CommerceActions className="asset-commerce-actions">
 				{!props.walletAddress ? <ConnectWalletButton /> : null}
 				{props.tradeMode === 'buy' && props.walletAddress && props.market.purchasableOrders.length ? (
 					<Button
@@ -279,7 +285,7 @@ export default function FungibleTradeCard(props: {
 							: messages.fungibleTransferTokens}
 					</Button>
 				) : null}
-			</div>
-		</section>
+			</S.CommerceActions>
+		</S.CommerceCard>
 	);
 }

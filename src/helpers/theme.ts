@@ -19,6 +19,7 @@ const commonGlobal = {
 	transparent: 'transparent',
 	contrastText: '#ffffff',
 	fixedInk: '#1c1916',
+	fixedShade: '#000000',
 	brandAccent: '#f66d48',
 	brandBadgeBackground: '#303030',
 	tooltipBorder: '#3d3d3a',

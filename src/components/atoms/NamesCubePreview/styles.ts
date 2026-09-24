@@ -1,3 +1,17 @@
-// Presentation for this component still comes from its class names in apps/bazar/styles.css.
-// Move those rules here as styled-components when the component is next restyled.
-export {};
+import styled from 'styled-components';
+
+export const Preview = styled.span`
+	grid-column: 1 / -1;
+	width: 100%;
+	height: 100%;
+	display: block;
+	overflow: hidden;
+	background: var(--surface-hover);
+
+	img {
+		width: 100%;
+		height: 100%;
+		display: block;
+		object-fit: contain;
+	}
+`;

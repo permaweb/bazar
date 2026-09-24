@@ -3,7 +3,6 @@ import { Upload, X } from 'lucide-react';
 
 import { AudioArtwork } from 'components/atoms/AudioArtwork';
 import { Button } from 'components/atoms/Button';
-import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { TokenArtwork } from 'components/atoms/TokenArtwork';
 import { audioFormatLabel } from 'helpers/asset-media';
@@ -15,6 +14,8 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { CREATE_MESSAGES } from '../../../messages';
 import { type CreatorMode, isWholeTokenSupply } from '../../../model/mint-form';
+
+import * as S from './styles';
 
 export default function MintMediaPicker(props: {
 	mode: CreatorMode;
@@ -49,10 +50,10 @@ export default function MintMediaPicker(props: {
 	};
 
 	return (
-		<div className="create-preview-column">
+		<S.PreviewColumn className="create-preview-column">
 			{props.mode === 'fungible' ? (
-				<div className="fungible-token-preview">
-					<div className="fungible-token-preview-mark" aria-hidden="true">
+				<S.TokenPreview className="fungible-token-preview">
+					<S.TokenPreviewMark className="fungible-token-preview-mark" aria-hidden="true">
 						{props.logoPreview ? (
 							<img src={props.logoPreview} alt="" />
 						) : (
@@ -61,12 +62,12 @@ export default function MintMediaPicker(props: {
 								ticker={props.ticker.trim() || messages.mintTokenFallbackTicker}
 							/>
 						)}
-					</div>
+					</S.TokenPreviewMark>
 					<span>
 						<strong>{props.name.trim() || messages.mintTokenPreviewUnnamed}</strong>
-						<small className="fungible-token-preview-ticker">
+						<S.TokenPreviewTicker className="fungible-token-preview-ticker">
 							{props.ticker.trim() || messages.mintTokenPreviewSetTicker}
-						</small>
+						</S.TokenPreviewTicker>
 						<small>
 							{isWholeTokenSupply(props.wholeSupply)
 								? formatMessage(messages.mintTokenPreviewSupply, {
@@ -77,7 +78,7 @@ export default function MintMediaPicker(props: {
 								: messages.mintTokenPreviewSetSupply}
 						</small>
 					</span>
-				</div>
+				</S.TokenPreview>
 			) : (
 				<Button
 					className={`mint-dropzone${props.mode === 'asset' && props.preview ? ' has-file' : ''}${
@@ -97,7 +98,7 @@ export default function MintMediaPicker(props: {
 					}}
 				>
 					{props.mode === 'collection' && props.collectionPreviews.length ? (
-						<span className="collection-preview-grid">
+						<S.CollectionPreviewGrid className="collection-preview-grid">
 							{props.collectionPreviews.slice(0, 6).map((url, index) => (
 								<span key={`${props.collectionFiles[index]?.name}-${index}`}>
 									<img src={url} alt="" />
@@ -107,7 +108,7 @@ export default function MintMediaPicker(props: {
 							{props.collectionPreviews.length > 6 ? (
 								<strong>+{props.collectionPreviews.length - 6}</strong>
 							) : null}
-						</span>
+						</S.CollectionPreviewGrid>
 					) : props.mode === 'asset' && props.preview ? (
 						props.audioSelected ? (
 							props.artworkPreview ? (
@@ -147,7 +148,7 @@ export default function MintMediaPicker(props: {
 					)}
 				</Button>
 			)}
-			<FileInput
+			<S.HiddenFileInput
 				ref={fileInput}
 				className="mint-file-input"
 				multiple={props.mode === 'collection'}
@@ -163,13 +164,13 @@ export default function MintMediaPicker(props: {
 				}}
 			/>
 			{props.mode === 'asset' && props.file ? (
-				<div className="mint-file-meta">
+				<S.FileMeta className="mint-file-meta">
 					<span>{props.file.name}</span>
 					<strong>{formatBytes(props.file.size)}</strong>
-				</div>
+				</S.FileMeta>
 			) : null}
 			{props.mode === 'asset' && props.audioSelected ? (
-				<div className="mint-audio-metadata" aria-live="polite">
+				<S.AudioMetadata className="mint-audio-metadata" aria-live="polite">
 					<strong>
 						{props.readingAudioMetadata
 							? messages.mintAudioMetadataReading
@@ -198,10 +199,10 @@ export default function MintMediaPicker(props: {
 							</div>
 						</dl>
 					) : null}
-				</div>
+				</S.AudioMetadata>
 			) : null}
 			{props.mode === 'asset' && props.audioSelected ? (
-				<div className="mint-artwork-field">
+				<S.ArtworkField className="mint-artwork-field">
 					<div>
 						<span>
 							<strong>{messages.mintArtworkHeading}</strong>
@@ -226,16 +227,16 @@ export default function MintMediaPicker(props: {
 							</Button>
 						) : null}
 					</div>
-					<FileInput
+					<S.HiddenFileInput
 						ref={artworkInput}
 						className="mint-file-input"
 						accept="image/png,image/jpeg,image/webp,image/gif"
 						onChange={(event) => props.onArtworkSelect(event.target.files?.[0] ?? null)}
 					/>
-				</div>
+				</S.ArtworkField>
 			) : null}
 			{props.mode === 'collection' && props.collectionFiles.length ? (
-				<div className="collection-file-list">
+				<S.CollectionFileList className="collection-file-list">
 					{props.collectionFiles.map((item, index) => (
 						<div key={`${item.name}-${item.size}-${index}`}>
 							<span>
@@ -256,8 +257,8 @@ export default function MintMediaPicker(props: {
 					<Button type="button" onClick={() => fileInput.current?.click()} size="custom">
 						<Icon icon={Upload} size="sm" /> {messages.mintCollectionAddImages}
 					</Button>
-				</div>
+				</S.CollectionFileList>
 			) : null}
-		</div>
+		</S.PreviewColumn>
 	);
 }

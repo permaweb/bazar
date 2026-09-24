@@ -15,11 +15,11 @@ describe('EmptyState', () => {
 					Mint the first asset.
 				</EmptyState>
 			)
-		).toBe(
-			'<div class="empty-state"><h3>Nothing here yet</h3><p>Mint the first asset.</p><a href="#/create">Create</a></div>'
+		).toMatch(
+			/^<div class="[^"]*\bempty-state\b[^"]*"><h3>Nothing here yet<\/h3><p>Mint the first asset\.<\/p><a href="#\/create">Create<\/a><\/div>$/
 		);
-		expect(renderToStaticMarkup(<EmptyState title="No activity" />)).toBe(
-			'<div class="empty-state"><h3>No activity</h3></div>'
+		expect(renderToStaticMarkup(<EmptyState title="No activity" />)).toMatch(
+			/^<div class="[^"]*\bempty-state\b[^"]*"><h3>No activity<\/h3><\/div>$/
 		);
 	});
 

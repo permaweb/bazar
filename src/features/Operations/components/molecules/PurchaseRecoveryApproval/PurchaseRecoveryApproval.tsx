@@ -3,7 +3,6 @@ import type { PurchaseRecoveryApprovalPrompt } from 'api/operations';
 import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 import { Button } from 'components/atoms/Button';
 import { OperationExternalLink } from 'components/molecules/OperationOutcomeAnnouncement';
-import { WalletAddress } from 'components/organisms/WalletAddress';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
 import { formatMessage } from 'helpers/i18n';
@@ -11,6 +10,8 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { OPERATIONS_MESSAGES, type OperationsMessages } from '../../../messages';
 import { messagePartsAround } from '../../../model/operation-copy';
+
+import * as S from './styles';
 
 const RESERVATION_DETAIL_KEYS: Record<
 	Extract<PurchaseRecoveryApprovalPrompt, { kind: 'seller-payment' }>['reservation'],
@@ -55,9 +56,9 @@ export default function PurchaseRecoveryApproval(props: {
 				<h3>{copy?.title}</h3>
 				<p>{copy?.detail}</p>
 			</div>
-			<div className="operation-summary">
+			<S.Summary className="operation-summary">
 				<span>{messages.labelSeller}</span>
-				<WalletAddress
+				<S.SummaryLink
 					address={props.seller}
 					className="operation-summary-link"
 					full
@@ -78,7 +79,7 @@ export default function PurchaseRecoveryApproval(props: {
 						{reservationSigned.after}
 					</small>
 				) : null}
-			</div>
+			</S.Summary>
 			<Button
 				className="wide"
 				data-dialog-initial

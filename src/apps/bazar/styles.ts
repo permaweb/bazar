@@ -67,6 +67,7 @@ export const GlobalStyle = createGlobalStyle`
     --transparent: ${(props) => props.theme.colors.global.transparent};
     --contrast-text: ${(props) => props.theme.colors.global.contrastText};
     --fixed-ink: ${(props) => props.theme.colors.global.fixedInk};
+    --fixed-shade: ${(props) => props.theme.colors.global.fixedShade};
     --coral: ${(props) => props.theme.colors.global.brandAccent};
     --brand-badge-background: ${(props) => props.theme.colors.global.brandBadgeBackground};
     --tooltip-border: ${(props) => props.theme.colors.global.tooltipBorder};

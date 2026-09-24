@@ -17,6 +17,8 @@ import {
 	updateHolderRow,
 } from '../../../model/holder-list';
 
+import * as S from './styles';
+
 /** The CSV column order the parser accepts. A format sample like the JSON shapes below, not copy. */
 const CSV_HOLDER_SAMPLE = 'address,quantity';
 
@@ -47,10 +49,10 @@ export default function HolderListField(props: {
 	};
 
 	return (
-		<div className="holder-list">
-			<div className="holder-list-head">
+		<S.List className="holder-list">
+			<S.Head className="holder-list-head">
 				<span>{messages.dispatchHolderListRecipients}</span>
-				<Tooltip
+				<S.Hint
 					className="field-hint"
 					content={
 						<>
@@ -76,11 +78,11 @@ export default function HolderListField(props: {
 							<Info aria-hidden="true" />
 						</span>
 					)}
-				</Tooltip>
-			</div>
-			<div className="holder-list-rows">
+				</S.Hint>
+			</S.Head>
+			<S.Rows className="holder-list-rows">
 				{editable.map((row, index) => (
-					<div className="holder-list-row" key={index}>
+					<S.Row className="holder-list-row" key={index}>
 						<TextInput
 							aria-label={formatMessage(messages.dispatchHolderRowAddressLabel, { row: index + 1 })}
 							placeholder={messages.dispatchHolderRowAddressPlaceholder}
@@ -107,7 +109,7 @@ export default function HolderListField(props: {
 							onPaste={(event) => handlePaste(index, event)}
 							onChange={(event) => handleRowChange(index, { quantity: event.target.value.trim() })}
 						/>
-						<Pressable
+						<S.RemoveRow
 							type="button"
 							className="holder-list-remove"
 							aria-label={formatMessage(messages.dispatchHolderRowRemove, { row: index + 1 })}
@@ -115,13 +117,13 @@ export default function HolderListField(props: {
 							onClick={() => handleRowRemove(index)}
 						>
 							<X aria-hidden="true" />
-						</Pressable>
-					</div>
+						</S.RemoveRow>
+					</S.Row>
 				))}
-			</div>
-			<Pressable type="button" className="holder-list-add" onClick={handleRowAdd} disabled={props.disabled}>
+			</S.Rows>
+			<S.AddRow type="button" className="holder-list-add" onClick={handleRowAdd} disabled={props.disabled}>
 				<Plus aria-hidden="true" /> {messages.dispatchHolderRowAdd}
-			</Pressable>
-		</div>
+			</S.AddRow>
+		</S.List>
 	);
 }

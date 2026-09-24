@@ -5,12 +5,12 @@ import { Button } from 'components/atoms/Button';
 import { FileInput } from 'components/atoms/FileInput';
 import { Icon } from 'components/atoms/Icon';
 import { IconButton } from 'components/atoms/IconButton';
-import { Dialog } from 'components/organisms/Dialog';
 import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
 import { useWalletConnectionFlow } from 'hooks/useWalletConnectionFlow';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { WALLET_CONNECTION_DIALOG_MESSAGES } from './messages';
+import * as S from './styles';
 
 // Wallet connection, generation, and keyfile import dialog opened through the wallet provider.
 export default function WalletConnectionDialog() {
@@ -30,7 +30,7 @@ export default function WalletConnectionDialog() {
 	};
 
 	return (
-		<Dialog
+		<S.ConnectDialog
 			backdropClassName="dialog-backdrop wallet-connect-backdrop"
 			className="dialog dialog-compact wallet-connect-dialog"
 			focusKey={generatedWallet?.address}
@@ -39,7 +39,7 @@ export default function WalletConnectionDialog() {
 			open={flow.open}
 			restoreTarget={flow.restoreTarget}
 		>
-			<div className="dialog-heading wallet-connect-heading">
+			<S.Heading className="dialog-heading wallet-connect-heading">
 				<div>
 					<h2 id="wallet-connect-title">{language.walletConnectTitle}</h2>
 				</div>
@@ -50,9 +50,9 @@ export default function WalletConnectionDialog() {
 					disabled={Boolean(generatedWallet)}
 					className="close"
 				/>
-			</div>
+			</S.Heading>
 			{generatedWallet ? (
-				<div className="generated-wallet-panel">
+				<S.GeneratedPanel className="generated-wallet-panel">
 					<div>
 						<Icon icon={KeyRound} />
 						<div>
@@ -60,7 +60,7 @@ export default function WalletConnectionDialog() {
 							<span>{language.walletConnectGeneratedDetail}</span>
 						</div>
 					</div>
-					<div className="generated-wallet-address">
+					<S.GeneratedAddress className="generated-wallet-address">
 						<div>
 							<span>{language.walletConnectAddress}</span>
 							<code>{generatedWallet.address}</code>
@@ -74,7 +74,7 @@ export default function WalletConnectionDialog() {
 							<Icon icon={Copy} size="sm" />
 							{copied ? language.walletConnectCopied : language.walletConnectCopy}
 						</Button>
-					</div>
+					</S.GeneratedAddress>
 					<Button
 						className="wide with-icon"
 						onClick={flow.downloadKeyfile}
@@ -85,21 +85,21 @@ export default function WalletConnectionDialog() {
 						<Icon icon={Download} size="sm" />
 						{language.walletConnectDownload}
 					</Button>
-					<p className="wallet-keyfile-warning">
+					<S.KeyfileWarning className="wallet-keyfile-warning">
 						<strong>{language.walletConnectKeepSafeTitle}</strong> {language.walletConnectKeepSafeDetail}
-					</p>
-				</div>
+					</S.KeyfileWarning>
+				</S.GeneratedPanel>
 			) : (
 				<>
-					<div className="wallet-option-list">
-						<div className="wallet-option">
-							<div className="wallet-option-copy">
+					<S.OptionList className="wallet-option-list">
+						<S.Option className="wallet-option">
+							<S.OptionCopy className="wallet-option-copy">
 								<Icon icon={Wallet} />
 								<div>
 									<strong>{language.walletConnectPermawebOs}</strong>
 									<span>{language.walletConnectPermawebOsDetail}</span>
 								</div>
-							</div>
+							</S.OptionCopy>
 							<Button
 								data-dialog-initial
 								onClick={() => void flow.connect('permaweb-os')}
@@ -112,15 +112,15 @@ export default function WalletConnectionDialog() {
 									? language.walletConnectConnecting
 									: language.walletConnectConnect}
 							</Button>
-						</div>
-						<div className="wallet-option">
-							<div className="wallet-option-copy">
+						</S.Option>
+						<S.Option className="wallet-option">
+							<S.OptionCopy className="wallet-option-copy">
 								<Icon icon={Wallet} />
 								<div>
 									<strong>{language.walletConnectWander}</strong>
 									<span>{language.walletConnectWanderDetail}</span>
 								</div>
-							</div>
+							</S.OptionCopy>
 							<Button
 								onClick={() => void flow.connect('wander')}
 								disabled={pending !== null}
@@ -132,15 +132,15 @@ export default function WalletConnectionDialog() {
 									? language.walletConnectConnecting
 									: language.walletConnectConnect}
 							</Button>
-						</div>
-						<div className="wallet-option">
-							<div className="wallet-option-copy">
+						</S.Option>
+						<S.Option className="wallet-option">
+							<S.OptionCopy className="wallet-option-copy">
 								<Icon icon={KeyRound} />
 								<div>
 									<strong>{language.walletConnectGenerateTitle}</strong>
 									<span>{language.walletConnectGenerateDetail}</span>
 								</div>
-							</div>
+							</S.OptionCopy>
 							<Button
 								onClick={() => void flow.generate()}
 								disabled={pending !== null}
@@ -151,15 +151,15 @@ export default function WalletConnectionDialog() {
 									? language.walletConnectGenerating
 									: language.walletConnectGenerate}
 							</Button>
-						</div>
-						<div className="wallet-option">
-							<div className="wallet-option-copy">
+						</S.Option>
+						<S.Option className="wallet-option">
+							<S.OptionCopy className="wallet-option-copy">
 								<Icon icon={FileUp} />
 								<div>
 									<strong>{language.walletConnectImportTitle}</strong>
 									<span>{language.walletConnectImportDetail}</span>
 								</div>
-							</div>
+							</S.OptionCopy>
 							<Button
 								onClick={() => fileInput.current?.click()}
 								disabled={pending !== null}
@@ -174,15 +174,15 @@ export default function WalletConnectionDialog() {
 								accept=".json,application/json"
 								onChange={(event) => void handleImport(event)}
 							/>
-						</div>
-					</div>
+						</S.Option>
+					</S.OptionList>
 					{error ? (
-						<p className="wallet-connect-error" role="alert">
+						<S.ConnectError className="wallet-connect-error" role="alert">
 							{errorMessage(error)}
-						</p>
+						</S.ConnectError>
 					) : null}
 				</>
 			)}
-		</Dialog>
+		</S.ConnectDialog>
 	);
 }

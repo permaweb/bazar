@@ -3,6 +3,8 @@ import { Eye, EyeOff, X } from 'lucide-react';
 import { Button } from '../../atoms/Button';
 import { Icon } from '../../atoms/Icon';
 
+import * as S from './styles';
+
 export type TransactionDialogPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
 export type TransactionDialogDismissAction =
@@ -86,10 +88,13 @@ export default function TransactionDialogControl(props: {
 			variant="ghost"
 		>
 			{working ? (
-				<span className={`transaction-hide-icon${props.hiding ?? false ? ' hiding' : ''}`} aria-hidden="true">
+				<S.HideIcon
+					className={`transaction-hide-icon${props.hiding ?? false ? ' hiding' : ''}`}
+					aria-hidden="true"
+				>
 					<Icon icon={Eye} className="transaction-hide-eye-open" />
 					<Icon icon={EyeOff} className="transaction-hide-eye-closed" />
-				</span>
+				</S.HideIcon>
 			) : (
 				<Icon icon={X} />
 			)}

@@ -30,6 +30,8 @@ import type { UniqueAssetView } from '../../../model/unique-asset-view';
 import { type AssetDetailTab, AssetDetailTabs } from '../../molecules/AssetDetailTabs';
 import type { TokenPricePoint } from '../TokenPriceChart';
 
+import * as S from './styles';
+
 export type UniqueAssetSection = 'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more';
 
 const UniquePriceChart = React.lazy(() =>
@@ -110,15 +112,15 @@ export default function UniqueAssetSections(props: {
 				tabs={uniqueAssetTabs(messages)}
 			/>
 			{props.active === 'about' ? (
-				<section
+				<S.TabPanel
 					aria-labelledby="asset-about-tab"
 					className="asset-tab-panel"
 					id="asset-about"
 					role="tabpanel"
 					tabIndex={0}
 				>
-					<p className="asset-description">{props.view.description}</p>
-					<div className="asset-detail-facts">
+					<S.Description className="asset-description">{props.view.description}</S.Description>
+					<S.Facts className="asset-detail-facts">
 						<div>
 							<span>{messages.uniqueFactAssetType}</span>
 							<strong>
@@ -147,11 +149,11 @@ export default function UniqueAssetSections(props: {
 								<strong>{formatAudioDuration(props.asset.duration)}</strong>
 							</div>
 						) : null}
-					</div>
-				</section>
+					</S.Facts>
+				</S.TabPanel>
 			) : null}
 			{props.active === 'orders' ? (
-				<section
+				<S.MarketTabPanel
 					aria-labelledby="asset-orders-tab"
 					className="asset-tab-panel atomic-market-panel"
 					id="asset-orders"
@@ -172,19 +174,19 @@ export default function UniqueAssetSections(props: {
 							ticker={props.asset.name}
 						/>
 					</React.Suspense>
-					<div
+					<S.Table
 						aria-label={formatMessage(messages.uniqueOrderBookLabel, { name: props.asset.name })}
 						className="orderbook-table"
 						role="table"
 					>
-						<div className="orderbook-head" role="row">
+						<S.Head className="orderbook-head" role="row">
 							<span role="columnheader">{messages.uniqueOrderColumnPrice}</span>
 							<span role="columnheader">{messages.uniqueOrderColumnQuantity}</span>
 							<span role="columnheader">{messages.uniqueOrderColumnSeller}</span>
 							<span role="columnheader">{messages.uniqueOrderColumnStatus}</span>
-						</div>
+						</S.Head>
 						{order ? (
-							<div className="orderbook-row" role="row">
+							<S.Row className="orderbook-row" role="row">
 								<strong data-label={messages.uniqueOrderColumnPrice} role="cell">
 									{winstonToAr(order.asking)} <ArCurrencyLabel />
 								</strong>
@@ -197,28 +199,28 @@ export default function UniqueAssetSections(props: {
 										label={messages.assetDetailWalletLabelSeller}
 									/>
 								</span>
-								<span
+								<S.Status
 									className={`order-status ${order.status}`}
 									data-label={messages.uniqueOrderColumnStatus}
 									role="cell"
 								>
 									{order.status}
-								</span>
-							</div>
+								</S.Status>
+							</S.Row>
 						) : (
-							<div className="orderbook-empty" role="row">
-								<div aria-colspan={4} className="orderbook-empty-cell" role="cell">
+							<S.Empty className="orderbook-empty" role="row">
+								<S.EmptyCell aria-colspan={4} className="orderbook-empty-cell" role="cell">
 									<strong>{messages.uniqueNoOpenAsks}</strong>
 									<span>{messages.uniqueNotCurrentlyListed}</span>
-								</div>
-							</div>
+								</S.EmptyCell>
+							</S.Empty>
 						)}
-					</div>
-					<p className="market-note">{messages.uniqueOrdersNote}</p>
-				</section>
+					</S.Table>
+					<S.MarketNote className="market-note">{messages.uniqueOrdersNote}</S.MarketNote>
+				</S.MarketTabPanel>
 			) : null}
 			{props.active === 'activity' ? (
-				<section
+				<S.ActivityTabPanel
 					aria-labelledby="asset-activity-tab"
 					className="asset-tab-panel asset-activity-panel"
 					id="asset-activity"
@@ -226,12 +228,12 @@ export default function UniqueAssetSections(props: {
 					tabIndex={0}
 				>
 					{order ? (
-						<div className="asset-history-current">
+						<S.HistoryCurrent className="asset-history-current">
 							<span>{messages.uniqueCurrentAsk}</span>
 							<strong>
 								{winstonToAr(order.asking)} <ArCurrencyLabel />
 							</strong>
-						</div>
+						</S.HistoryCurrent>
 					) : null}
 					{props.activity.loading ? (
 						<Loading
@@ -259,10 +261,10 @@ export default function UniqueAssetSections(props: {
 						/>
 					) : null}
 					{!props.activity.loading && !props.activity.error && !props.activity.events.length ? (
-						<p className="asset-empty-copy">{messages.uniqueNoMarketEvents}</p>
+						<S.EmptyCopy className="asset-empty-copy">{messages.uniqueNoMarketEvents}</S.EmptyCopy>
 					) : null}
-					<div className="asset-market-activity-footer">
-						<p className="market-note">
+					<S.MarketActivityFooter className="asset-market-activity-footer">
+						<S.MarketNote className="market-note">
 							{props.activity.totalCount === null
 								? formatMessage(messages.uniqueSubmissionsLoaded, {
 										loaded: props.activity.events.length.toLocaleString(),
@@ -272,7 +274,7 @@ export default function UniqueAssetSections(props: {
 										total: props.activity.totalCount.toLocaleString(),
 								  })}{' '}
 							{messages.uniqueLiveOrdersAuthoritative}
-						</p>
+						</S.MarketNote>
 						{props.activity.hasNextPage ? (
 							<Button
 								disabled={props.activity.loadingMore}
@@ -285,11 +287,11 @@ export default function UniqueAssetSections(props: {
 									: messages.uniqueLoadOlderActivity}
 							</Button>
 						) : null}
-					</div>
-				</section>
+					</S.MarketActivityFooter>
+				</S.ActivityTabPanel>
 			) : null}
 			{props.active === 'rights' ? (
-				<section
+				<S.TabPanel
 					aria-labelledby="asset-rights-tab"
 					className="asset-tab-panel"
 					id="asset-rights"
@@ -297,7 +299,7 @@ export default function UniqueAssetSections(props: {
 					tabIndex={0}
 				>
 					{props.view.license.length ? (
-						<dl className="license-properties">
+						<S.LicenseProperties className="license-properties">
 							{props.view.license.map((property) => (
 								<div key={property.key}>
 									<dt>{property.label}</dt>
@@ -312,9 +314,9 @@ export default function UniqueAssetSections(props: {
 									</a>
 								</dd>
 							</div>
-						</dl>
+						</S.LicenseProperties>
 					) : (
-						<div className="license-empty">
+						<S.LicenseEmpty className="license-empty">
 							<span>
 								<Icon icon={Diamond} />
 							</span>
@@ -322,24 +324,24 @@ export default function UniqueAssetSections(props: {
 								<strong>{messages.uniqueLicenseEmptyTitle}</strong>
 								<p>{messages.uniqueLicenseEmptyDetail}</p>
 							</div>
-						</div>
+						</S.LicenseEmpty>
 					)}
-					<p className="market-note">{messages.uniqueLicenseNote}</p>
-				</section>
+					<S.MarketNote className="market-note">{messages.uniqueLicenseNote}</S.MarketNote>
+				</S.TabPanel>
 			) : null}
 			{props.active === 'blockchain' ? (
-				<section
+				<S.TabPanel
 					aria-labelledby="asset-blockchain-tab"
 					className="asset-tab-panel"
 					id="asset-blockchain"
 					role="tabpanel"
 					tabIndex={0}
 				>
-					<div className="asset-token-tags" aria-label={messages.uniqueProtocolDetails}>
+					<S.TokenTags className="asset-token-tags" aria-label={messages.uniqueProtocolDetails}>
 						<span>{props.state.device || 'token@1.0'}</span>
 						<span>{messages.uniqueProtocolNetwork}</span>
 						<span>{messages.uniqueProtocolSupply}</span>
-					</div>
+					</S.TokenTags>
 					<StateVerification
 						labels={stateVerificationCopy(messages)}
 						provider={props.provider}
@@ -347,7 +349,7 @@ export default function UniqueAssetSections(props: {
 						refreshing={props.stateRefreshing}
 						failed={props.stateFailed}
 					/>
-					<dl className="asset-blockchain-details">
+					<S.BlockchainDetails className="asset-blockchain-details">
 						<div>
 							<dt>{messages.uniqueBlockchainProcessId}</dt>
 							<dd>
@@ -379,18 +381,18 @@ export default function UniqueAssetSections(props: {
 										: messages.uniqueContentTypeProcess)}
 							</dd>
 						</div>
-					</dl>
-				</section>
+					</S.BlockchainDetails>
+				</S.TabPanel>
 			) : null}
 			{props.active === 'more' ? (
-				<section
+				<S.TabPanel
 					aria-labelledby="asset-more-tab"
 					className="asset-tab-panel"
 					id="asset-more"
 					role="tabpanel"
 					tabIndex={0}
 				>
-					<div className="asset-more-grid">
+					<S.MoreGrid className="asset-more-grid">
 						{props.view.moreAssets.map((item) => (
 							<Link
 								key={item.id}
@@ -417,8 +419,8 @@ export default function UniqueAssetSections(props: {
 								<strong>{item.name}</strong>
 							</Link>
 						))}
-					</div>
-				</section>
+					</S.MoreGrid>
+				</S.TabPanel>
 			) : null}
 		</>
 	);

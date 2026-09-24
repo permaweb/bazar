@@ -8,6 +8,8 @@ import { Icon } from '../Icon';
 import { LiveRegion } from '../LiveRegion';
 import { Tooltip } from '../Tooltip';
 
+import * as S from './styles';
+
 // The copy control's wording belongs to the caller: an atom may not read the language provider.
 export type TxAddressLabels = {
 	copy: string;
@@ -44,10 +46,10 @@ export default function TxAddress(props: {
 	};
 
 	return (
-		<span className={`tx-address${props.wrap ?? false ? ' is-wrapped' : ''}`}>
+		<S.Address className={`tx-address${props.wrap ?? false ? ' is-wrapped' : ''}`}>
 			<Tooltip content={props.address} placement="top">
 				{(tooltipId) => (
-					<a
+					<S.Link
 						aria-describedby={tooltipId}
 						className="tx-address-link"
 						href={transactionExplorerUrl(props.address)}
@@ -57,7 +59,7 @@ export default function TxAddress(props: {
 						{props.wrap ?? false
 							? props.address
 							: `${props.address.slice(0, 7)}…${props.address.slice(-6)}`}
-					</a>
+					</S.Link>
 				)}
 			</Tooltip>
 			<Tooltip content={copied ? props.labels.copiedTooltip : props.labels.copy} placement="top">
@@ -75,6 +77,6 @@ export default function TxAddress(props: {
 				)}
 			</Tooltip>
 			<LiveRegion>{copied ? props.labels.copiedAnnouncement : ''}</LiveRegion>
-		</span>
+		</S.Address>
 	);
 }

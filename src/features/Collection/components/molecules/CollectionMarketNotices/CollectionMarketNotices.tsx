@@ -3,6 +3,8 @@ import { useMessages, usePlural } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
 
+import * as S from './styles';
+
 // Progress of the live-listing pass and the retry controls for a failed pass, unavailable prices, and listing
 // candidates whose live state could not be read.
 export default function CollectionMarketNotices(props: {
@@ -24,20 +26,20 @@ export default function CollectionMarketNotices(props: {
 	return (
 		<>
 			{props.listedOnly && props.listingsLoading ? (
-				<div className="collection-resolution-status">
+				<S.Status className="collection-resolution-status">
 					<div>
 						<strong>{language.checkingLiveListings}</strong>
 						<span>{props.searchProgress}</span>
 					</div>
-					<div
+					<S.Track
 						aria-label={language.searchingArweaveForLiveListings}
 						aria-valuetext={props.searchProgress}
 						className="resolution-track indeterminate"
 						role="progressbar"
 					>
 						<span />
-					</div>
-				</div>
+					</S.Track>
+				</S.Status>
 			) : null}
 			{props.listingsFailed ? (
 				<RetryNotice onRetry={props.onRetryListings} retryLabel={language.retry}>

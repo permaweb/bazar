@@ -12,8 +12,8 @@ describe('TxAddress', () => {
 		const address = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG';
 		const markup = renderToStaticMarkup(<TxAddress address={address} labels={labels} wrap={false} />);
 
-		expect(markup).toContain('class="tx-address"');
-		expect(markup).toContain('class="tx-address-link"');
+		expect(markup).toMatch(/class="[^"]*\btx-address\b[^"]*"/);
+		expect(markup).toMatch(/class="[^"]*\btx-address-link\b[^"]*"/);
 		expect(markup).toContain(`aria-label="${labels.copy}"`);
 		expect(markup).toContain('abcdefg…BCDEFG');
 	});

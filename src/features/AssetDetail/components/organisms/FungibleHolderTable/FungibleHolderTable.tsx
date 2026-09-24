@@ -11,6 +11,8 @@ import { type FungibleHolder, fungibleHoldingPercentage } from '../../../model/f
 import { tokenLabel } from '../../../model/fungible-market';
 import { FungibleHolderIdentity } from '../../molecules/FungibleHolderIdentity';
 
+import * as S from './styles';
+
 const HOLDER_REVEAL_STEP = 50;
 
 export default function FungibleHolderTable(props: {
@@ -34,46 +36,50 @@ export default function FungibleHolderTable(props: {
 
 	return (
 		<>
-			<div
+			<S.HolderTable
 				aria-label={formatMessage(messages.holderTableLabel, { name: props.assetName })}
 				className="orderbook-table fungible-holder-table"
 				role="table"
 			>
-				<div className="orderbook-head" role="row">
+				<S.Head className="orderbook-head" role="row">
 					<span role="columnheader">{messages.holderColumnHolder}</span>
 					<span role="columnheader">{messages.holderColumnTotalBalance}</span>
 					<span role="columnheader">{messages.holderColumnShare}</span>
 					<span role="columnheader">{messages.holderColumnListed}</span>
-				</div>
+				</S.Head>
 				{visibleRows.map((holder) => (
-					<div className="orderbook-row" key={holder.address} role="row">
+					<S.Row className="orderbook-row" key={holder.address} role="row">
 						<span data-label={messages.holderColumnHolder} role="cell">
 							<FungibleHolderIdentity address={holder.address} />
 						</span>
 						<strong data-label={messages.holderColumnTotalBalance} role="cell">
 							{tokenLabel(holder.total, props.state)}
 						</strong>
-						<span className="fungible-holder-share" data-label={messages.holderColumnShare} role="cell">
+						<S.HolderShare
+							className="fungible-holder-share"
+							data-label={messages.holderColumnShare}
+							role="cell"
+						>
 							{fungibleHoldingPercentage(holder.total, props.state.totalSupply)}
-						</span>
+						</S.HolderShare>
 						<span data-label={messages.holderColumnListed} role="cell">
 							{BigInt(holder.listed) > 0n
 								? tokenLabel(holder.listed, props.state)
 								: messages.holderEmptyValue}
 						</span>
-					</div>
+					</S.Row>
 				))}
 				{!props.holders.length ? (
-					<div className="orderbook-empty" role="row">
-						<div aria-colspan={4} className="orderbook-empty-cell" role="cell">
+					<S.Empty className="orderbook-empty" role="row">
+						<S.EmptyCell aria-colspan={4} className="orderbook-empty-cell" role="cell">
 							<strong>{messages.holderEmptyTitle}</strong>
 							<span>{messages.holderEmptyDetail}</span>
-						</div>
-					</div>
+						</S.EmptyCell>
+					</S.Empty>
 				) : null}
-			</div>
+			</S.HolderTable>
 			{props.holders.length > HOLDER_REVEAL_STEP ? (
-				<div className="orderbook-reveal">
+				<S.Reveal className="orderbook-reveal">
 					<p aria-atomic="true" aria-live="polite" ref={revealStatusRef} role="status" tabIndex={-1}>
 						{formatMessage(messages.holderTableShowing, {
 							visible: visibleRows.length.toLocaleString(),
@@ -90,7 +96,7 @@ export default function FungibleHolderTable(props: {
 							})}
 						</Button>
 					) : null}
-				</div>
+				</S.Reveal>
 			) : null}
 		</>
 	);

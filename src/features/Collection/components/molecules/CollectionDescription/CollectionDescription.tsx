@@ -1,11 +1,12 @@
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
 
-import { Button } from 'components/atoms/Button';
 import { formatTokenDescription } from 'helpers/token-display';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
+
+import * as S from './styles';
 
 export default function CollectionDescription(props: { description: string }) {
 	const language = useMessages(COLLECTION_MESSAGES);
@@ -38,12 +39,12 @@ export default function CollectionDescription(props: { description: string }) {
 
 	if (!text) return null;
 	return (
-		<div className="collection-description">
+		<S.Description className="collection-description">
 			<p className={expanded ? undefined : 'is-collapsed'} id={contentId} ref={paragraphRef}>
 				{text}
 			</p>
 			{overflowing ? (
-				<Button
+				<S.Toggle
 					aria-controls={contentId}
 					aria-expanded={expanded}
 					className="collection-description-toggle"
@@ -53,8 +54,8 @@ export default function CollectionDescription(props: { description: string }) {
 				>
 					{expanded ? language.descriptionShowLess : language.descriptionShowMore}
 					<ChevronDown aria-hidden="true" />
-				</Button>
+				</S.Toggle>
 			) : null}
-		</div>
+		</S.Description>
 	);
 }

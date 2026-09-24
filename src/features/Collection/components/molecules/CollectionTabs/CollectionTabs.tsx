@@ -11,6 +11,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { COLLECTION_MESSAGES } from '../../../messages';
 import { collectionIdentity } from '../../../model/collection-market';
 
+import * as S from './styles';
+
 export default function CollectionTabs(props: {
 	collection: Collection;
 	active: 'assets' | 'offers' | 'activity';
@@ -20,7 +22,7 @@ export default function CollectionTabs(props: {
 	const language = useMessages(COLLECTION_MESSAGES);
 	const assetsLabel = props.collection.kind === 'tokens' ? language.tabTokens : language.tabItems;
 	return (
-		<nav
+		<S.Tabs
 			className="collection-tabs"
 			aria-label={formatMessage(language.tabsLabel, {
 				name: collectionIdentity(props.collection, language).name,
@@ -69,6 +71,6 @@ export default function CollectionTabs(props: {
 			>
 				<Icon icon={History} size="sm" /> {language.tabActivity}
 			</Link>
-		</nav>
+		</S.Tabs>
 	);
 }

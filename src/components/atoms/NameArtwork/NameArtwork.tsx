@@ -1,5 +1,7 @@
 import React from 'react';
 
+import * as S from './styles';
+
 type NameArtworkStyle = React.CSSProperties & {
 	'--name-artwork-size': string;
 };
@@ -16,12 +18,12 @@ export default function NameArtwork(props: { name: string; className?: string })
 	};
 
 	return (
-		<span
+		<S.Artwork
 			aria-hidden="true"
 			className={`name-asset-artwork${props.className ?? '' ? ` ${props.className ?? ''}` : ''}`}
 			style={style}
 		>
 			<strong>{displayName}</strong>
-		</span>
+		</S.Artwork>
 	);
 }

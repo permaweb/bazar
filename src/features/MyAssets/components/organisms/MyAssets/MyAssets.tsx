@@ -24,6 +24,8 @@ import { type WalletAssetView, walletGroupResults } from '../../../model/wallet-
 import { walletResolutionIsWorking } from '../../../model/wallet-resolution';
 import { WalletAssetGroup } from '../WalletAssetGroup';
 
+import * as S from './styles';
+
 export default function MyAssets(
 	props: {
 		address?: string;
@@ -94,26 +96,26 @@ export default function MyAssets(
 	return (
 		<section className={pageClassName}>
 			{!(props.embedded ?? false) ? (
-				<div className="my-assets-heading">
+				<S.Heading className="my-assets-heading">
 					<div>
 						<Eyebrow>{language.myAssetsInventoryEyebrow}</Eyebrow>
 						<h1>{language.myAssetsTitle}</h1>
 						<p>{language.myAssetsSubtitle}</p>
-						<span className="gateway-pill">
+						<S.GatewayPill className="gateway-pill">
 							<Icon icon={Server} size="xs" /> {language.myAssetsGateway}{' '}
 							<Tooltip content={new URL(discovery.gateway).host}>
 								{(tooltipId) => (
-									<span aria-describedby={tooltipId} className="gateway-pill-host">
+									<S.GatewayHost aria-describedby={tooltipId} className="gateway-pill-host">
 										{new URL(discovery.gateway).host}
-									</span>
+									</S.GatewayHost>
 								)}
 							</Tooltip>
-						</span>
+						</S.GatewayPill>
 					</div>
-				</div>
+				</S.Heading>
 			) : null}
 			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
-				<div className="my-assets-heading-status retry-notice">
+				<S.HeadingStatus className="my-assets-heading-status retry-notice">
 					<span role="status">
 						{plural(language.myAssetsCandidatesUnavailable, status.failures, {
 							failureMessage: discovery.failureMessage,
@@ -123,16 +125,16 @@ export default function MyAssets(
 					<Button className="with-icon" type="button" onClick={discovery.retryUnavailable} size="custom">
 						<Icon icon={RefreshCw} size="sm" /> {language.myAssetsRetry}
 					</Button>
-				</div>
+				</S.HeadingStatus>
 			) : null}
 			<LiveRegion as="p">{discovery.resolutionCopy.announcement}</LiveRegion>
 			{working ? (
-				<div className="my-assets-resolution-status" aria-busy="true">
+				<S.ResolutionStatus className="my-assets-resolution-status" aria-busy="true">
 					<div>
 						<Loading label={discovery.resolutionCopy.heading} />
 						<p>{discovery.resolutionCopy.announcement}</p>
 					</div>
-				</div>
+				</S.ResolutionStatus>
 			) : null}
 			{status.error ? (
 				<RetryNotice onRetry={discovery.retryDiscovery} retryLabel={language.myAssetsRetry}>

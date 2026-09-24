@@ -27,7 +27,7 @@ describe('mint transaction receipt', () => {
 		expect(markup).toContain(`href="https://lunar.arweave.net/#/explorer/${assetId}"`);
 		expect(markup).toContain(`aria-label="${language.mintReceiptArtwork} transaction ${mediaId} on Lunar"`);
 		expect(markup).toContain(language.mintReceiptAsset);
-		expect(markup).toContain(`class="tx-address is-wrapped"`);
+		expect(markup).toMatch(/class="[^"]*\btx-address is-wrapped\b[^"]*"/);
 		expect(markup).toContain(language.mintCopyTransactionAddress);
 	});
 });

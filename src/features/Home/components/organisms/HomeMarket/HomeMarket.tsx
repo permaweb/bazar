@@ -28,6 +28,8 @@ import { HomeActivityPanel } from '../HomeActivityPanel';
 import { HomeCollectionsPanel } from '../HomeCollectionsPanel';
 import { HomeDiscoverPanel } from '../HomeDiscoverPanel';
 
+import * as S from './styles';
+
 export default function HomeMarket() {
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -48,15 +50,15 @@ export default function HomeMarket() {
 		marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	};
 	return (
-		<div className="home-shell">
-			<div className="home-main">
-				<div className="home-content">
-					<div className="home-market-layout" ref={marketPaneRef}>
-						<section className="home-section home-assets" id="market">
+		<S.Shell className="home-shell">
+			<S.Main className="home-main">
+				<S.Content className="home-content">
+					<S.MarketLayout className="home-market-layout" ref={marketPaneRef}>
+						<S.Section className="home-section home-assets" id="market">
 							<VisuallyHidden as="h1">{messages.homeMarketplace}</VisuallyHidden>
-							<div className="home-section-heading">
+							<S.SectionHeading className="home-section-heading">
 								<div>
-									<div
+									<S.MarketTabs
 										aria-label={messages.homeMarketplaceView}
 										className="home-market-tabs"
 										role="tablist"
@@ -97,7 +99,7 @@ export default function HomeMarket() {
 											<Icon icon={History} />
 											{messages.homeTabActivity}
 										</Button>
-									</div>
+									</S.MarketTabs>
 									<p>
 										{homeTab === 'discover'
 											? home.normalizedQuery
@@ -109,7 +111,7 @@ export default function HomeMarket() {
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
-									<div aria-busy={home.discover.pending} className="home-asset-filters">
+									<S.AssetFilters aria-busy={home.discover.pending} className="home-asset-filters">
 										<Select<HomeAssetType>
 											label={messages.homeAssetTypeLabel}
 											onChange={home.setAssetType}
@@ -131,9 +133,9 @@ export default function HomeMarket() {
 											]}
 											value={home.assetView}
 										/>
-									</div>
+									</S.AssetFilters>
 								) : homeTab === 'collections' ? (
-									<div aria-busy={home.collections.pending} className="home-asset-filters">
+									<S.AssetFilters aria-busy={home.collections.pending} className="home-asset-filters">
 										<Select<HomeCollectionSort>
 											label={messages.homeCollectionSortLabel}
 											onChange={home.setCollectionSort}
@@ -144,9 +146,9 @@ export default function HomeMarket() {
 											]}
 											value={home.collectionSort}
 										/>
-									</div>
+									</S.AssetFilters>
 								) : null}
-							</div>
+							</S.SectionHeading>
 							{market.error ? (
 								<ErrorPanel
 									heading={messages.homeErrorHeading}
@@ -205,10 +207,10 @@ export default function HomeMarket() {
 									onTokenPageChange={home.setTokenPage}
 								/>
 							)}
-						</section>
-					</div>
-				</div>
-			</div>
-		</div>
+						</S.Section>
+					</S.MarketLayout>
+				</S.Content>
+			</S.Main>
+		</S.Shell>
 	);
 }

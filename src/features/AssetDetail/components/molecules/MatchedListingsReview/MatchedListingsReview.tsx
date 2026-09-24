@@ -11,6 +11,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { orderPriceLabel, tokenLabel } from '../../../model/fungible-market';
 import { fungibleListingAccessibleLabel } from '../../../model/fungible-operation';
 
+import * as S from './styles';
+
 export default function MatchedListingsReview(props: {
 	onRemove?(order: SwapOrder): void;
 	orders: SwapOrder[];
@@ -19,11 +21,11 @@ export default function MatchedListingsReview(props: {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const plural = usePlural();
 	return (
-		<section aria-label={messages.matchedListingsLabel} className="matched-listings">
-			<div className="matched-listings-heading">
+		<S.Listings aria-label={messages.matchedListingsLabel} className="matched-listings">
+			<S.Heading className="matched-listings-heading">
 				<strong>{messages.matchedListingsHeading}</strong>
 				<span>{plural(messages.matchedListingsCount, props.orders.length)}</span>
-			</div>
+			</S.Heading>
 			{props.orders.length ? (
 				<ul aria-label={messages.matchedListingsSellers} tabIndex={props.orders.length > 4 ? 0 : undefined}>
 					{props.orders.map((order) => (
@@ -57,8 +59,8 @@ export default function MatchedListingsReview(props: {
 					))}
 				</ul>
 			) : (
-				<p className="matched-listings-empty">{messages.matchedListingsEmpty}</p>
+				<S.Empty className="matched-listings-empty">{messages.matchedListingsEmpty}</S.Empty>
 			)}
-		</section>
+		</S.Listings>
 	);
 }

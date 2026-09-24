@@ -3,7 +3,6 @@ import { Check, Info, Plus, RefreshCw, X } from 'lucide-react';
 
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
-import { PortalIcon } from 'components/atoms/PortalIcon';
 import { TextInput } from 'components/atoms/TextInput';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { formatMessage } from 'helpers/i18n';
@@ -12,6 +11,7 @@ import { useMessages } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
 import { GATEWAY_CONTROL_MESSAGES } from './messages';
+import * as S from './styles';
 
 export default function GatewayControl() {
 	const language = useMessages(GATEWAY_CONTROL_MESSAGES);
@@ -55,11 +55,11 @@ export default function GatewayControl() {
 		window.requestAnimationFrame(() => inputRefs.current[Math.max(0, index - 1)]?.focus());
 	}
 	return (
-		<div className="gateway-control">
+		<S.Control className="gateway-control">
 			{pageRefreshing ? (
 				<Tooltip content={language.gatewayRefreshing}>
 					{(tooltipId) => (
-						<span
+						<S.Refreshing
 							aria-describedby={tooltipId}
 							aria-label={language.gatewayRefreshing}
 							className="gateway-refreshing"
@@ -67,11 +67,11 @@ export default function GatewayControl() {
 							tabIndex={0}
 						>
 							<Icon icon={RefreshCw} size="sm" />
-						</span>
+						</S.Refreshing>
 					)}
 				</Tooltip>
 			) : null}
-			<details className="gateway" open={open} ref={detailsRef}>
+			<S.Gateway className="gateway" open={open} ref={detailsRef}>
 				<summary
 					aria-controls="gateway-panel"
 					aria-expanded={open}
@@ -93,10 +93,10 @@ export default function GatewayControl() {
 						disabled={open}
 					>
 						{(tooltipId) => (
-							<span aria-describedby={tooltipId} className="gateway-summary-content">
-								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
+							<S.SummaryContent aria-describedby={tooltipId} className="gateway-summary-content">
+								<S.PortalGlyph className="ui-icon gateway-portal-icon" aria-hidden="true" />
 								<span className="gateway-label">{language.gatewayLabel}</span>
-							</span>
+							</S.SummaryContent>
 						)}
 					</Tooltip>
 				</summary>
@@ -116,17 +116,19 @@ export default function GatewayControl() {
 									<strong>{language.gatewayPermawebOsTitle}</strong>
 									<small>{language.gatewayPermawebOsDetail}</small>
 								</span>
-								<span className="gateway-permaweb-os-toggle-control" aria-hidden="true">
+								<S.ToggleControl className="gateway-permaweb-os-toggle-control" aria-hidden="true">
 									{settings.usesPermawebOs ? <Icon icon={Check} size="sm" /> : null}
-								</span>
+								</S.ToggleControl>
 							</Button>
 						) : null}
-						<fieldset className="gateway-peer-editor">
+						<S.PeerEditor className="gateway-peer-editor">
 							<legend>{language.gatewayPeersLegend}</legend>
-							<p className="gateway-peer-description">{language.gatewayPeersDescription}</p>
-							<div className="gateway-peer-fields">
+							<S.PeerDescription className="gateway-peer-description">
+								{language.gatewayPeersDescription}
+							</S.PeerDescription>
+							<S.PeerFields className="gateway-peer-fields">
 								{settings.peers.map((value, index) => (
-									<div className="gateway-peer-row" key={index}>
+									<S.PeerRow className="gateway-peer-row" key={index}>
 										<label className="sr-only" htmlFor={`gateway-peer-${index}`}>
 											{formatMessage(language.gatewayPeerLabel, { position: index + 1 })}
 										</label>
@@ -158,9 +160,9 @@ export default function GatewayControl() {
 												<Icon icon={X} size="sm" />
 											</Button>
 										) : null}
-									</div>
+									</S.PeerRow>
 								))}
-							</div>
+							</S.PeerFields>
 							<Button
 								className="gateway-peer-add with-icon"
 								onClick={handleAddPeer}
@@ -170,18 +172,18 @@ export default function GatewayControl() {
 							>
 								<Icon icon={Plus} size="sm" /> {language.gatewayPeerAdd}
 							</Button>
-						</fieldset>
+						</S.PeerEditor>
 						{settings.peersInvalid ? (
-							<p className="gateway-error" id="gateway-error" role="alert">
+							<S.ErrorMessage className="gateway-error" id="gateway-error" role="alert">
 								{language.gatewayPeersInvalid}
-							</p>
+							</S.ErrorMessage>
 						) : null}
-						<div className="gateway-apply-row">
+						<S.ApplyRow className="gateway-apply-row">
 							<Button className="gateway-apply-button with-icon" type="submit" size="custom">
-								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />{' '}
+								<S.PortalGlyph className="ui-icon gateway-portal-icon" aria-hidden="true" />{' '}
 								{language.gatewayApply}
 							</Button>
-							<Tooltip className="gateway-peer-help" content={language.gatewayHelp}>
+							<S.PeerHelp className="gateway-peer-help" content={language.gatewayHelp}>
 								{(tooltipId) => (
 									<Button
 										aria-describedby={tooltipId}
@@ -194,11 +196,11 @@ export default function GatewayControl() {
 										<Icon icon={Info} size="sm" />
 									</Button>
 								)}
-							</Tooltip>
-						</div>
+							</S.PeerHelp>
+						</S.ApplyRow>
 					</form>
 				</div>
-			</details>
-		</div>
+			</S.Gateway>
+		</S.Control>
 	);
 }

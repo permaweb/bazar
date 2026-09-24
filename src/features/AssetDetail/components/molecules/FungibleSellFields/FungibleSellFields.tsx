@@ -12,6 +12,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import type { FungibleOperationDraftView } from '../../../model/fungible-operation-view';
 
+import * as S from './styles';
+
 export default function FungibleSellFields(props: {
 	draft: FungibleOperationDraftView;
 	quantity: string;
@@ -27,11 +29,11 @@ export default function FungibleSellFields(props: {
 
 	return (
 		<>
-			<div className="trade-balance">
+			<S.Balance className="trade-balance">
 				<span>{messages.sellAvailableToList}</span>
 				<strong>{tokenLabel(props.draft.available, props.state)}</strong>
-			</div>
-			<div className="trade-fields">
+			</S.Balance>
+			<S.Fields className="trade-fields">
 				<label>
 					{messages.sellTokenQuantity}
 					<TextInput
@@ -58,17 +60,17 @@ export default function FungibleSellFields(props: {
 						placeholder={messages.sellPricePlaceholder}
 					/>
 				</label>
-			</div>
+			</S.Fields>
 			{props.draft.listingQuote ? (
-				<div className="trade-quote">
+				<S.Quote className="trade-quote">
 					<span>{messages.sellListingTotal}</span>
 					<strong>
 						{props.draft.listingQuote} <ArCurrencyLabel />
 					</strong>
-				</div>
+				</S.Quote>
 			) : null}
 			{props.draft.enteredQuantity && props.draft.enteredQuantity <= props.draft.currentLiquid ? (
-				<div className="trade-quote">
+				<S.Quote className="trade-quote">
 					<span>{messages.sellAfterConfirmation}</span>
 					<strong>
 						{formatMessage(messages.sellBalanceSplit, {
@@ -82,21 +84,21 @@ export default function FungibleSellFields(props: {
 							),
 						})}
 					</strong>
-				</div>
+				</S.Quote>
 			) : null}
 			{props.draft.quantityInvalid ? (
-				<p id={quantityGuidanceId} className="trade-guidance" role="alert">
+				<S.Guidance id={quantityGuidanceId} className="trade-guidance" role="alert">
 					{formatMessage(messages.sellQuantityGuidance, {
 						amount: tokenLabel(props.draft.currentLiquid.toString(), props.state),
 					})}
-				</p>
+				</S.Guidance>
 			) : null}
 			{props.unitPrice && !props.draft.unitPriceValid ? (
-				<p id={priceGuidanceId} className="trade-guidance" role="alert">
+				<S.Guidance id={priceGuidanceId} className="trade-guidance" role="alert">
 					<ArCurrencyText>{messages.sellPriceGuidance}</ArCurrencyText>
-				</p>
+				</S.Guidance>
 			) : null}
-			<p className="settlement-disclosure">{messages.sellDisclosure}</p>
+			<S.Disclosure className="settlement-disclosure">{messages.sellDisclosure}</S.Disclosure>
 		</>
 	);
 }

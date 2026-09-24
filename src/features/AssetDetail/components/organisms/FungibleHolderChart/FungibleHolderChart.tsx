@@ -17,6 +17,8 @@ import {
 import { tokenLabel } from '../../../model/fungible-market';
 import { FungibleHolderIdentity } from '../../molecules/FungibleHolderIdentity';
 
+import * as S from './styles';
+
 export default function FungibleHolderChart(props: {
 	assetName: string;
 	holders: FungibleHolder[];
@@ -59,8 +61,8 @@ export default function FungibleHolderChart(props: {
 	const activeOffered = fungibleOfferedPercentage(active.listed, active.total);
 
 	return (
-		<section aria-labelledby="fungible-holder-chart-title" className="fungible-holder-chart-card">
-			<div className="fungible-holder-chart-visual">
+		<S.Card aria-labelledby="fungible-holder-chart-title" className="fungible-holder-chart-card">
+			<S.Visual className="fungible-holder-chart-visual">
 				<svg
 					aria-label={formatMessage(messages.holderChartLabel, { name: props.assetName })}
 					role="list"
@@ -81,7 +83,7 @@ export default function FungibleHolderChart(props: {
 							</pattern>
 						))}
 					</defs>
-					<circle className="fungible-holder-chart-track" cx="120" cy="120" pathLength="100" r="82" />
+					<S.Track className="fungible-holder-chart-track" cx="120" cy="120" pathLength="100" r="82" />
 					{chartSlices.map((slice) => {
 						const share = fungibleHoldingPercentage(slice.total, props.state.totalSupply);
 						const offered = fungibleOfferedPercentage(slice.listed, slice.total);
@@ -91,7 +93,7 @@ export default function FungibleHolderChart(props: {
 							offered,
 						});
 						return (
-							<g
+							<S.Slice
 								aria-label={label}
 								className={`fungible-holder-chart-slice${slice.key === active.key ? ' is-active' : ''}`}
 								key={slice.key}
@@ -102,7 +104,7 @@ export default function FungibleHolderChart(props: {
 							>
 								<title>{label}</title>
 								{slice.liquidSpan > 0 ? (
-									<circle
+									<S.Arc
 										className="fungible-holder-chart-arc"
 										cx="120"
 										cy="120"
@@ -114,7 +116,7 @@ export default function FungibleHolderChart(props: {
 									/>
 								) : null}
 								{slice.listedSpan > 0 ? (
-									<circle
+									<S.Arc
 										className="fungible-holder-chart-arc"
 										cx="120"
 										cy="120"
@@ -125,7 +127,7 @@ export default function FungibleHolderChart(props: {
 										strokeDashoffset={-(slice.start + slice.liquidSpan)}
 									/>
 								) : null}
-								<circle
+								<S.Hit
 									className="fungible-holder-chart-hit"
 									cx="120"
 									cy="120"
@@ -136,18 +138,18 @@ export default function FungibleHolderChart(props: {
 									}`}
 									strokeDashoffset={-slice.start}
 								/>
-							</g>
+							</S.Slice>
 						);
 					})}
-					<text className="fungible-holder-chart-value" textAnchor="middle" x="120" y="116">
+					<S.Value className="fungible-holder-chart-value" textAnchor="middle" x="120" y="116">
 						{activeShare}
-					</text>
-					<text className="fungible-holder-chart-label" textAnchor="middle" x="120" y="136">
+					</S.Value>
+					<S.Label className="fungible-holder-chart-label" textAnchor="middle" x="120" y="136">
 						{messages.holderChartOfSupply}
-					</text>
+					</S.Label>
 				</svg>
-			</div>
-			<div className="fungible-holder-chart-detail">
+			</S.Visual>
+			<S.Detail className="fungible-holder-chart-detail">
 				<header>
 					<div>
 						<h2 id="fungible-holder-chart-title">{messages.holderChartTitle}</h2>
@@ -159,14 +161,14 @@ export default function FungibleHolderChart(props: {
 						})}
 					</span>
 				</header>
-				<div className="fungible-holder-chart-identity">
+				<S.Identity className="fungible-holder-chart-identity">
 					<span>{messages.holderChartSelectedHolder}</span>
 					{active.address ? (
 						<FungibleHolderIdentity address={active.address} />
 					) : (
 						<strong>{active.label}</strong>
 					)}
-				</div>
+				</S.Identity>
 				<dl>
 					<div>
 						<dt>{messages.holderChartSupplyShare}</dt>
@@ -177,7 +179,7 @@ export default function FungibleHolderChart(props: {
 						<dd>{activeOffered}</dd>
 					</div>
 				</dl>
-				<div className="fungible-holder-chart-balances">
+				<S.Balances className="fungible-holder-chart-balances">
 					<div>
 						<span>{messages.holderChartTotalBalance}</span>
 						<strong>{tokenLabel(active.total, props.state)}</strong>
@@ -190,16 +192,16 @@ export default function FungibleHolderChart(props: {
 								: messages.holderChartNone}
 						</strong>
 					</div>
-				</div>
-				<div aria-label={messages.holderChartLegend} className="fungible-holder-chart-legend">
+				</S.Balances>
+				<S.Legend aria-label={messages.holderChartLegend} className="fungible-holder-chart-legend">
 					<span>
 						<i aria-hidden="true" /> {messages.holderChartLegendHeld}
 					</span>
 					<span>
 						<i aria-hidden="true" className="is-listed" /> {messages.holderChartLegendListed}
 					</span>
-				</div>
-			</div>
-		</section>
+				</S.Legend>
+			</S.Detail>
+		</S.Card>
 	);
 }

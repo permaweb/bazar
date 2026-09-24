@@ -14,6 +14,8 @@ import type { HomeDiscoverView, HomeMarketEntry } from '../../../model/home-mark
 import { HomeAssetTile } from '../../molecules/HomeAssetTile';
 import { HomeTokenRow } from '../../molecules/HomeTokenRow';
 
+import * as S from './styles';
+
 export default function HomeDiscoverPanel(props: {
 	discover: HomeDiscoverView;
 	assetType: HomeAssetType;
@@ -39,7 +41,7 @@ export default function HomeDiscoverPanel(props: {
 		</div>
 	);
 	const renderCollectibleGrid = (items: HomeMarketEntry[]) => (
-		<div className="home-asset-grid">
+		<S.AssetGrid className="home-asset-grid">
 			{items.map(({ asset, collection }, index) => (
 				<HomeAssetTile
 					asset={asset}
@@ -49,7 +51,7 @@ export default function HomeDiscoverPanel(props: {
 					priority={index < 2}
 				/>
 			))}
-		</div>
+		</S.AssetGrid>
 	);
 	return (
 		<div
@@ -59,14 +61,14 @@ export default function HomeDiscoverPanel(props: {
 			role="tabpanel"
 		>
 			{props.discover.initialLoading ? (
-				<div className="home-market-loading">
+				<S.MarketLoading className="home-market-loading">
 					<Loading label={messages.homeDiscoverLoading} />
-				</div>
+				</S.MarketLoading>
 			) : props.discover.displayed.length ? (
 				props.assetType === 'all' ? (
-					<div className="discover-market-sections">
-						<section className="discover-market-section token-section">
-							<div className="discover-market-heading">
+					<S.MarketSections className="discover-market-sections">
+						<S.MarketSection className="discover-market-section token-section">
+							<S.MarketHeading className="discover-market-heading">
 								<div>
 									<Eyebrow>{messages.homeTokensEyebrow}</Eyebrow>
 									<h2>{messages.homeTokensHeading}</h2>
@@ -75,7 +77,7 @@ export default function HomeDiscoverPanel(props: {
 									{messages.homeViewAllTokens}
 									<Icon icon={ArrowRight} size="xs" />
 								</Button>
-							</div>
+							</S.MarketHeading>
 							{props.discover.tokens.length ? (
 								<>
 									{renderTokenList(props.discover.tokenPagination.items)}
@@ -91,11 +93,11 @@ export default function HomeDiscoverPanel(props: {
 									/>
 								</>
 							) : (
-								<p className="discover-section-empty">{messages.homeNoTokens}</p>
+								<S.SectionEmpty className="discover-section-empty">{messages.homeNoTokens}</S.SectionEmpty>
 							)}
-						</section>
-						<section className="discover-market-section collectible-section">
-							<div className="discover-market-heading">
+						</S.MarketSection>
+						<S.MarketSection className="discover-market-section collectible-section">
+							<S.MarketHeading className="discover-market-heading">
 								<div>
 									<Eyebrow>{messages.homeUniquesEyebrow}</Eyebrow>
 									<h2>{messages.homeUniquesHeading}</h2>
@@ -104,14 +106,14 @@ export default function HomeDiscoverPanel(props: {
 									{messages.homeViewAllUniques}
 									<Icon icon={ArrowRight} size="xs" />
 								</Button>
-							</div>
+							</S.MarketHeading>
 							{props.discover.collectibles.length ? (
 								renderCollectibleGrid(props.discover.collectibles.slice(0, 12))
 							) : (
-								<p className="discover-section-empty">{messages.homeNoUniques}</p>
+								<S.SectionEmpty className="discover-section-empty">{messages.homeNoUniques}</S.SectionEmpty>
 							)}
-						</section>
-					</div>
+						</S.MarketSection>
+					</S.MarketSections>
 				) : (
 					<>
 						{props.assetType === 'tokens'
@@ -132,9 +134,9 @@ export default function HomeDiscoverPanel(props: {
 					</>
 				)
 			) : props.discover.failed ? null : (
-				<div className="home-assets-empty">
+				<S.AssetsEmpty className="home-assets-empty">
 					{props.assetView === 'all' ? messages.homeNoRecords : messages.homeNoListings}
-				</div>
+				</S.AssetsEmpty>
 			)}
 		</div>
 	);

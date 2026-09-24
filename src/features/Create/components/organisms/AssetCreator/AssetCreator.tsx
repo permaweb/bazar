@@ -32,6 +32,8 @@ import { FungibleMintDialog } from '../FungibleMintDialog';
 import { MintMediaPicker } from '../MintMediaPicker';
 import { UdlLicenseEditor } from '../UdlLicenseEditor';
 
+import * as S from './styles';
+
 /** Field limits the counters report; they must match the inputs' own `maxLength`. */
 const NAME_MAX_LENGTH = 80;
 const DESCRIPTION_MAX_LENGTH = 600;
@@ -57,8 +59,8 @@ export default function AssetCreator() {
 	};
 
 	return (
-		<section className="create-page">
-			<div className="create-heading">
+		<S.Page className="create-page">
+			<S.Heading className="create-heading">
 				<div>
 					<Eyebrow>{messages.createEyebrow}</Eyebrow>
 					<h1>{messages.createTitle}</h1>
@@ -70,7 +72,7 @@ export default function AssetCreator() {
 						? messages.createIntroCollection
 						: messages.createIntroFungible}
 				</p>
-			</div>
+			</S.Heading>
 
 			<SegmentedTabs<CreatorMode>
 				active={mode}
@@ -86,7 +88,7 @@ export default function AssetCreator() {
 			/>
 
 			{mode === 'asset' && flow.draft ? (
-				<div className="mint-recovery" role="status">
+				<S.Recovery className="mint-recovery" role="status">
 					<div>
 						<strong>{messages.createDraftTitle}</strong>
 						<span>{formatMessage(messages.createDraftDetail, { name: flow.draft.name })}</span>
@@ -104,10 +106,10 @@ export default function AssetCreator() {
 							{messages.createDraftDismiss}
 						</Button>
 					</div>
-				</div>
+				</S.Recovery>
 			) : null}
 
-			<div className="create-layout">
+			<S.Layout className="create-layout">
 				<MintMediaPicker
 					mode={mode}
 					name={fields.name}
@@ -132,8 +134,8 @@ export default function AssetCreator() {
 					onArtworkRemove={creator.removeArtwork}
 				/>
 
-				<form className="create-form" onSubmit={handleSubmit}>
-					<div className="create-field">
+				<S.Form className="create-form" onSubmit={handleSubmit}>
+					<S.Field className="create-field">
 						<label htmlFor="mint-name">
 							{mode === 'asset'
 								? messages.createNameLabelAsset
@@ -160,8 +162,8 @@ export default function AssetCreator() {
 								max: NAME_MAX_LENGTH,
 							})}
 						</span>
-					</div>
-					<div className="create-field">
+					</S.Field>
+					<S.Field className="create-field">
 						<label htmlFor="mint-description">
 							{mode === 'asset'
 								? messages.createDescriptionLabelAsset
@@ -190,7 +192,7 @@ export default function AssetCreator() {
 								max: DESCRIPTION_MAX_LENGTH,
 							})}
 						</span>
-					</div>
+					</S.Field>
 
 					{mode === 'fungible' ? (
 						<FungibleTokenFields
@@ -222,7 +224,7 @@ export default function AssetCreator() {
 						/>
 					) : null}
 
-					<div className="mint-summary">
+					<S.Summary className="mint-summary">
 						<div>
 							<span>
 								{mode === 'asset'
@@ -278,10 +280,10 @@ export default function AssetCreator() {
 								)}
 							</strong>
 						</div>
-					</div>
+					</S.Summary>
 
 					{cost.estimate && cost.highCost ? (
-						<section className="mint-cost-note" aria-label={messages.createCostNoteLabel}>
+						<S.CostNote className="mint-cost-note" aria-label={messages.createCostNoteLabel}>
 							<Icon icon={Info} />
 							<div>
 								<strong>
@@ -299,9 +301,9 @@ export default function AssetCreator() {
 										: messages.createCostNoteWithoutBytes}
 								</span>
 							</div>
-						</section>
+						</S.CostNote>
 					) : null}
-					<div className="mint-notice">
+					<S.Notice className="mint-notice">
 						<Icon icon={Info} />
 						<span>
 							{mode === 'asset'
@@ -318,14 +320,14 @@ export default function AssetCreator() {
 								  })
 								: messages.createNoticeCollection}
 						</span>
-					</div>
+					</S.Notice>
 					{flow.error ? (
 						<div className="inline-error">
 							<span>{flow.error}</span>
 						</div>
 					) : null}
 					{flow.assetResult || flow.collectionResult ? (
-						<div
+						<S.Success
 							className={`mint-success${
 								flow.assetResult && !creator.assetResultLive ? ' propagating' : ''
 							}`}
@@ -356,7 +358,7 @@ export default function AssetCreator() {
 									entries={mintReceiptEntries(flow, messages)}
 								/>
 							</div>
-							<div className="mint-success-actions">
+							<S.SuccessActions className="mint-success-actions">
 								{flow.assetResult && !creator.assetResultLive ? (
 									<Button type="button" size="custom" onClick={() => navigate('/')}>
 										{messages.createContinueBrowsing} <Icon icon={ArrowRight} size="sm" />
@@ -381,10 +383,10 @@ export default function AssetCreator() {
 										<Icon icon={ArrowRight} size="sm" />
 									)}
 								</Button>
-							</div>
-						</div>
+							</S.SuccessActions>
+						</S.Success>
 					) : mode === 'fungible' && flow.fungible.status !== 'idle' ? (
-						<Button
+						<S.SubmitButton
 							className="mint-submit"
 							ref={fungibleProgressButton}
 							type="button"
@@ -401,9 +403,14 @@ export default function AssetCreator() {
 							) : (
 								<Icon icon={InfinityIcon} />
 							)}
-						</Button>
+						</S.SubmitButton>
 					) : (
-						<Button className="mint-submit" type="submit" size="custom" disabled={creator.submitDisabled}>
+						<S.SubmitButton
+							className="mint-submit"
+							type="submit"
+							size="custom"
+							disabled={creator.submitDisabled}
+						>
 							{creator.working
 								? creator.phaseLabel
 								: creator.walletConnected
@@ -414,10 +421,10 @@ export default function AssetCreator() {
 									: messages.createSubmitFungible
 								: messages.createSubmitConnectWallet}
 							{!creator.working ? <Icon icon={ArrowRight} /> : null}
-						</Button>
+						</S.SubmitButton>
 					)}
-				</form>
-			</div>
+				</S.Form>
+			</S.Layout>
 			{fungibleSubmitting || fungibleResult || fungibleError || flow.fungibleDialogVisible ? (
 				<FungibleMintDialog
 					confirmations={creator.fungibleConfirmation.confirmations}
@@ -438,6 +445,6 @@ export default function AssetCreator() {
 					visible={flow.fungibleDialogVisible}
 				/>
 			) : null}
-		</section>
+		</S.Page>
 	);
 }

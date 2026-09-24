@@ -32,6 +32,7 @@ import {
 	collectionResultAnnouncement,
 	collectionResultSummary,
 } from '../../../model/collection-market-summary';
+import * as Page from '../../../styles/page';
 import { CollectionAlphabetFilter } from '../../molecules/CollectionAlphabetFilter';
 import { CollectionAssetResults } from '../../molecules/CollectionAssetResults';
 import { CollectionIndexNotice } from '../../molecules/CollectionIndexNotice';
@@ -193,12 +194,12 @@ export default function CollectionMarket() {
 	const moreAdded = asyncData(more.state) ?? 0;
 	const revealComplete = filtered.length > pageSize && limit >= filtered.length;
 	return (
-		<section className={`collection-page collection-marketplace-page view-${viewMode}`}>
+		<Page.Page className={`collection-page collection-marketplace-page view-${viewMode}`}>
 			<Link className="back" to="/">
 				<Icon icon={ArrowLeft} size="sm" />{' '}
 				{collection.kind === 'tokens' ? language.backDiscover : language.backAllCollections}
 			</Link>
-			<div className="collection-market-navigation">
+			<Page.Navigation className="collection-market-navigation">
 				<CollectionMarketSummary
 					action={
 						append.canAppend ? (
@@ -239,7 +240,7 @@ export default function CollectionMarket() {
 					onSelectAssets={() => setListedOnly(false)}
 					onSelectOffers={() => setListedOnly(true)}
 				/>
-			</div>
+			</Page.Navigation>
 			<CollectionAppendDialog
 				collectionName={collection.name}
 				error={append.error}
@@ -324,7 +325,7 @@ export default function CollectionMarket() {
 				pricesFailed={listings.pricesFailed}
 				summaryId={resultSummaryId}
 			/>
-			<p
+			<Page.RevealStatus
 				className={revealComplete ? 'collection-result-count reveal-complete' : 'sr-only'}
 				aria-live="polite"
 				ref={resultSummaryRef}
@@ -346,7 +347,7 @@ export default function CollectionMarket() {
 							shown: Math.min(limit, filtered.length).toLocaleString(),
 							total: filtered.length.toLocaleString(),
 					  })}
-			</p>
+			</Page.RevealStatus>
 			<CollectionMarketEmptyState
 				candidates={listings.progress.total}
 				collection={collection}
@@ -400,7 +401,11 @@ export default function CollectionMarket() {
 				</p>
 			) : null}
 			{limit < filtered.length ? (
-				<span aria-hidden="true" className="progressive-reveal-sentinel" ref={progressiveRevealRef} />
+				<Page.RevealSentinel
+					aria-hidden="true"
+					className="progressive-reveal-sentinel"
+					ref={progressiveRevealRef}
+				/>
 			) : null}
 			{limit < filtered.length ? (
 				<Button
@@ -454,6 +459,6 @@ export default function CollectionMarket() {
 				</Button>
 			) : null}
 			<CollectionAnalyticsPanel collection={collection} loading={listings.loading} rows={listings.liveRows} />
-		</section>
+		</Page.Page>
 	);
 }

@@ -13,6 +13,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 
+import * as S from './styles';
+
 export default function FungibleListingComposer(props: {
 	availableQuantity: string;
 	onMax(): void;
@@ -36,15 +38,15 @@ export default function FungibleListingComposer(props: {
 	const priceErrorId = React.useId();
 
 	return (
-		<section aria-label={messages.composerListingLabel} className="purchase-composer">
-			<div className="purchase-composer-panel purchase-composer-buy">
-				<div className="purchase-composer-heading">
+		<S.Composer aria-label={messages.composerListingLabel} className="purchase-composer">
+			<S.BuyPanel className="purchase-composer-panel purchase-composer-buy">
+				<S.Heading className="purchase-composer-heading">
 					<label htmlFor={quantityId}>{messages.composerYouList}</label>
 					<Button onClick={props.onMax} type="button" size="custom">
 						{messages.composerMax}
 					</Button>
-				</div>
-				<div className="purchase-composer-value">
+				</S.Heading>
+				<S.Value className="purchase-composer-value">
 					<TextInput
 						aria-describedby={`${quantityGuidanceId}${props.quantityError ? ` ${quantityErrorId}` : ''}`}
 						aria-invalid={Boolean(props.quantityError)}
@@ -54,19 +56,19 @@ export default function FungibleListingComposer(props: {
 						placeholder="0"
 						value={props.quantity}
 					/>
-					<span className="purchase-composer-token">{tickerDisplay}</span>
-				</div>
+					<S.Token className="purchase-composer-token">{tickerDisplay}</S.Token>
+				</S.Value>
 				<small id={quantityGuidanceId}>
 					{formatMessage(messages.composerAvailable, {
 						amount: tokenLabel(props.availableQuantity, props.state),
 					})}
 				</small>
-			</div>
-			<div className="purchase-composer-panel purchase-composer-pay">
-				<span className="purchase-composer-direction" aria-hidden="true">
+			</S.BuyPanel>
+			<S.PayPanel className="purchase-composer-panel purchase-composer-pay">
+				<S.Direction className="purchase-composer-direction" aria-hidden="true">
 					<ArrowDown />
-				</span>
-				<div className="purchase-composer-heading">
+				</S.Direction>
+				<S.Heading className="purchase-composer-heading">
 					<label htmlFor={unitPriceId}>{messages.composerUnitPrice}</label>
 					<span>
 						{props.total ? (
@@ -77,8 +79,8 @@ export default function FungibleListingComposer(props: {
 							messages.composerListingTotal
 						)}
 					</span>
-				</div>
-				<div className="purchase-composer-value">
+				</S.Heading>
+				<S.Value className="purchase-composer-value">
 					<TextInput
 						aria-describedby={`${priceGuidanceId}${props.unitPriceError ? ` ${priceErrorId}` : ''}`}
 						aria-invalid={Boolean(props.unitPriceError)}
@@ -88,24 +90,24 @@ export default function FungibleListingComposer(props: {
 						placeholder="0"
 						value={props.unitPrice}
 					/>
-					<span className="purchase-composer-token">
+					<S.Token className="purchase-composer-token">
 						<ArCurrencyLabel />
-					</span>
-				</div>
+					</S.Token>
+				</S.Value>
 				<small id={priceGuidanceId}>
 					{formatMessage(messages.composerPricePerToken, { ticker: tickerDisplay })}
 				</small>
-			</div>
+			</S.PayPanel>
 			{props.quantityError ? (
-				<p className="purchase-composer-error" id={quantityErrorId} role="alert">
+				<S.ComposerError className="purchase-composer-error" id={quantityErrorId} role="alert">
 					{props.quantityError}
-				</p>
+				</S.ComposerError>
 			) : null}
 			{props.unitPriceError ? (
-				<p className="purchase-composer-error" id={priceErrorId} role="alert">
+				<S.ComposerError className="purchase-composer-error" id={priceErrorId} role="alert">
 					<ArCurrencyText>{props.unitPriceError}</ArCurrencyText>
-				</p>
+				</S.ComposerError>
 			) : null}
-		</section>
+		</S.Composer>
 	);
 }

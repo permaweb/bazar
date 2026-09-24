@@ -9,6 +9,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { COLLECTION_MESSAGES } from '../../../messages';
 import { alphabetBrowseIndex, alphabetFilterIndex, COLLECTION_ALPHABET } from '../../../model/collection-market';
 
+import * as S from './styles';
+
 // A roving-tabindex letter filter that scrolls horizontally, with edge controls that page by several letters.
 export default function CollectionAlphabetFilter(props: {
 	initial: string;
@@ -73,8 +75,8 @@ export default function CollectionAlphabetFilter(props: {
 	}
 
 	return (
-		<div className={`alphabet-filter-shell${edges.start ? ' at-start' : ''}${edges.end ? ' at-end' : ''}`}>
-			<nav
+		<S.Shell className={`alphabet-filter-shell${edges.start ? ' at-start' : ''}${edges.end ? ' at-end' : ''}`}>
+			<S.Filter
 				className="alphabet-filter"
 				aria-label={language.alphabetFilterLabel}
 				id="name-initial-filter"
@@ -112,9 +114,9 @@ export default function CollectionAlphabetFilter(props: {
 						{letter === 'all' ? language.alphabetAll : letter}
 					</Button>
 				))}
-			</nav>
+			</S.Filter>
 			{!edges.start ? (
-				<Button
+				<S.Scroll
 					aria-controls="name-initial-filter"
 					aria-label={language.alphabetBrowsePrevious}
 					className="alphabet-scroll alphabet-scroll-previous"
@@ -123,10 +125,10 @@ export default function CollectionAlphabetFilter(props: {
 					type="button"
 				>
 					<ArrowLeft aria-hidden="true" />
-				</Button>
+				</S.Scroll>
 			) : null}
 			{!edges.end ? (
-				<Button
+				<S.Scroll
 					aria-controls="name-initial-filter"
 					aria-label={language.alphabetBrowseNext}
 					className="alphabet-scroll alphabet-scroll-next"
@@ -135,8 +137,8 @@ export default function CollectionAlphabetFilter(props: {
 					type="button"
 				>
 					<ArrowRight aria-hidden="true" />
-				</Button>
+				</S.Scroll>
 			) : null}
-		</div>
+		</S.Shell>
 	);
 }

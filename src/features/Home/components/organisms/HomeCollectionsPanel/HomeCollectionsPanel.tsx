@@ -6,6 +6,8 @@ import type { HomeCollectionsView } from '../../../model/home-market-view';
 import { HomeCollectionCard } from '../../molecules/HomeCollectionCard';
 import { HomeMarketGhostCard } from '../../molecules/HomeMarketGhostCard';
 
+import * as S from './styles';
+
 export default function HomeCollectionsPanel(props: {
 	collections: HomeCollectionsView;
 	marketFailed: boolean;
@@ -20,7 +22,7 @@ export default function HomeCollectionsPanel(props: {
 			role="tabpanel"
 		>
 			{props.collections.items.length || props.collections.pending ? (
-				<div className="home-feature-grid">
+				<S.FeatureGrid className="home-feature-grid">
 					{props.collections.items.map((collection, index) => {
 						const floor = props.collections.floors[collection.id];
 						return (
@@ -34,12 +36,12 @@ export default function HomeCollectionsPanel(props: {
 						);
 					})}
 					{props.collections.pending ? <HomeMarketGhostCard kind="collection" /> : null}
-				</div>
+				</S.FeatureGrid>
 			) : null}
 			{props.collections.ready && !props.marketFailed && props.collections.items.length === 0 ? (
-				<div className="home-no-results">
+				<S.NoResults className="home-no-results">
 					{formatMessage(messages.homeNoCollections, { query: props.query })}
-				</div>
+				</S.NoResults>
 			) : null}
 		</div>
 	);

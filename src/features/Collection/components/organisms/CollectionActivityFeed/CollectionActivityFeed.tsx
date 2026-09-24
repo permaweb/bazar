@@ -18,6 +18,7 @@ import { useMarketProvider } from 'providers/MarketProvider';
 
 import { useCollectionActivity } from '../../../hooks/useCollectionActivity';
 import { COLLECTION_MESSAGES } from '../../../messages';
+import * as Page from '../../../styles/page';
 import { CollectionActivityAnalytics } from '../../molecules/CollectionActivityAnalytics';
 import { CollectionIndexNotice } from '../../molecules/CollectionIndexNotice';
 import { CollectionMarketSummary } from '../../molecules/CollectionMarketSummary';
@@ -91,11 +92,11 @@ export default function CollectionActivityFeed() {
 		plural
 	);
 	return (
-		<section className="collection-page collection-marketplace-page collection-activity-page view-compact">
+		<Page.Page className="collection-page collection-marketplace-page collection-activity-page view-compact">
 			<Link className="back" to="/">
 				<Icon icon={ArrowLeft} size="sm" /> {language.backAllCollections}
 			</Link>
-			<div className="collection-market-navigation">
+			<Page.Navigation className="collection-market-navigation">
 				<CollectionMarketSummary
 					collection={collection}
 					stats={[
@@ -128,7 +129,7 @@ export default function CollectionActivityFeed() {
 					]}
 				/>
 				<CollectionTabs collection={collection} active="activity" />
-			</div>
+			</Page.Navigation>
 			<LiveRegion>{activityScanAnnouncement}</LiveRegion>
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{collection.kind === 'tokens' && collection.hasMore ? (
@@ -175,7 +176,7 @@ export default function CollectionActivityFeed() {
 				loading={activity.loading}
 				resolveAsset={activity.resolveAsset}
 			/>
-			<p
+			<Page.RevealStatus
 				className={
 					activityRevealAnnouncement && events.length > 20 && activityLimit >= events.length
 						? 'collection-result-count reveal-complete'
@@ -187,7 +188,7 @@ export default function CollectionActivityFeed() {
 				tabIndex={-1}
 			>
 				{activityRevealAnnouncement}
-			</p>
+			</Page.RevealStatus>
 			{activityLimit < events.length ? (
 				<Button
 					aria-controls={activityListId}
@@ -225,6 +226,6 @@ export default function CollectionActivityFeed() {
 				loading={activity.loading}
 				pages={activity.pages}
 			/>
-		</section>
+		</Page.Page>
 	);
 }

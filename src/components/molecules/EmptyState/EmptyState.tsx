@@ -1,5 +1,7 @@
 import React from 'react';
 
+import * as S from './styles';
+
 // Explains why a list or panel has nothing to show and, optionally, what to do next.
 export default function EmptyState(props: {
 	title: React.ReactNode;
@@ -7,10 +9,10 @@ export default function EmptyState(props: {
 	action?: React.ReactNode;
 }) {
 	return (
-		<div className="empty-state">
+		<S.Panel className="empty-state">
 			<h3>{props.title}</h3>
 			{props.children ? <p>{props.children}</p> : null}
 			{props.action}
-		</div>
+		</S.Panel>
 	);
 }

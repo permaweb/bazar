@@ -1,3 +1,7 @@
-// Presentation for this component still comes from its class names in apps/bazar/styles.css.
-// Move those rules here as styled-components when the component is next restyled.
-export {};
+import styled from 'styled-components';
+
+export const ResumeNote = styled.p`
+	margin: -14px 0 14px;
+	color: var(--muted);
+	font-size: var(--type-body);
+`;

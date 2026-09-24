@@ -2,6 +2,8 @@ import React from 'react';
 
 import { Eyebrow } from '../../atoms/Eyebrow';
 
+import * as S from './styles';
+
 // Title row shared by marketplace dialogs: optional artwork, eyebrow, title, and a trailing control.
 // `layout="asset"` renders the artwork-and-copy structure used by transaction dialogs.
 export default function DialogHeading(props: {
@@ -19,13 +21,18 @@ export default function DialogHeading(props: {
 			<h2 id={props.titleId}>{props.title}</h2>
 		</>
 	);
+	const assetCopy = <S.AssetHeadingCopy className="dialog-asset-heading-copy">{copy}</S.AssetHeadingCopy>;
 	return (
 		<div className="dialog-heading">
 			{props.layout === 'asset' ? (
-				<div className={props.artwork ? 'dialog-asset-heading' : undefined}>
-					{props.artwork}
-					<div className="dialog-asset-heading-copy">{copy}</div>
-				</div>
+				props.artwork ? (
+					<S.AssetHeading className="dialog-asset-heading">
+						{props.artwork}
+						{assetCopy}
+					</S.AssetHeading>
+				) : (
+					<div>{assetCopy}</div>
+				)
 			) : (
 				<div>{copy}</div>
 			)}

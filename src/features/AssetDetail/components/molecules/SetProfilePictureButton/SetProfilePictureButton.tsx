@@ -7,6 +7,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { useProfilePictureUpdate } from '../../../hooks/useProfilePictureUpdate';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 
+import * as S from './styles';
+
 export default function SetProfilePictureButton(props: {
 	assetId: string;
 	disabled: boolean;
@@ -36,9 +38,9 @@ export default function SetProfilePictureButton(props: {
 					: messages.profilePictureIdle}
 			</Button>
 			{update.error ? (
-				<small className="profile-picture-error" role="alert">
+				<S.ErrorMessage className="profile-picture-error" role="alert">
 					{update.error}
-				</small>
+				</S.ErrorMessage>
 			) : null}
 		</>
 	);

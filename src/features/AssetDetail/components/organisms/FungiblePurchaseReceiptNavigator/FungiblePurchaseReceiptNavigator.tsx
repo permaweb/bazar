@@ -18,6 +18,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { fungiblePurchaseReceiptOptions, tokenLabel } from '../../../model/fungible-market';
 
+import * as S from './styles';
+
 export default function FungiblePurchaseReceiptNavigator(props: {
 	activeOrderId?: string;
 	onSelect(orderId: string): void;
@@ -35,8 +37,8 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 	const settled = props.purchaseStates[order.orderId];
 	const receiptOptions = fungiblePurchaseReceiptOptions(props.orders, props.state, messages);
 	return (
-		<div className="settlement-receipts">
-			<div className={`settlement-receipt-navigation${props.orders.length === 1 ? ' single' : ''}`}>
+		<S.Receipts className="settlement-receipts">
+			<S.Navigation className={`settlement-receipt-navigation${props.orders.length === 1 ? ' single' : ''}`}>
 				<div>
 					<strong>{messages.receiptNavigatorTitle}</strong>
 					{props.orders.length > 1 ? (
@@ -49,14 +51,14 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 						/>
 					) : null}
 				</div>
-				<span aria-live="polite" className="settlement-receipt-count">
+				<S.Count aria-live="polite" className="settlement-receipt-count">
 					{formatMessage(messages.receiptNavigatorPosition, {
 						index: activeIndex + 1,
 						total: props.orders.length,
 					})}
-				</span>
-			</div>
-			<section
+				</S.Count>
+			</S.Navigation>
+			<S.Receipt
 				aria-label={formatMessage(messages.receiptNavigatorLabel, {
 					index: activeIndex + 1,
 					total: props.orders.length,
@@ -67,7 +69,7 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 					<span>{formatMessage(messages.receiptNavigatorListing, { index: activeIndex + 1 })}</span>
 					<strong>{tokenLabel(order.quantity, props.state)}</strong>
 				</div>
-				<dl className="settlement-receipt-facts">
+				<S.Facts className="settlement-receipt-facts">
 					<div>
 						<dt>{messages.receiptNavigatorSeller}</dt>
 						<dd>
@@ -92,8 +94,8 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 							{winstonToArDecimal(order.asking)} <ArCurrencyLabel />
 						</dd>
 					</div>
-				</dl>
-				<div className="settlement-receipt-links receipt-proof-links">
+				</S.Facts>
+				<S.ProofLinks className="settlement-receipt-links receipt-proof-links">
 					{settled?.registration?.id ? (
 						<a
 							aria-label={formatMessage(messages.receiptNavigatorViewReservation, {
@@ -120,10 +122,10 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 							<Icon icon={ArrowUpRight} size="xs" />
 						</a>
 					) : null}
-				</div>
-			</section>
+				</S.ProofLinks>
+			</S.Receipt>
 			{props.orders.length > 1 ? (
-				<div className="settlement-receipt-paging">
+				<S.Paging className="settlement-receipt-paging">
 					<Button
 						aria-disabled={activeIndex === 0}
 						onClick={() => {
@@ -145,8 +147,8 @@ export default function FungiblePurchaseReceiptNavigator(props: {
 					>
 						{messages.receiptNavigatorNext}
 					</Button>
-				</div>
+				</S.Paging>
 			) : null}
-		</div>
+		</S.Receipts>
 	);
 }

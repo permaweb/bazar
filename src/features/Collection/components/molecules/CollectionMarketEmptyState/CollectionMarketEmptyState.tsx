@@ -10,6 +10,8 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
 
+import * as S from './styles';
+
 // Explains why no assets or live listings match, and offers to clear the search and letter filters.
 export default function CollectionMarketEmptyState(props: {
 	collection: Collection;
@@ -66,7 +68,7 @@ export default function CollectionMarketEmptyState(props: {
 		);
 	}
 	return (
-		<div className="collection-empty-state">
+		<S.Empty className="collection-empty-state">
 			<span>
 				<Icon icon={Search} />
 			</span>
@@ -96,6 +98,6 @@ export default function CollectionMarketEmptyState(props: {
 					{props.initial !== 'all' ? language.viewAllNames : language.clearSearch}
 				</Button>
 			) : null}
-		</div>
+		</S.Empty>
 	);
 }

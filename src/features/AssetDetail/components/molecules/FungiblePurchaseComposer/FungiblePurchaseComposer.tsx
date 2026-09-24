@@ -14,6 +14,8 @@ import { useMessages, usePlural } from 'providers/LanguageProvider';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 
+import * as S from './styles';
+
 export default function FungiblePurchaseComposer(props: {
 	availableQuantity: string;
 	excludedQuantity?: string;
@@ -34,15 +36,15 @@ export default function FungiblePurchaseComposer(props: {
 	const errorId = React.useId();
 
 	return (
-		<section aria-label={messages.composerPurchaseLabel} className="purchase-composer">
-			<div className="purchase-composer-panel purchase-composer-buy">
-				<div className="purchase-composer-heading">
+		<S.Composer aria-label={messages.composerPurchaseLabel} className="purchase-composer">
+			<S.BuyPanel className="purchase-composer-panel purchase-composer-buy">
+				<S.Heading className="purchase-composer-heading">
 					<label htmlFor={inputId}>{messages.composerYouBuy}</label>
 					<Button onClick={props.onMax} type="button" size="custom">
 						{messages.composerMax}
 					</Button>
-				</div>
-				<div className="purchase-composer-value">
+				</S.Heading>
+				<S.Value className="purchase-composer-value">
 					<TextInput
 						aria-describedby={`${guidanceId}${props.error ? ` ${errorId}` : ''}`}
 						aria-invalid={Boolean(props.error)}
@@ -52,8 +54,8 @@ export default function FungiblePurchaseComposer(props: {
 						placeholder="0"
 						value={props.quantity}
 					/>
-					<span className="purchase-composer-token">{tickerDisplay}</span>
-				</div>
+					<S.Token className="purchase-composer-token">{tickerDisplay}</S.Token>
+				</S.Value>
 				<small id={guidanceId}>
 					{BigInt(props.excludedQuantity ?? '0') > 0n
 						? formatMessage(messages.composerAvailableToBuyExcluded, {
@@ -64,21 +66,21 @@ export default function FungiblePurchaseComposer(props: {
 								amount: tokenLabel(props.availableQuantity, props.state),
 						  })}
 				</small>
-			</div>
-			<div className="purchase-composer-panel purchase-composer-pay" aria-live="polite">
-				<span className="purchase-composer-direction" aria-hidden="true">
+			</S.BuyPanel>
+			<S.PayPanel className="purchase-composer-panel purchase-composer-pay" aria-live="polite">
+				<S.Direction className="purchase-composer-direction" aria-hidden="true">
 					<ArrowDown />
-				</span>
-				<div className="purchase-composer-heading">
+				</S.Direction>
+				<S.Heading className="purchase-composer-heading">
 					<span>{messages.composerYouPay}</span>
 					<span>{messages.composerSellerTotal}</span>
-				</div>
-				<div className="purchase-composer-value">
+				</S.Heading>
+				<S.Value className="purchase-composer-value">
 					<strong>{props.match ? winstonToArDecimal(props.match.totalAsking) : '0'}</strong>
-					<span className="purchase-composer-token">
+					<S.Token className="purchase-composer-token">
 						<ArCurrencyLabel />
-					</span>
-				</div>
+					</S.Token>
+				</S.Value>
 				<small>
 					{props.match
 						? formatMessage(messages.composerMatchSummary, {
@@ -87,12 +89,12 @@ export default function FungiblePurchaseComposer(props: {
 						  })
 						: messages.composerEnterAmount}
 				</small>
-			</div>
+			</S.PayPanel>
 			{props.error ? (
-				<p className="purchase-composer-error" id={errorId} role="alert">
+				<S.ComposerError className="purchase-composer-error" id={errorId} role="alert">
 					{props.error}
-				</p>
+				</S.ComposerError>
 			) : null}
-		</section>
+		</S.Composer>
 	);
 }

@@ -9,6 +9,8 @@ import { HOME_MESSAGES } from '../../../messages';
 import { type HomeMarketSummary, homeMarketSummaryLabel, homeMarketSummaryListed } from '../../../model/home-market';
 import { HomePendingMarketValue } from '../HomePendingMarketValue';
 
+import * as S from './styles';
+
 export default function HomeAssetTile(props: {
 	asset: AssetSummary;
 	collection: Collection;
@@ -25,19 +27,19 @@ export default function HomeAssetTile(props: {
 			onTouchStart={warmAssetPage}
 		>
 			<DiscoveryAssetArtwork asset={props.asset} collection={props.collection} priority={props.priority} />
-			<div className="home-asset-details">
+			<S.Details className="home-asset-details">
 				<div>
 					<strong>{props.asset.name}</strong>
 					<span>{props.collection.name}</span>
 				</div>
-				<b className={`home-asset-price${homeMarketSummaryListed(props.price) ? ' listed' : ''}`}>
+				<S.Price className={`home-asset-price${homeMarketSummaryListed(props.price) ? ' listed' : ''}`}>
 					{props.price ? (
 						homeMarketSummaryLabel(props.price, messages, messages.homeNotListed)
 					) : (
 						<HomePendingMarketValue />
 					)}
-				</b>
-			</div>
+				</S.Price>
+			</S.Details>
 		</Link>
 	);
 }

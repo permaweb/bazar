@@ -7,6 +7,8 @@ import { OPERATIONS_MESSAGES } from '../../../messages';
 import { OperationDialog } from '../OperationDialog';
 import { UploadActivityPanel } from '../UploadActivityPanel';
 
+import * as S from './styles';
+
 // Renders the global operation, upload, and mint surfaces owned by the operation activity provider.
 export default function OperationActivityHost() {
 	const messages = useMessages(OPERATIONS_MESSAGES);
@@ -16,7 +18,7 @@ export default function OperationActivityHost() {
 	return (
 		<>
 			{mintNotice ? (
-				<div className="mint-live-notice" role="status" aria-live="polite">
+				<S.LiveNotice className="mint-live-notice" role="status" aria-live="polite">
 					<div>
 						<strong>{formatMessage(messages.mintNoticeTitle, { asset: mintNotice.asset.name })}</strong>
 						<span>{messages.mintNoticeDetail}</span>
@@ -27,7 +29,7 @@ export default function OperationActivityHost() {
 					<Button type="button" size="custom" variant="ghost" onClick={host.dismissMintNotice}>
 						{messages.mintNoticeDismiss}
 					</Button>
-				</div>
+				</S.LiveNotice>
 			) : null}
 			{host.operations.map((activity) => (
 				<OperationDialog

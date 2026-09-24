@@ -21,6 +21,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import type { UniqueAssetView } from '../../../model/unique-asset-view';
 import { SetProfilePictureButton } from '../../molecules/SetProfilePictureButton';
 
+import * as S from './styles';
+
 export default function UniqueAssetCommerceCard(props: {
 	asset: AssetSummary;
 	state: AssetState;
@@ -35,11 +37,11 @@ export default function UniqueAssetCommerceCard(props: {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	const order = props.view.order;
 	return (
-		<section aria-busy={props.view.operationIsBusy} className="asset-commerce-card">
+		<S.CommerceCard as="section" aria-busy={props.view.operationIsBusy} className="asset-commerce-card">
 			<AssetBalanceStateNotice state={props.state} />
 			{/* One price leads the card; supply, order status, and protocol details live under Blockchain. */}
-			<div className="asset-purchase-summary">
-				<div className="asset-buy-summary">
+			<S.PurchaseSummary className="asset-purchase-summary">
+				<S.BuySummary className="asset-buy-summary">
 					<span>
 						{order?.status === 'reserved'
 							? messages.uniqueCommerceReservedAt
@@ -57,9 +59,9 @@ export default function UniqueAssetCommerceCard(props: {
 						)}
 					</strong>
 					{order ? <small>{messages.uniqueCommerceFeeNote}</small> : null}
-				</div>
-				<span className="asset-edition">{messages.uniqueCommerceEdition}</span>
-			</div>
+				</S.BuySummary>
+				<S.Edition className="asset-edition">{messages.uniqueCommerceEdition}</S.Edition>
+			</S.PurchaseSummary>
 			{props.operationActivity ? (
 				<AssetOperationStatus
 					kind={props.operationActivity.operation.kind}
@@ -71,7 +73,7 @@ export default function UniqueAssetCommerceCard(props: {
 				/>
 			) : null}
 			{props.view.externalReservation && order && !props.operationActivity ? (
-				<div className="external-reservation-notice" role="status">
+				<S.ReservationNotice className="external-reservation-notice" role="status">
 					<div>
 						<strong>{messages.uniqueCommerceReservationReady}</strong>
 						<p>{messages.uniqueCommerceReservationDetail}</p>
@@ -95,9 +97,9 @@ export default function UniqueAssetCommerceCard(props: {
 					>
 						{messages.uniqueCommerceContinuePurchase}
 					</Button>
-				</div>
+				</S.ReservationNotice>
 			) : null}
-			<div className="asset-commerce-actions">
+			<S.CommerceActions className="asset-commerce-actions">
 				{!props.walletAddress ? <ConnectWalletButton /> : null}
 				{props.walletAddress && props.view.buyableOrder && !props.view.mine ? (
 					<Button
@@ -163,7 +165,7 @@ export default function UniqueAssetCommerceCard(props: {
 						owner={props.walletAddress}
 					/>
 				) : null}
-			</div>
-		</section>
+			</S.CommerceActions>
+		</S.CommerceCard>
 	);
 }

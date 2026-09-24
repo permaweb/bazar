@@ -20,7 +20,6 @@ import { AudioArtwork } from 'components/atoms/AudioArtwork';
 import { BazarMark } from 'components/atoms/BazarMark';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
-import { IconButton } from 'components/atoms/IconButton';
 import { LiveRegion } from 'components/atoms/LiveRegion';
 import { Loading } from 'components/atoms/Loading';
 import { NamesCubePreview } from 'components/atoms/NamesCubePreview';
@@ -29,7 +28,7 @@ import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { TokenMarketRow } from 'components/molecules/TokenMarketRow';
-import { Dialog, isModalDialogOpen } from 'components/organisms/Dialog';
+import { isModalDialogOpen } from 'components/organisms/Dialog';
 import { audioFormatLabel, isAudioContentType } from 'helpers/asset-media';
 import { short } from 'helpers/format';
 import { formatMessage } from 'helpers/i18n';
@@ -41,6 +40,7 @@ import { useMessages, usePlural } from 'providers/LanguageProvider';
 import { useMarketProvider } from 'providers/MarketProvider';
 
 import { HEADER_MESSAGES, type HeaderMessages } from './messages';
+import * as S from './styles';
 
 /** Navigation's own wording for the collections the catalogue adapter describes with a code. */
 function collectionDescriptionText(collection: Collection, language: HeaderMessages) {
@@ -215,14 +215,14 @@ export default function Header() {
 	];
 	return (
 		<>
-			<header className="site-header">
-				<div className="site-header-content max-view-wrapper">
-					<Link aria-label={language.headerHome} className="brand" to="/">
-						<span className="brand-mark">
+			<S.SiteHeader className="site-header">
+				<S.HeaderContent className="site-header-content max-view-wrapper">
+					<S.Brand aria-label={language.headerHome} className="brand" to="/">
+						<S.BrandMark className="brand-mark">
 							<BazarMark />
-						</span>
-					</Link>
-					<form
+						</S.BrandMark>
+					</S.Brand>
+					<S.SiteSearch
 						className={`site-search${searchOpen ? ' expanded' : ''}`}
 						role="search"
 						onSubmit={submitSearch}
@@ -242,9 +242,9 @@ export default function Header() {
 							aria-expanded={searchOpen}
 							aria-controls="marketplace-search-panel"
 						/>
-					</form>
-					<nav className="site-nav">
-						<div className="site-nav-primary">
+					</S.SiteSearch>
+					<S.Nav className="site-nav">
+						<S.NavPrimary className="site-nav-primary">
 							<Tooltip
 								align="center"
 								className="create-link-tooltip"
@@ -260,30 +260,32 @@ export default function Header() {
 										to="/create"
 									>
 										<Icon icon={Upload} size="sm" />
-										<span className="create-link-label">{language.headerCreate}</span>
+										<S.CreateLinkLabel className="create-link-label">
+											{language.headerCreate}
+										</S.CreateLinkLabel>
 									</Link>
 								)}
 							</Tooltip>
 							<GatewayControl />
-						</div>
-						<div className="site-nav-wallet">
+						</S.NavPrimary>
+						<S.NavWallet className="site-nav-wallet">
 							<OperationActivityControl />
 							<WalletMenu />
-						</div>
-					</nav>
-				</div>
-			</header>
-			<Dialog
-				as="section"
+						</S.NavWallet>
+					</S.Nav>
+				</S.HeaderContent>
+			</S.SiteHeader>
+			<S.SearchDialog
+				forwardedAs="section"
 				backdropClassName="search-overlay"
-				className="search-panel"
+				panelClassName="search-panel"
 				id="marketplace-search-panel"
 				label={language.headerSearchDialog}
 				onDismiss={closeSearch}
 				open={searchOpen}
 				restoreTarget={searchRestoreTarget}
 			>
-				<form className="search-panel-query" role="search" onSubmit={submitSearch}>
+				<S.PanelQuery className="search-panel-query" role="search" onSubmit={submitSearch}>
 					<Icon icon={Search} />
 					<TextInput
 						autoFocus
@@ -318,14 +320,14 @@ export default function Header() {
 					>
 						<Icon icon={ArrowRight} size="sm" />
 					</Button>
-					<IconButton
+					<S.PanelClose
 						icon={X}
 						label={language.headerSearchCloseLabel}
 						onClick={() => closeSearch()}
 						className="search-panel-close"
 					/>
-				</form>
-				<aside className="search-categories" aria-label={language.headerSearchCategories}>
+				</S.PanelQuery>
+				<S.Categories className="search-categories" aria-label={language.headerSearchCategories}>
 					{scopes.map((item) => {
 						const ScopeIcon = item.Icon;
 						return (
@@ -342,9 +344,9 @@ export default function Header() {
 							</Button>
 						);
 					})}
-				</aside>
-				<div className="search-panel-main">
-					<div className="search-panel-content">
+				</S.Categories>
+				<S.PanelMain className="search-panel-main">
+					<S.PanelContent className="search-panel-content">
 						<LiveRegion>{searchFeedback || announcedSearchResult}</LiveRegion>
 						{market.loading && !market.collections.length ? (
 							<Loading label={language.headerSearchCollectionsLoading} />
@@ -376,14 +378,14 @@ export default function Header() {
 							</div>
 						) : null}
 						{!normalizedQuery && recentQueries.length ? (
-							<section className="search-result-section">
-								<div className="search-result-heading">
+							<S.ResultSection className="search-result-section">
+								<S.ResultHeading className="search-result-heading">
 									<h2>{language.headerRecentSearches}</h2>
 									<Button onClick={clearRecentSearches} size="custom" variant="ghost">
 										{language.headerRecentSearchesClear}
 									</Button>
-								</div>
-								<div className="recent-searches">
+								</S.ResultHeading>
+								<S.RecentSearches className="recent-searches">
 									{recentQueries.map((item) => (
 										<Button
 											key={item}
@@ -395,12 +397,12 @@ export default function Header() {
 											{item}
 										</Button>
 									))}
-								</div>
-							</section>
+								</S.RecentSearches>
+							</S.ResultSection>
 						) : null}
 						{search.collectionResults.length ? (
-							<section className="search-result-section">
-								<div className="search-result-heading">
+							<S.ResultSection className="search-result-section">
+								<S.ResultHeading className="search-result-heading">
 									<h2>
 										{normalizedQuery
 											? language.headerMatchingCollections
@@ -411,8 +413,8 @@ export default function Header() {
 											count: search.collectionResults.length,
 										})}
 									</span>
-								</div>
-								<div className="search-collection-grid">
+								</S.ResultHeading>
+								<S.CollectionGrid className="search-collection-grid">
 									{search.collectionResults.map(({ collection }) => {
 										const preview = collection.assets.find((asset) => asset.image)?.image;
 										const tokenPreview =
@@ -423,7 +425,7 @@ export default function Header() {
 												to={`/collection/${collection.id}`}
 												onClick={followSearchResult}
 											>
-												<span
+												<S.ResultImage
 													className={`search-result-image${
 														collection.kind === 'tokens' ? ' token-avatar-slot' : ''
 													}`}
@@ -444,7 +446,7 @@ export default function Header() {
 													) : (
 														<BazarMark />
 													)}
-												</span>
+												</S.ResultImage>
 												<span>
 													<strong>{collection.name}</strong>
 													<small>
@@ -476,19 +478,19 @@ export default function Header() {
 											</Link>
 										);
 									})}
-								</div>
-							</section>
+								</S.CollectionGrid>
+							</S.ResultSection>
 						) : null}
 						{search.tokenResults.length ? (
-							<section className="search-result-section token-search-results">
-								<div className="search-result-heading">
+							<S.ResultSection className="search-result-section token-search-results">
+								<S.ResultHeading className="search-result-heading">
 									<h2>{normalizedQuery ? language.headerMatchingTokens : language.headerTokens}</h2>
 									<span>
 										{formatMessage(language.headerResultsShown, {
 											count: search.tokenResults.length,
 										})}
 									</span>
-								</div>
+								</S.ResultHeading>
 								<div className="token-market-list compact">
 									{search.tokenResults.map(({ asset, collection }, index) => (
 										<TokenMarketRow
@@ -503,11 +505,11 @@ export default function Header() {
 										/>
 									))}
 								</div>
-							</section>
+							</S.ResultSection>
 						) : null}
 						{search.collectibleResults.length ? (
-							<section className="search-result-section">
-								<div className="search-result-heading">
+							<S.ResultSection className="search-result-section">
+								<S.ResultHeading className="search-result-heading">
 									<h2>
 										{normalizedQuery
 											? language.headerMatchingUniques
@@ -518,8 +520,8 @@ export default function Header() {
 											count: search.collectibleResults.length,
 										})}
 									</span>
-								</div>
-								<div className="search-asset-grid">
+								</S.ResultHeading>
+								<S.AssetGrid className="search-asset-grid">
 									{search.collectibleResults.map(({ asset, collection }) => (
 										<Link
 											key={`${collection.id}-${asset.id}`}
@@ -533,7 +535,7 @@ export default function Header() {
 												search.prefetchAsset(asset.id, collection.kind === 'tokens')
 											}
 										>
-											<span
+											<S.ResultImage
 												className={`search-result-image${
 													collection.kind === 'tokens' ? ' token-avatar-slot' : ''
 												}`}
@@ -561,7 +563,7 @@ export default function Header() {
 												) : (
 													<BazarMark />
 												)}
-											</span>
+											</S.ResultImage>
 											<span>
 												<strong>{asset.name}</strong>
 												<small>{collection.name}</small>
@@ -569,16 +571,16 @@ export default function Header() {
 											<Icon icon={ArrowUpRight} size="sm" />
 										</Link>
 									))}
-								</div>
-							</section>
+								</S.AssetGrid>
+							</S.ResultSection>
 						) : null}
 						{search.directTokenCollection ? (
-							<section className="search-result-section">
-								<div className="search-result-heading">
+							<S.ResultSection className="search-result-section">
+								<S.ResultHeading className="search-result-heading">
 									<h2>{language.headerDirectProcess}</h2>
 									<span>{language.headerDirectProcessNote}</span>
-								</div>
-								<div className="search-asset-grid">
+								</S.ResultHeading>
+								<S.AssetGrid className="search-asset-grid">
 									<Link
 										to={`/asset/${search.directTokenCollection.id}/${query.trim()}`}
 										onClick={followSearchResult}
@@ -586,9 +588,9 @@ export default function Header() {
 										onMouseEnter={() => search.prefetchAsset(query.trim(), true)}
 										onTouchStart={() => search.prefetchAsset(query.trim(), true)}
 									>
-										<span className="search-result-image token-avatar-slot">
+										<S.ResultImage className="search-result-image token-avatar-slot">
 											<TokenAvatar ticker={language.headerTokenTicker} />
-										</span>
+										</S.ResultImage>
 										<span>
 											<strong>{language.headerCheckTokenProcess}</strong>
 											<small>
@@ -599,8 +601,8 @@ export default function Header() {
 										</span>
 										<Icon icon={ArrowUpRight} size="sm" />
 									</Link>
-								</div>
-							</section>
+								</S.AssetGrid>
+							</S.ResultSection>
 						) : null}
 						{market.error ? (
 							<ErrorPanel
@@ -615,7 +617,7 @@ export default function Header() {
 						!search.collectionResults.length &&
 						!assetResultCount &&
 						!search.directTokenCollection ? (
-							<div className="search-empty">
+							<S.Empty className="search-empty">
 								<strong>{formatMessage(language.headerNoResults, { query })}</strong>
 								<span>
 									{search.partialTokenCollection
@@ -624,11 +626,11 @@ export default function Header() {
 										? language.headerNoResultsIndexFailed
 										: language.headerNoResultsHint}
 								</span>
-							</div>
+							</S.Empty>
 						) : null}
-					</div>
-				</div>
-			</Dialog>
+					</S.PanelContent>
+				</S.PanelMain>
+			</S.SearchDialog>
 		</>
 	);
 }

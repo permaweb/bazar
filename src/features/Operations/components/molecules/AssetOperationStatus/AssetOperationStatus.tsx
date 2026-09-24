@@ -12,6 +12,8 @@ import { useMessages } from 'providers/LanguageProvider';
 import { OPERATIONS_MESSAGES, type OperationsMessages } from '../../../messages';
 import { operationActivityStatusText } from '../../../model/activity-status';
 
+import * as S from './styles';
+
 export type AssetOperationKind = 'sell' | 'buy' | 'cancel' | 'transfer';
 export type AssetOperationPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
@@ -65,23 +67,23 @@ export default function AssetOperationStatus(props: Props) {
 	const messages = useMessages(OPERATIONS_MESSAGES);
 	const failed = props.phase === 'error';
 	return (
-		<div className={`asset-operation-status ${props.phase}`}>
-			<span className="asset-operation-status-icon" aria-hidden="true">
+		<S.Status className={`asset-operation-status ${props.phase}`}>
+			<S.StatusIcon className="asset-operation-status-icon" aria-hidden="true">
 				{failed ? (
 					<Icon icon={AlertCircle} />
 				) : (
 					<Icon icon={LoaderCircle} className="operation-activity-loader" />
 				)}
-			</span>
-			<span className="asset-operation-status-copy" aria-atomic="true" aria-live="polite" role="status">
+			</S.StatusIcon>
+			<S.StatusCopy className="asset-operation-status-copy" aria-atomic="true" aria-live="polite" role="status">
 				<strong>{assetOperationProgressTitle(props.kind, props.phase, messages)}</strong>
 				<small>
 					<ArCurrencyText>{operationActivityStatusText(props.status, messages)}</ArCurrencyText>
 				</small>
-			</span>
+			</S.StatusCopy>
 			<Button className="with-icon" onClick={props.onView}>
 				{messages.assetOperationViewDetails} <Icon icon={ChevronRight} size="sm" />
 			</Button>
-		</div>
+		</S.Status>
 	);
 }

@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '../../atoms/Button';
 import { Icon } from '../../atoms/Icon';
 
+import * as S from './styles';
+
 export function paginationItems(page: number, pageCount: number) {
 	if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => String(index + 1));
 	const visible = new Set([1, pageCount, page - 1, page, page + 1]);
@@ -27,18 +29,18 @@ export default function Pagination(props: {
 }) {
 	if (props.pageCount <= 1) return null;
 	return (
-		<nav aria-label={props.ariaLabel} className={['pagination', props.className ?? ''].filter(Boolean).join(' ')}>
+		<S.Nav aria-label={props.ariaLabel} className={['pagination', props.className ?? ''].filter(Boolean).join(' ')}>
 			<Button disabled={props.page === 1} onClick={() => props.onPageChange(props.page - 1)} size="small">
 				<Icon icon={ArrowLeft} size="xs" />
 				{props.previousLabel}
 			</Button>
-			<div className="pagination-pages">
+			<S.Pages className="pagination-pages">
 				{paginationItems(props.page, props.pageCount).map((item) => {
 					if (item.startsWith('ellipsis-')) {
 						return (
-							<span aria-hidden="true" className="pagination-ellipsis" key={item}>
+							<S.Ellipsis aria-hidden="true" className="pagination-ellipsis" key={item}>
 								…
-							</span>
+							</S.Ellipsis>
 						);
 					}
 					const itemPage = Number(item);
@@ -54,7 +56,7 @@ export default function Pagination(props: {
 						</Button>
 					);
 				})}
-			</div>
+			</S.Pages>
 			<Button
 				disabled={props.page === props.pageCount}
 				onClick={() => props.onPageChange(props.page + 1)}
@@ -63,6 +65,6 @@ export default function Pagination(props: {
 				{props.nextLabel}
 				<Icon icon={ArrowRight} size="xs" />
 			</Button>
-		</nav>
+		</S.Nav>
 	);
 }

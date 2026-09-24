@@ -19,6 +19,8 @@ import { ACTIVITY_MESSAGES } from '../../../messages';
 import { marketActivityRow, shortActivityValue } from '../../../model/market-activity';
 import { CompactActivityAmount } from '../../molecules/CompactActivityAmount';
 
+import * as S from './styles';
+
 export default function MarketActivityList(props: {
 	ariaLabel: string;
 	collectionId?: string;
@@ -35,7 +37,7 @@ export default function MarketActivityList(props: {
 	const messages = useMessages(ACTIVITY_MESSAGES);
 	const now = useMarketActivityNow(props.events);
 	return (
-		<ul
+		<S.List
 			aria-busy={props.loading ?? false}
 			aria-label={props.ariaLabel}
 			className={`activity-list${props.compact ?? false ? ' compact' : ''}`}
@@ -60,9 +62,9 @@ export default function MarketActivityList(props: {
 						{row.reservation.expired ? (
 							<>
 								{' '}
-								<span className="activity-reservation-expired">
+								<S.ReservationExpired className="activity-reservation-expired">
 									{messages.activityReservationExpired}
-								</span>
+								</S.ReservationExpired>
 							</>
 						) : null}
 					</>
@@ -71,41 +73,41 @@ export default function MarketActivityList(props: {
 				);
 				if (props.compact ?? false) {
 					return (
-						<li className="activity-row activity-row-compact" key={event.id}>
-							<span aria-hidden="true" className={`activity-icon action-${event.action}`}>
+						<S.Row className="activity-row activity-row-compact" key={event.id}>
+							<S.ActionIcon aria-hidden="true" className={`activity-icon action-${event.action}`}>
 								{marketActivitySymbol(event.action)}
-							</span>
-							<div className="activity-compact-summary">
+							</S.ActionIcon>
+							<S.CompactSummary className="activity-compact-summary">
 								<strong>{headline}</strong>
 								{row.detail ? (
 									<small>
 										<ArCurrencyText>{row.detail}</ArCurrencyText>
 									</small>
 								) : null}
-							</div>
+							</S.CompactSummary>
 							<CompactActivityAmount amount={row.amount || messages.activityAmountEmpty} />
-							<div className="activity-compact-actor">
+							<S.CompactActor className="activity-compact-actor">
 								{event.actor ? (
 									<WalletAddress address={event.actor} label={messages.activityActorAddress} />
 								) : (
 									<span>{messages.activityActorUnknown}</span>
 								)}
-							</div>
-							<Tooltip
+							</S.CompactActor>
+							<S.CompactTimeWrap
 								className="activity-compact-time-wrap"
 								content={row.absoluteTimestamp ?? row.timestamp}
 							>
 								{(tooltipId) => (
-									<time
+									<S.CompactTime
 										aria-describedby={tooltipId}
 										className="activity-compact-time"
 										dateTime={row.timestampDateTime}
 									>
 										{row.timestamp}
-									</time>
+									</S.CompactTime>
 								)}
-							</Tooltip>
-							<a
+							</S.CompactTimeWrap>
+							<S.CompactTransaction
 								aria-label={row.transactionLabel}
 								className="activity-compact-transaction"
 								href={transactionExplorerUrl(row.transactionId)}
@@ -113,17 +115,17 @@ export default function MarketActivityList(props: {
 								rel="noreferrer"
 							>
 								<Icon icon={ArrowUpRight} size="xs" />
-							</a>
-						</li>
+							</S.CompactTransaction>
+						</S.Row>
 					);
 				}
 				return (
-					<li className="activity-row" key={event.id}>
-						<span aria-hidden="true" className={`activity-icon action-${event.action}`}>
+					<S.Row className="activity-row" key={event.id}>
+						<S.ActionIcon aria-hidden="true" className={`activity-icon action-${event.action}`}>
 							{marketActivitySymbol(event.action)}
-						</span>
-						<div className={`activity-main${row.amount ? ' has-amount' : ''}`}>
-							<div className="activity-main-copy">
+						</S.ActionIcon>
+						<S.Main className={`activity-main${row.amount ? ' has-amount' : ''}`}>
+							<S.MainCopy className="activity-main-copy">
 								<strong>{headline}</strong>
 								{asset && row.assetCollectionId ? (
 									<Link to={`/asset/${row.assetCollectionId}/${asset.id}`}>{asset.name}</Link>
@@ -146,23 +148,23 @@ export default function MarketActivityList(props: {
 										)}
 									</Tooltip>
 								</small>
-							</div>
+							</S.MainCopy>
 							{row.amount ? (
 								<strong className="activity-amount">
 									<ArCurrencyText>{row.amount}</ArCurrencyText>
 								</strong>
 							) : null}
-						</div>
-						<div className="activity-meta">
-							<div className="activity-actor">
+						</S.Main>
+						<S.Meta className="activity-meta">
+							<S.Actor className="activity-actor">
 								<span>{messages.activityActor}</span>
 								{event.actor ? (
 									<WalletAddress address={event.actor} label={messages.activityActorAddress} />
 								) : (
 									<strong>{messages.activityActorUnknown}</strong>
 								)}
-							</div>
-							<div className="activity-block">
+							</S.Actor>
+							<S.Block className="activity-block">
 								<Tooltip
 									className="activity-desktop-time"
 									content={row.absoluteTimestamp ?? row.timestamp}
@@ -187,12 +189,12 @@ export default function MarketActivityList(props: {
 									</span>
 									<Icon icon={ArrowUpRight} size="xs" />
 								</a>
-							</div>
-						</div>
-					</li>
+							</S.Block>
+						</S.Meta>
+					</S.Row>
 				);
 			})}
-		</ul>
+		</S.List>
 	);
 }
 

@@ -9,6 +9,8 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
 
+import * as S from './styles';
+
 export default function CollectionIndexNotice(props: {
 	collection: Collection;
 	checking: boolean;
@@ -20,14 +22,14 @@ export default function CollectionIndexNotice(props: {
 	const message = props.checking ? language.indexNoticeChecking : language.computeIncompleteNotice;
 	const compactMessage = props.checking ? language.indexNoticeCheckingCompact : language.computeIncompleteNotice;
 	return (
-		<div className="collection-source-notice collection-index-notice retry-notice">
+		<S.Notice className="collection-source-notice collection-index-notice retry-notice">
 			<span role="status">
-				<span aria-hidden="true" className="collection-index-message-full">
+				<S.FullText aria-hidden="true" className="collection-index-message-full">
 					{message}
-				</span>
-				<span aria-hidden="true" className="collection-index-message-compact">
+				</S.FullText>
+				<S.CompactText aria-hidden="true" className="collection-index-message-compact">
 					{compactMessage}
-				</span>
+				</S.CompactText>
 				<VisuallyHidden>{message}</VisuallyHidden>
 			</span>
 			<Button
@@ -41,13 +43,13 @@ export default function CollectionIndexNotice(props: {
 				}}
 			>
 				<Icon icon={RefreshCw} size="sm" />
-				<span aria-hidden="true" className="collection-index-action-full">
+				<S.FullText aria-hidden="true" className="collection-index-action-full">
 					{language.retry}
-				</span>
-				<span aria-hidden="true" className="collection-index-action-compact">
+				</S.FullText>
+				<S.CompactText aria-hidden="true" className="collection-index-action-compact">
 					{language.retry}
-				</span>
+				</S.CompactText>
 			</Button>
-		</div>
+		</S.Notice>
 	);
 }

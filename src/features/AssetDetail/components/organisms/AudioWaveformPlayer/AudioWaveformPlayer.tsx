@@ -1,14 +1,14 @@
 import React from 'react';
 import { Pause, Play } from 'lucide-react';
 
-import { Button } from 'components/atoms/Button';
-import { RangeInput } from 'components/atoms/RangeInput';
 import { formatMessage } from 'helpers/i18n';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { useAudioWaveformPlayer } from '../../../hooks/useAudioWaveformPlayer';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { audioTimelineKeyTarget, formatAudioTime } from '../../../model/audio-waveform';
+
+import * as S from './styles';
 
 export default function AudioWaveformPlayer(props: { name: string; src: string }) {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
@@ -29,7 +29,7 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 	};
 
 	return (
-		<div className="audio-waveform-player">
+		<S.Player className="audio-waveform-player">
 			<audio
 				aria-hidden="true"
 				{...player.mediaEvents}
@@ -37,7 +37,7 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 				ref={player.audioRef}
 				src={props.src}
 			/>
-			<Button
+			<S.PlayButton
 				aria-label={formatMessage(messages.audioControlLabel, {
 					action: player.playing ? messages.audioPause : messages.audioPlay,
 					name: props.name,
@@ -47,9 +47,9 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 				size="custom"
 			>
 				{player.playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-			</Button>
-			<div className="audio-waveform-main">
-				<div className="audio-waveform-meta">
+			</S.PlayButton>
+			<S.Main className="audio-waveform-main">
+				<S.Meta className="audio-waveform-meta">
 					<span>
 						{formatAudioTime(player.currentTime)} / {formatAudioTime(player.duration)}
 					</span>
@@ -62,9 +62,9 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 							? messages.audioStatusUnavailable
 							: messages.audioStatusReady}
 					</small>
-				</div>
-				<div className="audio-waveform-viewport">
-					<div
+				</S.Meta>
+				<S.Viewport className="audio-waveform-viewport">
+					<S.Track
 						className="audio-waveform-track"
 						onClick={seekFromClick}
 						onPointerDown={(event) => {
@@ -85,12 +85,12 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 					>
 						{player.status === 'ready' ? (
 							<>
-								<div aria-hidden="true" className="audio-waveform-bars">
+								<S.Bars aria-hidden="true" className="audio-waveform-bars">
 									{player.peaks.map((peak, index) => (
 										<i key={index} style={{ height: `${Math.round(peak * 100)}%` }} />
 									))}
-								</div>
-								<div
+								</S.Bars>
+								<S.Bars
 									aria-hidden="true"
 									className="audio-waveform-bars is-played"
 									style={{ clipPath: `inset(0 ${Math.max(0, (1 - player.progress) * 100)}% 0 0)` }}
@@ -98,17 +98,20 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 									{player.peaks.map((peak, index) => (
 										<i key={index} style={{ height: `${Math.round(peak * 100)}%` }} />
 									))}
-								</div>
+								</S.Bars>
 							</>
 						) : (
-							<div aria-hidden="true" className={`audio-waveform-placeholder is-${player.status}`} />
+							<S.Placeholder
+								aria-hidden="true"
+								className={`audio-waveform-placeholder is-${player.status}`}
+							/>
 						)}
-						<span
+						<S.Playhead
 							aria-hidden="true"
 							className="audio-waveform-playhead"
 							style={{ left: `${player.progress * 100}%` }}
 						/>
-						<RangeInput
+						<S.Timeline
 							aria-label={formatMessage(messages.audioTimelineLabel, { name: props.name })}
 							aria-valuetext={formatMessage(messages.audioTimelineValue, {
 								current: formatAudioTime(player.currentTime),
@@ -139,16 +142,16 @@ export default function AudioWaveformPlayer(props: { name: string; src: string }
 							step="0.01"
 							value={Math.min(player.currentTime, player.duration || 1)}
 						/>
-						<div aria-hidden="true" className="audio-waveform-ticks">
+						<S.Ticks aria-hidden="true" className="audio-waveform-ticks">
 							{player.ticks.map((tick) => (
 								<span key={tick} style={{ left: `${(tick / player.duration) * 100}%` }}>
 									{formatAudioTime(tick)}
 								</span>
 							))}
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
+						</S.Ticks>
+					</S.Track>
+				</S.Viewport>
+			</S.Main>
+		</S.Player>
 	);
 }

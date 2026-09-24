@@ -11,7 +11,6 @@ import { Loading } from 'components/atoms/Loading';
 import { DialogHeading } from 'components/molecules/DialogHeading';
 import { MintTransactionReceipt } from 'components/molecules/MintTransactionReceipt';
 import { TransactionDialogControl } from 'components/molecules/TransactionDialogControl';
-import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
 import { useMessages } from 'providers/LanguageProvider';
 import type { UploadActivity } from 'providers/OperationActivityProvider';
@@ -21,6 +20,8 @@ import { useUploadObservers } from '../../../hooks/useUploadObservers';
 import { OPERATIONS_MESSAGES } from '../../../messages';
 import { operationTransactionAddressCopy } from '../../../model/operation-copy';
 import { isUploadActivityWorking, uploadActivityDestination, uploadActivityView } from '../../../model/upload-activity';
+
+import * as S from './styles';
 
 export default function UploadActivityPanel(props: {
 	activity: UploadActivity;
@@ -53,7 +54,7 @@ export default function UploadActivityPanel(props: {
 	}
 
 	return (
-		<Dialog
+		<S.Panel
 			backdropClassName="dialog-backdrop operation-panel-backdrop"
 			className="dialog operation-side-panel upload-activity-panel"
 			focusKey={props.activity.phase}
@@ -97,10 +98,10 @@ export default function UploadActivityPanel(props: {
 				titleId={titleId}
 			/>
 			{view.working && !view.syncSteps.length ? (
-				<div className="operation-preparing">
+				<S.Preparing className="operation-preparing">
 					<Loading label={view.status} />
 					<p>{messages.uploadPreparingDetail}</p>
-				</div>
+				</S.Preparing>
 			) : null}
 			{view.working && view.syncSteps.length ? (
 				<div className="operation-working">
@@ -120,10 +121,10 @@ export default function UploadActivityPanel(props: {
 				</div>
 			) : null}
 			{!view.working ? (
-				<div className={`upload-activity-state ${props.activity.phase}`}>
-					<span className="upload-activity-result-icon" aria-hidden="true">
+				<S.State className={`upload-activity-state ${props.activity.phase}`}>
+					<S.ResultIcon className="upload-activity-result-icon" aria-hidden="true">
 						{props.activity.phase === 'done' ? <Check /> : <CircleX />}
-					</span>
+					</S.ResultIcon>
 					<div>
 						<strong>
 							{props.activity.phase === 'done'
@@ -138,7 +139,7 @@ export default function UploadActivityPanel(props: {
 							{view.status}
 						</p>
 					</div>
-				</div>
+				</S.State>
 			) : null}
 			{view.receiptEntries.length ? (
 				<MintTransactionReceipt
@@ -152,6 +153,6 @@ export default function UploadActivityPanel(props: {
 					{props.activity.kind === 'collection' ? messages.uploadViewCollection : messages.uploadViewAsset}
 				</Button>
 			) : null}
-		</Dialog>
+		</S.Panel>
 	);
 }

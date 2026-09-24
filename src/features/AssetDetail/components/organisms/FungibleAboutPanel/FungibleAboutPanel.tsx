@@ -12,6 +12,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import type { FungibleTokenIdentity } from '../../../model/fungible-market-view';
 
+import * as S from './styles';
+
 export default function FungibleAboutPanel(props: {
 	assetId: string;
 	identity: FungibleTokenIdentity;
@@ -20,8 +22,8 @@ export default function FungibleAboutPanel(props: {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	return (
 		<>
-			<p className="asset-description">{props.identity.description}</p>
-			<div className="asset-detail-facts">
+			<S.Description className="asset-description">{props.identity.description}</S.Description>
+			<S.Facts className="asset-detail-facts">
 				<div>
 					<span>{messages.aboutTicker}</span>
 					<strong>{props.identity.tickerDisplay}</strong>
@@ -42,11 +44,11 @@ export default function FungibleAboutPanel(props: {
 						<ArCurrencyLabel />
 					</strong>
 				</div>
-			</div>
-			<section className="asset-about-rights" aria-labelledby="fungible-about-rights-title">
+			</S.Facts>
+			<S.AboutRights className="asset-about-rights" aria-labelledby="fungible-about-rights-title">
 				<h2 id="fungible-about-rights-title">{messages.aboutUsageRights}</h2>
 				{props.identity.license.length ? (
-					<dl className="license-properties">
+					<S.LicenseProperties className="license-properties">
 						{props.identity.license.map((property) => (
 							<div key={property.key}>
 								<dt>{property.label}</dt>
@@ -61,12 +63,12 @@ export default function FungibleAboutPanel(props: {
 								</a>
 							</dd>
 						</div>
-					</dl>
+					</S.LicenseProperties>
 				) : (
-					<p className="asset-empty-copy">{messages.aboutLicenseEmpty}</p>
+					<S.EmptyCopy className="asset-empty-copy">{messages.aboutLicenseEmpty}</S.EmptyCopy>
 				)}
-				<p className="market-note">{messages.aboutLicenseNote}</p>
-			</section>
+				<S.MarketNote className="market-note">{messages.aboutLicenseNote}</S.MarketNote>
+			</S.AboutRights>
 		</>
 	);
 }

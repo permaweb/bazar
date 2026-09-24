@@ -13,6 +13,8 @@ import {
 	type CollectionCardPrices,
 } from '../../../model/collection-market';
 
+import * as S from './styles';
+
 // The revealed assets of a collection: token market rows for token collections, asset cards otherwise.
 export default function CollectionAssetResults(props: {
 	collection: Collection;
@@ -27,7 +29,7 @@ export default function CollectionAssetResults(props: {
 	const language = useMessages(COLLECTION_MESSAGES);
 	if (props.collection.kind === 'tokens') {
 		return (
-			<div
+			<S.TokenList
 				aria-describedby={props.summaryId}
 				aria-label={formatMessage(language.tokenResultsLabel, { name: props.collection.name })}
 				className="token-market-list collection-token-list"
@@ -54,11 +56,11 @@ export default function CollectionAssetResults(props: {
 						/>
 					);
 				})}
-			</div>
+			</S.TokenList>
 		);
 	}
 	return (
-		<div
+		<S.Grid
 			aria-describedby={props.summaryId}
 			aria-label={formatMessage(language.assetResultsLabel, { name: props.collection.name })}
 			className={`asset-grid collection-market-grid${
@@ -81,6 +83,6 @@ export default function CollectionAssetResults(props: {
 					/>
 				);
 			})}
-		</div>
+		</S.Grid>
 	);
 }

@@ -4,11 +4,13 @@ import { ArCurrencyText } from 'components/atoms/ArCurrencyLabel';
 
 import { useActivityAmountTicker } from '../../../hooks/useActivityAmountTicker';
 
+import * as S from './styles';
+
 export default function CompactActivityAmount(props: { amount: string }) {
 	const amountTicker = useActivityAmountTicker(props.amount);
 	const value = <ArCurrencyText>{props.amount}</ArCurrencyText>;
 	return (
-		<span
+		<S.Amount
 			className={`activity-compact-amount${amountTicker.ticker.active ? ' is-overflowing' : ''}`}
 			ref={amountTicker.containerRef}
 			style={
@@ -20,13 +22,13 @@ export default function CompactActivityAmount(props: { amount: string }) {
 					: undefined
 			}
 		>
-			<span className="activity-compact-amount-static" ref={amountTicker.textRef}>
+			<S.Static className="activity-compact-amount-static" ref={amountTicker.textRef}>
 				{value}
-			</span>
-			<span aria-hidden="true" className="activity-compact-amount-track">
+			</S.Static>
+			<S.Track aria-hidden="true" className="activity-compact-amount-track">
 				<span>{value}</span>
 				<span>{value}</span>
-			</span>
-		</span>
+			</S.Track>
+		</S.Amount>
 	);
 }

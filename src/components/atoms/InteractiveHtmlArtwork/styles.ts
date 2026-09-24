@@ -1,3 +1,10 @@
-// Presentation for this component still comes from its class names in apps/bazar/styles.css.
-// Move those rules here as styled-components when the component is next restyled.
-export {};
+import styled from 'styled-components';
+
+export const Frame = styled.iframe`
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	min-height: 0;
+	border: 0;
+	background: var(--fixed-ink);
+`;

@@ -3,6 +3,9 @@ import { History } from 'lucide-react';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
+import * as Analytics from '../../../styles/analytics';
+
+import * as S from './styles';
 
 export default function CollectionActivityAnalytics(props: {
 	error: boolean;
@@ -12,21 +15,21 @@ export default function CollectionActivityAnalytics(props: {
 }) {
 	const language = useMessages(COLLECTION_MESSAGES);
 	return (
-		<aside
+		<Analytics.Panel
 			className="collection-analytics collection-activity-analytics"
 			aria-label={language.activityAnalyticsLabel}
 		>
-			<div className="collection-analytics-heading">
+			<Analytics.Heading className="collection-analytics-heading">
 				<div>
 					<span>{language.analyticsEyebrow}</span>
 					<h2>{language.analyticsHeading}</h2>
 				</div>
 				<History aria-hidden="true" />
-			</div>
-			<div className="collection-analytics-tabs">
+			</Analytics.Heading>
+			<Analytics.Tabs className="collection-analytics-tabs">
 				<span>{language.analyticsActivityTab}</span>
-			</div>
-			<div className="collection-activity-summary">
+			</Analytics.Tabs>
+			<S.Summary className="collection-activity-summary">
 				<div>
 					<span>{language.analyticsIndexedEvents}</span>
 					<strong>{props.events.toLocaleString()}</strong>
@@ -49,7 +52,7 @@ export default function CollectionActivityAnalytics(props: {
 							: language.activityStatusCurrent}
 					</strong>
 				</div>
-			</div>
-		</aside>
+			</S.Summary>
+		</Analytics.Panel>
 	);
 }

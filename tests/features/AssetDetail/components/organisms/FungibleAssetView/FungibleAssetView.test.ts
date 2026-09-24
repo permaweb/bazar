@@ -535,7 +535,7 @@ describe('fungible operation error semantics', () => {
 		expect(composer).toContain('Unit price');
 		expect(composer).toContain('value="0.00002"');
 		expect(composer).toContain('$MINTA');
-		expect(composer).toContain('0.00024 <span class="ar-currency-label">');
+		expect(composer).toMatch(/0\.00024 <span class="[^"]*\bar-currency-label\b[^"]*">/);
 		expect(composer).toContain('$AR</span> total');
 	});
 
@@ -673,7 +673,7 @@ describe('fungible operation error semantics', () => {
 			})
 		);
 		expect(receipt.match(/<section/g)).toHaveLength(1);
-		expect(receipt).toContain('class="market-select"');
+		expect(receipt).toMatch(/class="[^"]*\bmarket-select\b[^"]*"/);
 		expect(receipt).not.toContain('<select');
 		expect(receipt).toContain('Settlement receipt 512 of 512');
 		expect(receipt).toContain(orders[511].creator);

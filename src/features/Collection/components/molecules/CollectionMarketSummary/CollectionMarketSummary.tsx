@@ -10,6 +10,8 @@ import { COLLECTION_MESSAGES } from '../../../messages';
 import { collectionDescriptionText, collectionIdentity } from '../../../model/collection-market';
 import { CollectionDescription } from '../CollectionDescription';
 
+import * as S from './styles';
+
 type CollectionMarketStat = {
 	label: string;
 	value: React.ReactNode;
@@ -23,9 +25,9 @@ export default function CollectionMarketSummary(props: {
 	const language = useMessages(COLLECTION_MESSAGES);
 	const identity = collectionIdentity(props.collection, language);
 	return (
-		<div className="collection-title collection-market-header">
-			<div className="collection-identity">
-				<div className="collection-avatar" aria-hidden="true">
+		<S.Header className="collection-title collection-market-header">
+			<S.Identity className="collection-identity">
+				<S.Avatar className="collection-avatar" aria-hidden="true">
 					{props.collection.assets[0]?.image ? (
 						<ArtworkImage
 							alt=""
@@ -37,22 +39,22 @@ export default function CollectionMarketSummary(props: {
 					) : (
 						<span>{identity.monogram}</span>
 					)}
-				</div>
-				<div className="collection-heading-copy">
+				</S.Avatar>
+				<S.HeadingCopy className="collection-heading-copy">
 					<Eyebrow>{identity.eyebrow}</Eyebrow>
 					<h1>{identity.name}</h1>
 					<CollectionDescription description={collectionDescriptionText(props.collection, language)} />
-				</div>
-			</div>
-			{props.action ? <div className="collection-title-copy">{props.action}</div> : null}
-			<div className="collection-market-stats" aria-label={language.collectionSummaryLabel}>
+				</S.HeadingCopy>
+			</S.Identity>
+			{props.action ? <S.TitleCopy className="collection-title-copy">{props.action}</S.TitleCopy> : null}
+			<S.Stats className="collection-market-stats" aria-label={language.collectionSummaryLabel}>
 				{props.stats.map((stat) => (
 					<div key={stat.label}>
 						<span>{stat.label}</span>
 						<strong>{stat.value}</strong>
 					</div>
 				))}
-			</div>
-		</div>
+			</S.Stats>
+		</S.Header>
 	);
 }

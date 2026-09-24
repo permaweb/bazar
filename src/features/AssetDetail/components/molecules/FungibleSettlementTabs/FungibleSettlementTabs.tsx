@@ -10,6 +10,8 @@ import { settlementTabIndex } from '../../../model/fungible-batch';
 import { tokenLabel } from '../../../model/fungible-market';
 import { batchStageLabel, SETTLEMENT_ERROR_PANEL_ID } from '../../../model/fungible-operation';
 
+import * as S from './styles';
+
 export default function FungibleSettlementTabs(props: {
 	activeOrderId?: string;
 	orders: SwapOrder[];
@@ -19,7 +21,7 @@ export default function FungibleSettlementTabs(props: {
 }) {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	return (
-		<div className="settlement-tabs" aria-label={messages.settlementTabsLabel} role="tablist">
+		<S.Tabs className="settlement-tabs" aria-label={messages.settlementTabsLabel} role="tablist">
 			{props.orders.map((order, index) => {
 				const active = order.orderId === props.activeOrderId;
 				return (
@@ -51,6 +53,6 @@ export default function FungibleSettlementTabs(props: {
 					</Button>
 				);
 			})}
-		</div>
+		</S.Tabs>
 	);
 }

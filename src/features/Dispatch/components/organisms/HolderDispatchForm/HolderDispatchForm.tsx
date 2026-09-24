@@ -16,6 +16,8 @@ import type { HolderDraftRow } from '../../../model/holder-list';
 import { holderListIssueMessage } from '../../../model/holder-list-issue';
 import { HolderListField } from '../../molecules/HolderListField';
 
+import * as S from './styles';
+
 /** Inline parse errors beyond this count collapse into a single "and N more" line. */
 const VISIBLE_HOLDER_LIST_ERRORS = 8;
 
@@ -43,9 +45,9 @@ export default function HolderDispatchForm(props: {
 	};
 
 	return (
-		<div className="create-layout dispatch-layout">
-			<form className="create-form" onSubmit={handleSubmit}>
-				<div className="create-field">
+		<S.Layout className="create-layout dispatch-layout">
+			<S.Form className="create-form" onSubmit={handleSubmit}>
+				<S.Field className="create-field">
 					<label>{messages.dispatchHolderListLabel}</label>
 					<HolderListField
 						rows={props.holderRows}
@@ -59,7 +61,7 @@ export default function HolderDispatchForm(props: {
 							? plural(messages.dispatchParsedRecipients, parsed.rows.length)
 							: messages.dispatchHolderListHint}
 					</span>
-				</div>
+				</S.Field>
 
 				{parsed?.errors.length ? (
 					<div className="inline-error">
@@ -81,8 +83,8 @@ export default function HolderDispatchForm(props: {
 
 				{parsed?.rows.length && !parsed.errors.length ? (
 					<>
-						<div className="dispatch-table-wrapper">
-							<table className="dispatch-table">
+						<S.TableWrapper className="dispatch-table-wrapper">
+							<S.Table className="dispatch-table">
 								<thead>
 									<tr>
 										<th scope="col">{messages.dispatchTableRecipient}</th>
@@ -109,9 +111,9 @@ export default function HolderDispatchForm(props: {
 										</tr>
 									))}
 								</tbody>
-							</table>
-						</div>
-						<div className="mint-summary">
+							</S.Table>
+						</S.TableWrapper>
+						<S.Summary className="mint-summary">
 							<div>
 								<span>{messages.dispatchSummaryRecipients}</span>
 								<strong>{parsed.rows.length}</strong>
@@ -138,15 +140,15 @@ export default function HolderDispatchForm(props: {
 										: '—'}
 								</strong>
 							</div>
-						</div>
-						<div className="mint-notice">
+						</S.Summary>
+						<S.Notice className="mint-notice">
 							<Icon icon={Info} />
 							<span>
 								{plural(messages.dispatchSignatureNotice, parsed.rows.length, {
 									batchSize: props.quote.batchSize,
 								})}
 							</span>
-						</div>
+						</S.Notice>
 						{props.quote.needsCostApproval ? (
 							<section className="mint-cost-warning" aria-labelledby="dispatch-cost-warning-title">
 								<div>
@@ -185,7 +187,7 @@ export default function HolderDispatchForm(props: {
 					</div>
 				) : null}
 
-				<Button
+				<S.SubmitButton
 					className="mint-submit"
 					type="submit"
 					size="custom"
@@ -205,9 +207,9 @@ export default function HolderDispatchForm(props: {
 						? messages.dispatchSubmit
 						: messages.dispatchSubmitConnectWallet}
 					{!props.running ? <Icon icon={ArrowRight} /> : null}
-				</Button>
+				</S.SubmitButton>
 				<p className="mint-permanence">{messages.dispatchPermanenceNote}</p>
-			</form>
-		</div>
+			</S.Form>
+		</S.Layout>
 	);
 }

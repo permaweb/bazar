@@ -24,13 +24,14 @@ import {
 	TransactionDialogControl,
 	type TransactionDialogPhase,
 } from 'components/molecules/TransactionDialogControl';
-import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
 import { formatMessage } from 'helpers/i18n';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { CREATE_MESSAGES } from '../../../messages';
 import { fungibleMintView, mintTransactionAddressCopy } from '../../../model/mint-flow';
+
+import * as S from './styles';
 
 export default function FungibleMintDialog(props: {
 	error: string | null;
@@ -89,7 +90,7 @@ export default function FungibleMintDialog(props: {
 	};
 
 	return (
-		<Dialog
+		<S.Panel
 			backdropClassName="dialog-backdrop operation-panel-backdrop"
 			className="dialog operation-side-panel fungible-dialog fungible-mint-dialog"
 			focusKey={dialogPhase}
@@ -137,10 +138,10 @@ export default function FungibleMintDialog(props: {
 				title={messages.fungibleDialogOutcomeTitle}
 			/>
 			{dialogPhase === 'working' && !props.result ? (
-				<div className="operation-preparing">
+				<S.Preparing className="operation-preparing">
 					<Loading label={props.phaseLabel || messages.fungibleDialogPreparing} />
 					<p>{props.phase ? messages.fungibleDialogPhaseDetail : messages.fungibleDialogCheckingDetail}</p>
-				</div>
+				</S.Preparing>
 			) : null}
 			{dialogPhase === 'working' && props.result ? (
 				<div className="operation-working">
@@ -240,6 +241,6 @@ export default function FungibleMintDialog(props: {
 					</Button>
 				</div>
 			) : null}
-		</Dialog>
+		</S.Panel>
 	);
 }

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 
 import type { AssetSummary, Collection } from 'api/collections';
 
@@ -14,6 +13,8 @@ import { useAssetPageWarmup } from '../../../hooks/useAssetPageWarmup';
 import { CATALOGUE_MESSAGES } from '../../../messages';
 import { audioArtworkLabel } from '../../../model/artwork';
 
+import * as S from './styles';
+
 export const AssetCard = React.memo(function AssetCard(props: {
 	collection: Collection;
 	asset: AssetSummary;
@@ -26,7 +27,7 @@ export const AssetCard = React.memo(function AssetCard(props: {
 	const messages = useMessages(CATALOGUE_MESSAGES);
 	const warmAssetPage = useAssetPageWarmup(props.asset.id, props.collection.kind === 'tokens');
 	return (
-		<Link
+		<S.Card
 			className={`asset-card${props.collection.kind === 'tokens' ? ' token-asset-card' : ''}${
 				props.collectionContext ?? false ? ' collection-context' : ''
 			}`}
@@ -68,18 +69,18 @@ export const AssetCard = React.memo(function AssetCard(props: {
 					<span>{props.asset.name.slice(0, 1)}</span>
 				)}
 			</div>
-			<div className="asset-card-copy">
+			<S.Copy className="asset-card-copy">
 				{!(props.collectionContext ?? false) ? <p>{props.collection.name}</p> : null}
-				<div className="asset-card-heading">
+				<S.Heading className="asset-card-heading">
 					<h3>{props.asset.name}</h3>
 					{props.price ? (
 						<strong className={props.priceListed ?? false ? 'listed' : undefined}>{props.price}</strong>
 					) : null}
-				</div>
+				</S.Heading>
 				{props.badge ? <span className="asset-card-status">{props.badge}</span> : null}
 				{!(props.collectionContext ?? false) ? <span>{short(props.asset.id)}</span> : null}
-			</div>
-		</Link>
+			</S.Copy>
+		</S.Card>
 	);
 });
 

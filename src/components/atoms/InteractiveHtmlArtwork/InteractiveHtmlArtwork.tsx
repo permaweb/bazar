@@ -1,6 +1,8 @@
+import * as S from './styles';
+
 export default function InteractiveHtmlArtwork(props: { src: string; title: string }) {
 	return (
-		<iframe
+		<S.Frame
 			allow="fullscreen"
 			allowFullScreen
 			className="asset-interactive-frame"

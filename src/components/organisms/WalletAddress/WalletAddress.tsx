@@ -11,6 +11,7 @@ import { Tooltip } from '../../atoms/Tooltip';
 import { ProfileIdentityForAddress } from '../ProfileIdentityForAddress';
 
 import { WALLET_ADDRESS_MESSAGES } from './messages';
+import * as S from './styles';
 
 export default function WalletAddress(props: {
 	address: string;
@@ -99,9 +100,9 @@ export function WalletIdentity(props: { address: string }) {
 	return (
 		<Tooltip content={props.address} placement="top">
 			{(tooltipId) => (
-				<span aria-describedby={tooltipId} className="wallet-identity">
+				<S.Identity aria-describedby={tooltipId} className="wallet-identity">
 					{props.address}
-				</span>
+				</S.Identity>
 			)}
 		</Tooltip>
 	);

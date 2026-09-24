@@ -8,7 +8,6 @@ import { FileInput } from 'components/atoms/FileInput';
 import { IconButton } from 'components/atoms/IconButton';
 import { DialogHeading } from 'components/molecules/DialogHeading';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
-import { Dialog } from 'components/organisms/Dialog';
 import type { AppError } from 'helpers/app-error';
 import { winstonToAr } from 'helpers/ar-units';
 import { formatMessage } from 'helpers/i18n';
@@ -16,6 +15,8 @@ import { useAppErrorMessage } from 'hooks/useAppErrorMessage';
 import { useMessages } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
+
+import * as S from './styles';
 
 // Choose images to add to a wallet-minted collection, review the storage estimate, and start the signed upload.
 export default function CollectionAppendDialog(props: {
@@ -36,8 +37,8 @@ export default function CollectionAppendDialog(props: {
 	const language = useMessages(COLLECTION_MESSAGES);
 	const errorMessage = useAppErrorMessage();
 	return (
-		<Dialog
-			as="section"
+		<S.Root
+			forwardedAs="section"
 			backdropClassName="dialog-backdrop"
 			className="dialog dialog-compact collection-append-dialog"
 			labelledBy="append-collection-title"
@@ -58,7 +59,7 @@ export default function CollectionAppendDialog(props: {
 				title={formatMessage(language.appendTitle, { name: props.collectionName })}
 				titleId="append-collection-title"
 			/>
-			<p className="append-collection-copy">{language.appendIntro}</p>
+			<S.Copy className="append-collection-copy">{language.appendIntro}</S.Copy>
 			<label className={`mint-dropzone${props.fileCount ? ' has-file' : ''}`}>
 				<FileInput
 					accept="image/png,image/jpeg,image/webp,image/gif"
@@ -77,16 +78,16 @@ export default function CollectionAppendDialog(props: {
 				</span>
 			</label>
 			{props.fileCount ? (
-				<div className="collection-append-preview" aria-label={language.appendSelectedImages}>
+				<S.Preview className="collection-append-preview" aria-label={language.appendSelectedImages}>
 					{props.previews.map((preview) => (
 						<figure key={`${preview.file.name}:${preview.file.size}`}>
 							<img alt="" src={preview.url} />
 							<figcaption>{preview.file.name.replace(/\.[^.]+$/, '')}</figcaption>
 						</figure>
 					))}
-				</div>
+				</S.Preview>
 			) : null}
-			<div className="collection-append-summary">
+			<S.Summary className="collection-append-summary">
 				<span>{props.estimating ? language.appendEstimating : props.progress || language.appendReady}</span>
 				<strong>
 					{props.estimate ? (
@@ -100,7 +101,7 @@ export default function CollectionAppendDialog(props: {
 						'—'
 					)}
 				</strong>
-			</div>
+			</S.Summary>
 			{props.error ? (
 				<ErrorPanel heading={language.collectionErrorHeading} message={errorMessage(props.error)} />
 			) : null}
@@ -119,6 +120,6 @@ export default function CollectionAppendDialog(props: {
 					? language.appendSubmitting
 					: formatMessage(language.appendSubmit, { count: props.fileCount || '' })}
 			</Button>
-		</Dialog>
+		</S.Root>
 	);
 }

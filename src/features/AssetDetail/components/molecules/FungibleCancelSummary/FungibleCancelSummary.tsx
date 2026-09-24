@@ -11,6 +11,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import type { FungibleOperationDraftView } from '../../../model/fungible-operation-view';
 
+import * as S from './styles';
+
 export default function FungibleCancelSummary(props: {
 	draft: Pick<FungibleOperationDraftView, 'currentLiquid' | 'currentListed'>;
 	order: SwapOrder;
@@ -18,7 +20,7 @@ export default function FungibleCancelSummary(props: {
 }) {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	return (
-		<div className="cancel-summary">
+		<S.Summary className="cancel-summary">
 			<CircleX aria-hidden="true" />
 			<div>
 				<strong>{messages.cancelSummaryTitle}</strong>
@@ -44,6 +46,6 @@ export default function FungibleCancelSummary(props: {
 				</span>
 				<span>{messages.cancelSummaryReservedNote}</span>
 			</div>
-		</div>
+		</S.Summary>
 	);
 }

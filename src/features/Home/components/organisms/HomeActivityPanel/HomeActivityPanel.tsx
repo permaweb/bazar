@@ -16,6 +16,8 @@ import { useHomeActivity } from '../../../hooks/useHomeActivity';
 import { HOME_MESSAGES } from '../../../messages';
 import { HOME_ACTIVITY_REVEAL_STEP, homeActivityAsset, homeActivityRevealLabel } from '../../../model/home-activity';
 
+import * as S from './styles';
+
 export default function HomeActivityPanel(props: { collections: Collection[]; marketLoading: boolean }) {
 	const messages = useMessages(HOME_MESSAGES);
 	const errorMessage = useAppErrorMessage();
@@ -52,9 +54,9 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<div aria-label={messages.homeActivityFilterGroup} className="activity-filters" role="group">
+			<S.Filters aria-label={messages.homeActivityFilterGroup} className="activity-filters" role="group">
 				{activityFilters.map((filter) => (
-					<Button
+					<S.Filter
 						aria-controls={activityListId}
 						aria-pressed={activity.filter === filter.value}
 						className="activity-filter"
@@ -63,11 +65,11 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 						size="small"
 					>
 						{filter.label}
-					</Button>
+					</S.Filter>
 				))}
-			</div>
+			</S.Filters>
 			{activity.loading ? (
-				<div className="global-activity-loading">
+				<S.ActivityLoading className="global-activity-loading">
 					<Loading
 						label={
 							activity.events.length
@@ -75,7 +77,7 @@ export default function HomeActivityPanel(props: { collections: Collection[]; ma
 								: messages.homeActivityLoadingInitial
 						}
 					/>
-				</div>
+				</S.ActivityLoading>
 			) : null}
 			{activity.error ? (
 				activity.events.length ? (

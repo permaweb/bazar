@@ -60,8 +60,8 @@ describe('MarketActivityList', () => {
 		expect(atDeadline).not.toContain('(Expired)');
 
 		const afterDeadline = render(121);
-		expect(afterDeadline).toContain(
-			'Reserved. Payment deadline at block 120. <span class="activity-reservation-expired">(Expired)</span>'
+		expect(afterDeadline).toMatch(
+			/Reserved\. Payment deadline at block 120\. <span class="[^"]*\bactivity-reservation-expired\b[^"]*">\(Expired\)<\/span>/
 		);
 		expect(afterDeadline).not.toContain('Purchase submitted');
 
@@ -92,7 +92,7 @@ describe('MarketActivityList', () => {
 
 		expect(markup).toContain('activity-main has-amount');
 		expect(markup).toContain('<strong class="activity-amount">12 TOKEN</strong>');
-		expect(markup).toContain('0.1 <span class="ar-currency-label">');
+		expect(markup).toMatch(/0\.1 <span class="[^"]*\bar-currency-label\b[^"]*">/);
 		expect(markup).toContain('$AR</span> total');
 	});
 
@@ -117,11 +117,11 @@ describe('MarketActivityList', () => {
 			})
 		);
 
-		expect(markup).toContain('class="activity-list compact"');
-		expect(markup).toContain('class="activity-row activity-row-compact"');
-		expect(markup).toContain('class="activity-compact-amount"');
-		expect(markup).toContain('class="activity-compact-amount-static"');
-		expect(markup).toContain('aria-hidden="true" class="activity-compact-amount-track"');
+		expect(markup).toMatch(/class="[^"]*\bactivity-list compact"/);
+		expect(markup).toMatch(/class="[^"]*\bactivity-row activity-row-compact"/);
+		expect(markup).toMatch(/class="[^"]*\bactivity-compact-amount"/);
+		expect(markup).toMatch(/class="[^"]*\bactivity-compact-amount-static"/);
+		expect(markup).toMatch(/aria-hidden="true" class="[^"]*\bactivity-compact-amount-track"/);
 		expect(markup).not.toContain('activity-meta');
 	});
 });

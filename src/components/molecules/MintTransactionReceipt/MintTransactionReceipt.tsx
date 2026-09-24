@@ -4,6 +4,8 @@ import { transactionExplorerUrl } from 'helpers/explorer';
 
 import { TxAddress, type TxAddressLabels } from '../../atoms/TxAddress';
 
+import * as S from './styles';
+
 export type MintTransactionReceiptEntry = {
 	label: string;
 	/** The link's accessible name, already resolved and interpolated by the feature that owns the copy. */
@@ -21,9 +23,9 @@ export default function MintTransactionReceipt(props: {
 	entries: MintTransactionReceiptEntry[];
 }) {
 	return (
-		<div className="mint-transaction-receipts" aria-label={props.ariaLabel}>
+		<S.Receipts className="mint-transaction-receipts" aria-label={props.ariaLabel}>
 			{props.entries.map((entry) => (
-				<div className="mint-transaction-receipt" key={`${entry.label}:${entry.transactionId}`}>
+				<S.Receipt className="mint-transaction-receipt" key={`${entry.label}:${entry.transactionId}`}>
 					<a
 						href={transactionExplorerUrl(entry.transactionId)}
 						target="_blank"
@@ -34,8 +36,8 @@ export default function MintTransactionReceipt(props: {
 						<ArrowUpRight aria-hidden="true" />
 					</a>
 					<TxAddress address={entry.transactionId} labels={props.addressLabels} wrap />
-				</div>
+				</S.Receipt>
 			))}
-		</div>
+		</S.Receipts>
 	);
 }

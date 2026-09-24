@@ -1,3 +1,7 @@
-// Presentation for this component still comes from its class names in apps/bazar/styles.css.
-// Move those rules here as styled-components when the component is next restyled.
-export {};
+import styled from 'styled-components';
+
+export const Kicker = styled.p`
+	margin: 0 0 12px;
+	color: var(--muted-subtle);
+	font: 400 var(--type-small) / 1.3 'DM Sans', sans-serif;
+`;

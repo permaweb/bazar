@@ -17,6 +17,8 @@ import {
 	globalActivityChartStats,
 } from '../../../model/activity-chart';
 
+import * as S from './styles';
+
 function useChartInteraction(values: number[], label: string, description: string, starts: number[]) {
 	const messages = useMessages(ACTIVITY_MESSAGES);
 	const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
@@ -68,7 +70,7 @@ function useChartInteraction(values: number[], label: string, description: strin
 function ChartTooltip(props: { x: number; y: number; date: number; value: number; unit: string }) {
 	const edgeClass = props.x < 40 ? ' is-left' : '';
 	return (
-		<div
+		<S.ChartTooltip
 			aria-hidden="true"
 			className={`global-activity-chart-tooltip${edgeClass}`}
 			style={{ left: `${(props.x / 300) * 100}%`, top: `${props.y}px` }}
@@ -77,7 +79,7 @@ function ChartTooltip(props: { x: number; y: number; date: number; value: number
 			<strong>
 				{props.value.toLocaleString()} {props.unit}
 			</strong>
-		</div>
+		</S.ChartTooltip>
 	);
 }
 
@@ -95,12 +97,12 @@ function BarChart(props: { values: number[]; starts: number[]; label: string; de
 	const crosshairX = hoveredIndex === null ? undefined : hoveredIndex * (width + gap) + width / 2;
 	const selectedBarTop = hoveredIndex === null ? undefined : 96 - heights[hoveredIndex];
 	return (
-		<div className="global-activity-chart-shell" {...interactionProps}>
-			<svg aria-hidden="true" className="global-activity-chart" preserveAspectRatio="none" viewBox="0 0 300 96">
+		<S.ChartShell className="global-activity-chart-shell" {...interactionProps}>
+			<S.Chart aria-hidden="true" className="global-activity-chart" preserveAspectRatio="none" viewBox="0 0 300 96">
 				{props.values.map((value, index) => {
 					const height = heights[index];
 					return (
-						<rect
+						<S.ChartBar
 							className={`global-activity-chart-bar${hoveredIndex === index ? ' is-active' : ''}`}
 							height={height}
 							key={index}
@@ -111,9 +113,15 @@ function BarChart(props: { values: number[]; starts: number[]; label: string; de
 					);
 				})}
 				{crosshairX !== undefined ? (
-					<line className="global-activity-chart-crosshair" x1={crosshairX} x2={crosshairX} y1="0" y2="96" />
+					<S.ChartCrosshair
+						className="global-activity-chart-crosshair"
+						x1={crosshairX}
+						x2={crosshairX}
+						y1="0"
+						y2="96"
+					/>
 				) : null}
-			</svg>
+			</S.Chart>
 			{crosshairX !== undefined &&
 			selectedBarTop !== undefined &&
 			selectedDate !== undefined &&
@@ -126,7 +134,7 @@ function BarChart(props: { values: number[]; starts: number[]; label: string; de
 					y={selectedBarTop}
 				/>
 			) : null}
-		</div>
+		</S.ChartShell>
 	);
 }
 
@@ -147,15 +155,15 @@ function LineChart(props: { values: number[]; starts: number[]; label: string; d
 	);
 	const selectedPoint = hoveredIndex === null ? undefined : coordinates[hoveredIndex];
 	return (
-		<div className="global-activity-chart-shell" {...interactionProps}>
-			<svg aria-hidden="true" className="global-activity-chart" preserveAspectRatio="none" viewBox="0 0 300 96">
-				<polygon className="global-activity-chart-area" points={area} />
-				<polyline
+		<S.ChartShell className="global-activity-chart-shell" {...interactionProps}>
+			<S.Chart aria-hidden="true" className="global-activity-chart" preserveAspectRatio="none" viewBox="0 0 300 96">
+				<S.ChartArea className="global-activity-chart-area" points={area} />
+				<S.ChartLine
 					className="global-activity-chart-line"
 					points={coordinates.map(({ x, y }) => `${x},${y}`).join(' ')}
 				/>
 				{selectedPoint ? (
-					<line
+					<S.ChartCrosshair
 						className="global-activity-chart-crosshair"
 						x1={selectedPoint.x}
 						x2={selectedPoint.x}
@@ -163,10 +171,10 @@ function LineChart(props: { values: number[]; starts: number[]; label: string; d
 						y2="96"
 					/>
 				) : null}
-			</svg>
+			</S.Chart>
 			{selectedPoint && selectedDate !== undefined && selectedValue !== undefined ? (
 				<>
-					<span
+					<S.ChartPoint
 						aria-hidden="true"
 						className="global-activity-chart-point"
 						style={{ left: `${(selectedPoint.x / 300) * 100}%`, top: `${selectedPoint.y}px` }}
@@ -180,34 +188,34 @@ function LineChart(props: { values: number[]; starts: number[]; label: string; d
 					/>
 				</>
 			) : null}
-		</div>
+		</S.ChartShell>
 	);
 }
 
 function RollingCounter(props: { value: number }) {
 	const formatted = formatActivityChartValue(props.value);
 	return (
-		<strong className="global-activity-counter" title={props.value.toLocaleString()}>
-			<span aria-hidden="true" className="global-activity-counter-visual">
-				<span className="global-activity-counter-value" key={formatted}>
+		<S.Counter className="global-activity-counter" title={props.value.toLocaleString()}>
+			<S.CounterVisual aria-hidden="true" className="global-activity-counter-visual">
+				<S.CounterValue className="global-activity-counter-value" key={formatted}>
 					{formatted}
-				</span>
-			</span>
+				</S.CounterValue>
+			</S.CounterVisual>
 			<VisuallyHidden>{formatted}</VisuallyHidden>
-		</strong>
+		</S.Counter>
 	);
 }
 
 function StatCard(props: React.PropsWithChildren<{ label: string; value: number; meta: string }>) {
 	return (
-		<article className="global-activity-stat">
-			<div className="global-activity-stat-copy">
+		<S.Stat className="global-activity-stat">
+			<S.StatCopy className="global-activity-stat-copy">
 				<h3>{props.label}</h3>
 				<RollingCounter value={props.value} />
 				<p>{props.meta}</p>
-			</div>
+			</S.StatCopy>
 			{props.children}
-		</article>
+		</S.Stat>
 	);
 }
 
@@ -228,23 +236,23 @@ export default function GlobalActivityCharts(props: {
 	const period = activityChartPeriodLabel(stats.period, messages);
 	if (props.loading || props.unavailable)
 		return (
-			<section aria-label={messages.globalStats} className="global-activity-stats">
+			<S.Stats aria-label={messages.globalStats} className="global-activity-stats">
 				{[
 					{ label: messages.statEvents, loading: messages.statEventsLoading },
 					{ label: messages.statListings, loading: messages.statListingsLoading },
 					{ label: messages.statParticipants, loading: messages.statParticipantsLoading },
 				].map((stat) => (
-					<article className="global-activity-stat global-activity-stat-pending" key={stat.label}>
-						<div className="global-activity-stat-copy">
+					<S.Stat className="global-activity-stat global-activity-stat-pending" key={stat.label}>
+						<S.StatCopy className="global-activity-stat-copy">
 							<h3>{stat.label}</h3>
-						</div>
+						</S.StatCopy>
 						{props.loading ? <Loading label={stat.loading} /> : <p>{messages.statUnavailable}</p>}
-					</article>
+					</S.Stat>
 				))}
-			</section>
+			</S.Stats>
 		);
 	return (
-		<section aria-label={messages.globalStats} className="global-activity-stats">
+		<S.Stats aria-label={messages.globalStats} className="global-activity-stats">
 			<StatCard
 				label={messages.statEvents}
 				meta={formatMessage(messages.statLatestInterval, {
@@ -290,7 +298,7 @@ export default function GlobalActivityCharts(props: {
 					values={stats.buckets.map((bucket) => bucket.participants)}
 				/>
 			</StatCard>
-		</section>
+		</S.Stats>
 	);
 }
 

@@ -12,7 +12,6 @@ import type {
 import { ArtworkImage } from 'components/atoms/ArtworkImage';
 import { Button } from 'components/atoms/Button';
 import { Icon } from 'components/atoms/Icon';
-import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { isTransactionActivityVisible } from 'components/molecules/TransactionDialogControl';
 import { formatMessage } from 'helpers/i18n';
@@ -20,6 +19,7 @@ import { useOperationActivityMenu } from 'hooks/useOperationActivityMenu';
 import { useMessages, usePlural } from 'providers/LanguageProvider';
 
 import { OPERATION_ACTIVITY_CONTROL_MESSAGES, type OperationActivityControlMessages } from './messages';
+import * as S from './styles';
 
 export default function OperationActivityControl() {
 	const language = useMessages(OPERATION_ACTIVITY_CONTROL_MESSAGES);
@@ -51,10 +51,10 @@ export default function OperationActivityControl() {
 	}, [open]);
 	if (!menu.activityCount) return null;
 	return (
-		<div className="operation-activity-control" ref={containerRef}>
+		<S.Control className="operation-activity-control" ref={containerRef}>
 			<Tooltip content={language.operationActivityTitle} disabled={open}>
 				{(tooltipId) => (
-					<Button
+					<S.Trigger
 						aria-describedby={tooltipId}
 						aria-expanded={open}
 						aria-label={plural(language.operationActivityTrigger, menu.activityCount)}
@@ -67,12 +67,12 @@ export default function OperationActivityControl() {
 					>
 						<Icon icon={InfinityIcon} />
 						<span>{menu.activityCount}</span>
-					</Button>
+					</S.Trigger>
 				)}
 			</Tooltip>
 			{open ? (
-				<section aria-label={language.operationActivityTitle} className="operation-activity-menu">
-					<div className="operation-activity-heading">
+				<S.Menu aria-label={language.operationActivityTitle} className="operation-activity-menu">
+					<S.Heading className="operation-activity-heading">
 						<div>
 							<strong>{language.operationActivityTitle}</strong>
 							<span>
@@ -90,11 +90,11 @@ export default function OperationActivityControl() {
 								{language.operationActivityClearIssues}
 							</Button>
 						) : null}
-					</div>
-					<div className="operation-activity-list">
+					</S.Heading>
+					<S.List className="operation-activity-list">
 						{menu.uploads.map((activity) => (
-							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
-								<Button
+							<S.Item className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+								<S.Open
 									className="operation-activity-open"
 									size="custom"
 									onClick={() => {
@@ -104,14 +104,14 @@ export default function OperationActivityControl() {
 									type="button"
 									variant="ghost"
 								>
-									<span className="operation-activity-symbol" aria-hidden="true">
+									<S.Symbol className="operation-activity-symbol" aria-hidden="true">
 										{activity.kind === 'collection' ? (
 											<Icon icon={Images} size="sm" />
 										) : (
 											<Icon icon={Upload} size="sm" />
 										)}
-									</span>
-									<span className="operation-activity-copy">
+									</S.Symbol>
+									<S.Copy className="operation-activity-copy">
 										<strong>{activity.name}</strong>
 										<small>
 											{formatMessage(language.operationActivityItemMeta, {
@@ -128,23 +128,23 @@ export default function OperationActivityControl() {
 											})}
 										</small>
 										<span>{activity.status}</span>
-									</span>
-									<span className="operation-activity-progress">
+									</S.Copy>
+									<S.Progress className="operation-activity-progress">
 										{['working', 'tracking'].includes(activity.phase) ? (
-											<Icon
+											<S.InfinityGlyph
 												icon={InfinityIcon}
 												size="xs"
 												className="operation-activity-infinity"
 											/>
 										) : null}
-									</span>
-									<Icon icon={ChevronRight} size="sm" className="operation-activity-chevron" />
-								</Button>
-							</div>
+									</S.Progress>
+									<S.Chevron icon={ChevronRight} size="sm" className="operation-activity-chevron" />
+								</S.Open>
+							</S.Item>
 						))}
 						{menu.operations.map(({ activity, operationKind }) => (
-							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
-								<Button
+							<S.Item className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+								<S.Open
 									className="operation-activity-open"
 									size="custom"
 									onClick={() => {
@@ -154,7 +154,7 @@ export default function OperationActivityControl() {
 									type="button"
 									variant="ghost"
 								>
-									<span className="operation-activity-symbol" aria-hidden="true">
+									<S.Symbol className="operation-activity-symbol" aria-hidden="true">
 										{activity.asset.image ? (
 											<ArtworkImage
 												src={activity.asset.image}
@@ -164,8 +164,8 @@ export default function OperationActivityControl() {
 										) : (
 											<span>{activity.asset.name.slice(0, 1)}</span>
 										)}
-									</span>
-									<span className="operation-activity-copy">
+									</S.Symbol>
+									<S.Copy className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
 											{formatMessage(language.operationActivityItemMeta, {
@@ -174,9 +174,9 @@ export default function OperationActivityControl() {
 											})}
 										</small>
 										<span>{operationActivityStatusText(activity.status, language)}</span>
-									</span>
-									<span className="operation-activity-progress">
-										<span
+									</S.Copy>
+									<S.Progress className="operation-activity-progress">
+										<S.Confirmations
 											aria-label={formatMessage(language.operationActivityConfirmations, {
 												confirmations: activity.confirmations,
 												target: activity.confirmationTarget,
@@ -184,18 +184,18 @@ export default function OperationActivityControl() {
 											className="operation-activity-confirmations"
 										>
 											{activity.confirmations}/{activity.confirmationTarget}
-										</span>
+										</S.Confirmations>
 										{activity.phase === 'working' ? (
 											<Icon icon={LoaderCircle} size="xs" className="operation-activity-loader" />
 										) : null}
-									</span>
-									<Icon icon={ChevronRight} size="sm" className="operation-activity-chevron" />
-								</Button>
-							</div>
+									</S.Progress>
+									<S.Chevron icon={ChevronRight} size="sm" className="operation-activity-chevron" />
+								</S.Open>
+							</S.Item>
 						))}
 						{menu.fungibleOperations.map(({ activity, operationKind }) => (
-							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
-								<Button
+							<S.Item className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+								<S.Open
 									className="operation-activity-open"
 									size="custom"
 									onClick={() => {
@@ -205,12 +205,12 @@ export default function OperationActivityControl() {
 									type="button"
 									variant="ghost"
 								>
-									<TokenAvatar
+									<S.SymbolAvatar
 										className="operation-activity-symbol"
 										image={activity.asset.image}
 										ticker={activity.asset.ticker ?? activity.asset.name}
 									/>
-									<span className="operation-activity-copy">
+									<S.Copy className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
 											{formatMessage(language.operationActivityItemMeta, {
@@ -219,11 +219,11 @@ export default function OperationActivityControl() {
 											})}
 										</small>
 										<span>{operationActivityStatusText(activity.status, language)}</span>
-									</span>
-									<span className="operation-activity-progress">
+									</S.Copy>
+									<S.Progress className="operation-activity-progress">
 										{activity.confirmations !== undefined &&
 										activity.confirmationTarget !== undefined ? (
-											<span
+											<S.Confirmations
 												aria-label={formatMessage(language.operationActivityConfirmations, {
 													confirmations: activity.confirmations,
 													target: activity.confirmationTarget,
@@ -231,23 +231,23 @@ export default function OperationActivityControl() {
 												className="operation-activity-confirmations"
 											>
 												{activity.confirmations}/{activity.confirmationTarget}
-											</span>
+											</S.Confirmations>
 										) : null}
 										{activity.phase === 'working' ? (
 											<Icon icon={LoaderCircle} size="xs" className="operation-activity-loader" />
 										) : null}
-									</span>
-									<Icon icon={ChevronRight} size="sm" className="operation-activity-chevron" />
-								</Button>
-							</div>
+									</S.Progress>
+									<S.Chevron icon={ChevronRight} size="sm" className="operation-activity-chevron" />
+								</S.Open>
+							</S.Item>
 						))}
 						{menu.mints.map(({ activity, needsAttention, pinnedGateway }) => {
 							return (
-								<div
+								<S.Item
 									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
 									key={activity.id}
 								>
-									<Button
+									<S.Open
 										className="operation-activity-open"
 										onClick={() => {
 											menu.showMint(activity.id);
@@ -257,10 +257,10 @@ export default function OperationActivityControl() {
 										type="button"
 										variant="ghost"
 									>
-										<span className="operation-activity-symbol" aria-hidden="true">
+										<S.Symbol className="operation-activity-symbol" aria-hidden="true">
 											<Icon icon={Upload} size="sm" />
-										</span>
-										<span className="operation-activity-copy">
+										</S.Symbol>
+										<S.Copy className="operation-activity-copy">
 											<strong>{activity.asset.name}</strong>
 											<small>
 												{formatMessage(language.operationActivityItemMeta, {
@@ -278,19 +278,23 @@ export default function OperationActivityControl() {
 													language
 												)}
 											</span>
-										</span>
+										</S.Copy>
 										{needsAttention ? null : (
 											<Icon icon={LoaderCircle} size="xs" className="operation-activity-loader" />
 										)}
-										<Icon icon={ChevronRight} size="sm" className="operation-activity-chevron" />
-									</Button>
-								</div>
+										<S.Chevron
+											icon={ChevronRight}
+											size="sm"
+											className="operation-activity-chevron"
+										/>
+									</S.Open>
+								</S.Item>
 							);
 						})}
-					</div>
-				</section>
+					</S.List>
+				</S.Menu>
 			) : null}
-		</div>
+		</S.Control>
 	);
 }
 

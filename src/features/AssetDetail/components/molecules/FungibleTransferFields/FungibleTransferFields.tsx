@@ -11,6 +11,8 @@ import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { tokenLabel } from '../../../model/fungible-market';
 import type { FungibleOperationDraftView } from '../../../model/fungible-operation-view';
 
+import * as S from './styles';
+
 export default function FungibleTransferFields(props: {
 	draft: FungibleOperationDraftView;
 	quantity: string;
@@ -26,10 +28,10 @@ export default function FungibleTransferFields(props: {
 
 	return (
 		<>
-			<div className="trade-balance">
+			<S.Balance className="trade-balance">
 				<span>{messages.transferAvailableToSend}</span>
 				<strong>{tokenLabel(props.draft.available, props.state)}</strong>
-			</div>
+			</S.Balance>
 			<label>
 				{messages.transferRecipientLabel}
 				<TextInput
@@ -47,18 +49,18 @@ export default function FungibleTransferFields(props: {
 				/>
 			</label>
 			{props.recipient && props.draft.recipientError ? (
-				<p id={recipientGuidanceId} className="trade-guidance" role="alert">
+				<S.Guidance id={recipientGuidanceId} className="trade-guidance" role="alert">
 					{reasonMessage(props.draft.recipientError)}
-				</p>
+				</S.Guidance>
 			) : null}
 			{props.recipient && !props.draft.recipientError ? (
-				<div className="trade-quote">
+				<S.Quote className="trade-quote">
 					<span>{messages.transferRecipient}</span>
 					<strong>{props.draft.transferRecipient}</strong>
-				</div>
+				</S.Quote>
 			) : null}
 			{props.recipient && !props.draft.recipientError ? (
-				<p className="settlement-disclosure">{messages.transferDisclosure}</p>
+				<S.Disclosure className="settlement-disclosure">{messages.transferDisclosure}</S.Disclosure>
 			) : null}
 			<label>
 				{messages.transferTokenQuantity}
@@ -72,11 +74,11 @@ export default function FungibleTransferFields(props: {
 				/>
 			</label>
 			{props.draft.quantityInvalid ? (
-				<p id={quantityGuidanceId} className="trade-guidance" role="alert">
+				<S.Guidance id={quantityGuidanceId} className="trade-guidance" role="alert">
 					{formatMessage(messages.transferQuantityGuidance, {
 						amount: tokenLabel(props.draft.currentLiquid.toString(), props.state),
 					})}
-				</p>
+				</S.Guidance>
 			) : null}
 		</>
 	);

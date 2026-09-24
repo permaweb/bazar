@@ -11,6 +11,9 @@ import { useMessages } from 'providers/LanguageProvider';
 
 import { COLLECTION_MESSAGES } from '../../../messages';
 import type { CollectionLiveListingRow } from '../../../model/collection-market';
+import * as Analytics from '../../../styles/analytics';
+
+import * as S from './styles';
 
 export default function CollectionAnalyticsPanel(props: {
 	collection: Collection;
@@ -19,25 +22,25 @@ export default function CollectionAnalyticsPanel(props: {
 }) {
 	const language = useMessages(COLLECTION_MESSAGES);
 	return (
-		<aside className="collection-analytics" aria-label={language.analyticsLabel}>
-			<div className="collection-analytics-heading">
+		<Analytics.Panel className="collection-analytics" aria-label={language.analyticsLabel}>
+			<Analytics.Heading className="collection-analytics-heading">
 				<div>
 					<span>{language.analyticsEyebrow}</span>
 					<h2>{language.analyticsHeading}</h2>
 				</div>
 				<BarChart3 aria-hidden="true" />
-			</div>
-			<div className="collection-analytics-tabs">
+			</Analytics.Heading>
+			<Analytics.Tabs className="collection-analytics-tabs">
 				<span>{language.analyticsLiveOffersTab}</span>
-			</div>
+			</Analytics.Tabs>
 			{props.loading && !props.rows.length ? (
-				<div className="collection-analytics-empty">
+				<S.Empty className="collection-analytics-empty">
 					<LoaderCircle className="spin" aria-hidden="true" />
 					<strong>{language.checkingLiveOffers}</strong>
 					<p>{language.checkingLiveOffersDetail}</p>
-				</div>
+				</S.Empty>
 			) : props.rows.length ? (
-				<div className="collection-orderbook">
+				<S.Orderbook className="collection-orderbook">
 					{props.loading ? <LiveRegion>{language.refreshingLiveOffers}</LiveRegion> : null}
 					<div className="collection-orderbook-head" aria-hidden="true">
 						<span>{language.orderbookPrice}</span>
@@ -64,13 +67,13 @@ export default function CollectionAnalyticsPanel(props: {
 							</li>
 						))}
 					</ul>
-				</div>
+				</S.Orderbook>
 			) : (
-				<div className="collection-analytics-empty">
+				<S.Empty className="collection-analytics-empty">
 					<strong>{language.noLiveOffersTitle}</strong>
 					<p>{language.noLiveOffersDetail}</p>
-				</div>
+				</S.Empty>
 			)}
-		</aside>
+		</Analytics.Panel>
 	);
 }

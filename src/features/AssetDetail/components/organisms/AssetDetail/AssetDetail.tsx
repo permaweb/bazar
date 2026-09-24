@@ -23,6 +23,8 @@ import { UniqueAssetCommerceCard } from '../UniqueAssetCommerceCard';
 import { UniqueAssetMedia } from '../UniqueAssetMedia';
 import { type UniqueAssetSection, UniqueAssetSections } from '../UniqueAssetSections';
 
+import * as S from './styles';
+
 const FungibleAssetView = React.lazy(() =>
 	loadFungibleAssetView().then((module) => ({ default: module.FungibleAssetView }))
 );
@@ -178,7 +180,7 @@ export default function AssetDetail() {
 	const view = screen.view;
 	const unavailableRecovery = operations.unavailableRecovery;
 	return (
-		<section className="asset-page asset-detail-page atomic-asset-page">
+		<S.AtomicPage className="asset-page asset-detail-page atomic-asset-page">
 			{operations.notice ? (
 				<StatusNotice dismissLabel={messages.assetDetailNoticeDismiss} onDismiss={operations.dismissNotice}>
 					{recoveryNoticeMessage(operations.notice, messages)}
@@ -192,22 +194,26 @@ export default function AssetDetail() {
 					onDiscard={operations.discardUnavailableRecovery}
 				/>
 			) : null}
-			<div className="asset-detail-layout">
-				<div className="asset-commerce-column asset-commerce-primary">
-					<div className="asset-details asset-identity">
-						<div className="asset-kicker">
+			<S.Layout className="asset-detail-layout">
+				<S.CommerceColumn className="asset-commerce-column asset-commerce-primary">
+					<S.Identity className="asset-details asset-identity">
+						<S.Kicker className="asset-kicker">
 							{detail.indexedCollection ? (
-								<Link className="asset-collection-link" to={`/collection/${collection.id}`}>
+								<S.CollectionLink
+									as={Link}
+									className="asset-collection-link"
+									to={`/collection/${collection.id}`}
+								>
 									{collection.name}
-								</Link>
+								</S.CollectionLink>
 							) : (
-								<span className="asset-collection-link">{collection.name}</span>
+								<S.CollectionLink className="asset-collection-link">{collection.name}</S.CollectionLink>
 							)}
-						</div>
+						</S.Kicker>
 						<h1 ref={operations.focusFallbackRef} tabIndex={-1}>
 							{asset.name}
 						</h1>
-						<div className="asset-owner-line">
+						<S.OwnerLine className="asset-owner-line">
 							<span>
 								{live.loading || live.error
 									? messages.assetDetailLastKnownOwner
@@ -222,7 +228,7 @@ export default function AssetDetail() {
 										: messages.assetDetailOwnershipUnavailable}
 								</strong>
 							)}
-						</div>
+						</S.OwnerLine>
 						{live.loading ? <Loading label={messages.assetDetailComputingState} /> : null}
 						{live.error ? (
 							<ErrorPanel
@@ -242,12 +248,12 @@ export default function AssetDetail() {
 							onOpenOperation={(operation) => operations.openOperation(operation)}
 							onShowOperation={operations.showOperation}
 						/>
-					</div>
-				</div>
-				<div className="asset-visual-column">
+					</S.Identity>
+				</S.CommerceColumn>
+				<S.VisualColumn className="asset-visual-column">
 					<UniqueAssetMedia asset={asset} collection={collection} state={state} />
-				</div>
-				<div className="asset-commerce-column asset-commerce-secondary">
+				</S.VisualColumn>
+				<S.CommerceColumn className="asset-commerce-column asset-commerce-secondary">
 					<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 					<UniqueAssetSections
 						active={activeSection}
@@ -269,8 +275,8 @@ export default function AssetDetail() {
 						onAskLoadMore={() => void activity.loadOlderAsks()}
 						onPrefetchAsset={detail.prefetchAsset}
 					/>
-				</div>
-			</div>
-		</section>
+				</S.CommerceColumn>
+			</S.Layout>
+		</S.AtomicPage>
 	);
 }

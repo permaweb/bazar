@@ -9,10 +9,12 @@ import { useMessages } from 'providers/LanguageProvider';
 import { ASSET_DETAIL_MESSAGES } from '../../../messages';
 import { orderPriceLabel, tokenLabel } from '../../../model/fungible-market';
 
+import * as S from './styles';
+
 export default function PurchaseRoute(props: { fills: OrderFill[]; state: AssetState }) {
 	const messages = useMessages(ASSET_DETAIL_MESSAGES);
 	return (
-		<details className="purchase-route" open={props.fills.length === 1}>
+		<S.Route className="purchase-route" open={props.fills.length === 1}>
 			<summary>
 				<span>{messages.purchaseRouteSummary}</span>
 				<strong>
@@ -24,8 +26,8 @@ export default function PurchaseRoute(props: { fills: OrderFill[]; state: AssetS
 			<ul aria-label={messages.purchaseRouteLabel} tabIndex={0}>
 				{props.fills.map(({ order, sourceOrder, partial }, index) => (
 					<li key={order.orderId}>
-						<span className="purchase-route-index">{index + 1}</span>
-						<span className="purchase-route-fill">
+						<S.Index className="purchase-route-index">{index + 1}</S.Index>
+						<S.Fill className="purchase-route-fill">
 							<strong>{tokenLabel(order.quantity, props.state)}</strong>
 							<small>
 								<ArCurrencyText>{orderPriceLabel(order, props.state)}</ArCurrencyText>
@@ -36,14 +38,14 @@ export default function PurchaseRoute(props: { fills: OrderFill[]; state: AssetS
 									  })
 									: messages.purchaseRouteFull}
 							</small>
-						</span>
-						<span className="purchase-route-total">
+						</S.Fill>
+						<S.Total className="purchase-route-total">
 							{winstonToArDecimal(order.asking)} <ArCurrencyLabel />
-						</span>
+						</S.Total>
 						<WalletAddress address={order.creator} label={messages.assetDetailWalletLabelSeller} />
 					</li>
 				))}
 			</ul>
-		</details>
+		</S.Route>
 	);
 }

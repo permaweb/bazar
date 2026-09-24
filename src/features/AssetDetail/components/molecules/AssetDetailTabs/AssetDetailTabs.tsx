@@ -3,6 +3,8 @@ import React from 'react';
 import { Button } from 'components/atoms/Button';
 import { Tooltip } from 'components/atoms/Tooltip';
 
+import * as S from './styles';
+
 export type AssetDetailTab<Value extends string> = {
 	value: Value;
 	label: string;
@@ -46,12 +48,12 @@ export default function AssetDetailTabs<Value extends string>(props: {
 	tabs: AssetDetailTab<Value>[];
 }) {
 	return (
-		<div aria-label={props.ariaLabel} className="home-market-tabs asset-detail-tabs" role="tablist">
+		<S.Tabs aria-label={props.ariaLabel} className="home-market-tabs asset-detail-tabs" role="tablist">
 			{props.tabs.map((tab, index) => {
 				const selected = props.active === tab.value;
 				const tabId = `${props.idPrefix}-${tab.value}-tab`;
 				const button = (descriptionId?: string) => (
-					<Button
+					<S.Tab
 						aria-controls={tab.panelId}
 						aria-describedby={descriptionId}
 						aria-disabled={tab.disabled || undefined}
@@ -83,7 +85,7 @@ export default function AssetDetailTabs<Value extends string>(props: {
 					>
 						{tab.icon}
 						{tab.label}
-					</Button>
+					</S.Tab>
 				);
 				return tab.disabledMessage ? (
 					<Tooltip
@@ -99,6 +101,6 @@ export default function AssetDetailTabs<Value extends string>(props: {
 					button()
 				);
 			})}
-		</div>
+		</S.Tabs>
 	);
 }

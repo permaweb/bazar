@@ -11,6 +11,8 @@ import type { BatchEntry } from '../../../model/fungible-operation';
 import { fungiblePurchaseTotals } from '../../../model/fungible-operation-view';
 import { PurchaseRoute } from '../PurchaseRoute';
 
+import * as S from './styles';
+
 export default function FungibleRecoveryApproval(props: {
 	entries: BatchEntry[];
 	fills: OrderFill[];
@@ -27,7 +29,7 @@ export default function FungibleRecoveryApproval(props: {
 				<h3>{copy.title}</h3>
 				<p>{copy.detail}</p>
 			</div>
-			<div className="batch-quote">
+			<S.BatchQuote className="batch-quote">
 				<div>
 					<span>{messages.recoveryApprovalListings}</span>
 					<strong>{props.fills.length}</strong>
@@ -46,7 +48,7 @@ export default function FungibleRecoveryApproval(props: {
 					<span>{messages.recoveryApprovalNewApprovals}</span>
 					<strong>{batchPurchaseRecoveryApprovalCount(props.entries)}</strong>
 				</div>
-			</div>
+			</S.BatchQuote>
 			<PurchaseRoute fills={props.fills} state={props.state} />
 			<Button
 				className="wide"
