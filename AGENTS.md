@@ -13,7 +13,9 @@ Bazar is a browser-only Vite + React marketplace for Arweave-native assets: wall
 
 ## Adoption status
 
-`.permaweb-frontend.json` is `adopting`. The structural contract passes; the remaining slices (component styles, copy localization, orchestration hooks) are mapped in `docs/architecture-migration.md`. Keep each requested change scoped: migrate a listed slice when the task touches that code or the user asks for it, never by expanding an unrelated change. Update the map as slices land, and set `status` to `compliant` (then delete the map) only when all of them are done and every gate passes.
+`.permaweb-frontend.json` is `compliant`: the structural contract, the shared dialog shell, the `AppError` taxonomy, feature orchestration hooks, message catalogs, and component styles have all landed, and every gate passes. Run the validator before planning, fix drift you touch, and keep each change scoped — the repository is in steady state, so a change no longer needs to carry a migration with it. Do not add architecture exceptions.
+
+Two things are deliberately unfinished and are the exception rather than drift. `src/apps/bazar/styles.css` still holds the element defaults, theme variables, keyframes, page-level utility classes, and a few blocks that two unrelated features render identically; its header comment says why each one stays, and moving those needs a shared component first. The main JavaScript chunk carries the component styles that used to ship as CSS, so route-level code splitting is the way to bring it down rather than a larger budget.
 
 ## Verification
 

@@ -146,7 +146,7 @@ The frontend follows the permaweb frontend architecture contract in
 `AGENTS.md`). Source is organized into `apps`, `views`, `navigation`,
 `features`, shared `components` (atoms, molecules, organisms), `providers`,
 `hooks`, `api` adapters, `helpers`, and `types`; tests live in `tests/`.
-Remaining adoption work is tracked in `docs/architecture-migration.md`.
+Component presentation lives in each component's `styles.ts`; user-facing copy comes from message catalogs resolved through `providers/LanguageProvider`.
 
 ## Validation
 
