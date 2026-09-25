@@ -1,0 +1,206 @@
+import React from 'react';
+import { Check, Info, Plus, RefreshCw, X } from 'lucide-react';
+
+import { Button } from 'components/atoms/Button';
+import { Icon } from 'components/atoms/Icon';
+import { TextInput } from 'components/atoms/TextInput';
+import { Tooltip } from 'components/atoms/Tooltip';
+import { formatMessage } from 'helpers/i18n';
+import { useAoPeerSettings } from 'hooks/useAoPeerSettings';
+import { useMessages } from 'providers/LanguageProvider';
+import { useMarketProvider } from 'providers/MarketProvider';
+
+import { GATEWAY_CONTROL_MESSAGES } from './messages';
+import * as S from './styles';
+
+export default function GatewayControl() {
+	const language = useMessages(GATEWAY_CONTROL_MESSAGES);
+	const { pageRefreshing } = useMarketProvider();
+	const settings = useAoPeerSettings();
+	const [open, setOpen] = React.useState(false);
+	const detailsRef = React.useRef<HTMLDetailsElement>(null);
+	const triggerRef = React.useRef<HTMLElement>(null);
+	const inputRefs = React.useRef<Array<HTMLInputElement | null>>([]);
+	React.useEffect(() => {
+		if (!open) return;
+		const focusFrame = window.requestAnimationFrame(() => inputRefs.current[0]?.focus());
+		const closeOutside = (event: PointerEvent) => {
+			if (event.target instanceof Node && !detailsRef.current?.contains(event.target)) setOpen(false);
+		};
+		const closeWithEscape = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') return;
+			event.preventDefault();
+			setOpen(false);
+			window.requestAnimationFrame(() => triggerRef.current?.focus());
+		};
+		document.addEventListener('pointerdown', closeOutside, true);
+		document.addEventListener('keydown', closeWithEscape, true);
+		return () => {
+			window.cancelAnimationFrame(focusFrame);
+			document.removeEventListener('pointerdown', closeOutside, true);
+			document.removeEventListener('keydown', closeWithEscape, true);
+		};
+	}, [open]);
+	function handleApply(event: React.FormEvent) {
+		event.preventDefault();
+		settings.apply();
+	}
+	function handleAddPeer() {
+		const nextIndex = settings.peers.length;
+		settings.addPeer();
+		window.requestAnimationFrame(() => inputRefs.current[nextIndex]?.focus());
+	}
+	function handleRemovePeer(index: number) {
+		settings.removePeer(index);
+		window.requestAnimationFrame(() => inputRefs.current[Math.max(0, index - 1)]?.focus());
+	}
+	return (
+		<S.Control className="gateway-control">
+			{pageRefreshing ? (
+				<Tooltip content={language.gatewayRefreshing}>
+					{(tooltipId) => (
+						<S.Refreshing
+							aria-describedby={tooltipId}
+							aria-label={language.gatewayRefreshing}
+							className="gateway-refreshing"
+							role="status"
+							tabIndex={0}
+						>
+							<Icon icon={RefreshCw} size="sm" />
+						</S.Refreshing>
+					)}
+				</Tooltip>
+			) : null}
+			<S.Gateway className="gateway" open={open} ref={detailsRef}>
+				<summary
+					aria-controls="gateway-panel"
+					aria-expanded={open}
+					aria-label={formatMessage(language.gatewayPeersSummary, {
+						peers: settings.activePeers.join(', '),
+					})}
+					onClick={(event) => {
+						event.preventDefault();
+						setOpen((currentOpen) => !currentOpen);
+					}}
+					ref={triggerRef}
+					role="button"
+				>
+					<Tooltip
+						align="center"
+						className="gateway-trigger-tooltip"
+						content={language.gatewayPeersTooltip}
+						delayMs={1000}
+						disabled={open}
+					>
+						{(tooltipId) => (
+							<S.SummaryContent aria-describedby={tooltipId} className="gateway-summary-content">
+								<S.PortalGlyph className="ui-icon gateway-portal-icon" aria-hidden="true" />
+								<span className="gateway-label">{language.gatewayLabel}</span>
+							</S.SummaryContent>
+						)}
+					</Tooltip>
+				</summary>
+				<div id="gateway-panel">
+					<form onSubmit={handleApply}>
+						{settings.permawebOsAvailable ? (
+							<Button
+								aria-checked={settings.usesPermawebOs}
+								className="gateway-permaweb-os-toggle"
+								onClick={settings.togglePermawebOs}
+								role="switch"
+								size="custom"
+								type="button"
+								variant="ghost"
+							>
+								<span>
+									<strong>{language.gatewayPermawebOsTitle}</strong>
+									<small>{language.gatewayPermawebOsDetail}</small>
+								</span>
+								<S.ToggleControl className="gateway-permaweb-os-toggle-control" aria-hidden="true">
+									{settings.usesPermawebOs ? <Icon icon={Check} size="sm" /> : null}
+								</S.ToggleControl>
+							</Button>
+						) : null}
+						<S.PeerEditor className="gateway-peer-editor">
+							<legend>{language.gatewayPeersLegend}</legend>
+							<S.PeerDescription className="gateway-peer-description">
+								{language.gatewayPeersDescription}
+							</S.PeerDescription>
+							<S.PeerFields className="gateway-peer-fields">
+								{settings.peers.map((value, index) => (
+									<S.PeerRow className="gateway-peer-row" key={index}>
+										<label className="sr-only" htmlFor={`gateway-peer-${index}`}>
+											{formatMessage(language.gatewayPeerLabel, { position: index + 1 })}
+										</label>
+										<TextInput
+											aria-describedby={settings.peersInvalid ? 'gateway-error' : undefined}
+											aria-invalid={settings.peersInvalid}
+											autoComplete="url"
+											id={`gateway-peer-${index}`}
+											inputMode="url"
+											onChange={(event) => settings.updatePeer(index, event.target.value)}
+											placeholder={language.gatewayPeerPlaceholder}
+											ref={(node) => {
+												inputRefs.current[index] = node;
+											}}
+											spellCheck={false}
+											value={value}
+										/>
+										{settings.peers.length > 1 ? (
+											<Button
+												aria-label={formatMessage(language.gatewayPeerRemove, {
+													position: index + 1,
+												})}
+												className="gateway-peer-remove"
+												onClick={() => handleRemovePeer(index)}
+												size="custom"
+												type="button"
+												variant="ghost"
+											>
+												<Icon icon={X} size="sm" />
+											</Button>
+										) : null}
+									</S.PeerRow>
+								))}
+							</S.PeerFields>
+							<Button
+								className="gateway-peer-add with-icon"
+								onClick={handleAddPeer}
+								size="custom"
+								type="button"
+								variant="ghost"
+							>
+								<Icon icon={Plus} size="sm" /> {language.gatewayPeerAdd}
+							</Button>
+						</S.PeerEditor>
+						{settings.peersInvalid ? (
+							<S.ErrorMessage className="gateway-error" id="gateway-error" role="alert">
+								{language.gatewayPeersInvalid}
+							</S.ErrorMessage>
+						) : null}
+						<S.ApplyRow className="gateway-apply-row">
+							<Button className="gateway-apply-button with-icon" type="submit" size="custom">
+								<S.PortalGlyph className="ui-icon gateway-portal-icon" aria-hidden="true" />{' '}
+								{language.gatewayApply}
+							</Button>
+							<S.PeerHelp className="gateway-peer-help" content={language.gatewayHelp}>
+								{(tooltipId) => (
+									<Button
+										aria-describedby={tooltipId}
+										aria-label={language.gatewayHelpLabel}
+										className="gateway-peer-help-trigger"
+										size="custom"
+										type="button"
+										variant="ghost"
+									>
+										<Icon icon={Info} size="sm" />
+									</Button>
+								)}
+							</S.PeerHelp>
+						</S.ApplyRow>
+					</form>
+				</div>
+			</S.Gateway>
+		</S.Control>
+	);
+}

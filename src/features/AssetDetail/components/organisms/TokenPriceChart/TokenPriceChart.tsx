@@ -1,0 +1,437 @@
+import React from 'react';
+import {
+	type AreaData,
+	type CandlestickData,
+	ColorType,
+	createChart,
+	CrosshairMode,
+	LineStyle,
+	LineType,
+	type UTCTimestamp,
+} from 'lightweight-charts';
+
+import { Button } from 'components/atoms/Button';
+import { Pressable } from 'components/atoms/Pressable';
+import { formatMessage } from 'helpers/i18n';
+import { colorWithAlpha, themes } from 'helpers/theme';
+import { useMessages } from 'providers/LanguageProvider';
+import { useTheme } from 'providers/ThemeProvider';
+
+import { ASSET_DETAIL_MESSAGES, type AssetDetailMessages } from '../../../messages';
+
+import * as S from './styles';
+
+export type TokenPricePoint = {
+	id: string;
+	timestamp: number;
+	value: string;
+};
+
+export type TokenPriceRange = '5m' | '1h' | '24h' | '7d' | '30d' | 'all';
+
+const PRICE_RANGE_LABEL_KEYS: Record<TokenPriceRange, keyof AssetDetailMessages> = {
+	'5m': 'priceChartRange5m',
+	'1h': 'priceChartRange1h',
+	'24h': 'priceChartRange24h',
+	'7d': 'priceChartRange7d',
+	'30d': 'priceChartRange30d',
+	all: 'priceChartRangeAll',
+};
+
+const PRICE_RANGE_CONTEXT_KEYS: Record<TokenPriceRange, keyof AssetDetailMessages> = {
+	'5m': 'priceChartContext5m',
+	'1h': 'priceChartContext1h',
+	'24h': 'priceChartContext24h',
+	'7d': 'priceChartContext7d',
+	'30d': 'priceChartContext30d',
+	all: 'priceChartContextAll',
+};
+
+const PRICE_RANGE_ORDER: TokenPriceRange[] = ['5m', '1h', '24h', '7d', '30d', 'all'];
+
+const PRICE_RANGE_MS: Record<Exclude<TokenPriceRange, 'all'>, number> = {
+	'5m': 5 * 60 * 1_000,
+	'1h': 60 * 60 * 1_000,
+	'24h': 24 * 60 * 60 * 1_000,
+	'7d': 7 * 24 * 60 * 60 * 1_000,
+	'30d': 30 * 24 * 60 * 60 * 1_000,
+};
+
+const PRICE_CANDLE_INTERVAL_SECONDS: Record<Exclude<TokenPriceRange, 'all'>, number> = {
+	'5m': 30,
+	'1h': 5 * 60,
+	'24h': 60 * 60,
+	'7d': 6 * 60 * 60,
+	'30d': 24 * 60 * 60,
+};
+
+const ALL_RANGE_CANDLE_INTERVALS = [
+	60,
+	5 * 60,
+	15 * 60,
+	30 * 60,
+	60 * 60,
+	2 * 60 * 60,
+	4 * 60 * 60,
+	12 * 60 * 60,
+	24 * 60 * 60,
+	7 * 24 * 60 * 60,
+	14 * 24 * 60 * 60,
+	30 * 24 * 60 * 60,
+];
+
+function timestampMilliseconds(timestamp: number) {
+	return timestamp < 1_000_000_000_000 ? timestamp * 1_000 : timestamp;
+}
+
+export function tokenPricePointsForRange(points: TokenPricePoint[], range: TokenPriceRange, now = Date.now()) {
+	const ordered = [...points].sort(
+		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
+	);
+	if (range === 'all') return ordered;
+	const threshold = now - PRICE_RANGE_MS[range];
+	return ordered.filter((point) => timestampMilliseconds(point.timestamp) >= threshold);
+}
+
+function tokenPriceCandleInterval(points: TokenPricePoint[], range: TokenPriceRange) {
+	if (range !== 'all') return PRICE_CANDLE_INTERVAL_SECONDS[range];
+	if (points.length < 2) return ALL_RANGE_CANDLE_INTERVALS[0];
+	const first = timestampMilliseconds(points[0].timestamp) / 1_000;
+	const last = timestampMilliseconds(points.at(-1)!.timestamp) / 1_000;
+	const targetCandleCount = Math.min(48, Math.max(8, Math.ceil(points.length / 3)));
+	const targetInterval = Math.max(1, (last - first) / targetCandleCount);
+	return (
+		ALL_RANGE_CANDLE_INTERVALS.find((interval) => interval >= targetInterval) ?? ALL_RANGE_CANDLE_INTERVALS.at(-1)!
+	);
+}
+
+export type TokenPriceCandle = CandlestickData<UTCTimestamp> & {
+	openPoint: TokenPricePoint;
+	highPoint: TokenPricePoint;
+	lowPoint: TokenPricePoint;
+	closePoint: TokenPricePoint;
+};
+
+export function tokenPriceCandlestickSeries(points: TokenPricePoint[], range: TokenPriceRange = 'all') {
+	const ordered = tokenPricePointsForRange(points, 'all');
+	const interval = tokenPriceCandleInterval(ordered, range);
+	const candles = new Map<number, TokenPriceCandle>();
+	for (const point of ordered) {
+		const seconds = Math.floor(timestampMilliseconds(point.timestamp) / 1_000);
+		const time = Math.floor(seconds / interval) * interval;
+		const value = Number(point.value) / 1_000_000_000_000;
+		const candle = candles.get(time);
+		if (!candle) {
+			candles.set(time, {
+				time: time as UTCTimestamp,
+				open: value,
+				high: value,
+				low: value,
+				close: value,
+				openPoint: point,
+				highPoint: point,
+				lowPoint: point,
+				closePoint: point,
+			});
+			continue;
+		}
+		candle.close = value;
+		candle.closePoint = point;
+		if (BigInt(point.value) > BigInt(candle.highPoint.value)) {
+			candle.high = value;
+			candle.highPoint = point;
+		}
+		if (BigInt(point.value) < BigInt(candle.lowPoint.value)) {
+			candle.low = value;
+			candle.lowPoint = point;
+		}
+	}
+	return [...candles.values()];
+}
+
+export type TokenPriceAreaPoint = AreaData<UTCTimestamp> & {
+	sourcePoint: TokenPricePoint;
+};
+
+export function tokenPriceAreaSeries(points: TokenPricePoint[], _range: TokenPriceRange = 'all') {
+	let previousTime = Number.NEGATIVE_INFINITY;
+	return tokenPricePointsForRange(points, 'all').map((point) => {
+		const sourceTime = Math.floor(timestampMilliseconds(point.timestamp) / 1_000);
+		// Lightweight Charts requires strictly increasing timestamps. Preserve price
+		// events recorded in the same second instead of dropping their path.
+		const time = Math.max(sourceTime, previousTime + 1);
+		previousTime = time;
+		return {
+			time: time as UTCTimestamp,
+			value: Number(point.value) / 1_000_000_000_000,
+			sourcePoint: point,
+		};
+	});
+}
+
+export function tokenPriceCoordinates(points: TokenPricePoint[], width = 640, height = 180) {
+	if (!points.length) return [];
+	const values = points.map((point) => BigInt(point.value));
+	const minimum = values.reduce((current, value) => (value < current ? value : current));
+	const maximum = values.reduce((current, value) => (value > current ? value : current));
+	const range = maximum - minimum;
+	return values.map((value, index) => {
+		const x = points.length === 1 ? width / 2 : (index * width) / (points.length - 1);
+		const normalized = range === 0n ? 500n : ((value - minimum) * 1_000n) / range;
+		const y = height - (Number(normalized) / 1_000) * height;
+		return { x, y };
+	});
+}
+
+export function tokenPricePolyline(points: TokenPricePoint[], width = 640, height = 180) {
+	return tokenPriceCoordinates(points, width, height)
+		.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`)
+		.join(' ');
+}
+
+export function tokenPriceChangePercent(points: TokenPricePoint[]) {
+	if (points.length < 2) return null;
+	const first = BigInt(points[0].value);
+	const last = BigInt(points.at(-1)!.value);
+	if (first === 0n) return null;
+	return Number(((last - first) * 10_000n) / first) / 100;
+}
+
+function changeLabel(change: number | null, messages: AssetDetailMessages) {
+	if (change === null) return messages.priceChartNotEnoughData;
+	if (change === 0) return messages.priceChartNoChange;
+	return formatMessage(messages.priceChartChangePercent, {
+		change: `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+	});
+}
+
+export default function TokenPriceChart(props: {
+	points: TokenPricePoint[];
+	floorValue: string | null;
+	ticker: string;
+	loading: boolean;
+	error: string | null;
+	formatValue(value: string): string;
+	hasNextPage?: boolean;
+	loadingMore?: boolean;
+	onLoadMore?(): void;
+	onRetry?(): void;
+}) {
+	const messages = useMessages(ASSET_DETAIL_MESSAGES);
+	const { resolvedTheme } = useTheme();
+	const [range, setRange] = React.useState<TokenPriceRange>('all');
+	const [markerPosition, setMarkerPosition] = React.useState<{
+		x: number;
+		y: number;
+		pointId: string;
+	} | null>(null);
+	const chartContainerRef = React.useRef<HTMLDivElement>(null);
+	const visiblePoints = React.useMemo(() => tokenPricePointsForRange(props.points, range), [props.points, range]);
+	const areaSeries = React.useMemo(() => tokenPriceAreaSeries(visiblePoints, range), [range, visiblePoints]);
+	const currentPoint = visiblePoints.at(-1) ?? null;
+	const markerPoint =
+		(markerPosition ? visiblePoints.find((point) => point.id === markerPosition.pointId) : null) ?? currentPoint;
+	const change = tokenPriceChangePercent(visiblePoints);
+	const direction = change === null || change === 0 ? 'flat' : change > 0 ? 'up' : 'down';
+
+	React.useEffect(() => {
+		const container = chartContainerRef.current;
+		if (!container || !areaSeries.length) return;
+		setMarkerPosition(null);
+
+		const chartTheme = themes[resolvedTheme];
+		const paper = chartTheme.colors.container.primary.background;
+		const muted = chartTheme.colors.font.alt1;
+		const line = chartTheme.colors.border.primary;
+		const positive = chartTheme.colors.indicator.primary;
+		const negative = chartTheme.colors.global.negative;
+		const seriesColor = direction === 'down' ? negative : positive;
+
+		const chart = createChart(container, {
+			autoSize: true,
+			layout: {
+				attributionLogo: false,
+				background: { color: paper, type: ColorType.Solid },
+				fontFamily: chartTheme.typography.family.primary,
+				textColor: muted,
+			},
+			grid: {
+				horzLines: { color: line, visible: false },
+				vertLines: { color: line, visible: false },
+			},
+			crosshair: {
+				mode: CrosshairMode.Magnet,
+				horzLine: {
+					labelVisible: false,
+					style: LineStyle.Dashed,
+					visible: false,
+				},
+				vertLine: {
+					color: muted,
+					labelVisible: false,
+					style: LineStyle.SparseDotted,
+					visible: true,
+				},
+			},
+			rightPriceScale: {
+				borderVisible: false,
+				scaleMargins: { bottom: 0.12, top: 0.16 },
+				ticksVisible: false,
+				visible: false,
+			},
+			timeScale: {
+				borderVisible: false,
+				rightOffset: 2,
+				secondsVisible: false,
+				timeVisible: false,
+				visible: false,
+			},
+		});
+		const series = chart.addAreaSeries({
+			bottomColor: colorWithAlpha(seriesColor, 0),
+			lastValueVisible: true,
+			lineColor: seriesColor,
+			lineType: LineType.WithSteps,
+			lineWidth: 3,
+			priceFormat: { minMove: 0.000000000001, precision: 12, type: 'price' },
+			priceLineColor: seriesColor,
+			priceLineStyle: LineStyle.SparseDotted,
+			priceLineVisible: true,
+			topColor: colorWithAlpha(seriesColor, 0.18),
+		});
+		series.setData(areaSeries.map(({ time, value }) => ({ time, value })));
+		const latestAreaPoint = areaSeries.at(-1)!;
+		const areaPointByTime = new Map(areaSeries.map((point) => [point.time, point]));
+		const fitChartRange = () => chart.timeScale().fitContent();
+		fitChartRange();
+
+		let markerFrame = 0;
+		let rangeFrame = 0;
+		let hoveredAreaPoint: TokenPriceAreaPoint | null = null;
+		const updateMarkerPosition = () => {
+			window.cancelAnimationFrame(markerFrame);
+			markerFrame = window.requestAnimationFrame(() => {
+				const markerAreaPoint = hoveredAreaPoint ?? latestAreaPoint;
+				const x = chart.timeScale().timeToCoordinate(markerAreaPoint.time);
+				const y = series.priceToCoordinate(markerAreaPoint.value);
+				if (x !== null && y !== null) {
+					setMarkerPosition({
+						x: x + container.offsetLeft,
+						y,
+						pointId: markerAreaPoint.sourcePoint.id,
+					});
+				}
+			});
+		};
+		chart.subscribeCrosshairMove((event) => {
+			hoveredAreaPoint =
+				typeof event.time === 'number' ? areaPointByTime.get(event.time as UTCTimestamp) ?? null : null;
+			updateMarkerPosition();
+		});
+		const resizeObserver = new ResizeObserver(() => {
+			window.cancelAnimationFrame(rangeFrame);
+			rangeFrame = window.requestAnimationFrame(() => {
+				fitChartRange();
+				updateMarkerPosition();
+			});
+		});
+		resizeObserver.observe(container);
+		chart.timeScale().subscribeVisibleLogicalRangeChange(updateMarkerPosition);
+		updateMarkerPosition();
+
+		return () => {
+			window.cancelAnimationFrame(markerFrame);
+			window.cancelAnimationFrame(rangeFrame);
+			resizeObserver.disconnect();
+			chart.timeScale().unsubscribeVisibleLogicalRangeChange(updateMarkerPosition);
+			chart.remove();
+		};
+	}, [areaSeries, direction, resolvedTheme]);
+
+	return (
+		<S.Chart
+			className="token-price-chart"
+			aria-busy={props.loading}
+			aria-label={formatMessage(messages.priceChartLabel, { ticker: props.ticker })}
+		>
+			<S.Heading className="token-price-chart-heading">
+				<S.Quote className="token-price-quote" aria-live="polite">
+					<small>{messages.priceChartFloorPrice}</small>
+					<strong>
+						{props.floorValue ? props.formatValue(props.floorValue) : messages.priceChartNoOpenAsks}
+					</strong>
+					{visiblePoints.length ? (
+						<S.Context className="token-price-context">
+							<span data-direction={direction}>{changeLabel(change, messages)}</span>
+							<small>
+								{formatMessage(messages.priceChartOverRange, {
+									range: messages[PRICE_RANGE_CONTEXT_KEYS[range]] as string,
+								})}
+							</small>
+						</S.Context>
+					) : null}
+				</S.Quote>
+			</S.Heading>
+
+			{visiblePoints.length ? (
+				<S.Plot
+					aria-label={formatMessage(messages.priceChartPlotLabel, { ticker: props.ticker })}
+					className="token-price-plot"
+					role="img"
+				>
+					<S.TradingView className="token-price-tradingview" ref={chartContainerRef} />
+					{markerPosition && areaSeries.length ? (
+						<S.CurrentMarker
+							aria-hidden="true"
+							className="token-price-current-marker"
+							data-direction={direction}
+							style={{ left: markerPosition.x, top: markerPosition.y }}
+						>
+							<S.CurrentDot className="token-price-current-dot" />
+							<strong>{props.formatValue(markerPoint!.value)}</strong>
+						</S.CurrentMarker>
+					) : null}
+				</S.Plot>
+			) : props.loading ? (
+				<S.Empty className="token-price-empty">{messages.priceChartLoading}</S.Empty>
+			) : props.error ? (
+				<S.Empty className="token-price-empty">{messages.priceChartError}</S.Empty>
+			) : (
+				<S.Empty className="token-price-empty">{messages.priceChartEmpty}</S.Empty>
+			)}
+
+			<S.Ranges aria-label={messages.priceChartRangeGroup} className="token-price-ranges" role="group">
+				{PRICE_RANGE_ORDER.map((option) => (
+					<Pressable
+						aria-pressed={range === option}
+						key={option}
+						onClick={() => {
+							setRange(option);
+						}}
+						type="button"
+					>
+						{messages[PRICE_RANGE_LABEL_KEYS[option]] as string}
+					</Pressable>
+				))}
+			</S.Ranges>
+			{(props.hasNextPage ?? false) && props.onLoadMore ? (
+				<S.HistoryFooter className="token-price-history-footer">
+					<Button
+						disabled={props.loadingMore ?? false}
+						onClick={props.onLoadMore}
+						size="custom"
+						type="button"
+					>
+						{props.loadingMore ?? false ? messages.priceChartLoadingOlder : messages.priceChartLoadOlder}
+					</Button>
+				</S.HistoryFooter>
+			) : props.error && props.onRetry ? (
+				<S.HistoryFooter className="token-price-history-footer">
+					<Button onClick={props.onRetry} size="custom" type="button">
+						{messages.priceChartRetry}
+					</Button>
+				</S.HistoryFooter>
+			) : null}
+		</S.Chart>
+	);
+}

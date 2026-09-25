@@ -5,6 +5,7 @@ declare module 'styled-components' {
 		transparent: string;
 		contrastText: string;
 		fixedInk: string;
+		fixedShade: string;
 		brandAccent: string;
 		brandBadgeBackground: string;
 		tooltipBorder: string;

@@ -1,0 +1,176 @@
+import { type Collection, isVisibleAssetId } from 'api/collections';
+import type { CollectionActivityEvent } from 'api/discovery';
+
+import { formatMessage, type MessageValues, type PluralMessage } from 'helpers/i18n';
+
+import type { ActivityMessages } from '../messages';
+
+/** The plural formatter `usePlural()` returns, passed in so this model stays React-independent. */
+export type ActivityPluralFormatter = (message: PluralMessage, count: number, values?: MessageValues) => string;
+
+const globalActivityCollections = new WeakMap<Collection[], Map<string, Collection>>();
+
+export function globalActivityCollection(collections: Collection[], processId: string) {
+	if (!isVisibleAssetId(processId)) return undefined;
+	let indexed = globalActivityCollections.get(collections);
+	if (!indexed) {
+		indexed = new Map();
+		for (const collection of collections) {
+			const processIds =
+				collection.kind === 'names'
+					? Object.keys(collection.namespace?.namesById ?? {})
+					: collection.assets.map((asset) => asset.id);
+			for (const id of processIds) {
+				if (isVisibleAssetId(id)) indexed.set(id, collection);
+			}
+		}
+		globalActivityCollections.set(collections, indexed);
+	}
+	return indexed.get(processId);
+}
+
+export function globalActivityRecipientIds(collections: Collection[]) {
+	const ids = new Set<string>();
+	for (const collection of collections) {
+		const processIds =
+			collection.kind === 'names'
+				? Object.keys(collection.namespace?.namesById ?? {})
+				: collection.assets.map((asset) => asset.id);
+		for (const id of processIds) if (isVisibleAssetId(id)) ids.add(id);
+	}
+	return [...ids];
+}
+
+/**
+ * The global feed's filters. Registrations are submissions, never inferred sales, so they have no filter of their
+ * own; they still appear under `all`.
+ */
+export type GlobalActivityFilter = 'all' | Exclude<CollectionActivityEvent['action'], 'register-interest'>;
+
+export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
+
+export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
+	if (filter === 'all') return events;
+	return events.filter((event) => event.action === filter);
+}
+
+/** Reveal counts describe the events loaded so far, never the whole indexed history. */
+export function globalActivityRevealDescription(
+	shownCount: number,
+	matchingCount: number,
+	_loadedCount: number,
+	filtered: boolean,
+	messages: ActivityMessages,
+	_limit = GLOBAL_ACTIVITY_WINDOW_SIZE
+) {
+	const shown = Math.max(0, Math.floor(shownCount));
+	const matching = Math.max(0, Math.floor(matchingCount));
+	return formatMessage(filtered ? messages.globalActivityRevealFiltered : messages.globalActivityReveal, {
+		shown: shown.toLocaleString(),
+		matching: matching.toLocaleString(),
+	});
+}
+
+export function collectionActivityVersion(collection: Collection) {
+	if (collection.kind === 'names') return collection.namespace?.manifestId ?? '';
+	return `${collection.manifestId ?? ''}:${collection.assets.map((asset) => asset.id).join('.')}`;
+}
+
+export function newestCollectionActivity(events: CollectionActivityEvent[], limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
+	const byId = new Map<string, CollectionActivityEvent>();
+	for (const event of events) {
+		const previous = byId.get(event.id);
+		byId.set(
+			event.id,
+			previous?.purchaseProof && !event.purchaseProof
+				? { ...event, purchaseProof: previous.purchaseProof }
+				: event
+		);
+	}
+	return [...byId.values()]
+		.sort((a, b) => b.height - a.height || b.timestamp - a.timestamp || a.id.localeCompare(b.id))
+		.slice(0, limit);
+}
+
+export function retainNewestCollectionActivity(
+	events: Map<string, CollectionActivityEvent>,
+	additions: CollectionActivityEvent[],
+	limit = 100
+) {
+	const retained = newestCollectionActivity([...events.values(), ...additions], limit);
+	events.clear();
+	for (const event of retained) events.set(event.id, event);
+	return retained;
+}
+
+export function collectionListingScopeVersion(collection: Collection) {
+	return collection.kind === 'tokens'
+		? collection.manifestId ?? collection.id
+		: collectionActivityVersion(collection);
+}
+
+export function collectionAssetWindowDelta(previousIds: Iterable<string>, currentIds: string[]) {
+	const previous = new Set(previousIds);
+	const current = new Set(currentIds);
+	const reset = [...previous].some((assetId) => !current.has(assetId));
+	return {
+		reset,
+		added: reset ? currentIds : currentIds.filter((assetId) => !previous.has(assetId)),
+	};
+}
+
+export function collectionActivityWindowDelta(
+	kind: Collection['kind'],
+	listedOnly: boolean,
+	previousIds: Iterable<string>,
+	currentIds: string[]
+) {
+	const recipientBatched = kind !== 'names' || !listedOnly;
+	const window = collectionAssetWindowDelta(previousIds, currentIds);
+	return {
+		recipientBatched,
+		reset: recipientBatched && window.reset,
+		added: recipientBatched ? window.added : currentIds,
+	};
+}
+
+export function collectionCandidateMembership(collection: Collection) {
+	if (collection.kind === 'names') {
+		const namesById = collection.namespace?.namesById ?? {};
+		return (processId: string) => isVisibleAssetId(processId) && Object.hasOwn(namesById, processId);
+	}
+	const assetIds = new Set(collection.assets.filter((asset) => isVisibleAssetId(asset.id)).map((asset) => asset.id));
+	return (processId: string) => isVisibleAssetId(processId) && assetIds.has(processId);
+}
+
+export function collectionActivityScanAnnouncement(
+	{
+		error,
+		events,
+		loading,
+		pages,
+		preservingEvents,
+	}: {
+		error: boolean;
+		events: number;
+		loading: boolean;
+		pages: number;
+		preservingEvents: boolean;
+	},
+	messages: ActivityMessages,
+	plural: ActivityPluralFormatter
+) {
+	if (!loading) {
+		return plural(error ? messages.activityScanStopped : messages.activityScanComplete, events, {
+			count: events.toLocaleString(),
+		});
+	}
+	if (pages === 0) {
+		return preservingEvents ? messages.activityScanRefreshing : messages.activityScanReading;
+	}
+	const milestone = pages < 10 ? 1 : Math.floor(pages / 10) * 10;
+	return plural(messages.activityScanProgress, milestone, {
+		count: milestone.toLocaleString(),
+		scan: preservingEvents ? messages.activityScanRefreshName : messages.activityScanName,
+	});
+}

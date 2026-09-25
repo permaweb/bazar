@@ -1,0 +1,61 @@
+import React from 'react';
+import { ChevronDown } from 'lucide-react';
+
+import { formatTokenDescription } from 'helpers/token-display';
+import { useMessages } from 'providers/LanguageProvider';
+
+import { COLLECTION_MESSAGES } from '../../../messages';
+
+import * as S from './styles';
+
+export default function CollectionDescription(props: { description: string }) {
+	const language = useMessages(COLLECTION_MESSAGES);
+	const text = formatTokenDescription(props.description);
+	const contentId = React.useId();
+	const paragraphRef = React.useRef<HTMLParagraphElement>(null);
+	const [expanded, setExpanded] = React.useState(false);
+	const [overflowing, setOverflowing] = React.useState(false);
+
+	React.useEffect(() => {
+		const paragraph = paragraphRef.current;
+		if (!paragraph) return;
+		let disposed = false;
+		const update = () => {
+			if (disposed || !paragraph.classList.contains('is-collapsed')) return;
+			const next = paragraph.scrollHeight > paragraph.clientHeight + 1;
+			setOverflowing((current) => (current === next ? current : next));
+		};
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+		observer?.observe(paragraph);
+		window.addEventListener('resize', update);
+		void document.fonts?.ready.then(update);
+		update();
+		return () => {
+			disposed = true;
+			observer?.disconnect();
+			window.removeEventListener('resize', update);
+		};
+	}, [expanded, text]);
+
+	if (!text) return null;
+	return (
+		<S.Description className="collection-description">
+			<p className={expanded ? undefined : 'is-collapsed'} id={contentId} ref={paragraphRef}>
+				{text}
+			</p>
+			{overflowing ? (
+				<S.Toggle
+					aria-controls={contentId}
+					aria-expanded={expanded}
+					className="collection-description-toggle"
+					onClick={() => setExpanded((current) => !current)}
+					size="custom"
+					variant="ghost"
+				>
+					{expanded ? language.descriptionShowLess : language.descriptionShowMore}
+					<ChevronDown aria-hidden="true" />
+				</S.Toggle>
+			) : null}
+		</S.Description>
+	);
+}

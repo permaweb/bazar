@@ -1,0 +1,19 @@
+name: Frontend contract
+on:
+    pull_request:
+    push:
+        branches: [main, staging]
+permissions:
+    contents: read
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+            - run: npm install
+            - run: npm run check:frontend
+            - run: npm run build
+            - run: npm run check:performance

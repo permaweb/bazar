@@ -1,0 +1,444 @@
+import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
+	type AssetState,
+	liquidBalanceOf,
+	readAssetState,
+	waitForAssetState,
+} from 'api/marketplace/adapter';
+import { parseTokenAmount } from 'api/marketplace/order-matching';
+import { httpStatusError, transportFailure } from 'api/network/errors';
+import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX, signedDispatchFailure } from 'api/transactions/adapter';
+
+import { appError, type AppErrorReason } from 'helpers/app-error';
+import { isArweaveId } from 'helpers/arweave-id';
+
+const QUANTITY = /^[1-9]\d*$/;
+
+export const DISPATCH_PLAN_PREFIX = 'bazar-fungible-dispatch:';
+export const DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED =
+	'dispatch-signed-transaction-recovery-required' satisfies AppErrorReason;
+export const DEFAULT_DISPATCH_BATCH_SIZE = 100;
+/** Above this total (0.1 AR) the UI collects confirmation before signing. */
+export const DISPATCH_COST_CONFIRMATION_WINSTON = 100_000_000_000n;
+
+type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+export type HolderRow = { address: string; quantity: string };
+
+/** Which JSON entry or CSV line an issue came from; both are numbered from 1 for display. */
+export type HolderListSource = { kind: 'entry' | 'line'; number: number };
+
+/**
+ * Why a pasted holder list could not be used, as stable codes and values. The UI owns the wording: see
+ * `features/Dispatch/model/holder-list-issue.ts`.
+ */
+export type HolderListIssue =
+	| { code: 'list-empty' }
+	| { code: 'list-without-entries' }
+	| { code: 'duplicate-addresses'; addresses: string[] }
+	| { code: 'invalid-json' }
+	| { code: 'invalid-json-root' }
+	| { code: 'invalid-entry-shape'; source: HolderListSource }
+	| { code: 'invalid-line-shape'; source: HolderListSource }
+	| { code: 'invalid-address'; source: HolderListSource; value: string }
+	| { code: 'invalid-quantity'; source: HolderListSource; denomination: number };
+
+export type ParsedHolderList = { rows: HolderRow[]; errors: HolderListIssue[] };
+
+/** Addresses are echoed back to the holder list author; keep the same cut-off the message always used. */
+const ADDRESS_ECHO_LENGTH = 60;
+
+export type DispatchRowStatus = 'unsent' | 'posted' | 'settled';
+
+export type DispatchRow = HolderRow & { status: DispatchRowStatus; transactionId?: string };
+
+export type DispatchPlan = {
+	processId: string;
+	sender: string;
+	createdAt: number;
+	/**
+	 * Recipient balances read once, before the first transfer was signed.
+	 * Settlement for a row means: live balance >= baseline + quantity.
+	 * NEVER recapture on resume — a baseline taken after partial sends would
+	 * count settled transfers into itself and the progress UI would lie.
+	 */
+	baseline: Record<string, string>;
+	rows: DispatchRow[];
+};
+
+/**
+ * Parse a pasted holder list. Accepted shapes:
+ * - JSON: [{ "address": "...", "quantity": "10" }, ...]
+ * - JSON: [["address", "10"], ...]
+ * - JSON: { "address": "10", ... }
+ * - CSV: one `address,quantity` per line; lines starting with # are comments.
+ * Quantities are human token amounts. Decimal JSON quantities must be strings
+ * so they never pass through floating point. Returned rows contain atomic
+ * integer quantities ready for protocol balance checks and transactions.
+ */
+export function parseHolderList(text: string, denomination: number): ParsedHolderList {
+	// Validate the process precision once even when the pasted list is empty.
+	parseTokenAmount('1', denomination);
+	const trimmed = text.trim();
+	if (!trimmed) return { rows: [], errors: [{ code: 'list-empty' }] };
+	const result = /^[[{]/.test(trimmed)
+		? parseJsonHolders(trimmed, denomination)
+		: parseCsvHolders(trimmed, denomination);
+	if (result.errors.length) return { rows: [], errors: result.errors };
+	const duplicates = [...new Set(result.rows.map((row) => row.address).filter(duplicated(result.rows)))];
+	if (duplicates.length) return { rows: [], errors: [{ code: 'duplicate-addresses', addresses: duplicates }] };
+	if (!result.rows.length) return { rows: [], errors: [{ code: 'list-without-entries' }] };
+	return result;
+}
+
+function duplicated(rows: HolderRow[]): (address: string) => boolean {
+	const counts = new Map<string, number>();
+	for (const row of rows) counts.set(row.address, (counts.get(row.address) ?? 0) + 1);
+	return (address) => (counts.get(address) ?? 0) > 1;
+}
+
+function parseJsonHolders(text: string, denomination: number): ParsedHolderList {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return { rows: [], errors: [{ code: 'invalid-json' }] };
+	}
+	const rows: HolderRow[] = [];
+	const errors: HolderListIssue[] = [];
+	if (Array.isArray(parsed)) {
+		parsed.forEach((entry, index) => {
+			const source: HolderListSource = { kind: 'entry', number: index + 1 };
+			if (Array.isArray(entry) && entry.length === 2) {
+				collectRow(rows, errors, source, entry[0], entry[1], denomination);
+			} else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+				const record = entry as Record<string, unknown>;
+				collectRow(rows, errors, source, record.address, record.quantity, denomination);
+			} else {
+				errors.push({ code: 'invalid-entry-shape', source });
+			}
+		});
+	} else if (parsed && typeof parsed === 'object') {
+		Object.entries(parsed as Record<string, unknown>).forEach(([address, quantity], index) => {
+			collectRow(rows, errors, { kind: 'entry', number: index + 1 }, address, quantity, denomination);
+		});
+	} else {
+		errors.push({ code: 'invalid-json-root' });
+	}
+	return { rows, errors };
+}
+
+function parseCsvHolders(text: string, denomination: number): ParsedHolderList {
+	const rows: HolderRow[] = [];
+	const errors: HolderListIssue[] = [];
+	text.split(/\r?\n/).forEach((line, index) => {
+		const content = line.trim();
+		if (!content || content.startsWith('#')) return;
+		const source: HolderListSource = { kind: 'line', number: index + 1 };
+		const fields = content.split(',').map((field) => field.trim());
+		if (fields.length !== 2) {
+			errors.push({ code: 'invalid-line-shape', source });
+			return;
+		}
+		collectRow(rows, errors, source, fields[0], fields[1], denomination);
+	});
+	return { rows, errors };
+}
+
+function collectRow(
+	rows: HolderRow[],
+	errors: HolderListIssue[],
+	source: HolderListSource,
+	address: unknown,
+	quantity: unknown,
+	denomination: number
+): void {
+	if (typeof address !== 'string' || !isArweaveId(address)) {
+		errors.push({ code: 'invalid-address', source, value: String(address).slice(0, ADDRESS_ECHO_LENGTH) });
+		return;
+	}
+	const humanAmount =
+		typeof quantity === 'number' && Number.isSafeInteger(quantity) && quantity > 0
+			? String(quantity)
+			: typeof quantity === 'string'
+			? quantity.trim()
+			: '';
+	let atomicAmount: string;
+	try {
+		atomicAmount = parseTokenAmount(humanAmount, denomination);
+		if (BigInt(atomicAmount) < 1n) throw appError('invalid-input', { message: 'invalid-token-amount' });
+	} catch {
+		errors.push({ code: 'invalid-quantity', source, denomination });
+		return;
+	}
+	rows.push({ address, quantity: atomicAmount });
+}
+
+export function planTotals(rows: ReadonlyArray<HolderRow>): { count: number; totalQuantity: bigint } {
+	return {
+		count: rows.length,
+		totalQuantity: rows.reduce((total, row) => total + BigInt(row.quantity), 0n),
+	};
+}
+
+export type DispatchCostEstimate = {
+	totalQuantity: bigint;
+	totalReward: bigint;
+	/** What the sender's AR balance pays: network rewards only. */
+	totalWinston: bigint;
+};
+
+export function estimateDispatchCost(rows: ReadonlyArray<HolderRow>, perTransferReward: bigint): DispatchCostEstimate {
+	const { totalQuantity } = planTotals(rows);
+	const totalReward = perTransferReward * BigInt(rows.length);
+	return { totalQuantity, totalReward, totalWinston: totalReward };
+}
+
+export function requiresCostConfirmation(totalWinston: bigint): boolean {
+	return totalWinston > DISPATCH_COST_CONFIRMATION_WINSTON;
+}
+
+/** Network reward for one 0-byte transfer to the token process. */
+export async function fetchTransferReward(
+	gateway: string,
+	processId: string,
+	fetchFn: typeof fetch = globalThis.fetch.bind(globalThis),
+	signal?: AbortSignal
+): Promise<bigint> {
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
+	let response: Response;
+	try {
+		response = await fetchFn(`${gateway}/price/0/${processId}`, { signal });
+	} catch (cause) {
+		throw signal?.aborted ? cause : transportFailure(cause, 'transfer-price');
+	}
+	if (!response.ok) throw httpStatusError('transfer-price', response.status);
+	const value = (await response.text()).trim();
+	if (!/^\d+$/.test(value)) throw appError('invalid-response', { message: 'transfer-price-invalid' });
+	return BigInt(value);
+}
+
+export function loadDispatchPlan(
+	processId: string,
+	storage: StorageLike | undefined = globalThis.window?.localStorage
+): DispatchPlan | null {
+	if (!isArweaveId(processId) || !storage) return null;
+	try {
+		const plan = JSON.parse(storage.getItem(`${DISPATCH_PLAN_PREFIX}${processId}`) ?? 'null');
+		return isDispatchPlan(plan) && plan.processId === processId ? plan : null;
+	} catch {
+		return null;
+	}
+}
+
+export function saveDispatchPlan(
+	plan: DispatchPlan,
+	storage: StorageLike | undefined = globalThis.window?.localStorage
+): void {
+	if (!isDispatchPlan(plan)) throw appError('invalid-input', { message: 'invalid-dispatch-plan' });
+	storage?.setItem(`${DISPATCH_PLAN_PREFIX}${plan.processId}`, JSON.stringify(plan));
+}
+
+export function discardDispatchPlan(
+	processId: string,
+	storage: StorageLike | undefined = globalThis.window?.localStorage
+): void {
+	if (!isArweaveId(processId) || !storage) return;
+	const plan = loadDispatchPlan(processId, storage);
+	for (const row of plan?.rows ?? []) {
+		if (row.transactionId) storage.removeItem(`${SIGNED_TRANSACTION_PREFIX}${row.transactionId}`);
+	}
+	storage.removeItem(`${DISPATCH_PLAN_PREFIX}${processId}`);
+}
+
+export function isDispatchPlan(value: unknown): value is DispatchPlan {
+	if (!value || typeof value !== 'object') return false;
+	const plan = value as DispatchPlan;
+	return (
+		isArweaveId(plan.processId) &&
+		isArweaveId(plan.sender) &&
+		Number.isSafeInteger(plan.createdAt) &&
+		Boolean(plan.baseline) &&
+		typeof plan.baseline === 'object' &&
+		!Array.isArray(plan.baseline) &&
+		Object.values(plan.baseline).every((balance) => typeof balance === 'string' && /^\d+$/.test(balance)) &&
+		Array.isArray(plan.rows) &&
+		plan.rows.length > 0 &&
+		plan.rows.every(
+			(row) =>
+				isArweaveId(row.address) &&
+				QUANTITY.test(row.quantity) &&
+				['unsent', 'posted', 'settled'].includes(row.status) &&
+				(row.transactionId === undefined || isArweaveId(row.transactionId)) &&
+				row.address in plan.baseline
+		)
+	);
+}
+
+/**
+ * Capture recipient baselines and pre-flight the sender's token balance.
+ * Requires readable process state: a freshly published token has none until
+ * the arweave-scheduler sequences its creation (~20 minutes on mainnet).
+ */
+export async function createDispatchPlan(
+	processId: string,
+	sender: string,
+	rows: HolderRow[],
+	options: { signal?: AbortSignal; fetch?: typeof fetch } = {}
+): Promise<DispatchPlan> {
+	if (!isArweaveId(processId)) throw appError('invalid-input', { message: 'invalid-asset-process-id' });
+	if (!isArweaveId(sender)) throw appError('invalid-input', { message: 'invalid-dispatch-sender' });
+	if (!rows.length) throw appError('invalid-input', { message: 'dispatch-rows-empty' });
+	if (rows.some((row) => row.address === sender)) {
+		// Balance-rise settlement is blind to self-sends; they are also no-ops.
+		throw appError('dispatch-self-recipient');
+	}
+	const { state } = await readAssetState(processId, { signal: options.signal, fetch: options.fetch, maxAge: 0 });
+	if (!assetBalanceStateAvailable(state)) throw appError(ASSET_BALANCE_STATE_UNAVAILABLE);
+	const { totalQuantity } = planTotals(rows);
+	if (BigInt(liquidBalanceOf(state, sender)) < totalQuantity) {
+		throw appError('dispatch-insufficient-token-balance');
+	}
+	const baseline: Record<string, string> = {};
+	for (const row of rows) baseline[row.address] = state.balances[row.address] ?? '0';
+	return {
+		processId,
+		sender,
+		createdAt: Date.now(),
+		baseline,
+		rows: rows.map((row) => ({ ...row, status: 'unsent' as const })),
+	};
+}
+
+export type DispatchRunOptions = {
+	client?: AssetTransactionClient;
+	storage?: StorageLike;
+	batchSize?: number;
+	signal?: AbortSignal;
+	/** Fresh state gate used only before this run's first genuinely new signature. */
+	readCurrentState?: (
+		processId: string,
+		options: { signal?: AbortSignal; maxAge: 0 }
+	) => Promise<{ state: Pick<AssetState, 'holderBalancesAvailable'> }>;
+	/** Called with a fresh plan copy after every persisted status change. */
+	onProgress?: (plan: DispatchPlan) => void;
+	settlementInterval?: number;
+	settlementTimeout?: number;
+};
+
+/**
+ * Sign, post, and settle every pending row of a dispatch plan, in batches.
+ *
+ * Crash-safety contract (mirrors the SIGNED_TRANSACTION_PREFIX recovery in
+ * asset-transactions.ts): each transfer is signed first (the client persists
+ * the signed transaction to localStorage before returning), then the row
+ * records its transaction id and the plan is saved, and only then is the
+ * transaction posted. A reload at any point resumes without double-sending:
+ * an unsent row with a transaction id is restored from storage and
+ * re-dispatched (arweave.net answers 208 for duplicates), a posted row only
+ * waits for settlement. If a recorded signed transaction cannot be restored,
+ * its id remains authoritative for manual review: the transaction may already
+ * have been posted before a crash, so Bazar must never sign a replacement.
+ *
+ * Settlement is balance-based: a row is settled once its recipient's live
+ * balance has risen by at least its quantity over the plan baseline.
+ */
+export async function runDispatch(initial: DispatchPlan, options: DispatchRunOptions = {}): Promise<DispatchPlan> {
+	if (!isDispatchPlan(initial)) throw appError('invalid-input', { message: 'invalid-dispatch-plan' });
+	const storage = options.storage ?? globalThis.window?.localStorage;
+	const client = options.client ?? new AssetTransactionClient({ storage });
+	const batchSize = options.batchSize ?? DEFAULT_DISPATCH_BATCH_SIZE;
+	if (!Number.isSafeInteger(batchSize) || batchSize < 1)
+		throw appError('invalid-input', { message: 'invalid-dispatch-batch-size' });
+	const plan: DispatchPlan = { ...initial, rows: initial.rows.map((row) => ({ ...row })) };
+	const readCurrentState = options.readCurrentState ?? readAssetState;
+	let newSignaturesAuthorized = false;
+	const persist = () => {
+		saveDispatchPlan(plan, storage);
+		options.onProgress?.({ ...plan, rows: plan.rows.map((row) => ({ ...row })) });
+	};
+	persist();
+
+	const pending = () => plan.rows.filter((row) => row.status !== 'settled');
+	while (pending().length) {
+		options.signal?.throwIfAborted();
+		const batch = pending().slice(0, batchSize);
+
+		for (const row of batch) {
+			options.signal?.throwIfAborted();
+			if (row.status === 'posted') continue;
+			let prepared;
+			if (row.transactionId) {
+				try {
+					prepared = client.restore(row.transactionId, plan.sender);
+				} catch (cause) {
+					throw appError(DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, {
+						cause,
+						detail: { transactionId: row.transactionId },
+					});
+				}
+			}
+			if (!prepared) {
+				if (!newSignaturesAuthorized) {
+					const { state } = await readCurrentState(plan.processId, {
+						signal: options.signal,
+						maxAge: 0,
+					});
+					if (state.holderBalancesAvailable !== true) throw appError(ASSET_BALANCE_STATE_UNAVAILABLE);
+					newSignaturesAuthorized = true;
+				}
+				prepared = await client.transferFungible(
+					plan.processId,
+					row.address,
+					row.quantity,
+					plan.sender,
+					options.signal
+				);
+				// The signed transaction is already persisted under
+				// SIGNED_TRANSACTION_PREFIX; record it on the row BEFORE posting
+				// so a crash between post and save cannot double-send.
+				row.transactionId = prepared.id;
+				persist();
+			}
+			// dispatch() throws on rejection; 'accepted' and 'duplicate' (208,
+			// e.g. a resumed re-post of an already-seen transfer) both succeed.
+			try {
+				await prepared.dispatch(options.signal ?? new AbortController().signal);
+			} catch (cause) {
+				throw signedDispatchFailure(cause, prepared.id, options.signal);
+			}
+			row.status = 'posted';
+			persist();
+		}
+
+		// One settlement poller for the whole batch: read state once per tick
+		// and settle every row whose recipient balance has risen enough.
+		await waitForAssetState(
+			plan.processId,
+			(state) => {
+				let changed = false;
+				for (const row of batch) {
+					if (row.status !== 'posted') continue;
+					const target = BigInt(plan.baseline[row.address] ?? '0') + BigInt(row.quantity);
+					if (BigInt(state.balances[row.address] ?? '0') >= target) {
+						row.status = 'settled';
+						if (row.transactionId) storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${row.transactionId}`);
+						changed = true;
+					}
+				}
+				if (changed) persist();
+				return batch.every((row) => row.status === 'settled');
+			},
+			{
+				signal: options.signal,
+				interval: options.settlementInterval ?? 8000,
+				// The arweave-scheduler only sequences a transaction once it sits
+				// ~10 blocks below the tip, so settlement takes ~20 minutes at
+				// minimum. Mirror STATE_INCLUSION_TIMEOUT in asset-transactions.ts.
+				timeout: options.settlementTimeout ?? 60 * 60_000,
+			}
+		);
+	}
+	return plan;
+}

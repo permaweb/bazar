@@ -1,8 +1,9 @@
 module.exports = {
+	root: true,
 	parser: '@typescript-eslint/parser',
 	plugins: ['import', '@typescript-eslint', 'simple-import-sort', 'react-hooks'],
 	extends: [],
-	ignorePatterns: ['dist/**', 'node_modules/**', 'build/**', 'cache/**', '*.config.js'],
+	ignorePatterns: ['dist/**', 'node_modules/**', 'build/**', 'cache/**', '*.config.js', '.claude/worktrees/**'],
 	rules: {
 		'import/no-duplicates': 'error',
 		'simple-import-sort/imports': 'error',
@@ -28,9 +29,11 @@ module.exports = {
 							['^(@|api)(/.*|$)', '^(@|gql)(/.*|$)'],
 							[
 								'^(@|app)(/.*|$)',
+								'^(@|apps)(/.*|$)',
 								'^(@|assets)(/.*|$)',
 								'^(@|clients)(/.*|$)',
 								'^(@|components)(/.*|$)',
+								'^(@|features)(/.*|$)',
 								'^(@|filters)(/.*|$)',
 								'^(@|global)(/.*|$)',
 								'^(@|helpers)(/.*|$)',
@@ -41,6 +44,7 @@ module.exports = {
 								'^(@|routes)(/.*|$)',
 								'^(@|search)(/.*|$)',
 								'^(@|store)(/.*|$)',
+								'^(@|types)(/.*|$)',
 								'^(@|views)(/.*|$)',
 								'^(@|wallet)(/.*|$)',
 								'^(@|workers)(/.*|$)',

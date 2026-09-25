@@ -17,7 +17,11 @@
 		"test:watch": "vitest",
 		"format": "eslint --fix . && npx prettier --write .",
 		"prepare": "husky install",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
+		"lint": "eslint src tests scripts vite.config.ts vitest.config.ts",
+		"check:architecture": "node .agents/skills/permaweb-frontend-code-style/scripts/validate_frontend_architecture.mjs",
+		"check:performance": "npm run check:architecture -- --performance",
+		"check:frontend": "npm run check:architecture && npm run lint && npm run typecheck && npm test"
 	},
 	"dependencies": {
 		"@fontsource/dm-sans": "^5.3.0",
@@ -44,11 +48,14 @@
 		"@typescript-eslint/parser": "^6.0.0",
 		"@vitejs/plugin-react": "^4.4.1",
 		"arbundles": "^0.11.2",
+		"axe-core": "^4.13.0",
 		"eslint": "^8.35.0",
 		"eslint-plugin-import": "^2.27.5",
 		"eslint-plugin-react-hooks": "^4.6.2",
 		"eslint-plugin-simple-import-sort": "^10.0.0",
+		"fast-check": "^4.10.2",
 		"husky": "^8.0.0",
+		"jsdom": "^30.1.1",
 		"prettier": "^2.8.3",
 		"typescript": "^5.7.2",
 		"vite": "^6.4.1",

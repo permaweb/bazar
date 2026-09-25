@@ -1,0 +1,729 @@
+/*
+ * The application stylesheet. Component presentation lives in each component's styles.ts; what stays here is
+ * what a styled-component cannot own:
+ *
+ * - @font-face, the element defaults (button, input, a, small, h1-h4, p, main) and #main-content:focus, which
+ *   have no component to attach to.
+ * - body :focus-visible, the application-wide focus ring.
+ * - @keyframes still referenced from rules in this file.
+ * - .home-asset-grid's track sizing. The bundled stylis drops the selector inside an @container block and emits
+ *   a malformed rule, so the grid's base rule and its @container steps have to stay together here.
+ * - Page-level utility classes that features apply ad hoc to whatever element needs them, so no single component
+ *   owns the rule: .sr-only, .skip-link, .max-view-wrapper, .ui-icon (+ modifiers), .with-icon, .back,
+ *   .load-more, .actions, .arrow, the page wrappers (.content-section, .collection-page, .asset-page,
+ *   .my-assets-page) and the notice blocks (.inline-error, .collection-source-notice,
+ *   .pending-operation-notice, .retry-notice tones).
+ * - Blocks that two or more unrelated features render identically from their own markup (.purchase-sequence,
+ *   .mint-dropzone, .asset-media, .audio-artwork contexts, .recovery-approval, .scheduler-wait,
+ *   .dialog-asset-artwork, .settlement-error-detail). Moving those needs a shared molecule first, which changes
+ *   the DOM and so belongs to a separate slice.
+ */
+@font-face {
+	font-family: 'DM Sans';
+	font-style: normal;
+	font-display: optional;
+	font-weight: 400;
+	src: url('@fontsource/dm-sans/files/dm-sans-latin-400-normal.woff2') format('woff2');
+}
+.sr-only {
+	position: absolute !important;
+	width: 1px !important;
+	height: 1px !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+	clip: rect(0, 0, 0, 0) !important;
+	white-space: nowrap !important;
+	border: 0 !important;
+}
+.skip-link {
+	position: fixed;
+	top: 8px;
+	left: 8px;
+	z-index: 200;
+	padding: 9px 13px;
+	border-radius: 6px;
+	background: var(--ink);
+	color: var(--paper);
+	font-size: var(--type-body);
+	font-weight: 400;
+	transform: translateY(calc(-100% - 16px));
+}
+.skip-link:focus {
+	color: var(--paper);
+	transform: translateY(0);
+}
+button,
+input {
+	font: inherit;
+}
+small {
+	font-size: var(--type-small);
+}
+button,
+a {
+	-webkit-tap-highlight-color: var(--transparent);
+}
+a {
+	color: inherit;
+	text-decoration: none;
+}
+button {
+	color: inherit;
+}
+h1,
+h2,
+h3,
+h4 {
+	font-family: 'DM Sans', sans-serif;
+	font-weight: 400;
+	text-shadow: none;
+}
+h1,
+h2,
+h3,
+p {
+	overflow-wrap: anywhere;
+}
+
+.ui-icon {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 auto;
+	stroke-width: 1.75;
+}
+.ui-icon--sm {
+	width: 14px;
+	height: 14px;
+}
+.ui-icon--xs {
+	width: 12px;
+	height: 12px;
+}
+.with-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+}
+@keyframes infinity-pulse {
+	50% {
+		transform: scale(1.16);
+		opacity: 0.55;
+	}
+}
+.operation-activity-loader {
+	color: var(--muted);
+	animation: operation-activity-spin 0.8s linear infinite;
+}
+
+main {
+	min-height: calc(100vh - 122px);
+	min-height: calc(100dvh - 122px);
+}
+.max-view-wrapper {
+	width: 100%;
+	max-width: var(--max-view-width);
+	margin-inline: auto;
+	padding-inline: var(--page-gutter);
+}
+#main-content:focus {
+	outline: none;
+}
+
+.content-section,
+.collection-page,
+.asset-page,
+.my-assets-page {
+	width: 100%;
+	margin: 0 auto;
+	padding: 40px 0 var(--page-footer-spacing);
+}
+
+.arrow {
+	position: absolute;
+	right: 16px;
+	top: 16px;
+	width: 38px;
+	height: 38px;
+	display: grid;
+	place-items: center;
+	border: 1px solid var(--line-dark);
+	border-radius: 50%;
+	background: var(--image-control-surface);
+	color: var(--fixed-ink);
+	font-weight: 400;
+}
+
+.back {
+	min-height: 32px;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-bottom: var(--space-5);
+	color: var(--muted-subtle);
+	font-size: var(--type-body);
+	font-weight: 400;
+}
+input {
+	width: 100%;
+	min-height: 40px;
+	padding: 10px 13px;
+	outline: none;
+	border: 1px solid var(--line-dark);
+	border-radius: 5px;
+	background: var(--paper);
+}
+input:focus {
+	border-color: var(--muted-subtle);
+	box-shadow: 0 0 0 3px var(--focus-strong);
+	outline: none;
+}
+.collection-result-count {
+	color: var(--muted);
+	font-size: var(--type-body);
+	margin: 30px 0 12px;
+}
+.token-collection-grid .token-asset-card .asset-media {
+	min-height: 72px;
+	aspect-ratio: auto;
+	border-right: 0;
+	background: var(--transparent);
+	font-size: var(--type-body);
+}
+.token-collection-grid .token-asset-card .token-avatar {
+	--token-avatar-size: 52px;
+}
+.token-collection-grid .token-asset-card .asset-card-copy {
+	align-content: center;
+	display: grid;
+	padding: 12px 18px;
+}
+.asset-media {
+	position: relative;
+	aspect-ratio: 1;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	background-color: var(--surface);
+	background-image: radial-gradient(var(--line-dark) 0.7px, var(--transparent) 0.7px);
+	background-size: 3px 3px;
+	background-position: -1.5px -1.5px;
+	color: var(--accent);
+	font: 400 var(--type-display) 'DM Sans', sans-serif;
+}
+.asset-media img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	transition: transform 0.24s ease;
+}
+.load-more {
+	display: block;
+	margin: 34px auto 0;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 9px;
+}
+
+/* Unique asset purchases lead with one price; protocol details live in the Blockchain tab. */
+.activity-mobile-time,
+.activity-time-only {
+	display: none;
+}
+.activity-desktop-time,
+.activity-mobile-time {
+	color: var(--ink);
+	font-size: var(--type-body);
+	font-style: normal;
+	font-weight: 400;
+	line-height: 1.35;
+}
+.activity-transaction-short {
+	display: none;
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.inline-error {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin: 0 0 var(--space-5);
+	padding: var(--space-3) var(--space-4);
+	border: 1px solid var(--negative-border);
+	border-radius: 10px;
+	background: var(--negative-surface);
+	color: var(--negative);
+	font-size: var(--type-body);
+}
+.error-panel.retry-notice,
+.inline-error.retry-notice,
+.collection-source-notice.retry-notice,
+.my-assets-heading-status.retry-notice {
+	border: 1px solid var(--line);
+	background: var(--surface-subtle);
+	color: var(--ink);
+}
+.retry-notice .with-icon > .ui-icon,
+.retry-notice-action > .ui-icon {
+	color: var(--retry-icon);
+}
+.collection-source-notice {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin: var(--space-4) 0 var(--space-5);
+	padding: var(--space-3) var(--space-4);
+	border: 1px solid var(--warning-border);
+	border-radius: 10px;
+	background: var(--warning-surface);
+	color: var(--warning-text);
+	font-size: var(--type-body);
+}
+.collection-source-notice :is(button, a) {
+	flex: none;
+	border-color: currentColor;
+	color: inherit;
+}
+.collection-source-notice > a {
+	min-height: 36px;
+	padding: 0 13px;
+	border: 1px solid currentColor;
+	border-radius: 8px;
+}
+.pending-operation-notice {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 18px;
+	margin: 14px 0 22px;
+	padding: 13px 15px;
+	border: 1px solid var(--line-dark);
+	border-radius: 10px;
+	background: var(--notice-surface);
+	color: var(--notice-text);
+	font-size: var(--type-body);
+}
+.pending-operation-notice button {
+	flex: none;
+	border-color: currentColor;
+	color: inherit;
+}
+.gateway-pill > .ui-tooltip {
+	min-width: 0;
+}
+
+.dialog-form-phase .dialog-form-scroll {
+	min-height: 0;
+	padding: 2px;
+	align-content: start;
+	grid-auto-rows: max-content;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scroll-padding-block: 2px;
+}
+.dialog-form-phase > .trade-form > .dialog-form-scroll {
+	gap: var(--space-4);
+}
+.dialog-asset-artwork,
+.artwork-fallback.dialog-asset-artwork {
+	width: 44px;
+	height: 44px;
+	flex: 0 0 44px;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: var(--panel);
+	object-fit: cover;
+}
+.dialog-asset-artwork.token-avatar {
+	--token-avatar-size: 44px;
+	border-radius: 50%;
+	background: var(--transparent);
+}
+.dialog-asset-artwork-fallback {
+	display: grid;
+	place-items: center;
+	color: var(--ink);
+	font-size: var(--type-body);
+}
+.purchase-sequence {
+	margin-bottom: 18px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: var(--transparent);
+}
+.purchase-sequence > ol {
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	list-style: none;
+}
+.purchase-sequence > ol > li {
+	position: relative;
+	min-width: 0;
+	display: grid;
+	grid-template-rows: minmax(17px, auto) 32px;
+	align-items: center;
+	justify-items: center;
+	gap: 8px;
+	text-align: center;
+}
+.purchase-sequence > ol > li:not(:last-child)::after {
+	content: '';
+	position: absolute;
+	z-index: 0;
+	bottom: 16px;
+	left: 50%;
+	width: 100%;
+	height: 1px;
+	background: var(--line-dark);
+}
+.purchase-sequence > ol > li.done:not(:last-child)::after {
+	background: var(--sequence-success);
+}
+.purchase-sequence-marker {
+	position: relative;
+	z-index: 1;
+	grid-row: 2;
+	width: 32px;
+	height: 32px;
+	flex: 0 0 32px;
+	display: grid;
+	place-items: center;
+	border: 1px solid var(--line-dark);
+	border-radius: 50%;
+	color: var(--muted);
+	background: var(--paper);
+	font-size: var(--type-small);
+}
+.purchase-sequence-marker > svg {
+	width: 15px;
+	height: 15px;
+}
+.purchase-sequence li.done .purchase-sequence-marker {
+	border-color: var(--sequence-success);
+	color: var(--positive-text);
+	background: var(--positive-surface);
+}
+.purchase-sequence li.active .purchase-sequence-marker {
+	border-color: var(--sequence-warning);
+	color: var(--warning-text);
+	background: var(--warning-surface);
+	box-shadow: 0 0 0 3px var(--sequence-warning-shadow);
+}
+.purchase-sequence-copy {
+	position: relative;
+	z-index: 1;
+	grid-row: 1;
+	width: 100%;
+	min-width: 0;
+	padding: 0 4px;
+}
+.purchase-sequence-copy > strong {
+	display: block;
+	width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--ink);
+	font-size: var(--type-small);
+	font-weight: 500;
+	line-height: 1.3;
+}
+.recovery-approval {
+	min-width: 0;
+	display: grid;
+	gap: 16px;
+}
+.recovery-approval > div:first-child {
+	display: grid;
+	gap: 6px;
+}
+.recovery-approval h3,
+.recovery-approval p {
+	margin: 0;
+}
+.recovery-approval p {
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.55;
+}
+.dialog-form-scroll {
+	min-width: 0;
+	display: grid;
+	gap: inherit;
+}
+.scheduler-wait {
+	margin: 17px 0 0;
+	padding: 12px 15px;
+	display: flex;
+	align-items: center;
+	gap: 11px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--panel);
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.5;
+}
+.scheduler-wait::before {
+	content: '';
+	width: 17px;
+	height: 17px;
+	flex: 0 0 auto;
+	border: 2px solid var(--line-dark);
+	border-top-color: var(--ink);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+.result-outcome-sync {
+	margin-top: 4px;
+}
+.operation-outcome-token-avatar {
+	--token-avatar-size: 72px;
+}
+.success h3 {
+	color: var(--positive-text);
+}
+.error h3 {
+	color: var(--negative);
+}
+
+body :focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+body input:focus-visible {
+	outline: none;
+}
+.operation-working {
+	min-width: 0;
+	width: 100%;
+}
+
+@media (max-width: 760px) {
+	.collection-source-notice > :is(button, a) {
+		min-height: 44px;
+	}
+	.content-section,
+	.collection-page,
+	.asset-page,
+	.my-assets-page {
+		padding: 30px 0 54px;
+	}
+	.activity-mobile-time,
+	.activity-time-only {
+		display: inline;
+	}
+	.activity-desktop-time {
+		display: none;
+	}
+	.inline-error,
+	.collection-source-notice,
+	.pending-operation-notice {
+		align-items: stretch;
+		flex-direction: column;
+	}
+}
+
+@media (max-width: 480px) {
+	.settlement-error-detail {
+		padding: 12px;
+	}
+	.settlement-error-detail > div:not(.settlement-receipt-links) {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2px;
+	}
+	.settlement-error-detail strong,
+	.settlement-error-detail a {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		text-align: left;
+	}
+	.back {
+		min-height: 44px;
+	}
+	.content-section,
+	.collection-page,
+	.asset-page,
+	.my-assets-page {
+		padding: 24px 0 48px;
+	}
+	.token-collection-grid .token-asset-card .asset-media {
+		min-height: 64px;
+	}
+	.token-collection-grid .token-asset-card .token-avatar {
+		--token-avatar-size: 48px;
+	}
+	.token-collection-grid .token-asset-card .asset-card-copy {
+		padding: 10px 12px;
+	}
+	.token-collection-grid .asset-card-heading {
+		gap: 8px;
+	}
+	.asset-filters .market-select:last-child .market-select-menu {
+		right: 0;
+		left: auto;
+	}
+	.collection-page .with-icon,
+	.collection-page .load-more,
+	.collection-page .collection-empty-state button,
+	.my-assets-page .with-icon,
+	.order-action {
+		min-height: 44px;
+	}
+	.load-more {
+		width: 100%;
+		margin-top: 24px;
+	}
+	.collection-activity-page .activity-transaction-long,
+	.home-activity-panel .activity-transaction-long {
+		display: none;
+	}
+	.collection-activity-page .activity-transaction-short,
+	.home-activity-panel .activity-transaction-short {
+		display: inline;
+	}
+}
+
+@media (max-height: 480px) {
+	.dialog-form-phase > .operation-form > .dialog-form-scroll {
+		gap: 16px;
+	}
+	.dialog-form-phase > .trade-form > .dialog-form-scroll {
+		gap: 18px;
+	}
+	.dialog-form-phase .dialog-form-scroll {
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 3px;
+		scroll-padding-block: 3px;
+	}
+	.dialog-form-phase > .operation-form > .ui-button--primary.wide,
+	.dialog-form-phase > .operation-form > .ui-button--danger.wide,
+	.dialog-form-phase > .trade-form > .ui-button--primary.wide,
+	.dialog-form-phase > .trade-form > .ui-button--danger.wide {
+		min-height: 44px;
+	}
+	.dialog-form-phase > .operation-form > .ui-button--primary.wide:focus-visible,
+	.dialog-form-phase > .operation-form > .ui-button--danger.wide:focus-visible,
+	.dialog-form-phase > .trade-form > .ui-button--primary.wide:focus-visible,
+	.dialog-form-phase > .trade-form > .ui-button--danger.wide:focus-visible {
+		outline-offset: -3px;
+	}
+	.dialog-form-phase button {
+		min-height: 44px;
+	}
+}
+
+/* Mosaic marketplace layout restored from the Update collections mosaic layout checkpoint. */
+.mint-dropzone {
+	width: 100%;
+	min-height: 560px;
+	aspect-ratio: 1 / 1;
+	padding: 0;
+	overflow: hidden;
+	display: grid;
+	place-items: center;
+	border: 1px dashed var(--line-dark);
+	border-radius: 10px;
+	background: var(--panel);
+	cursor: pointer;
+}
+.mint-dropzone:hover {
+	border-color: var(--line-dark);
+	background: var(--surface-hover);
+}
+.mint-dropzone > span {
+	display: grid;
+	justify-items: center;
+	gap: 10px;
+	padding: 30px;
+	color: var(--muted-subtle);
+}
+.mint-dropzone > span > svg {
+	width: 30px;
+	height: 30px;
+	stroke-width: 1.35;
+}
+.mint-dropzone > span strong {
+	color: var(--ink);
+	font-size: var(--type-body);
+}
+.mint-dropzone > span small {
+	font-size: var(--type-body);
+}
+.mint-dropzone.has-file {
+	border-style: solid;
+	background: var(--surface-subtle);
+}
+.mint-dropzone img {
+	width: 100%;
+	height: 100%;
+	display: block;
+	object-fit: contain;
+}
+@keyframes udl-credit-badge-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.home-asset-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-auto-flow: dense;
+	grid-auto-rows: calc((100cqw - (2 * var(--asset-grid-gap))) / 3);
+	gap: var(--asset-grid-gap);
+}
+.home-token-media .token-avatar {
+	--token-avatar-size: min(62cqw, 62cqh, 240px);
+}
+@container (min-width: 1500px) {
+	.home-asset-grid {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-auto-rows: calc((100cqw - (3 * var(--asset-grid-gap))) / 4);
+	}
+}
+@container (min-width: 2300px) {
+	.home-asset-grid {
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		grid-auto-rows: calc((100cqw - (5 * var(--asset-grid-gap))) / 6);
+	}
+}
+@media (max-width: 1050px) {
+	.home-asset-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-auto-rows: calc((100cqw - var(--asset-grid-gap)) / 2);
+	}
+	.mint-dropzone {
+		min-height: 0;
+	}
+}
+
+/* Marketplace UX refinements */
+.my-assets-resolution-status .loading {
+	grid-column: 1 / -1;
+	min-height: 0;
+	padding: 0;
+}
+
+/* Fungible token creation + dispatch */
+
+/* Fungible assets use market rows; unique assets retain the artwork-card grammar. */
+.token-market-list {
+	display: grid;
+	border-top: 1px solid var(--line);
+}
+
+/* Dense collection marketplace */

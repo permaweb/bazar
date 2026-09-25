@@ -1,3 +1,5 @@
+import { appError } from './app-error';
+
 export const MARKET_SHELL_STORAGE_KEY = 'bazar-market-shell:v1';
 export const MARKET_ACTIVITY_STORAGE_KEY = 'bazar-market-activity:v1';
 export const GLOBAL_ACTIVITY_STATS_STORAGE_KEY = 'bazar-global-activity-stats:v1';
@@ -17,16 +19,11 @@ const REBUILDABLE_CACHE_PREFIXES = [ASSET_SHELL_STORAGE_PREFIX, `${WALLET_CANDID
 
 type WritableStorage = Pick<Storage, 'setItem'> & Partial<Pick<Storage, 'key' | 'length' | 'removeItem'>>;
 
+/** Browsers identify a full origin quota by DOMException name, or by its legacy numeric code (22, Firefox 1014). */
 function isQuotaError(error: unknown) {
 	if (!error || typeof error !== 'object') return false;
-	const { name, code, message } = error as { name?: string; code?: number; message?: string };
-	return (
-		name === 'QuotaExceededError' ||
-		name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-		code === 22 ||
-		code === 1014 ||
-		/\bquota\b/i.test(message ?? '')
-	);
+	const { name, code } = error as { name?: string; code?: number };
+	return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' || code === 22 || code === 1014;
 }
 
 function clearRebuildableCaches(storage: WritableStorage) {
@@ -52,6 +49,6 @@ export function setCriticalStorageItem(storage: WritableStorage, key: string, va
 		storage.setItem(key, value);
 	} catch (error) {
 		if (!isQuotaError(error)) throw error;
-		throw new Error('browser-storage-full', { cause: error });
+		throw appError('browser-storage-full', { cause: error });
 	}
 }

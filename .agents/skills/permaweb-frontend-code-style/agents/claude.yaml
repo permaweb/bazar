@@ -1,0 +1,13 @@
+interface:
+    display_name: 'Permaweb Frontend Architecture'
+    short_description: 'Audit and enforce maintainable permaweb frontend architecture'
+    default_prompt: 'Use the permaweb-frontend-code-style skill to audit, migrate, implement, and verify this permaweb frontend against the complete architecture and performance contract.'
+
+claude:
+    skill_name: 'permaweb-frontend-code-style'
+    # Claude Code discovers skills under .claude/skills. This skill is linked there:
+    #   .claude/skills/permaweb-frontend-code-style -> ../../.agents/skills/permaweb-frontend-code-style
+    # Recreate that link with:
+    #   ln -sfn ../../.agents/skills/permaweb-frontend-code-style .claude/skills/permaweb-frontend-code-style
+    discovery_path: '.claude/skills/permaweb-frontend-code-style'
+    instructions_file: 'CLAUDE.md'

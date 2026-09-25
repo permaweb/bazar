@@ -1,0 +1,4 @@
+interface:
+    display_name: 'Permaweb Frontend Architecture'
+    short_description: 'Audit and enforce maintainable permaweb frontend architecture'
+    default_prompt: 'Use $permaweb-frontend-code-style to audit, migrate, implement, and verify this permaweb frontend against the complete architecture and performance contract.'
