@@ -98,7 +98,12 @@ function BarChart(props: { values: number[]; starts: number[]; label: string; de
 	const selectedBarTop = hoveredIndex === null ? undefined : 96 - heights[hoveredIndex];
 	return (
 		<S.ChartShell className="global-activity-chart-shell" {...interactionProps}>
-			<S.Chart aria-hidden="true" className="global-activity-chart" preserveAspectRatio="none" viewBox="0 0 300 96">
+			<S.Chart
+				aria-hidden="true"
+				className="global-activity-chart"
+				preserveAspectRatio="none"
+				viewBox="0 0 300 96"
+			>
 				{props.values.map((value, index) => {
 					const height = heights[index];
 					return (
@@ -156,7 +161,12 @@ function LineChart(props: { values: number[]; starts: number[]; label: string; d
 	const selectedPoint = hoveredIndex === null ? undefined : coordinates[hoveredIndex];
 	return (
 		<S.ChartShell className="global-activity-chart-shell" {...interactionProps}>
-			<S.Chart aria-hidden="true" className="global-activity-chart" preserveAspectRatio="none" viewBox="0 0 300 96">
+			<S.Chart
+				aria-hidden="true"
+				className="global-activity-chart"
+				preserveAspectRatio="none"
+				viewBox="0 0 300 96"
+			>
 				<S.ChartArea className="global-activity-chart-area" points={area} />
 				<S.ChartLine
 					className="global-activity-chart-line"

@@ -2,7 +2,7 @@ import styled, { type DefaultTheme, keyframes } from 'styled-components';
 
 import type { ObserverView } from 'api/transactions';
 
-import { TooltipSurface } from 'components/atoms/Tooltip';
+import { Tooltip, TooltipSurface } from 'components/atoms/Tooltip';
 import { TRANSACTION_SEQUENCE_COLORS } from 'helpers/theme';
 
 import { confirmationTrustTone } from '../../../model/confirmationTrust';
@@ -603,4 +603,17 @@ export const Actions = styled.div`
 	justify-content: flex-end;
 	gap: 10px;
 	margin-top: 22px;
+`;
+
+// The skip explanation sits beside the skip button and widens to the row on a narrow viewport.
+export const SkipTooltip = styled(Tooltip)`
+	flex: 0 0 auto;
+
+	.ui-tooltip__content {
+		width: min(360px, calc(100vw - 64px));
+	}
+
+	@media (max-width: 560px) {
+		width: 100%;
+	}
 `;

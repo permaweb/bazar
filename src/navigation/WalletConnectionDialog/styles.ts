@@ -1,5 +1,6 @@
 import styled from 'styled-components';
 
+import { DialogHeadingRow } from 'components/molecules/DialogHeading';
 import { Dialog } from 'components/organisms/Dialog';
 
 /*
@@ -16,7 +17,7 @@ export const ConnectDialog = styled(Dialog)`
 	}
 `;
 
-export const Heading = styled.div`
+export const Heading = styled(DialogHeadingRow)`
 	margin-bottom: 22px;
 
 	.eyebrow {

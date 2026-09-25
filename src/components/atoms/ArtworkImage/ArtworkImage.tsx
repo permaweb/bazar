@@ -4,6 +4,8 @@ import { ImageOff } from 'lucide-react';
 import { aoRoutingScopeFromLocation, arweaveDataFallbackUrls } from 'helpers/config';
 import { omitProps } from 'helpers/props';
 
+import * as S from './styles';
+
 // A caller either supplies its own error fallback or the copy the built-in fallback announces; it may not
 // leave the error state without either.
 export type ArtworkImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'onError' | 'onLoad'> & {
@@ -24,7 +26,7 @@ export default function ArtworkImage(props: ArtworkImageProps) {
 	if (status === 'error') {
 		if (props.fallback) return <>{props.fallback}</>;
 		return (
-			<span
+			<S.Fallback
 				aria-hidden={props.alt ?? '' ? undefined : 'true'}
 				aria-label={(props.alt ?? '') || undefined}
 				className={`artwork-fallback${props.className ?? '' ? ` ${props.className ?? ''}` : ''}`}
@@ -32,12 +34,12 @@ export default function ArtworkImage(props: ArtworkImageProps) {
 			>
 				<ImageOff aria-hidden="true" />
 				<small>{props.unavailableLabel}</small>
-			</span>
+			</S.Fallback>
 		);
 	}
 
 	return (
-		<img
+		<S.Image
 			{...omitProps(props, [
 				'alt',
 				'className',

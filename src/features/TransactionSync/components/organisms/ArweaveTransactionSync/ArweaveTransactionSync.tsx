@@ -151,7 +151,10 @@ export default function ArweaveTransactionSync(props: {
 										: language.transactionSyncSkipDetail}
 								</small>
 							</span>
-							<Tooltip className="transaction-skip-tooltip" content={language.transactionSyncSkipTooltip}>
+							<S.SkipTooltip
+								className="transaction-skip-tooltip"
+								content={language.transactionSyncSkipTooltip}
+							>
 								{(tooltipId) => (
 									<Button aria-describedby={tooltipId} onClick={props.onSkip} size="custom">
 										{props.skipKind === 'yolo'
@@ -159,7 +162,7 @@ export default function ArweaveTransactionSync(props: {
 											: language.transactionSyncSkip}
 									</Button>
 								)}
-							</Tooltip>
+							</S.SkipTooltip>
 						</S.SkipAction>
 					) : null}
 				</>

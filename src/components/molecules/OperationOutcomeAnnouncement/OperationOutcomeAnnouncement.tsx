@@ -22,7 +22,7 @@ export function OperationOutcome(
 		<div className="result-outcome">
 			<S.StatusRow className="result-status-row">
 				<S.StatusHeading className="result-status-heading">
-					<Icon icon={CircleCheck} className="result-status-icon" />
+					<S.StatusIcon icon={CircleCheck} className="result-status-icon" />
 					<ArCurrencyText>{props.title}</ArCurrencyText>
 				</S.StatusHeading>
 				{props.status ? <S.StatusMeta className="result-status-meta">{props.status}</S.StatusMeta> : null}
@@ -39,7 +39,7 @@ export function OperationErrorAlert(props: { title: string; message: string }) {
 	return (
 		<S.Alert className="result-alert" role="alert">
 			<S.StatusHeading className="result-status-heading">
-				<Icon icon={TriangleAlert} className="result-status-icon" />
+				<S.StatusIcon icon={TriangleAlert} className="result-status-icon" />
 				<ArCurrencyText>{props.title}</ArCurrencyText>
 			</S.StatusHeading>
 			<p>

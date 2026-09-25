@@ -49,10 +49,25 @@ export const Trigger = styled(Button)`
 	transition: background 120ms ease, border-color 120ms ease;
 
 	/*
-	 * The :hover, .open and :focus-visible rules stay in apps/bazar/styles.css:
-	 * .collection-market-tools .market-select-trigger has the same weight and currently wins on border-color by
-	 * coming later in that file. They move here once the Collection tools own their rules.
+	 * A container that restyles the trigger (the collection market tools) still wins these ties: its rule weighs
+	 * the same, and its module imports this atom, so styled-components emits its rules after these.
 	 */
+	&:hover,
+	&.open {
+		border-color: var(--line-dark);
+		background: var(--surface-subtle);
+	}
+
+	&:focus-visible {
+		border-color: var(--muted-subtle);
+		box-shadow: 0 0 0 3px var(--focus-strong);
+		outline: none;
+	}
+
+	@media (max-width: 480px) {
+		min-height: 44px;
+	}
+
 	svg {
 		width: 14px;
 		height: 14px;
@@ -121,6 +136,10 @@ export const Option = styled(Button)`
 		color: var(--ink);
 		background: var(--surface-subtle);
 		outline: none;
+	}
+
+	@media (max-width: 480px) {
+		min-height: 44px;
 	}
 
 	svg {

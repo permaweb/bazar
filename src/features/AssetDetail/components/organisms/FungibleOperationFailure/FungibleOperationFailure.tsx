@@ -2,7 +2,11 @@ import type { AssetState } from 'api/marketplace';
 
 import { Button } from 'components/atoms/Button';
 import { Tooltip } from 'components/atoms/Tooltip';
-import { OperationExternalLink } from 'components/molecules/OperationOutcomeAnnouncement';
+import {
+	OperationExternalLink,
+	ResultPanel,
+	SettlementReceiptLinks,
+} from 'components/molecules/OperationOutcomeAnnouncement';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
@@ -29,7 +33,7 @@ export default function FungibleOperationFailure(props: {
 	const activeOrder = props.flow.activeOrder;
 	const activePurchase = props.flow.activePurchase;
 	return (
-		<div className="result error">
+		<ResultPanel className="result error">
 			<FungibleOperationErrorAlert message={props.flow.message} />
 			{props.operationKind === 'buy' && props.flow.visibleOrders.length ? (
 				<>
@@ -72,7 +76,7 @@ export default function FungibleOperationFailure(props: {
 									? messages.failureSettled
 									: messages.failureIncomplete}
 							</p>
-							<div className="settlement-receipt-links">
+							<SettlementReceiptLinks className="settlement-receipt-links">
 								{activePurchase?.registration?.id ? (
 									<a
 										href={transactionExplorerUrl(activePurchase.registration.id)}
@@ -99,7 +103,7 @@ export default function FungibleOperationFailure(props: {
 										</OperationExternalLink>
 									</a>
 								) : null}
-							</div>
+							</SettlementReceiptLinks>
 						</FungibleSettlementRecoveryPanel>
 					) : null}
 				</>
@@ -163,6 +167,6 @@ export default function FungibleOperationFailure(props: {
 					{messages.failureTryAgain}
 				</Button>
 			)}
-		</div>
+		</ResultPanel>
 	);
 }

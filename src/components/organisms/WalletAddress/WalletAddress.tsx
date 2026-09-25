@@ -4,7 +4,6 @@ import { Check, CircleAlert, Copy } from 'lucide-react';
 import { formatMessage } from 'helpers/i18n';
 import { useMessages } from 'providers/LanguageProvider';
 
-import { Button } from '../../atoms/Button';
 import { Icon } from '../../atoms/Icon';
 import { LiveRegion } from '../../atoms/LiveRegion';
 import { Tooltip } from '../../atoms/Tooltip';
@@ -43,7 +42,7 @@ export default function WalletAddress(props: {
 
 	return (
 		<>
-			<span
+			<S.Address
 				className={`wallet-address${props.full ?? false ? ' is-full' : ''}${
 					copyState === 'failed' ? ' is-failed' : ''
 				}${props.className ?? '' ? ` ${props.className ?? ''}` : ''}`}
@@ -53,14 +52,14 @@ export default function WalletAddress(props: {
 				) : (
 					<ProfileIdentityForAddress address={props.address} />
 				)}
-				<Tooltip
+				<S.AddressTooltip
 					className="wallet-address-tooltip"
 					content={props.address}
 					escapeOverflow={props.tooltipEscapesOverflow ?? false}
 					placement="top"
 				>
 					{(tooltipId) => (
-						<Button
+						<S.Copy
 							aria-describedby={tooltipId}
 							aria-label={formatMessage(messages.walletAddressCopy, {
 								address: props.address,
@@ -81,10 +80,10 @@ export default function WalletAddress(props: {
 							) : (
 								<Icon icon={Copy} size="xs" />
 							)}
-						</Button>
+						</S.Copy>
 					)}
-				</Tooltip>
-			</span>
+				</S.AddressTooltip>
+			</S.Address>
 			<LiveRegion>
 				{copyState === 'copied'
 					? formatMessage(messages.walletAddressCopied, { label: props.label })

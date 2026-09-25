@@ -7,6 +7,9 @@ import { Button } from 'components/atoms/Button';
 export const Tabs = styled.div`
 	width: 100%;
 	margin: 0 0 var(--space-4);
+	/* The strip carries .home-market-tabs, whose layout used to come from the global sheet; Home owns that rule now. */
+	display: flex;
+	align-items: center;
 	gap: 5px;
 	flex-wrap: wrap;
 
@@ -22,6 +25,12 @@ export const Tab = styled(Button)`
 	min-height: 36px;
 	padding-inline: 8px;
 	gap: 5px;
+
+	/* Matches the sizing .home-market-tab .ui-icon gave these icons while that rule was global. */
+	.ui-icon {
+		width: 13px;
+		height: 13px;
+	}
 
 	&:focus-visible {
 		outline: 2px solid var(--focus-ring);

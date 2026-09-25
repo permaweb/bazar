@@ -23,7 +23,13 @@ export const Row = styled(Link)`
 		color: var(--muted);
 	}
 
-	/* The compact variant stays in apps/bazar/styles.css with the list that owns the modifier. */
+	/* A compact list trades the context and secondary metric columns for a tighter row. */
+	.token-market-list.compact & {
+		min-height: 66px;
+		padding: 8px 10px;
+		grid-template-columns: 44px minmax(130px, 1fr) minmax(110px, 0.8fr) 0 minmax(0, 0) 0 18px;
+	}
+
 	@media (max-width: 760px) {
 		grid-template-columns: 44px minmax(0, 1fr) minmax(96px, auto) 18px;
 		gap: 10px;
@@ -31,6 +37,12 @@ export const Row = styled(Link)`
 
 		.token-market-arrow {
 			grid-column: 4;
+		}
+
+		.token-market-list.compact & {
+			grid-template-columns: 44px minmax(0, 1fr) minmax(96px, auto) 18px;
+			gap: 10px;
+			padding: 10px 6px;
 		}
 	}
 `;
@@ -51,9 +63,19 @@ export const Logo = styled.span`
 		border: 0;
 	}
 
+	.token-market-list.compact & {
+		width: 44px;
+		height: 44px;
+	}
+
 	@media (max-width: 760px) {
 		width: 44px;
 		height: 44px;
+
+		.token-market-list.compact & {
+			width: 44px;
+			height: 44px;
+		}
 	}
 `;
 

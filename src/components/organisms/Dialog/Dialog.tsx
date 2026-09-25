@@ -1,5 +1,6 @@
 import React from 'react';
 
+import * as S from './styles';
 import { type DialogFocusTarget, useDialogFocus } from './useDialogFocus';
 
 const OPEN_MODAL_SELECTOR = '[role="dialog"][aria-modal="true"]';
@@ -52,15 +53,15 @@ export default function Dialog(props: {
 
 	if (!props.open && !props.keepMounted) return null;
 
-	const Panel = props.as ?? 'div';
 	return (
-		<div
+		<S.Backdrop
 			className={`${props.backdropClassName}${props.hiding ? ' dialog-backdrop-hiding' : ''}`}
 			hidden={!props.open}
 			onMouseDown={handleBackdropMouseDown}
 			role="presentation"
 		>
-			<Panel
+			<S.Panel
+				as={props.as ?? 'div'}
 				aria-describedby={props.open ? props.describedBy : undefined}
 				aria-hidden={props.open ? undefined : true}
 				aria-label={props.open ? props.label : undefined}
@@ -73,7 +74,7 @@ export default function Dialog(props: {
 				tabIndex={-1}
 			>
 				{props.children}
-			</Panel>
-		</div>
+			</S.Panel>
+		</S.Backdrop>
 	);
 }

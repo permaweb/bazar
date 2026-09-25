@@ -1,6 +1,8 @@
 import styled, { css } from 'styled-components';
 
+import { SegmentedTabsBox } from 'components/atoms/SegmentedTabs';
 import { TokenAvatar } from 'components/atoms/TokenAvatar';
+import { StateVerificationLine } from 'components/molecules/StateVerification';
 
 import { AtomicPage, FungiblePage } from '../../../styles/asset-page';
 import { CommerceCard, MarketStats } from '../../../styles/commerce';
@@ -93,7 +95,8 @@ export const AtomicShell = styled(AtomicPage)`
 	}
 `;
 
-export const LoadingVerification = styled.div`
+// The shared verification line is a paragraph; the loading shell keeps its own div so the markup is unchanged.
+export const LoadingVerification = styled(StateVerificationLine).attrs({ as: 'div' })`
 	> span {
 		width: 8px;
 		height: 8px;
@@ -149,7 +152,7 @@ export const LoadingMarketStats = styled(MarketStats)`
 	}
 `;
 
-export const LoadingTradeTabs = styled.div`
+export const LoadingTradeTabs = styled(SegmentedTabsBox)`
 	span {
 		min-width: 0;
 		min-height: 34px;

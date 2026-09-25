@@ -2,16 +2,31 @@ import styled from 'styled-components';
 
 export { Summary } from '../../../styles/operation-panel';
 
-/**
- * The form inside an operation dialog. Its `.dialog-form-phase > .operation-form` layout rules stay in the global
- * stylesheet: they are grouped with the fungible dialog's `.trade-form` and belong to the dialog chrome.
- */
+// The form inside an operation dialog. In the dialog's form phase it becomes the scrolling body of a column.
 export const Form = styled.form`
 	display: grid;
 	gap: var(--space-4);
 
 	.wide {
 		margin-top: 2px;
+	}
+
+	.dialog-form-phase > & {
+		flex: 1 1 auto;
+		min-height: 0;
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: var(--space-3);
+		overflow: hidden;
+	}
+
+	@media (max-height: 480px) {
+		.dialog-form-phase > & {
+			flex: 1 1 auto;
+			min-height: 0;
+			grid-template-rows: minmax(0, 1fr) auto;
+			gap: 8px;
+			overflow: hidden;
+		}
 	}
 `;
 

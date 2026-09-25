@@ -54,6 +54,11 @@ function backdrop() {
 	return host.querySelector<HTMLElement>('.dialog-backdrop');
 }
 
+// The caller's class names, in order, without the classes styled-components generates for its own elements.
+function backdropClasses() {
+	return [...(backdrop()?.classList ?? [])].filter((name) => !/^(?:sc-|[A-Za-z][A-Za-z0-9]{4,7}$)/.test(name));
+}
+
 function press(key: string, options: KeyboardEventInit = {}) {
 	const target = document.activeElement ?? document.body;
 	const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key, ...options });
@@ -99,7 +104,11 @@ afterEach(async () => {
 describe('Dialog', () => {
 	it('renders caller class names with modal dialog semantics', () => {
 		render({ as: 'section', id: 'profile-dialog' });
-		expect(host.innerHTML).toMatch(/^<div class="dialog-backdrop" role="presentation"><section /);
+		// The backdrop and panel are styled elements, so styled-components adds its own classes alongside the
+		// caller's; the caller's class names and the element structure are what this asserts.
+		expect(backdrop()?.classList.contains('dialog-backdrop')).toBe(true);
+		expect(backdrop()?.getAttribute('role')).toBe('presentation');
+		expect(backdrop()?.firstElementChild).toBe(panel());
 		expect(panel()?.tagName).toBe('SECTION');
 		expect(panel()?.getAttribute('role')).toBe('dialog');
 		expect(panel()?.getAttribute('aria-modal')).toBe('true');
@@ -273,8 +282,8 @@ describe('Dialog', () => {
 
 	it('marks the side panel exit animation on the backdrop', () => {
 		render({ backdropClassName: 'dialog-backdrop operation-panel-backdrop', hiding: true, keepMounted: true });
-		expect(backdrop()?.className).toBe('dialog-backdrop operation-panel-backdrop dialog-backdrop-hiding');
+		expect(backdropClasses()).toEqual(['dialog-backdrop', 'operation-panel-backdrop', 'dialog-backdrop-hiding']);
 		render({ backdropClassName: 'dialog-backdrop operation-panel-backdrop', keepMounted: true });
-		expect(backdrop()?.className).toBe('dialog-backdrop operation-panel-backdrop');
+		expect(backdropClasses()).toEqual(['dialog-backdrop', 'operation-panel-backdrop']);
 	});
 });

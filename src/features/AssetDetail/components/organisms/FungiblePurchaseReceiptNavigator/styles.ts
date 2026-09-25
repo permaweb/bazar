@@ -1,5 +1,7 @@
 import styled from 'styled-components';
 
+import { SettlementReceipt, SettlementReceiptLinks } from 'components/molecules/OperationOutcomeAnnouncement';
+
 export const Receipts = styled.div`
 	display: grid;
 	gap: 10px;
@@ -72,7 +74,8 @@ export const Paging = styled.div`
 	}
 `;
 
-export const Receipt = styled.section`
+// Composes the shared receipt block and keeps its own section element.
+export const Receipt = styled(SettlementReceipt).attrs({ as: 'section' })`
 	width: min(520px, 100%);
 	padding: 0;
 	gap: 0;
@@ -156,7 +159,7 @@ export const Facts = styled.dl`
 	}
 `;
 
-export const ProofLinks = styled.div`
+export const ProofLinks = styled(SettlementReceiptLinks)`
 	margin: 0;
 	padding: 12px 16px;
 	display: grid;

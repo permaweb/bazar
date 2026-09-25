@@ -135,6 +135,16 @@ export const MainCopy = styled.div`
 		font: 400 var(--type-body) 'DM Sans', sans-serif;
 	}
 
+	/* On a phone the activity rows become tap targets inside the collection and home activity pages. */
+	@media (max-width: 480px) {
+		.collection-activity-page & > a,
+		.home-activity-panel & > a {
+			min-height: 44px;
+			display: inline-flex;
+			align-items: center;
+		}
+	}
+
 	> a,
 	> span {
 		overflow: hidden;
@@ -184,6 +194,26 @@ export const Actor = styled.div`
 	gap: 3px;
 	text-align: left;
 
+	/* On a phone the activity rows become tap targets inside the collection and home activity pages. */
+	@media (max-width: 480px) {
+		.collection-activity-page & a,
+		.home-activity-panel & a {
+			min-height: 44px;
+			display: inline-flex;
+			align-items: center;
+		}
+	}
+
+	/* On a phone the activity rows become tap targets inside the collection and home activity pages. */
+	@media (max-width: 480px) {
+		.collection-activity-page & .wallet-address,
+		.home-activity-panel & .wallet-address {
+			min-height: 44px;
+			display: inline-flex;
+			align-items: center;
+		}
+	}
+
 	.wallet-address {
 		min-width: 0;
 		min-height: 0;
@@ -221,6 +251,23 @@ export const Actor = styled.div`
 export const Block = styled.div`
 	${stackedCell}
 	text-align: right;
+
+	/* On a phone the activity rows become tap targets inside the collection and home activity pages. */
+	@media (max-width: 480px) {
+		.collection-activity-page & a,
+		.home-activity-panel & a {
+			min-height: 44px;
+			display: inline-flex;
+			align-items: center;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.collection-activity-page & a,
+		.home-activity-panel & a {
+			justify-content: flex-end;
+		}
+	}
 
 	span {
 		color: var(--muted);

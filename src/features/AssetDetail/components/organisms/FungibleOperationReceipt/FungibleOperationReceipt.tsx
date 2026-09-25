@@ -10,6 +10,9 @@ import {
 	OperationExternalLink,
 	OperationOutcome,
 	OperationOutcomeSubject,
+	ResultPanel,
+	SettlementReceipt,
+	SettlementReceiptLinks,
 } from 'components/molecules/OperationOutcomeAnnouncement';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { quorumConfirmationDepth } from 'features/TransactionSync';
@@ -40,7 +43,7 @@ export default function FungibleOperationReceipt(props: {
 	const transaction = props.flow.transaction;
 	const purchaseSteps = props.flow.purchaseSync.steps;
 	return (
-		<div className="result success">
+		<ResultPanel className="result success">
 			<OperationOutcome
 				title={props.outcome.title}
 				detail={props.outcome.detail}
@@ -108,7 +111,7 @@ export default function FungibleOperationReceipt(props: {
 					state={props.state}
 				/>
 			) : props.operation.kind === 'transfer' && transaction && props.draft.enteredQuantity ? (
-				<div className="settlement-receipt">
+				<SettlementReceipt className="settlement-receipt">
 					<div>
 						<span>{messages.receiptQuantity}</span>
 						<strong>{tokenLabel(props.draft.enteredQuantity.toString(), props.state)}</strong>
@@ -121,14 +124,14 @@ export default function FungibleOperationReceipt(props: {
 							label={messages.assetDetailWalletLabelRecipient}
 						/>
 					</div>
-					<div className="settlement-receipt-links">
+					<SettlementReceiptLinks className="settlement-receipt-links">
 						<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
 							<OperationExternalLink>
 								{formatMessage(messages.receiptTransaction, { id: short(transaction.id) })}
 							</OperationExternalLink>
 						</a>
-					</div>
-				</div>
+					</SettlementReceiptLinks>
+				</SettlementReceipt>
 			) : null}
 			<Button
 				className="with-icon"
@@ -139,6 +142,6 @@ export default function FungibleOperationReceipt(props: {
 			>
 				<Icon icon={ArrowLeft} size="sm" /> {messages.receiptViewUpdatedToken}
 			</Button>
-		</div>
+		</ResultPanel>
 	);
 }

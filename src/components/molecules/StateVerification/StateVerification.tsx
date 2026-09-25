@@ -3,6 +3,8 @@ import { Server } from 'lucide-react';
 import { Icon } from '../../atoms/Icon';
 import { Tooltip } from '../../atoms/Tooltip';
 
+import * as S from './styles';
+
 // A molecule may not read the language provider, so the status wording travels with the verification data.
 export type StateVerificationLabels = {
 	checked: string;
@@ -37,7 +39,7 @@ export default function StateVerification(props: {
 	const timestamp = new Date(props.verifiedAt);
 	const timeLabel = stateVerificationTimeLabel(props.verifiedAt);
 	return (
-		<p className="state-verification">
+		<S.Verification className="state-verification">
 			<Icon icon={Server} size="xs" />
 			<span>
 				{props.refreshing ?? false
@@ -58,6 +60,6 @@ export default function StateVerification(props: {
 				{(tooltipId) => <strong aria-describedby={tooltipId}>{host}</strong>}
 			</Tooltip>
 			<span>{props.labels.requested}</span>
-		</p>
+		</S.Verification>
 	);
 }

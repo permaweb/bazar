@@ -12,6 +12,25 @@ export const Form = styled.form`
 		overflow-wrap: anywhere;
 		white-space: normal;
 	}
+
+	/* In the dialog's form phase the form becomes the scrolling body of a column. */
+	.dialog-form-phase > & {
+		flex: 1 1 auto;
+		min-height: 0;
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: var(--space-3);
+		overflow: hidden;
+	}
+
+	@media (max-height: 480px) {
+		.dialog-form-phase > & {
+			flex: 1 1 auto;
+			min-height: 0;
+			grid-template-rows: minmax(0, 1fr) auto;
+			gap: 8px;
+			overflow: hidden;
+		}
+	}
 `;
 
 export const Fields = styled.div`

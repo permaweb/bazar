@@ -27,6 +27,22 @@ export const Card = styled(Link)`
 	&.collection-context .asset-card-heading {
 		margin-block: 0;
 	}
+
+	/* A token collection lists its assets as rows: artwork on the left, copy on the right. */
+	.token-collection-grid &:where(.token-asset-card) {
+		display: grid;
+		grid-template-columns: 72px minmax(0, 1fr);
+		align-items: stretch;
+		min-height: 72px;
+		border-radius: 7px;
+	}
+
+	@media (max-width: 480px) {
+		.token-collection-grid &:where(.token-asset-card) {
+			grid-template-columns: 64px minmax(0, 1fr);
+			min-height: 64px;
+		}
+	}
 `;
 
 export const Copy = styled.div`

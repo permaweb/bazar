@@ -1,4 +1,4 @@
-import { ArtworkImage } from '../ArtworkImage';
+import * as S from './styles';
 
 type TokenAvatarProps = {
 	ticker: string;
@@ -13,14 +13,14 @@ export default function TokenAvatar(props: TokenAvatarProps) {
 	const tickerLabel = <strong>{visibleTicker}</strong>;
 
 	return (
-		<span
+		<S.Avatar
 			className={`token-avatar ticker-${visibleTicker.length}${visibleTicker.length > 5 ? ' ticker-long' : ''}${
 				props.className ?? '' ? ` ${props.className ?? ''}` : ''
 			}`}
 			aria-hidden="true"
 		>
 			{props.image ? (
-				<ArtworkImage
+				<S.Image
 					alt=""
 					className="token-avatar-image"
 					fallback={tickerLabel}
@@ -31,6 +31,6 @@ export default function TokenAvatar(props: TokenAvatarProps) {
 			) : (
 				tickerLabel
 			)}
-		</span>
+		</S.Avatar>
 	);
 }

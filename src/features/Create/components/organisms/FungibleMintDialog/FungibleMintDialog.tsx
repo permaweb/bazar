@@ -17,6 +17,7 @@ import {
 	OperationOutcome,
 	OperationOutcomeAnnouncement,
 	OperationOutcomeSubject,
+	ResultPanel,
 } from 'components/molecules/OperationOutcomeAnnouncement';
 import {
 	prepareTransactionDialogHide,
@@ -182,7 +183,7 @@ export default function FungibleMintDialog(props: {
 				</div>
 			) : null}
 			{dialogPhase === 'done' && props.result ? (
-				<div className="result success">
+				<ResultPanel className="result success">
 					<OperationOutcome
 						detail={formatMessage(messages.fungibleDialogOutcomeDetail, {
 							supply: props.result.wholeSupply,
@@ -224,10 +225,10 @@ export default function FungibleMintDialog(props: {
 					<Button className="with-icon" onClick={() => handleNavigate(view.dispatchPath)} size="custom">
 						{messages.fungibleDialogDispatch} <Icon icon={ArrowRight} size="sm" />
 					</Button>
-				</div>
+				</ResultPanel>
 			) : null}
 			{dialogPhase === 'error' ? (
-				<div className="result error">
+				<ResultPanel className="result error">
 					<OperationErrorAlert title={messages.fungibleDialogErrorTitle} message={props.error ?? ''} />
 					<Button
 						data-dialog-initial
@@ -239,7 +240,7 @@ export default function FungibleMintDialog(props: {
 					>
 						{messages.fungibleDialogReturn}
 					</Button>
-				</div>
+				</ResultPanel>
 			) : null}
 		</S.Panel>
 	);

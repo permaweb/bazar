@@ -2,6 +2,8 @@ import React from 'react';
 
 import { Button } from '../Button';
 
+import * as S from './styles';
+
 export type SegmentedTab<Value extends string> = {
 	value: Value;
 	label: string;
@@ -18,7 +20,7 @@ export default function SegmentedTabs<Value extends string>(props: {
 	tabs: SegmentedTab<Value>[];
 }) {
 	return (
-		<div
+		<S.Tabs
 			aria-label={props.ariaLabel}
 			className={['segmented-tabs', props.className].filter(Boolean).join(' ')}
 			role="tablist"
@@ -59,6 +61,6 @@ export default function SegmentedTabs<Value extends string>(props: {
 					</Button>
 				);
 			})}
-		</div>
+		</S.Tabs>
 	);
 }

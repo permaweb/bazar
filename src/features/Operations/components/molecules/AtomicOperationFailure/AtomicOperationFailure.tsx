@@ -1,6 +1,7 @@
 import type { Operation } from 'api/operations';
 
 import { Button } from 'components/atoms/Button';
+import { ResultPanel } from 'components/molecules/OperationOutcomeAnnouncement';
 import type { AppErrorReason } from 'helpers/app-error';
 import { useMessages } from 'providers/LanguageProvider';
 
@@ -32,7 +33,7 @@ export default function AtomicOperationFailure(props: {
 }) {
 	const messages = useMessages(OPERATIONS_MESSAGES);
 	return (
-		<div className="result error">
+		<ResultPanel className="result error">
 			<AtomicOperationErrorAlert message={props.message} />
 			{props.failureKind === 'market-state-changed' ? (
 				<Button data-dialog-initial type="button" onClick={props.onViewCurrentState} size="custom">
@@ -79,6 +80,6 @@ export default function AtomicOperationFailure(props: {
 					{messages.failureTryAgain}
 				</Button>
 			)}
-		</div>
+		</ResultPanel>
 	);
 }

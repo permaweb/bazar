@@ -12,6 +12,9 @@ import {
 	OperationExternalLink,
 	OperationOutcome,
 	OperationOutcomeSubject,
+	ResultPanel,
+	SettlementReceipt,
+	SettlementReceiptLinks,
 } from 'components/molecules/OperationOutcomeAnnouncement';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { type ArweaveSyncStep, LazyArweaveTransactionSync } from 'features/TransactionSync';
@@ -48,7 +51,7 @@ export default function AtomicOperationOutcome(props: {
 	const artworkAlt = formatMessage(messages.outcomeArtworkAlt, { asset: props.asset.name });
 
 	return (
-		<div className="result success">
+		<ResultPanel className="result success">
 			<OperationOutcome
 				title={props.result.title}
 				detail={props.result.detail}
@@ -113,7 +116,7 @@ export default function AtomicOperationOutcome(props: {
 					summaryLabel={messages.labelSellerPayment}
 				/>
 			) : props.kind === 'transfer' && props.transactionId ? (
-				<div className="settlement-receipt">
+				<SettlementReceipt className="settlement-receipt">
 					<div>
 						<span>{messages.receiptAsset}</span>
 						<strong>{props.asset.name}</strong>
@@ -122,7 +125,7 @@ export default function AtomicOperationOutcome(props: {
 						<span>{messages.receiptRecipient}</span>
 						<WalletAddress address={props.value} full label={messages.walletLabelRecipient} />
 					</div>
-					<div className="settlement-receipt-links">
+					<SettlementReceiptLinks className="settlement-receipt-links">
 						<a href={transactionExplorerUrl(props.transactionId)} rel="noreferrer" target="_blank">
 							<OperationExternalLink>
 								{formatMessage(messages.receiptTransaction, {
@@ -130,8 +133,8 @@ export default function AtomicOperationOutcome(props: {
 								})}
 							</OperationExternalLink>
 						</a>
-					</div>
-				</div>
+					</SettlementReceiptLinks>
+				</SettlementReceipt>
 			) : props.transactionId ? (
 				<a href={transactionExplorerUrl(props.transactionId)} rel="noreferrer" target="_blank">
 					<OperationExternalLink>
@@ -148,6 +151,6 @@ export default function AtomicOperationOutcome(props: {
 			>
 				<Icon icon={ArrowLeft} size="sm" /> {messages.viewUpdatedAsset}
 			</Button>
-		</div>
+		</ResultPanel>
 	);
 }

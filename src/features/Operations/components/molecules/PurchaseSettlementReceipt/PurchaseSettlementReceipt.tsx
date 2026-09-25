@@ -1,6 +1,10 @@
 import React from 'react';
 
-import { OperationExternalLink } from 'components/molecules/OperationOutcomeAnnouncement';
+import {
+	OperationExternalLink,
+	SettlementReceipt,
+	SettlementReceiptLinks,
+} from 'components/molecules/OperationOutcomeAnnouncement';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { transactionExplorerUrl } from 'helpers/explorer';
 import { short } from 'helpers/format';
@@ -20,7 +24,7 @@ export default function PurchaseSettlementReceipt(props: {
 }) {
 	const messages = useMessages(OPERATIONS_MESSAGES);
 	return (
-		<div className="settlement-receipt">
+		<SettlementReceipt className="settlement-receipt">
 			<div>
 				<span>{props.summaryLabel}</span>
 				<strong>{props.summary}</strong>
@@ -35,7 +39,7 @@ export default function PurchaseSettlementReceipt(props: {
 					<OperationExternalLink>{short(props.orderId)}</OperationExternalLink>
 				</a>
 			</div>
-			<div className="settlement-receipt-links">
+			<SettlementReceiptLinks className="settlement-receipt-links">
 				{props.registrationId ? (
 					<a href={transactionExplorerUrl(props.registrationId)} rel="noreferrer" target="_blank">
 						<OperationExternalLink>
@@ -50,7 +54,7 @@ export default function PurchaseSettlementReceipt(props: {
 						</OperationExternalLink>
 					</a>
 				) : null}
-			</div>
-		</div>
+			</SettlementReceiptLinks>
+		</SettlementReceipt>
 	);
 }

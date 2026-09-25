@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 
 import { omitProps } from 'helpers/props';
 
+import * as S from './styles';
+
 const useBrowserLayoutEffect = typeof document === 'undefined' ? React.useEffect : React.useLayoutEffect;
 
 export type TooltipPlacement = 'bottom' | 'top';
@@ -29,7 +31,7 @@ export const TooltipSurface = React.forwardRef<HTMLSpanElement, TooltipSurfacePr
 	ref
 ) {
 	return (
-		<span
+		<S.Surface
 			{...omitProps(props, ['children', 'className', 'visible'])}
 			className={[
 				'ui-tooltip__content',
@@ -42,7 +44,7 @@ export const TooltipSurface = React.forwardRef<HTMLSpanElement, TooltipSurfacePr
 			role="tooltip"
 		>
 			{props.children}
-		</span>
+		</S.Surface>
 	);
 });
 
@@ -118,7 +120,7 @@ export default function Tooltip(props: TooltipProps) {
 	const floatingSurface =
 		(props.escapeOverflow ?? false) && floatingVisible && typeof document !== 'undefined'
 			? createPortal(
-					<span
+					<S.Anchor
 						className={`ui-tooltip ui-tooltip--floating-layer ui-tooltip--${
 							floatingPosition?.placement ?? props.placement ?? 'bottom'
 						} ui-tooltip--align-${props.align ?? 'end'}`}
@@ -138,13 +140,13 @@ export default function Tooltip(props: TooltipProps) {
 						>
 							{props.content}
 						</TooltipSurface>
-					</span>,
+					</S.Anchor>,
 					document.body
 			  )
 			: null;
 
 	return (
-		<span
+		<S.Anchor
 			className={[
 				'ui-tooltip',
 				`ui-tooltip--${props.placement ?? 'bottom'}`,
@@ -166,7 +168,7 @@ export default function Tooltip(props: TooltipProps) {
 			{props.children(tooltipId)}
 			{(props.escapeOverflow ?? false) && floatingVisible ? null : anchoredSurface}
 			{floatingSurface}
-		</span>
+		</S.Anchor>
 	);
 }
 

@@ -93,7 +93,9 @@ export default function HomeDiscoverPanel(props: {
 									/>
 								</>
 							) : (
-								<S.SectionEmpty className="discover-section-empty">{messages.homeNoTokens}</S.SectionEmpty>
+								<S.SectionEmpty className="discover-section-empty">
+									{messages.homeNoTokens}
+								</S.SectionEmpty>
 							)}
 						</S.MarketSection>
 						<S.MarketSection className="discover-market-section collectible-section">
@@ -110,7 +112,9 @@ export default function HomeDiscoverPanel(props: {
 							{props.discover.collectibles.length ? (
 								renderCollectibleGrid(props.discover.collectibles.slice(0, 12))
 							) : (
-								<S.SectionEmpty className="discover-section-empty">{messages.homeNoUniques}</S.SectionEmpty>
+								<S.SectionEmpty className="discover-section-empty">
+									{messages.homeNoUniques}
+								</S.SectionEmpty>
 							)}
 						</S.MarketSection>
 					</S.MarketSections>

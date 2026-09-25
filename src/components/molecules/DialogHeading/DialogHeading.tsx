@@ -23,7 +23,7 @@ export default function DialogHeading(props: {
 	);
 	const assetCopy = <S.AssetHeadingCopy className="dialog-asset-heading-copy">{copy}</S.AssetHeadingCopy>;
 	return (
-		<div className="dialog-heading">
+		<S.Heading className="dialog-heading">
 			{props.layout === 'asset' ? (
 				props.artwork ? (
 					<S.AssetHeading className="dialog-asset-heading">
@@ -37,6 +37,6 @@ export default function DialogHeading(props: {
 				<div>{copy}</div>
 			)}
 			{props.control}
-		</div>
+		</S.Heading>
 	);
 }
