@@ -9,3 +9,4 @@
 **.vscode**
 .run-data
 .claude/worktrees/
+.husky/_
