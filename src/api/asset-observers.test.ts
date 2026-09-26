@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadPermawebOsNetworkPolicy } from 'helpers/config';
 
+import { connectPermawebOsTestWallet } from '../test/permaweb-os';
+
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -26,6 +28,7 @@ beforeEach(() => {
 	permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
 	permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
 	vi.stubGlobal('window', { aoFetch: permawebOsFetch });
+	connectPermawebOsTestWallet();
 });
 
 afterEach(() => vi.unstubAllGlobals());

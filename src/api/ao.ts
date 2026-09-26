@@ -1,6 +1,7 @@
 import { ao, type AoCacheMetadata, type AoCacheStatus, type AoClient, cacheMetadata, createAo } from 'ao.js';
 
 import {
+	AO_WALLET_CONNECTION_EVENT,
 	fallbackAoPeersFromLocation,
 	gatewaysFromLocation,
 	loadPermawebOsNetworkPolicy,
@@ -124,12 +125,18 @@ export function warmAoFetch(onNetworkPolicy?: () => void): () => void {
 		void readyAoFetch();
 		loadPolicy(true);
 	};
+	const walletChanged = () => {
+		if (!stopped) onNetworkPolicy?.();
+		policyChanged();
+	};
 	globalThis.window?.addEventListener?.('aoFetchLoaded', policyChanged);
+	globalThis.window?.addEventListener?.(AO_WALLET_CONNECTION_EVENT, walletChanged);
 	void readyAoFetch();
 	loadPolicy(false);
 	return () => {
 		stopped = true;
 		globalThis.window?.removeEventListener?.('aoFetchLoaded', policyChanged);
+		globalThis.window?.removeEventListener?.(AO_WALLET_CONNECTION_EVENT, walletChanged);
 	};
 }
 function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {

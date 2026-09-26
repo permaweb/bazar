@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { connectPermawebOsTestWallet } from '../test/permaweb-os';
+
 const mocks = vi.hoisted(() => ({ readAssetState: vi.fn() }));
 
 vi.mock('./asset-marketplace', () => ({
@@ -62,6 +64,7 @@ function stubPolicyScope(initialFingerprint: string) {
 		},
 	});
 	vi.stubGlobal('window', scope);
+	connectPermawebOsTestWallet();
 	return {
 		stop: warmAoFetch(),
 		update(nextFingerprint: string) {

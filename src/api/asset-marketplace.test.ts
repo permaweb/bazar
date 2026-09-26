@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { connectPermawebOsTestWallet } from '../test/permaweb-os';
+
 import { clearArweaveHeightCache } from './arweave-height';
 import {
 	bestAskOfAsset,
@@ -36,6 +38,7 @@ beforeEach(() => {
 	vi.stubGlobal('window', {
 		aoFetch,
 	});
+	connectPermawebOsTestWallet();
 });
 afterEach(() => vi.unstubAllGlobals());
 

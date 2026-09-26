@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { connectPermawebOsTestWallet } from '../test/permaweb-os';
+
 const control = vi.hoisted(() => ({
 	dispatchAborted: false,
 	networkOptions: undefined as Record<string, unknown> | undefined,
@@ -84,6 +86,7 @@ describe('transaction dispatch observation', () => {
 				hash: '',
 			},
 		});
+		connectPermawebOsTestWallet();
 	});
 
 	it('relays deployment observer requests through the default HyperBEAM gateway', async () => {

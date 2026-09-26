@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { AssetSummary, Collection } from 'api/collections';
 import { CREATED_COLLECTION_ID } from 'api/minted-assets';
 
+import { setAoWalletConnection } from 'helpers/config';
+
 import {
 	assetDetailErrorMessage,
 	assetDetailLoadingPresentation,
@@ -81,7 +83,13 @@ describe('asset detail fallbacks', () => {
 			search: '?node=https%3A%2F%2Falpha.example',
 			hash: '#/asset/fungible-tokens/WEAVE?tab=market',
 		};
-		const scope = { aoFetch: (() => undefined) as unknown as PermawebOsAoFetch };
+		const wallet = { connect: async () => undefined, sign: async () => undefined };
+		const scope = {
+			aoFetch: (() => undefined) as unknown as PermawebOsAoFetch,
+			arweaveWallet: wallet,
+			permawebConnect: wallet,
+		};
+		setAoWalletConnection('a'.repeat(43), scope);
 
 		expect(assetStateRecoveryUrl('Live state unavailable', location, scope)).toBe(
 			'https://bazar.arweave.net/?node=https%3A%2F%2Falpha.example&ao-transport=bazar#/asset/fungible-tokens/WEAVE?tab=market'

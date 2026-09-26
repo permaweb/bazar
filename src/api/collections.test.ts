@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadPermawebOsNetworkPolicy, NAMES_NAMESPACE_ID } from 'helpers/config';
 
+import { connectPermawebOsTestWallet } from '../test/permaweb-os';
+
 import { parseAssetState } from './asset-marketplace';
 import {
 	carrierManifestId,
@@ -328,6 +330,7 @@ describe('collection index loading', () => {
 		permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
 		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
 		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
+		connectPermawebOsTestWallet();
 		const progress: string[] = [];
 
 		const collections = await discoverBazarCollections(undefined, (collection) => progress.push(collection.id));
@@ -568,6 +571,7 @@ describe('collection index loading', () => {
 			aoFetch,
 			location: { protocol: 'https:', hostname: 'bazar.example', port: '', search: '', hash: '' },
 		});
+		connectPermawebOsTestWallet();
 		await loadPermawebOsNetworkPolicy();
 
 		const processId = 'T'.repeat(43);
@@ -955,6 +959,7 @@ describe('collection index loading', () => {
 		permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
 		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
 		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
+		connectPermawebOsTestWallet();
 		const progress = vi.fn();
 		const backgroundUnavailable = vi.fn();
 
@@ -1576,6 +1581,7 @@ describe('collection index loading', () => {
 		permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
 		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
 		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
+		connectPermawebOsTestWallet();
 
 		const loading = loadImageCollection(referenceId, manifestId);
 		await vi.waitFor(() => expect(permawebOsFetch).toHaveBeenCalledOnce());

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { connectPermawebOsTestWallet } from '../test/permaweb-os';
+
 const control = vi.hoisted(() => ({
 	constructed: [] as Array<Record<string, unknown>>,
 	ready: 0,
@@ -47,6 +49,7 @@ describe('shared asset observer network', () => {
 		aoFetch.cacheMetadata = vi.fn(() => undefined);
 		aoFetch.ready = vi.fn(async () => aoFetch.peers);
 		vi.stubGlobal('window', { aoFetch });
+		connectPermawebOsTestWallet();
 	});
 	afterEach(() => vi.unstubAllGlobals());
 
