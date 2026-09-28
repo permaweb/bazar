@@ -14,6 +14,7 @@ import {
 
 import { Button } from 'components/Button';
 import { createArweaveClient } from 'helpers/arweave';
+import { setAoWalletConnection } from 'helpers/config';
 
 import { useDialogFocus } from '../app/useDialogFocus';
 
@@ -60,7 +61,12 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const [balanceRevision, setBalanceRevision] = React.useState(0);
 	const [connectDialogOpen, setConnectDialogOpen] = React.useState(false);
 	const connectDialogTrigger = React.useRef<HTMLElement | null>(null);
-	const addressRequests = React.useRef(createLatestAddressCommitter(setAddress));
+	const addressRequests = React.useRef(
+		createLatestAddressCommitter((nextAddress) => {
+			setAoWalletConnection(nextAddress);
+			setAddress(nextAddress);
+		})
+	);
 	const closeConnectDialog = React.useCallback(() => setConnectDialogOpen(false), []);
 	const restoreConnectDialogFocus = React.useCallback(() => connectDialogTrigger.current, []);
 

@@ -24,6 +24,7 @@ import {
 	PRODUCTION_COMPUTE_GATEWAY,
 	PRODUCTION_COMPUTE_GATEWAYS,
 	refreshPermawebOsNetworkPolicy,
+	setAoWalletConnection,
 	usesPermawebOsAo,
 } from './config';
 
@@ -40,6 +41,13 @@ function location(overrides: Partial<Location> = {}): Location {
 
 function injectedAoFetch(peers: readonly string[]): PermawebOsAoFetch {
 	return Object.assign(vi.fn(), { peers }) as unknown as PermawebOsAoFetch;
+}
+
+function connectedScope(aoFetch: PermawebOsAoFetch) {
+	const wallet = { connect: vi.fn(), sign: vi.fn() };
+	const scope = { aoFetch, arweaveWallet: wallet, permawebConnect: wallet };
+	setAoWalletConnection('a'.repeat(43), scope);
+	return scope;
 }
 
 describe('Arweave gateway routing', () => {
@@ -94,9 +102,7 @@ describe('Arweave gateway routing', () => {
 	});
 
 	it('keeps PermawebOS peers and the Arweave selection independent', () => {
-		vi.stubGlobal('window', {
-			aoFetch: injectedAoFetch(['https://permawebos-peer.example']),
-		});
+		vi.stubGlobal('window', connectedScope(injectedAoFetch(['https://permawebos-peer.example'])));
 		const selected = location({
 			search: '?node=https%3A%2F%2Fcompute.example&arweave-node=https%3A%2F%2Fgateway.example',
 		});
@@ -106,9 +112,10 @@ describe('Arweave gateway routing', () => {
 	});
 
 	it('prefers the ordered PermawebOS peer list while retaining the Bazar fallbacks', () => {
-		vi.stubGlobal('window', {
-			aoFetch: injectedAoFetch(['https://primary.example', 'https://secondary.example']),
-		});
+		vi.stubGlobal(
+			'window',
+			connectedScope(injectedAoFetch(['https://primary.example', 'https://secondary.example']))
+		);
 		const selected = location({
 			search: `?node=${encodeURIComponent('https://ignored.example')}`,
 		});
@@ -120,9 +127,7 @@ describe('Arweave gateway routing', () => {
 	});
 
 	it('uses the URL fallback list when the user disables the PermawebOS transport', () => {
-		vi.stubGlobal('window', {
-			aoFetch: injectedAoFetch(['https://permawebos.example']),
-		});
+		vi.stubGlobal('window', connectedScope(injectedAoFetch(['https://permawebos.example'])));
 		const selected = location({
 			search: `?ao-transport=bazar&node=${encodeURIComponent('https://alpha.example, https://charlie.example')}`,
 		});
@@ -188,9 +193,7 @@ describe('Arweave gateway routing', () => {
 	});
 
 	it('keeps ordinary item fallback on permanent-content gateways, not compute peers', () => {
-		vi.stubGlobal('window', {
-			aoFetch: injectedAoFetch(['https://alpha.example', 'https://charlie.example']),
-		});
+		vi.stubGlobal('window', connectedScope(injectedAoFetch(['https://alpha.example', 'https://charlie.example'])));
 		const id = 'A'.repeat(43);
 		expect(
 			arweaveDataFallbackUrls(
@@ -223,7 +226,7 @@ describe('Arweave gateway routing', () => {
 			peers: ['https://alpha.example', 'https://charlie.example'],
 			networkPolicy: vi.fn(async () => policy),
 		}) as unknown as PermawebOsAoFetch;
-		const scope = { aoFetch };
+		const scope = connectedScope(aoFetch);
 		const selected = location();
 
 		expect(gatewaysFromLocation(selected, scope)).toEqual(['https://alpha.example', 'https://charlie.example']);
@@ -258,7 +261,7 @@ describe('Arweave gateway routing', () => {
 			peers: ['https://legacy.example'],
 			networkPolicy: vi.fn(async () => policy),
 		}) as unknown as PermawebOsAoFetch;
-		const scope = { aoFetch };
+		const scope = connectedScope(aoFetch);
 		const selected = location();
 
 		await expect(loadPermawebOsNetworkPolicy(scope)).resolves.toEqual(policy);
@@ -284,7 +287,7 @@ describe('Arweave gateway routing', () => {
 			peers: ['https://legacy.example'],
 			networkPolicy: vi.fn(async () => policy),
 		}) as unknown as PermawebOsAoFetch;
-		const scope = { aoFetch };
+		const scope = connectedScope(aoFetch);
 		const selected = location();
 		vi.stubGlobal('window', scope);
 
@@ -311,7 +314,7 @@ describe('Arweave gateway routing', () => {
 				},
 			})),
 		}) as unknown as PermawebOsAoFetch;
-		const scope = { aoFetch };
+		const scope = connectedScope(aoFetch);
 		const selected = location();
 
 		await expect(loadPermawebOsNetworkPolicy(scope)).resolves.toBeUndefined();
@@ -355,7 +358,7 @@ describe('Arweave gateway routing', () => {
 			peers: ['https://legacy.example'],
 			networkPolicy,
 		}) as unknown as PermawebOsAoFetch;
-		const scope = { aoFetch };
+		const scope = connectedScope(aoFetch);
 
 		const loading = loadPermawebOsNetworkPolicy(scope);
 		await expect(refreshPermawebOsNetworkPolicy(scope)).resolves.toEqual(secondPolicy);

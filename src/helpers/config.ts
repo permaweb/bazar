@@ -27,6 +27,24 @@ const networkPolicies = new WeakMap<PermawebOsAoFetch, EffectivePermawebNetworkP
 const networkPolicyLoads = new WeakMap<PermawebOsAoFetch, Promise<EffectivePermawebNetworkPolicy | undefined>>();
 const networkPolicyRevisions = new WeakMap<PermawebOsAoFetch, number>();
 const strictNetworkPolicyFetchers = new WeakSet<PermawebOsAoFetch>();
+type AoRoutingScope = Pick<Window, 'aoFetch'> & Partial<Pick<Window, 'arweaveWallet' | 'permawebConnect'>>;
+const connectedRoutingWallets = new WeakMap<AoRoutingScope, ArweaveWalletProvider>();
+export const AO_WALLET_CONNECTION_EVENT = 'bazarWalletConnectionChanged';
+
+/** Called only after Bazar has restored or explicitly changed its active wallet. */
+export function setAoWalletConnection(address: string | null, scope: AoRoutingScope | undefined = globalThis.window) {
+	if (!scope) return;
+	const previous = connectedRoutingWallets.get(scope);
+	const wallet =
+		address && scope.permawebConnect && scope.arweaveWallet === scope.permawebConnect
+			? scope.permawebConnect
+			: undefined;
+	if (wallet) connectedRoutingWallets.set(scope, wallet);
+	else connectedRoutingWallets.delete(scope);
+	if (previous !== wallet && scope === globalThis.window) {
+		globalThis.window?.dispatchEvent?.(new Event(AO_WALLET_CONNECTION_EVENT));
+	}
+}
 
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
@@ -171,12 +189,24 @@ export function permawebOsAoAvailable(scope: Pick<Window, 'aoFetch'> | undefined
 	return typeof scope?.aoFetch === 'function';
 }
 
-export function usesPermawebOsAo(
+export function prefersPermawebOsAo(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): boolean {
 	if (!permawebOsAoAvailable(scope)) return false;
 	return !location || queryValue(location, AO_TRANSPORT_QUERY_PARAMETER) !== BAZAR_AO_TRANSPORT;
+}
+
+export function usesPermawebOsAo(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: AoRoutingScope | undefined = globalThis.window
+): boolean {
+	return Boolean(
+		prefersPermawebOsAo(location, scope) &&
+			scope?.permawebConnect &&
+			scope.arweaveWallet === scope.permawebConnect &&
+			connectedRoutingWallets.get(scope) === scope.permawebConnect
+	);
 }
 
 export function fallbackAoPeersFromLocation(

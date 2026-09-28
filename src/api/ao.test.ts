@@ -6,6 +6,8 @@ import {
 	type EffectivePermawebNetworkPolicy,
 	observerRelayFromLocation,
 	permanentContentGatewayFromLocation,
+	prefersPermawebOsAo,
+	setAoWalletConnection,
 } from 'helpers/config';
 
 import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from './ao';
@@ -21,8 +23,11 @@ function injectedAoFetch(peers: string[]): PermawebOsAoFetch {
 
 afterEach(() => vi.unstubAllGlobals());
 
-function browserWindow(aoFetch?: PermawebOsAoFetch, search = '') {
-	return Object.assign(new EventTarget(), {
+function browserWindow(aoFetch?: PermawebOsAoFetch, search = '', connected = true) {
+	const wallet = { connect: vi.fn(), sign: vi.fn() };
+	const scope = Object.assign(new EventTarget(), {
+		permawebConnect: wallet,
+		arweaveWallet: wallet,
 		...(aoFetch ? { aoFetch } : {}),
 		location: {
 			protocol: 'https:',
@@ -32,9 +37,67 @@ function browserWindow(aoFetch?: PermawebOsAoFetch, search = '') {
 			hash: '',
 		},
 	});
+	if (connected) setAoWalletConnection('a'.repeat(43), scope);
+	return scope;
 }
 
 describe('PermawebOS AO transport boundary', () => {
+	it.each(['disconnected', 'wander', 'local'] as const)(
+		'loads public state through Bazar with routing enabled and a %s wallet',
+		async (session) => {
+			const permawebOs = injectedAoFetch(['https://permawebos.example']);
+			vi.mocked(permawebOs).mockRejectedValue(new Error('Wallet is not connected'));
+			const scope = browserWindow(permawebOs, `?node=https://${session}.example`, false);
+			if (session !== 'disconnected') {
+				scope.arweaveWallet = { connect: vi.fn(), sign: vi.fn() };
+				setAoWalletConnection('b'.repeat(43), scope);
+			}
+			vi.stubGlobal('window', scope);
+			const nativeFetch = vi.fn(async () => new Response('collection-state'));
+			vi.stubGlobal('fetch', nativeFetch);
+
+			expect(prefersPermawebOsAo()).toBe(true);
+			expect(aoPeers()).toEqual([`https://${session}.example`]);
+			const response = await aoFetch()('/collection~process@1.0/now');
+			expect(await response.text()).toBe('collection-state');
+			expect(permawebOs).not.toHaveBeenCalled();
+			expect(nativeFetch).toHaveBeenCalled();
+		}
+	);
+
+	it('notifies collection readers when the active wallet connects, switches, or disconnects', async () => {
+		const permawebOs = injectedAoFetch(['https://permawebos.example']);
+		const scope = browserWindow(permawebOs, '?node=https://session.example', false);
+		vi.stubGlobal('window', scope);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('ok'))
+		);
+		const changed = vi.fn();
+		const stop = warmAoFetch(changed);
+
+		setAoWalletConnection('a'.repeat(43));
+		expect(changed).toHaveBeenCalledOnce();
+		expect(aoFetch()).toBe(permawebOs);
+		setAoWalletConnection('a'.repeat(43));
+		expect(changed).toHaveBeenCalledOnce();
+
+		scope.arweaveWallet = { connect: vi.fn(), sign: vi.fn() };
+		setAoWalletConnection('b'.repeat(43));
+		expect(changed).toHaveBeenCalledTimes(2);
+		expect(aoPeers()).toEqual(['https://session.example']);
+
+		scope.arweaveWallet = scope.permawebConnect;
+		setAoWalletConnection('a'.repeat(43));
+		setAoWalletConnection(null);
+		expect(changed).toHaveBeenCalledTimes(4);
+		expect(aoFetch()).not.toBe(permawebOs);
+		expect(prefersPermawebOsAo()).toBe(true);
+		stop();
+		setAoWalletConnection('a'.repeat(43));
+		expect(changed).toHaveBeenCalledTimes(4);
+	});
+
 	it('returns the exact injected singleton and reads its active peers', async () => {
 		const permawebOs = injectedAoFetch(['https://primary.example', 'https://secondary.example']);
 		vi.stubGlobal('window', browserWindow(permawebOs));

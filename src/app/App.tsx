@@ -198,6 +198,7 @@ import {
 	gatewayFromLocation,
 	gatewaysFromLocation,
 	permawebOsAoAvailable,
+	prefersPermawebOsAo,
 	usesPermawebOsAo,
 } from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
@@ -424,6 +425,8 @@ export const MarketContext = React.createContext<MarketContextValue>({
 export function App() {
 	const [marketRetry, setMarketRetry] = React.useState(0);
 	const [, setNetworkPolicyRevision] = React.useState(0);
+	const collectionTransport = usesPermawebOsAo() ? window.aoFetch : undefined;
+	React.useEffect(() => warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1)), []);
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
@@ -448,9 +451,6 @@ export function App() {
 	React.useEffect(() => {
 		const controller = new AbortController();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		const stopAoWarmup = warmAoFetch(() => {
-			if (!controller.signal.aborted) setNetworkPolicyRevision((revision) => revision + 1);
-		});
 		void loadCollections(
 			controller.signal,
 			(collections) => {
@@ -535,9 +535,8 @@ export function App() {
 		);
 		return () => {
 			controller.abort();
-			stopAoWarmup();
 		};
-	}, [marketRetry]);
+	}, [marketRetry, collectionTransport]);
 	const loadMore = React.useCallback(
 		async (collectionId: string, signal?: AbortSignal) => {
 			const collection = market.collections.find((item) => item.id === collectionId);
@@ -4846,10 +4845,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 
 function GatewayControl() {
 	const { pageRefreshing } = React.useContext(MarketContext);
-	const permawebOsConnected = permawebOsAoAvailable();
+	const permawebOsAvailable = permawebOsAoAvailable();
 	const fallbackPeers = fallbackAoPeersFromLocation(window.location);
 	const [computeValues, setComputeValues] = React.useState(() => (fallbackPeers.length ? fallbackPeers : ['']));
-	const [usePermawebOs, setUsePermawebOs] = React.useState(() => usesPermawebOsAo(window.location));
+	const [usePermawebOs, setUsePermawebOs] = React.useState(() => prefersPermawebOsAo(window.location));
 	const [open, setOpen] = React.useState(false);
 	const [error, setError] = React.useState('');
 	const detailsRef = React.useRef<HTMLDetailsElement>(null);
@@ -4889,14 +4888,14 @@ function GatewayControl() {
 		setError('');
 		const url = new URL(window.location.href);
 		url.searchParams.set('node', computeOrigins.join(','));
-		if (permawebOsConnected && usePermawebOs) {
+		if (permawebOsAvailable && usePermawebOs) {
 			url.searchParams.delete(AO_TRANSPORT_QUERY_PARAMETER);
 		} else {
 			url.searchParams.set(AO_TRANSPORT_QUERY_PARAMETER, BAZAR_AO_TRANSPORT);
 		}
 		window.location.assign(url);
 	}
-	const activePeers = usePermawebOs && permawebOsConnected ? gatewaysFromLocation(window.location) : fallbackPeers;
+	const activePeers = usePermawebOs && permawebOsAvailable ? gatewaysFromLocation(window.location) : fallbackPeers;
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
@@ -4943,7 +4942,7 @@ function GatewayControl() {
 				</summary>
 				<div id="gateway-panel">
 					<form onSubmit={apply}>
-						{permawebOsConnected ? (
+						{permawebOsAvailable ? (
 							<Button
 								aria-checked={usePermawebOs}
 								className="gateway-permaweb-os-toggle"
@@ -4955,7 +4954,7 @@ function GatewayControl() {
 							>
 								<span>
 									<strong>Use PermawebOS Routing</strong>
-									<small>Use its role-aware routes and shared request state.</small>
+									<small>Use its routes while connected with the PermawebOS wallet.</small>
 								</span>
 								<span className="gateway-permaweb-os-toggle-control" aria-hidden="true">
 									{usePermawebOs ? <Check className="ui-icon ui-icon--sm" /> : null}
