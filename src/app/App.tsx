@@ -109,6 +109,7 @@ import {
 	hiddenCollectionAssetIndexComplete,
 	isVisibleAssetId,
 	isVisibleCollectionId,
+	loadBazarCollectionById,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
@@ -5442,6 +5443,48 @@ function CollectionRoute() {
 	return <CollectionView key={collectionId} />;
 }
 
+function useCollectionLookup(collectionId: string) {
+	const market = React.useContext(MarketContext);
+	const needsLookup =
+		ARWEAVE_ADDRESS.test(collectionId) &&
+		isVisibleCollectionId(collectionId) &&
+		!market.verifiedCollectionIds.has(collectionId);
+	const [retryVersion, setRetryVersion] = React.useState(0);
+	const requestKey = `${collectionId}\0${aoRoutingScopeFromLocation()}\0${retryVersion}`;
+	const [lookup, setLookup] = React.useState({ key: requestKey, loading: true, error: '' });
+	React.useEffect(() => {
+		if (!needsLookup || !market.visibilityReady) return;
+		const controller = new AbortController();
+		setLookup({ key: requestKey, loading: true, error: '' });
+		void loadBazarCollectionById(collectionId, controller.signal).then(
+			(result) => {
+				if (controller.signal.aborted) return;
+				if (result) market.addCollection(result);
+				setLookup({ key: requestKey, loading: false, error: '' });
+			},
+			() => {
+				if (!controller.signal.aborted) {
+					setLookup({
+						key: requestKey,
+						loading: false,
+						error: 'This collection could not be loaded. Please try again.',
+					});
+				}
+			}
+		);
+		return () => controller.abort();
+	}, [collectionId, requestKey, needsLookup, market.visibilityReady, market.addCollection]);
+	const retry = React.useCallback(() => {
+		setRetryVersion((current) => current + 1);
+		market.retry();
+	}, [market.retry]);
+	return {
+		loading: needsLookup && market.visibilityReady && (lookup.key !== requestKey || lookup.loading),
+		error: needsLookup && lookup.key === requestKey ? lookup.error : '',
+		retry,
+	};
+}
+
 export function CollectionDescription({ description }: { description: string }) {
 	const text = formatTokenDescription(description);
 	const contentId = React.useId();
@@ -5543,6 +5586,7 @@ function CollectionView() {
 	const wallet = useWallet();
 	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
 	const collection = market.collections.find((item) => item.id === collectionId);
+	const collectionLookup = useCollectionLookup(collectionId);
 	const metadataEnrichmentScope =
 		collection?.kind === 'images' && collection.manifestId ? `${collection.id}:${collection.manifestId}` : '';
 	const metadataEnrichmentTarget = React.useRef(collection);
@@ -6382,22 +6426,22 @@ function CollectionView() {
 	}, [listedOnly, listingRetry, listingScope]);
 	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
-	if (!collection && market.loading)
+	if (!collection && (market.loading || collectionLookup.loading))
 		return (
 			<RouteState title="Collection">
 				<Loading label="Reading collection index…" />
 			</RouteState>
 		);
-	if (!collection && market.error)
+	if (!collection && (collectionLookup.error || market.error))
 		return (
 			<RouteState title="Collection unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection)
 		return (
 			<RouteState title="Collection not found">
-				<ErrorPanel message="This collection could not be found on Arweave." />
+				<ErrorPanel message="This collection could not be found on Arweave." onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	const compactTokenCollection =
@@ -8576,6 +8620,7 @@ function SetProfilePictureButton({
 function AssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const market = React.useContext(MarketContext);
+	const collectionLookup = useCollectionLookup(collectionId);
 	const wallet = useWallet();
 	const aoRoutingScope = aoRoutingScopeFromLocation();
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
@@ -9210,7 +9255,7 @@ function AssetView() {
 				onClick: () => window.location.assign(recoveryUrl),
 		  }
 		: undefined;
-	if (!collection && (market.loading || (directAtomicRoute && loading))) {
+	if (!collection && (market.loading || collectionLookup.loading || (directAtomicRoute && loading))) {
 		return (
 			<AssetDetailLoadingShell
 				asset={shellAsset}
@@ -9221,10 +9266,10 @@ function AssetView() {
 			/>
 		);
 	}
-	if (!collection && market.error)
+	if (!collection && (collectionLookup.error || market.error))
 		return (
 			<RouteState title="Asset unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection && directAtomicRoute && error)
@@ -9236,7 +9281,7 @@ function AssetView() {
 	if (!collection)
 		return (
 			<RouteState title="Collection not found">
-				<ErrorPanel message="This collection could not be found on Arweave." />
+				<ErrorPanel message="This collection could not be found on Arweave." onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!membershipVerified)
@@ -9246,12 +9291,16 @@ function AssetView() {
 				collection={collection}
 				collectionId={collectionId}
 				error={
-					market.loading
+					market.loading || collectionLookup.loading
 						? detailError
-						: market.notice ?? 'Current collection membership could not be verified.'
+						: collectionLookup.error ||
+						  market.notice ||
+						  'Current collection membership could not be verified.'
 				}
-				onRetry={market.loading ? load : market.retry}
-				secondaryAction={market.loading && detailError ? stateRecoveryAction : undefined}
+				onRetry={market.loading || collectionLookup.loading ? load : collectionLookup.retry}
+				secondaryAction={
+					(market.loading || collectionLookup.loading) && detailError ? stateRecoveryAction : undefined
+				}
 			/>
 		);
 	const asset = verifiedAsset;

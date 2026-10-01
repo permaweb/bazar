@@ -18,6 +18,7 @@ import {
 	hiddenCollectionAssetIndexComplete,
 	isVisibleAssetId,
 	isVisibleCollectionId,
+	loadBazarCollectionById,
 	loadCollections,
 	loadImageCollection,
 	loadMoreCarrierNames,
@@ -47,6 +48,113 @@ afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	replaceHiddenCollectionAssetIndex({});
+});
+
+describe('direct collection links', () => {
+	const collectionId = 'C'.repeat(43);
+	const initialManifest = 'I'.repeat(43);
+	const currentManifest = 'M'.repeat(43);
+	const assetId = 'A'.repeat(43);
+	const candidate = () => ({
+		cursor: 'collection-cursor',
+		node: {
+			id: collectionId,
+			block: { height: 20, timestamp: 200 },
+			tags: [
+				{ name: 'device', value: 'process@1.0' },
+				{ name: 'execution-device', value: 'carrier@1.0' },
+				{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+				{ name: 'scheduler-mode', value: 'all' },
+				{ name: 'ticker', value: 'COLLECTION' },
+				{ name: 'type', value: 'Process' },
+				{ name: 'initial-value', value: initialManifest },
+			],
+		},
+	});
+	const indexResponse = (edges: unknown[]) =>
+		Response.json({ data: { transactions: { pageInfo: { hasNextPage: false }, edges } } });
+
+	it('loads the current carrier manifest when global discovery omits the collection', async () => {
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollections')) return indexResponse([]);
+			if (query.includes('BazarCollectionById')) {
+				expect(String(input)).toBe('https://arweave.net/graphql');
+				expect(JSON.parse(String(init?.body)).variables).toEqual({ ids: [collectionId] });
+				return indexResponse([candidate()]);
+			}
+			if (String(input).includes(`${collectionId}~process@1.0/compute`)) {
+				return Response.json(
+					{
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						value: currentManifest,
+						balances: { ['O'.repeat(43)]: '1' },
+						orders: {},
+					},
+					{ headers: { 'codec-device': 'json@1.0' } }
+				);
+			}
+			if (String(input).endsWith(`/tx/${currentManifest}/data`)) {
+				return new Response(encodeUtf8Json({ name: 'Shared collection', assets: [assetId] }));
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const aoFetch = Object.assign(fetcher, { peers: ['https://peer.example'] });
+		vi.stubGlobal('window', { aoFetch });
+		connectPermawebOsTestWallet();
+
+		await expect(discoverBazarCollections()).resolves.toEqual([]);
+		await expect(loadBazarCollectionById(collectionId)).resolves.toMatchObject({
+			id: collectionId,
+			name: 'Shared collection',
+			manifestId: currentManifest,
+			indexSource: 'carrier',
+			createdHeight: 20,
+			createdAt: 200_000,
+			assets: [{ id: assetId }],
+		});
+	});
+
+	it('does not request invalid or hidden collection IDs', async () => {
+		const fetcher = vi.fn();
+		vi.stubGlobal('fetch', fetcher);
+		await expect(loadBazarCollectionById('invalid')).resolves.toBeNull();
+		await expect(loadBazarCollectionById(HIDDEN_COLLECTION_IDS[0])).resolves.toBeNull();
+		expect(fetcher).not.toHaveBeenCalled();
+	});
+
+	it('returns no collection only when an exact lookup has no matches', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => indexResponse([]))
+		);
+		await expect(loadBazarCollectionById(collectionId)).resolves.toBeNull();
+	});
+
+	it('rejects a mismatched ID or unsupported collection before reading live state', async () => {
+		const wrongId = candidate();
+		wrongId.node.id = 'D'.repeat(43);
+		const unsupported = candidate();
+		unsupported.node.tags = unsupported.node.tags.filter((tag) => tag.name !== 'scheduler-mode');
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(indexResponse([wrongId]))
+			.mockResolvedValueOnce(indexResponse([unsupported]));
+		vi.stubGlobal('fetch', fetcher);
+		await expect(loadBazarCollectionById(collectionId)).rejects.toThrow('collection-lookup-schema');
+		await expect(loadBazarCollectionById(collectionId)).rejects.toThrow('collection-discovery-schema');
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it('preserves failed requests as retryable errors instead of missing collections', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('unavailable', { status: 503 }))
+		);
+		await expect(loadBazarCollectionById(collectionId)).rejects.toThrow('collection-lookup-503');
+	});
 });
 
 describe('collection index loading', () => {

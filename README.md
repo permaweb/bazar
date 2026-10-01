@@ -53,11 +53,11 @@ starts with an immutable JSON manifest and lets its holder publish a signed
 `set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
 GraphQL and paged in the browser.
 
-All GraphQL searches use `POST <selected-Arweave-gateway>/graphql`, including
+All GraphQL searches use `POST https://arweave.net/graphql`, including
 collection discovery, asset search, wallet candidates, profiles, and activity.
-Local development defaults to `https://arweave.net/graphql`; deployed builds use
-the serving gateway. An explicit `arweave-node` override selects another Arweave
-gateway independently of AO compute peers. There is no Goldsky fallback.
+This endpoint is fixed in local development and deployed builds, independent of
+the serving gateway, `VITE_ARWEAVE_GATEWAY`, `arweave-node`, and AO compute peers.
+There is no Goldsky fallback.
 
 ## Wallet inventory
 
@@ -113,7 +113,7 @@ unavailable, its wallet is not connected in Bazar, or the user disables it. The
 routing toggle retains its preference while disconnected or using another wallet;
 public collections use Bazar's configured peers until PermawebOS connects.
 
-Arweave API requests use the gateway serving the site. During local development
+Arweave content and non-GraphQL API requests use the gateway serving the site. During local development
 they fall back to `https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or append the advanced
 `arweave-node` query parameter when another Arweave gateway is required:
 

@@ -321,7 +321,7 @@ function normalizeAvatar(value: string): string {
 async function fetchAccountProfile(address: string, options: ProfileReadOptions): Promise<AccountProfile | null> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const gateway = options.gateway ?? arweaveGatewayFromLocation();
-	const response = await fetcher(arweaveGraphqlEndpoint(gateway), {
+	const response = await fetcher(arweaveGraphqlEndpoint(), {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
