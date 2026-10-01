@@ -587,6 +587,39 @@ export async function discoverBazarCollections(
 	throw new Error('collection-discovery-pagination-limit');
 }
 
+/** Resolve a shared collection link even when tag-based discovery omits it. */
+export async function loadBazarCollectionById(id: string, signal?: AbortSignal): Promise<Collection | null> {
+	if (!ARWEAVE_ID.test(id) || !isVisibleCollectionId(id)) return null;
+	const { response, body: payload } = await fetchJsonWithDeadline<BazarCollectionPayload>(
+		fetch,
+		arweaveGraphqlEndpoint(),
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				query: `query BazarCollectionById($ids: [ID!]!) {
+					transactions(ids: $ids, first: 1) {
+						pageInfo { hasNextPage }
+						edges { cursor node { id tags { name value } block { height timestamp } } }
+					}
+				}`,
+				variables: { ids: [id] },
+			}),
+			signal,
+		},
+		{ timeoutError: 'collection-lookup-timeout' }
+	);
+	if (!response.ok) throw new Error(`collection-lookup-${response.status}`);
+	if (!payload || payload.errors?.length) throw new Error('collection-lookup-query');
+	const edges = payload.data?.transactions?.edges;
+	if (!Array.isArray(edges) || edges.length > 1) throw new Error('collection-lookup-schema');
+	if (!edges.length) return null;
+	const candidate = parseBazarCollectionCandidate(edges[0]);
+	if (candidate.id !== id) throw new Error('collection-lookup-schema');
+	const collection = await loadDiscoveredImageCollection(candidate, signal);
+	return { ...collection, createdAt: candidate.createdAt, createdHeight: candidate.createdHeight };
+}
+
 function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 	if (
 		!edge ||

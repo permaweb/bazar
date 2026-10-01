@@ -38,7 +38,8 @@ describe('Account-0.3 profiles', () => {
 		expect(profile).toMatchObject({ address, transactionId: profileId, handle: 'captain' });
 		expect(profileDisplayName(profile)).toBe('captain');
 		expect(profileAvatarUrl(profile, 'https://gateway.example')).toBe(`https://gateway.example/${avatarId}`);
-		expect(fetcher.mock.calls[0][0]).toBe('https://gateway.example/graphql');
+		expect(fetcher.mock.calls[0][0]).toBe('https://arweave.net/graphql');
+		expect(fetcher.mock.calls[1][0]).toBe(`https://gateway.example/${profileId}`);
 		const graphql = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
 		expect(graphql.variables).toEqual({ owners: [address] });
 		expect(graphql.query).toContain('Protocol-Name');

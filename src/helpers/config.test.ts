@@ -51,7 +51,11 @@ function connectedScope(aoFetch: PermawebOsAoFetch) {
 }
 
 describe('Arweave gateway routing', () => {
-	afterEach(() => vi.unstubAllGlobals());
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.unstubAllEnvs();
+		vi.resetModules();
+	});
 
 	it('uses the production Bazar fallback peers during local development too', () => {
 		expect(computeGatewayForEnvironment(true)).toBe(PRODUCTION_COMPUTE_GATEWAY);
@@ -174,18 +178,30 @@ describe('Arweave gateway routing', () => {
 		});
 	});
 
-	it('uses the standard GraphQL path on the selected Arweave gateway, independently of compute', () => {
-		expect(arweaveGraphqlEndpoint(location())).toBe('https://bazar.arweave.net/graphql');
-		expect(arweaveGraphqlEndpoint(location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' }))).toBe(
-			'https://gateway.example/graphql'
-		);
-		expect(arweaveGraphqlEndpoint(location({ search: '?node=https%3A%2F%2Fcompute.example' }))).toBe(
-			'https://bazar.arweave.net/graphql'
-		);
-		expect(arweaveGraphqlEndpoint(location({ protocol: 'http:', hostname: '127.0.0.1', port: '4174' }))).toBe(
-			'https://arweave.net/graphql'
-		);
-		expect(arweaveGraphqlEndpoint('https://gateway.example/')).toBe('https://gateway.example/graphql');
+	it.each([
+		['the deployed app', location()],
+		['another serving gateway', location({ hostname: 'gateway.example' })],
+		['local development', location({ protocol: 'http:', hostname: '127.0.0.1', port: '4174' })],
+		['an Arweave query override', location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' })],
+		['an Arweave hash override', location({ hash: '#/discover?arweave-node=https%3A%2F%2Fgateway.example' })],
+		['a compute override', location({ search: '?node=https%3A%2F%2Fcompute.example' })],
+	])('uses arweave.net GraphQL for %s', (_name, selected) => {
+		vi.stubGlobal('window', { location: selected });
+		expect(arweaveGraphqlEndpoint()).toBe('https://arweave.net/graphql');
+	});
+
+	it('uses arweave.net GraphQL without a browser location', () => {
+		vi.stubGlobal('window', undefined);
+		expect(arweaveGraphqlEndpoint()).toBe('https://arweave.net/graphql');
+	});
+
+	it('keeps GraphQL independent of the configured Arweave gateway', async () => {
+		vi.stubEnv('VITE_ARWEAVE_GATEWAY', 'https://gateway.example');
+		vi.resetModules();
+		const config = await import('./config');
+
+		expect(config.arweaveGatewayFromLocation(location())).toBe('https://gateway.example');
+		expect(config.arweaveGraphqlEndpoint()).toBe('https://arweave.net/graphql');
 	});
 
 	it('builds an ordinary Arweave resource URL', () => {
