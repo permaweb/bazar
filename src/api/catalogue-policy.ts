@@ -17,5 +17,6 @@ export const HIDDEN_ASSET_IDS = [
 	'VeS61CgitggqhFBnUwXwyZJHoJQPfYffTk-UWq3VXoY', // MINTG — Mint CLI Eta
 	'YCmcwhXELMf_U5t8-d_hJDEVq6l_y1_2NLGwq7USXNY', // Blacklisted token
 	'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', // PCMKQA1 — PcMK spawn trade transfer
+	'bvusPIjS4eVoVppxMvTKdiEd856VLZWNbff9RGWfe_0', // YELLOW — ao-types tag
 	'cT_QvNJkzjSfkazrgv0HTwsoMVFFchvx0btwR0s5mPI', // MINTH — Mint CLI Theta
 ] as const;
