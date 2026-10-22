@@ -677,9 +677,9 @@ async function parseStateResponse(
 		LINKED_STATE_TABLES.flatMap((key) => {
 			if (key === 'balances' && !includeBalances) return [];
 			if (isRecord(raw[key])) return [];
-			const id = raw[`${key}+link`];
-			if (id === undefined) return [];
-			if (typeof id !== 'string' || !ADDRESS.test(id)) throw new TypeError('invalid-asset-state-link');
+			if (raw[key] === undefined) return [];
+			const id = linkedMessageId(raw[key]);
+			if (!id) throw new TypeError('invalid-asset-state-link');
 			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher)];
 		})
 	);
@@ -714,7 +714,7 @@ async function readLinkedStateTable(
 		const existing = messages.get(messageId);
 		if (existing) return existing;
 		const serialized = key === 'balances';
-		const pending = fetcher(`${base}${messageId}${serialized ? '~message@1.0/serialize~json@1.0' : ''}`, {
+		const pending = fetcher(`${base}${messageId}~message@1.0${serialized ? '/serialize~json@1.0' : ''}`, {
 			...(serialized ? {} : { method: 'HEAD' as const }),
 			signal: requestInit.signal,
 		}).then(async (response) => {
@@ -792,7 +792,6 @@ function strictDirectJsonBalances(message: Record<string, unknown>): Record<stri
 	if (message.device !== 'json@1.0') return null;
 	const balances: Record<string, string> = {};
 	for (const [name, value] of Object.entries(message)) {
-		if (name.endsWith('+link')) return null;
 		if (DIRECT_JSON_BALANCE_METADATA.has(name)) continue;
 		// Legacy token ledgers can contain numeric accounts that are not wallet
 		// addresses (for example deviceAA/deviceBB). Preserve those entries just
@@ -875,6 +874,13 @@ function decodeHttpsigHeaderName(name: string): string {
 	}
 }
 
+function linkedMessageId(value: unknown): string | null {
+	if (typeof value !== 'string' || !value.startsWith('ao:')) return null;
+	const id = value.slice(3);
+	if (!ADDRESS.test(id)) throw new TypeError('invalid-asset-state-link');
+	return id;
+}
+
 async function linkedRecord(
 	message: Record<string, unknown>,
 	read: (id: string) => Promise<Record<string, unknown>>,
@@ -882,25 +888,23 @@ async function linkedRecord(
 ): Promise<Record<string, unknown>> {
 	const entries = await Promise.all(
 		Object.entries(message).flatMap(([name, value]) => {
-			if (ADDRESS.test(name)) return [Promise.resolve<[string, unknown]>([name, value])];
-			if (!name.endsWith('+link') || typeof value !== 'string') return [];
-			const key = name.slice(0, -5);
-			return ADDRESS.test(key) && ADDRESS.test(value)
-				? [
-						read(value).then(async (child): Promise<[string, unknown]> => {
-							const status = child.status;
-							const decoded =
-								typeof child['order-id'] === 'string' && (!status || /^\d{3}$/.test(String(status)))
-									? { ...child, status: await readScalar(value, 'status') }
-									: child;
-							const exactKey =
-								typeof decoded['order-id'] === 'string' && ADDRESS.test(decoded['order-id'])
-									? decoded['order-id']
-									: key;
-							return [exactKey, decoded];
-						}),
-				  ]
-				: [];
+			if (!ADDRESS.test(name)) return [];
+			const id = linkedMessageId(value);
+			if (!id) return [Promise.resolve<[string, unknown]>([name, value])];
+			return [
+				read(id).then(async (child): Promise<[string, unknown]> => {
+					const status = child.status;
+					const decoded =
+						typeof child['order-id'] === 'string' && (!status || /^\d{3}$/.test(String(status)))
+							? { ...child, status: await readScalar(id, 'status') }
+							: child;
+					const exactKey =
+						typeof decoded['order-id'] === 'string' && ADDRESS.test(decoded['order-id'])
+							? decoded['order-id']
+							: name;
+					return [exactKey, decoded];
+				}),
+			];
 		})
 	);
 	return Object.fromEntries(entries);
@@ -919,19 +923,18 @@ async function flattenLinkedTrie(
 		const nodeValue = node['node-value'];
 		if (nodeValue !== undefined && ADDRESS.test(prefix)) balances[prefix] = nodeValue;
 		await Promise.all(
-			Object.entries(node).flatMap(([rawName, value]) => {
-				const linked = rawName.endsWith('+link');
-				const edge = linked ? rawName.slice(0, -5) : rawName;
+			Object.entries(node).flatMap(([edge, value]) => {
 				if (TRIE_RESERVED_KEYS.has(edge) || !/^[A-Za-z0-9_-]+$/.test(edge)) return [];
 				const owner = `${prefix}${edge}`;
-				if (!linked) {
+				const id = linkedMessageId(value);
+				if (!id) {
 					if (ADDRESS.test(owner)) balances[owner] = value;
 					return [];
 				}
-				if (typeof value !== 'string' || !ADDRESS.test(value) || ancestors.has(value)) {
+				if (ancestors.has(id)) {
 					throw new TypeError('invalid-asset-state-trie');
 				}
-				return [read(value).then((child) => visit(child, owner, new Set([...ancestors, value])))];
+				return [read(id).then((child) => visit(child, owner, new Set([...ancestors, id])))];
 			})
 		);
 	};
