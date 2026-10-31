@@ -83,15 +83,15 @@ describe('asset state', () => {
 		const ordersLink = 'O'.repeat(43);
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
-			if (url === `/${ordersLink}`) return jsonResponse({ [orderId]: order(orderId) });
+			if (url === `/${ordersLink}~message@1.0`) return jsonResponse({ [orderId]: order(orderId) });
 			if (!url.includes('~process@1.0/')) throw new Error('unexpected holder request');
 			if (url.endsWith('/balances/device')) throw new Error('unexpected holder probe');
 			return new Response(null, {
 				headers: {
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
-					'balances+link': balancesLink,
-					'orders+link': ordersLink,
+					balances: `ao:${balancesLink}`,
+					orders: `ao:${ordersLink}`,
 				},
 			});
 		});
@@ -107,13 +107,13 @@ describe('asset state', () => {
 			'execution-device': 'token@1.0',
 			'total-supply': '1',
 			orders: {},
-			'balances+link': 'B'.repeat(43),
+			balances: `ao:${'B'.repeat(43)}`,
 		});
 		const fresh = jsonResponse({
 			'execution-device': 'token@1.0',
 			'total-supply': '1',
 			orders: { [orderId]: order(orderId) },
-			'balances+link': 'C'.repeat(43),
+			balances: `ao:${'C'.repeat(43)}`,
 		});
 		window.aoFetch!.cacheMetadata = (response) =>
 			response === stale ? { status: 'stale', age: 60, revalidation: Promise.resolve(fresh) } : undefined;
@@ -154,7 +154,7 @@ describe('asset state', () => {
 					fetch: async () =>
 						new Response(null, {
 							headers: {
-								'balances+link': invalidLink,
+								balances: `ao:${invalidLink}`,
 								'execution-device': 'token@1.0',
 								'total-supply': '6',
 							},
@@ -343,8 +343,8 @@ describe('asset state', () => {
 				return jsonResponse({
 					'execution-device': 'token@1.0',
 					'total-supply': '1000000000000000000',
-					'balances+link': balancesLink,
-					'orders+link': ordersLink,
+					balances: `ao:${balancesLink}`,
+					orders: `ao:${ordersLink}`,
 				});
 			},
 		});
@@ -353,8 +353,8 @@ describe('asset state', () => {
 		expect(result.state.holderBalancesAvailable).toBe(true);
 		expect(result.state.orders[orderId]).toMatchObject({ orderId, creator: owner });
 		expect(result.state.raw).toMatchObject({
-			'balances+link': balancesLink,
-			'orders+link': ordersLink,
+			balances: { [owner]: '999997000000000001' },
+			orders: { [orderId]: order(orderId) },
 		});
 		expect(requests).toHaveLength(4);
 		expect(requests[0].url).toContain('/compute&max-age=60');
@@ -362,7 +362,7 @@ describe('asset state', () => {
 			`/${processId}~process@1.0/compute&max-age=60/balances/device`
 		);
 		expect(requests.map(({ url }) => url)).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
-		expect(requests.map(({ url }) => url)).toContain(`/${ordersLink}`);
+		expect(requests.map(({ url }) => url)).toContain(`/${ordersLink}~message@1.0`);
 		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
@@ -387,7 +387,7 @@ describe('asset state', () => {
 							device: 'process@1.0',
 							'execution-device': 'token@1.0',
 							'total-supply': '1',
-							'balances+link': 'B'.repeat(43),
+							balances: `ao:${'B'.repeat(43)}`,
 							description: header,
 						},
 					});
@@ -410,7 +410,7 @@ describe('asset state', () => {
 				return new Response(null, {
 					headers: {
 						'ao-body-key': 'data',
-						'balances+link': rootId,
+						balances: `ao:${rootId}`,
 						device: 'process@1.0',
 						'execution-device': 'token@1.0',
 						'total-supply': '1000',
@@ -446,7 +446,7 @@ describe('asset state', () => {
 				}
 				return new Response(null, {
 					headers: {
-						'balances+link': balancesLink,
+						balances: `ao:${balancesLink}`,
 						'execution-device': 'token@1.0',
 						'total-supply': '1',
 					},
@@ -479,7 +479,7 @@ describe('asset state', () => {
 				}
 				return new Response(null, {
 					headers: {
-						'balances+link': balancesLink,
+						balances: `ao:${balancesLink}`,
 						'execution-device': 'token@1.0',
 						'total-supply': '221345000001000001',
 					},
@@ -499,7 +499,7 @@ describe('asset state', () => {
 		const balancesLink = 'B'.repeat(43);
 		const childLink = 'C'.repeat(43);
 		const malformedRoots = [
-			{ device: 'json@1.0', [owner]: '1', [`${buyer}+link`]: childLink },
+			{ device: 'json@1.0', [owner]: '1', [buyer]: `ao:${childLink}` },
 			{ device: 'json@1.0', [owner]: { amount: '1' } },
 			{ device: 'json@1.0', [owner]: '1', [buyer]: '-1' },
 			{ device: 'json@1.0', [owner]: '1', description: 'not balance metadata' },
@@ -517,7 +517,7 @@ describe('asset state', () => {
 					if (url.includes(childLink)) return jsonResponse({ 'node-value': '1' });
 					return new Response(null, {
 						headers: {
-							'balances+link': balancesLink,
+							balances: `ao:${balancesLink}`,
 							'execution-device': 'token@1.0',
 							'total-supply': '1',
 						},
@@ -545,7 +545,7 @@ describe('asset state', () => {
 				}
 				return new Response(null, {
 					headers: {
-						'balances+link': balancesLink,
+						balances: `ao:${balancesLink}`,
 						'execution-device': 'token@1.0',
 						'total-supply': '30000000000000000',
 					},
@@ -577,7 +577,7 @@ describe('asset state', () => {
 			}
 			return new Response(null, {
 				headers: {
-					'balances+link': balancesLink,
+					balances: `ao:${balancesLink}`,
 					'execution-device': 'token@1.0',
 					name: 'Legacy routed asset',
 					'total-supply': '1',
@@ -611,7 +611,7 @@ describe('asset state', () => {
 				}
 				return new Response(null, {
 					headers: {
-						'balances+link': balancesLink,
+						balances: `ao:${balancesLink}`,
 						'execution-device': 'token@1.0',
 						'total-supply': '1',
 					},
@@ -638,7 +638,7 @@ describe('asset state', () => {
 			}
 			return new Response(null, {
 				headers: {
-					'balances+link': balancesLink,
+					balances: `ao:${balancesLink}`,
 					'execution-device': 'token@1.0',
 					name: 'Core state survives',
 					'total-supply': '1',
@@ -664,7 +664,7 @@ describe('asset state', () => {
 			}
 			return new Response(null, {
 				headers: {
-					'balances+link': balancesLink,
+					balances: `ao:${balancesLink}`,
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
 				},
@@ -692,7 +692,7 @@ describe('asset state', () => {
 			}
 			return new Response(null, {
 				headers: {
-					'balances+link': balancesLink,
+					balances: `ao:${balancesLink}`,
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
 				},
@@ -718,14 +718,14 @@ describe('asset state', () => {
 				requested.push(url);
 				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse({ device: 'trie@1.0', 'abc+link': childLink });
+					return jsonResponse({ device: 'trie@1.0', abc: `ao:${childLink}` });
 				}
 				if (url.includes(childLink)) {
 					return jsonResponse({ 'node-value': 1 });
 				}
 				return new Response(null, {
 					headers: {
-						'balances+link': balancesLink,
+						balances: `ao:${balancesLink}`,
 						'execution-device': 'token@1.0',
 						'total-supply': '1',
 					},
@@ -750,7 +750,7 @@ describe('asset state', () => {
 				requested.push(url);
 				if (url.endsWith('/balances/device')) return new Response('message@1.0');
 				if (url.endsWith(`${orderLink}~message@1.0/status`)) return new Response('open');
-				if (url.endsWith(orderLink)) {
+				if (url.endsWith(`${orderLink}~message@1.0`)) {
 					return new Response(null, {
 						headers: Object.fromEntries(
 							Object.entries({ ...order(orderId), status: '200' }).map(([name, value]) => [
@@ -760,17 +760,17 @@ describe('asset state', () => {
 						),
 					});
 				}
-				if (url.endsWith(ordersLink)) {
-					return new Response(null, { headers: { [`${orderId.toLowerCase()}+link`]: orderLink } });
+				if (url.endsWith(`${ordersLink}~message@1.0`)) {
+					return new Response(null, { headers: { [orderId.toLowerCase()]: `ao:${orderLink}` } });
 				}
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 					return jsonResponse({ [owner]: '1' });
 				}
 				return new Response(null, {
 					headers: {
-						'balances+link': balancesLink,
+						balances: `ao:${balancesLink}`,
 						'execution-device': 'token@1.0',
-						'orders+link': ordersLink,
+						orders: `ao:${ordersLink}`,
 						'total-supply': '1',
 					},
 				});
@@ -779,7 +779,7 @@ describe('asset state', () => {
 
 		expect(result.state.orders[orderId]).toMatchObject({ orderId, status: 'open' });
 		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
-		expect(requested).toContain(`/${ordersLink}`);
+		expect(requested).toContain(`/${ordersLink}~message@1.0`);
 		expect(requested).toContain(`/${orderLink}~message@1.0/status`);
 		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
 	});

@@ -140,7 +140,7 @@ describe('dispatch plan preflight', () => {
 			if (url.endsWith('/balances/device')) return new Response('trie@1.0');
 			return new Response(null, {
 				headers: {
-					'balances+link': balancesLink,
+					balances: `ao:${balancesLink}`,
 					'execution-device': 'token@1.0',
 					'total-supply': '100',
 				},

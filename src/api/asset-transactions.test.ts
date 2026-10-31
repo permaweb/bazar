@@ -168,7 +168,7 @@ function stateResponse(value: unknown): Response {
 function withoutMountedBalances(raw: Record<string, unknown>, link = 'B'.repeat(43)) {
 	const linked = structuredClone(raw);
 	delete linked.balances;
-	linked['balances+link'] = link;
+	linked.balances = `ao:${link}`;
 	return linked;
 }
 
