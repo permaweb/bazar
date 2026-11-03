@@ -1,4 +1,5 @@
 import { arweaveGatewayFromLocation, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
+import { accountAddress, fromHostAccount, sameAccount, toHostAccount } from 'helpers/host-account';
 
 import { aoCacheMetadata as cacheMetadata, type AoCacheStatus, aoFetch, aoPrimaryPeer } from './ao';
 import { currentArweaveHeight } from './arweave-height';
@@ -65,8 +66,14 @@ export function assetBalanceStateAvailable(state: Pick<AssetState, 'holderBalanc
 
 export function isBalanceIdentity(value: string): boolean {
 	return (
-		ADDRESS.test(value) || LEGACY_BASE64URL_BALANCE_IDENTITY.test(value) || ETHEREUM_BALANCE_IDENTITY.test(value)
+		isArweaveAccount(value) ||
+		LEGACY_BASE64URL_BALANCE_IDENTITY.test(value) ||
+		ETHEREUM_BALANCE_IDENTITY.test(value)
 	);
+}
+
+function isArweaveAccount(value: string): boolean {
+	return ADDRESS.test(value) || fromHostAccount(value) !== null;
 }
 
 export type LicenseProperty = {
@@ -424,8 +431,8 @@ export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
 
 	if (
 		orderId !== id ||
-		!ADDRESS.test(creator) ||
-		!ADDRESS.test(recipient) ||
+		!isArweaveAccount(creator) ||
+		!isArweaveAccount(recipient) ||
 		asking === null ||
 		BigInt(asking) < 1n ||
 		deadline === null ||
@@ -451,7 +458,7 @@ export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
 		createdAt,
 		quantity,
 		status,
-		...(ADDRESS.test(buyer) ? { buyer } : {}),
+		...(isArweaveAccount(buyer) ? { buyer } : {}),
 		...(reservedUntil === null ? {} : { reservedUntil }),
 		...(ADDRESS.test(paymentTx) ? { paymentTx } : {}),
 	};
@@ -459,8 +466,10 @@ export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
 
 export function ownerOfAsset(state: AssetState): string | null {
 	if (state.totalSupply !== '1') return null;
-	const holder = Object.entries(state.balances).find(([, balance]) => balance === '1');
-	if (holder && ADDRESS.test(holder[0])) return holder[0];
+	const holder = Object.keys(state.balances).find(
+		(address) => isArweaveAccount(address) && liquidBalanceOf(state, address) === '1'
+	);
+	if (holder) return holder;
 	const escrowed = Object.values(state.orders).find(
 		(order) => LIVE_ORDER.has(order.status) && order.quantity === '1'
 	);
@@ -473,14 +482,17 @@ export function liveOrderOfAsset(state: AssetState): SwapOrder | null {
 
 /** Units still held directly by an address, excluding quantities in swap escrow. */
 export function liquidBalanceOf(state: AssetState, address: string): string {
-	return ADDRESS.test(address) ? state.balances[address] ?? '0' : '0';
+	const raw = accountAddress(address);
+	if (!ADDRESS.test(raw)) return '0';
+	const host = toHostAccount(raw);
+	return (host ? state.balances[host] : undefined) ?? state.balances[raw] ?? '0';
 }
 
 /** Units currently held in open or reserved swap orders created by an address. */
 export function listedBalanceOf(state: AssetState, address: string): string {
-	if (!ADDRESS.test(address)) return '0';
+	if (!isArweaveAccount(address)) return '0';
 	return Object.values(state.orders)
-		.filter((order) => order.creator === address && LIVE_ORDER.has(order.status))
+		.filter((order) => sameAccount(order.creator, address) && LIVE_ORDER.has(order.status))
 		.reduce((total, order) => total + BigInt(order.quantity), 0n)
 		.toString();
 }
@@ -888,7 +900,7 @@ async function linkedRecord(
 ): Promise<Record<string, unknown>> {
 	const entries = await Promise.all(
 		Object.entries(message).flatMap(([name, value]) => {
-			if (!ADDRESS.test(name)) return [];
+			if (!isArweaveAccount(name)) return [];
 			const id = linkedMessageId(value);
 			if (!id) return [Promise.resolve<[string, unknown]>([name, value])];
 			return [
@@ -921,14 +933,14 @@ async function flattenLinkedTrie(
 		ancestors: ReadonlySet<string>
 	): Promise<void> => {
 		const nodeValue = node['node-value'];
-		if (nodeValue !== undefined && ADDRESS.test(prefix)) balances[prefix] = nodeValue;
+		if (nodeValue !== undefined && isArweaveAccount(prefix)) balances[prefix] = nodeValue;
 		await Promise.all(
 			Object.entries(node).flatMap(([edge, value]) => {
 				if (TRIE_RESERVED_KEYS.has(edge) || !/^[A-Za-z0-9_-]+$/.test(edge)) return [];
 				const owner = `${prefix}${edge}`;
 				const id = linkedMessageId(value);
 				if (!id) {
-					if (ADDRESS.test(owner)) balances[owner] = value;
+					if (isArweaveAccount(owner)) balances[owner] = value;
 					return [];
 				}
 				if (ancestors.has(id)) {

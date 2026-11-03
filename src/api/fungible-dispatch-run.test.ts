@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import vectors from '../helpers/host-account.vectors.json';
+
 const mocks = vi.hoisted(() => ({ waitForAssetState: vi.fn() }));
 
 vi.mock('./asset-marketplace', async (importOriginal) => ({
@@ -69,6 +71,22 @@ beforeEach(() => {
 		if (!(await accept(state))) throw new Error('test-settlement-not-accepted');
 		return { state, provider: 'test', verifiedAt: 1, maxAge: 0 };
 	});
+});
+
+it('settles a raw-recipient dispatch when replay credits its host account', async () => {
+	const recipient = vectors.valid[2];
+	const dispatchPlan = plan([
+		{ address: recipient.raw, quantity: '10', status: 'posted', transactionId: transactionA },
+	]);
+	dispatchPlan.baseline[recipient.raw] = '2';
+	mocks.waitForAssetState.mockImplementationOnce(async (_id, accept) => {
+		const state = { balances: { [recipient.host]: '12' } };
+		expect(await accept(state)).toBe(true);
+		return { state, provider: 'test' };
+	});
+	const result = await runDispatch(dispatchPlan, { client: client(), storage: memoryStorage().storage });
+	expect(result.rows[0].status).toBe('settled');
+	expect(result.rows[0].address).toBe(recipient.raw);
 });
 
 describe('dispatch resume signing boundary', () => {

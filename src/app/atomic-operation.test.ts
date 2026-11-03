@@ -263,6 +263,7 @@ describe('atomic purchase failure trace', () => {
 		const order = {
 			orderId: 'O'.repeat(43),
 			creator: 'S'.repeat(43),
+			recipient: 'S'.repeat(43),
 			asking: '100',
 			quantity: '1',
 			status: 'open',

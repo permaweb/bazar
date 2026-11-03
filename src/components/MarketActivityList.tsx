@@ -10,6 +10,7 @@ import type { AssetSummary, Collection } from 'api/collections';
 import { ArCurrencyText } from 'components/ArCurrencyLabel';
 import { Tooltip } from 'components/Tooltip';
 import { WalletAddress } from 'components/WalletAddress';
+import { sameAccount } from 'helpers/host-account';
 
 const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
 const absoluteTime = new Intl.DateTimeFormat(undefined, {
@@ -289,7 +290,7 @@ export function marketActivityReservation(event: CollectionActivityEvent, state?
 	const effectiveOrder = state.orders[event.orderId];
 	if (
 		order?.status !== 'reserved' ||
-		order.buyer !== event.actor ||
+		!sameAccount(order.buyer, event.actor) ||
 		order.reservedUntil === undefined ||
 		!effectiveOrder ||
 		!['open', 'reserved'].includes(effectiveOrder.status)

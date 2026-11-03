@@ -4,6 +4,8 @@ import { SwapPurchase, TransactionDispatchNotSentError, TransactionDispatchRejec
 
 import Arweave from 'arweave';
 
+import vectors from '../helpers/host-account.vectors.json';
+
 import { ecdsaTransactionSignatureData } from './arweave-transaction-signature';
 import { parseAssetState, type SwapOrder } from './asset-marketplace';
 import {
@@ -2167,6 +2169,37 @@ function swapOrder(orderId: string, quantity: string, asking: string) {
 		status: 'open' as const,
 	};
 }
+
+it('decodes host payment recipients before quoting, signing, storing and recovering native AR targets', async () => {
+	const order = {
+		...swapOrder(transactionId, '1', '1000'),
+		creator: vectors.valid[2].host,
+		recipient: vectors.valid[2].host,
+	};
+	const subject = client(undefined, async (input) => {
+		if (String(input).endsWith('/info')) return Response.json({ height: 1000 });
+		return new Response('1000000000000');
+	});
+	await subject.client.estimatePurchaseCosts(order, processId);
+	expect(subject.requests.some((url) => url.includes('/price/') && url.endsWith(`/${recipient}`))).toBe(true);
+	expect(subject.requests.some((url) => url.includes('uri-did-ar-'))).toBe(false);
+	const adapter = subject.client.purchaseAdapter({
+		processId,
+		order,
+		buyer: seller,
+		startingBalance: '0',
+		network: { tip: () => 1000 } as any,
+	});
+	const payment = await adapter.preparePayment('', new AbortController().signal);
+	const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${payment.id}`)!);
+	expect(stored.transaction.target).toBe(recipient);
+	expect(stored.intent.target).toBe(recipient);
+	expect(stored.expectedSigner).toBe(seller);
+	expect(subject.client.findStoredPayment(order.recipient, processId, order.orderId, order.asking, seller)).toBe(
+		payment.id
+	);
+	expect(subject.client.restore(payment.id, seller, { processId }).id).toBe(payment.id);
+});
 
 function approvalSubject(
 	orders: ReturnType<typeof swapOrder>[],

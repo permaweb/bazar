@@ -90,6 +90,7 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
+import { accountAddress, sameAccount } from 'helpers/host-account';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
@@ -299,19 +300,22 @@ function FungibleHolderIdentity({ address }: { address: string }) {
 export function fungibleHolders(state: AssetState): FungibleHolder[] {
 	const listedByAddress = new Map<string, bigint>();
 	for (const order of liveOrdersOfAsset(state)) {
-		listedByAddress.set(order.creator, (listedByAddress.get(order.creator) ?? 0n) + BigInt(order.quantity));
+		const creator = accountAddress(order.creator);
+		listedByAddress.set(creator, (listedByAddress.get(creator) ?? 0n) + BigInt(order.quantity));
 	}
 
 	const addresses = new Set([
 		...Object.entries(state.balances)
 			.filter(([address, balance]) => isBalanceIdentity(address) && BigInt(balance) > 0n)
-			.map(([address]) => address),
+			.map(([address]) => accountAddress(address)),
 		...listedByAddress.keys(),
 	]);
 
 	return [...addresses]
 		.map((address) => {
-			const liquid = BigInt(state.balances[address] ?? '0');
+			const liquid = BigInt(
+				ADDRESS.test(address) ? liquidBalanceOf(state, address) : state.balances[address] ?? '0'
+			);
 			const listed = listedByAddress.get(address) ?? 0n;
 			return {
 				address,
@@ -320,6 +324,7 @@ export function fungibleHolders(state: AssetState): FungibleHolder[] {
 				total: (liquid + listed).toString(),
 			};
 		})
+		.filter((holder) => BigInt(holder.total) > 0n)
 		.sort((left, right) => {
 			const difference = BigInt(right.total) - BigInt(left.total);
 			if (difference !== 0n) return difference < 0n ? -1 : 1;
@@ -748,7 +753,10 @@ export function FungibleAssetView({
 	const visibleActivityRows = activity.slice(0, activityLimit);
 	const openOrders = React.useMemo(() => orders.filter((order) => order.status === 'open'), [orders]);
 	const purchasableOrders = React.useMemo(
-		() => openOrders.filter((order) => order.creator !== wallet.address && order.recipient !== wallet.address),
+		() =>
+			openOrders.filter(
+				(order) => !sameAccount(order.creator, wallet.address) && !sameAccount(order.recipient, wallet.address)
+			),
 		[openOrders, wallet.address]
 	);
 	const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
@@ -1505,7 +1513,7 @@ export function FungibleAssetView({
 									<span aria-label="Actions" role="columnheader" />
 								</div>
 								{visibleOrderRows.map((order, index) => {
-									const own = order.creator === wallet.address;
+									const own = sameAccount(order.creator, wallet.address);
 									return (
 										<div
 											className="orderbook-row orderbook-depth-row"
@@ -4401,15 +4409,15 @@ export function fungibleBatchRecoveryStatus(
 		const expected = order?.status === 'reserved' ? fill : entry.order;
 		return Boolean(
 			order &&
-				order.creator === expected.creator &&
-				order.recipient === expected.recipient &&
+				sameAccount(order.creator, expected.creator) &&
+				sameAccount(order.recipient, expected.recipient) &&
 				order.asking === expected.asking &&
 				order.deposit === expected.deposit &&
 				order.minimumFee === expected.minimumFee &&
 				order.deadline === expected.deadline &&
 				order.createdAt === expected.createdAt &&
 				order.quantity === expected.quantity &&
-				(order.status === 'open' || (order.status === 'reserved' && order.buyer === buyer))
+				(order.status === 'open' || (order.status === 'reserved' && sameAccount(order.buyer, buyer)))
 		);
 	})
 		? 'resumable'
@@ -4789,10 +4797,10 @@ export function fungibleOperationStateError(
 			return Boolean(
 				current &&
 					current.status === 'open' &&
-					current.creator === expected.creator &&
+					sameAccount(current.creator, expected.creator) &&
 					current.asking === expected.asking &&
 					current.quantity === expected.quantity &&
-					(kind === 'buy' ? current.creator !== owner : current.creator === owner)
+					(kind === 'buy' ? !sameAccount(current.creator, owner) : sameAccount(current.creator, owner))
 			);
 		});
 		return unchanged ? '' : 'market-state-changed';

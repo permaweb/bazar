@@ -13,6 +13,7 @@ import {
 import { createArweaveClient } from 'helpers/arweave';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
 import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
+import { accountAddress, sameAccount } from 'helpers/host-account';
 
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
@@ -21,6 +22,7 @@ import {
 	assetBalanceStateAvailable,
 	type AssetState,
 	assetStateSlot,
+	liquidBalanceOf,
 	type ProcessAssignment,
 	readAssetState,
 	readAssetStateAtSlot,
@@ -325,7 +327,7 @@ export class AssetTransactionClient {
 			processId,
 			(state) => {
 				const order = state.orders[orderId];
-				return Boolean(order && order.status === 'open' && order.creator === creator);
+				return Boolean(order && order.status === 'open' && sameAccount(order.creator, creator));
 			},
 			'asset-order-not-open',
 			signal
@@ -341,7 +343,7 @@ export class AssetTransactionClient {
 		assertTokenQuantity(minimum);
 		await this.#requireProcessState(
 			processId,
-			(state) => BigInt(state.balances[address] ?? '0') >= BigInt(minimum),
+			(state) => BigInt(liquidBalanceOf(state, address)) >= BigInt(minimum),
 			'asset-not-owned',
 			signal
 		);
@@ -383,7 +385,7 @@ export class AssetTransactionClient {
 					return Boolean(
 						order &&
 							order.status === 'open' &&
-							order.creator === expected.seller &&
+							sameAccount(order.creator, expected.seller) &&
 							order.quantity === expected.quantity &&
 							order.asking === expected.asking &&
 							order.minimumFee === minimumFee
@@ -406,7 +408,7 @@ export class AssetTransactionClient {
 			throw new TypeError('invalid-asset-cancellation-verification');
 		}
 		assertTokenQuantity(expected.quantity);
-		if (expected.creator !== seller || expected.status !== 'open') {
+		if (!sameAccount(expected.creator, seller) || expected.status !== 'open') {
 			throw new TypeError('invalid-asset-cancellation-order');
 		}
 		return this.#waitForExactScheduledAction(
@@ -647,7 +649,7 @@ export class AssetTransactionClient {
 				await this.#prepare(
 					{
 						processId: input.processId,
-						target: purchaseOrder.recipient,
+						target: accountAddress(purchaseOrder.recipient),
 						quantity: purchaseOrder.asking,
 						tags: [{ name: 'order-id', value: input.order.orderId }],
 					},
@@ -736,7 +738,7 @@ export class AssetTransactionClient {
 							order &&
 							purchaseOrderMatches(order, purchaseOrder) &&
 							order.status === 'reserved' &&
-							order.buyer === input.buyer
+							sameAccount(order.buyer, input.buyer)
 						) {
 							expired = (order.reservedUntil ?? 0) < tip + this.#reservationInclusionMargin;
 							return true;
@@ -950,6 +952,7 @@ export class AssetTransactionClient {
 		expectedSigner: string,
 		minimumValidHeight?: number
 	): string | null {
+		recipient = accountAddress(recipient);
 		if (
 			![recipient, processId, orderId, expectedSigner].every((value) => ADDRESS.test(value)) ||
 			!/^[1-9]\d*$/.test(asking)
@@ -1003,7 +1006,7 @@ export class AssetTransactionClient {
 	): Promise<PurchaseCostEstimate[]> {
 		if (!orders.length) return [];
 		orders.forEach(assertSafePurchaseOrder);
-		const targets = [...new Set([processId, ...orders.map((order) => order.recipient)])];
+		const targets = [...new Set([processId, ...orders.map((order) => accountAddress(order.recipient))])];
 		const rewards = new Map(
 			await mapBounded(
 				targets,
@@ -1015,7 +1018,7 @@ export class AssetTransactionClient {
 		return orders.map((order) => {
 			const asking = BigInt(order.asking);
 			const registrationFee = BigInt(order.minimumFee);
-			const paymentReward = rewards.get(order.recipient)!;
+			const paymentReward = rewards.get(accountAddress(order.recipient))!;
 			return {
 				asking: asking.toString(),
 				registrationFee: registrationFee.toString(),
@@ -1339,12 +1342,12 @@ export function assertExactPurchaseAssignment(
 	if (
 		!assignment.transactionIds.includes(transactionId) ||
 		assignment.raw.process !== processId ||
-		body?.target !== expected.recipient ||
+		body?.target !== accountAddress(expected.recipient) ||
 		body?.['order-id'] !== expected.orderId ||
 		wireAmount(body?.quantity) !== expected.asking ||
 		commitment?.['commitment-device'] !== 'tx@1.0' ||
-		commitment.committer !== buyer ||
-		commitment['field-target'] !== expected.recipient ||
+		!sameAccount(commitment.committer, buyer) ||
+		commitment['field-target'] !== accountAddress(expected.recipient) ||
 		!['order-id', 'quantity', 'target'].every((field) => committed.has(field))
 	)
 		throw new Error('asset-purchase-proof-mismatch');
@@ -1362,13 +1365,13 @@ export function hasExactPurchaseTransition(
 	if (
 		!beforeOrder ||
 		beforeOrder.status !== 'reserved' ||
-		beforeOrder.buyer !== buyer ||
+		!sameAccount(beforeOrder.buyer, buyer) ||
 		(beforeOrder.reservedUntil ?? -1) < assignment.blockHeight ||
 		!purchaseOrderMatches(beforeOrder, expected) ||
 		after.orders[expected.orderId]
 	)
 		return false;
-	return BigInt(after.balances[buyer] ?? '0') === BigInt(before.balances[buyer] ?? '0') + BigInt(expected.quantity);
+	return BigInt(liquidBalanceOf(after, buyer)) === BigInt(liquidBalanceOf(before, buyer)) + BigInt(expected.quantity);
 }
 
 export function assertExactCancelAssignment(
@@ -1390,7 +1393,7 @@ export function assertExactCancelAssignment(
 		body?.action !== 'cancel-order' ||
 		body?.['order-id'] !== orderId ||
 		commitment?.['commitment-device'] !== 'tx@1.0' ||
-		commitment.committer !== seller ||
+		!sameAccount(commitment.committer, seller) ||
 		commitment['field-target'] !== processId ||
 		!['action', 'order-id', 'target'].every((field) => committed.has(field))
 	)
@@ -1409,12 +1412,14 @@ export function hasExactCancelTransition(
 	if (
 		!beforeOrder ||
 		beforeOrder.status !== 'open' ||
-		beforeOrder.creator !== seller ||
+		!sameAccount(beforeOrder.creator, seller) ||
 		!purchaseOrderMatches(beforeOrder, expected) ||
 		after.orders[expected.orderId]
 	)
 		return false;
-	return BigInt(after.balances[seller] ?? '0') >= BigInt(before.balances[seller] ?? '0') + BigInt(expected.quantity);
+	return (
+		BigInt(liquidBalanceOf(after, seller)) >= BigInt(liquidBalanceOf(before, seller)) + BigInt(expected.quantity)
+	);
 }
 
 export function assertExactFungibleTransferAssignment(
@@ -1442,11 +1447,11 @@ export function assertExactFungibleTransferAssignment(
 		assignment.raw.process !== processId ||
 		body?.target !== processId ||
 		body?.action !== 'transfer' ||
-		body?.recipient !== recipient ||
+		!sameAccount(body?.recipient, recipient) ||
 		!quantityShapeMatches ||
 		wireAmount(originalQuantity) !== quantity ||
 		commitment?.['commitment-device'] !== 'tx@1.0' ||
-		commitment.committer !== sender ||
+		!sameAccount(commitment.committer, sender) ||
 		commitment['field-target'] !== processId ||
 		!['action', 'recipient', 'quantity', 'target'].every((field) => committed.has(field))
 	)
@@ -1479,15 +1484,15 @@ export function hasExactFungibleTransferReceipt(
 		notices.some(
 			(notice) =>
 				notice.action === 'Debit-Notice' &&
-				notice.target === sender &&
-				notice.recipient === recipient &&
+				sameAccount(notice.target, sender) &&
+				sameAccount(notice.recipient, recipient) &&
 				wireAmount(notice.quantity) === quantity
 		) &&
 		notices.some(
 			(notice) =>
 				notice.action === 'Credit-Notice' &&
-				notice.target === recipient &&
-				notice.sender === sender &&
+				sameAccount(notice.target, recipient) &&
+				sameAccount(notice.sender, sender) &&
 				wireAmount(notice.quantity) === quantity
 		)
 	);
@@ -1835,17 +1840,17 @@ function isPurchasableOrderFill(
 		order &&
 			((order.status === 'open' && purchaseOrderMatches(order, source)) ||
 				(order.status === 'reserved' &&
-					order.buyer === buyer &&
+					sameAccount(order.buyer, buyer) &&
 					(order.reservedUntil ?? 0) >= tip + inclusionMargin &&
 					purchaseOrderMatches(order, fill)))
 	);
-	return Boolean(order && claimable && buyer !== order.creator && buyer !== order.recipient);
+	return Boolean(order && claimable && !sameAccount(buyer, order.creator) && !sameAccount(buyer, order.recipient));
 }
 
 function purchaseOrderMatches(order: SwapOrder, expected: SwapOrder): boolean {
 	return (
-		order.creator === expected.creator &&
-		order.recipient === expected.recipient &&
+		sameAccount(order.creator, expected.creator) &&
+		sameAccount(order.recipient, expected.recipient) &&
 		order.asking === expected.asking &&
 		order.deposit === expected.deposit &&
 		order.minimumFee === expected.minimumFee &&
