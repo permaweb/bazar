@@ -1,5 +1,11 @@
 import { arweaveGatewayFromLocation, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
-import { accountAddress, fromHostAccount, sameAccount, toHostAccount } from 'helpers/host-account';
+import {
+	accountAddress,
+	ETHEREUM_HOST_ACCOUNT,
+	fromHostAccount,
+	sameAccount,
+	toHostAccount,
+} from 'helpers/host-account';
 
 import { aoCacheMetadata as cacheMetadata, type AoCacheStatus, aoFetch, aoPrimaryPeer } from './ao';
 import { currentArweaveHeight } from './arweave-height';
@@ -68,7 +74,8 @@ export function isBalanceIdentity(value: string): boolean {
 	return (
 		isArweaveAccount(value) ||
 		LEGACY_BASE64URL_BALANCE_IDENTITY.test(value) ||
-		ETHEREUM_BALANCE_IDENTITY.test(value)
+		ETHEREUM_BALANCE_IDENTITY.test(value) ||
+		ETHEREUM_HOST_ACCOUNT.test(value)
 	);
 }
 

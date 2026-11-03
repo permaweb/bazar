@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { accountAddress, fromHostAccount, sameAccount, toHostAccount } from './host-account';
+import { accountAddress, displayAccount, fromHostAccount, sameAccount, toHostAccount } from './host-account';
 import vectors from './host-account.vectors.json';
 
 describe('HyperBEAM host account encoding', () => {
@@ -43,5 +43,15 @@ describe('HyperBEAM host account encoding', () => {
 		}
 		expect(sameAccount(undefined, undefined)).toBe(false);
 		expect(sameAccount('', '')).toBe(false);
+	});
+
+	it('displays raw addresses for Arweave and Ethereum host accounts', () => {
+		const { raw, host } = vectors.valid[0];
+		const ethereum = '0xbd8ee4a54fa820421b272e0d51c48068aed08c4f';
+		expect(displayAccount(host)).toBe(raw);
+		expect(displayAccount(raw)).toBe(raw);
+		expect(displayAccount(`uri-did-pkh-eip155-1-${ethereum}`)).toBe(ethereum);
+		const nonCanonical = 'uri-did-pkh-eip155-1-0xBD8EE4A54FA820421B272E0D51C48068AED08C4F';
+		expect(displayAccount(nonCanonical)).toBe(nonCanonical);
 	});
 });

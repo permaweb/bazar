@@ -27,8 +27,14 @@ export function fromHostAccount(host: string): string | null {
 	return RAW_ACCOUNT.test(raw) ? raw : null;
 }
 
+export const ETHEREUM_HOST_ACCOUNT = /^uri-did-pkh-eip155-1-(0x[0-9a-f]{40})$/;
+
 export function accountAddress(account: string): string {
 	return fromHostAccount(account) ?? account;
+}
+
+export function displayAccount(account: string): string {
+	return ETHEREUM_HOST_ACCOUNT.exec(account)?.[1] ?? accountAddress(account);
 }
 
 export function sameAccount(left: unknown, right: unknown): boolean {
