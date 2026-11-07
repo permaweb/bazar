@@ -1974,6 +1974,46 @@ describe('live candidate resolution', () => {
 		).resolves.toMatchObject([{ asset: { id: assetA, name: expectedName }, collection: { id: 'images' } }]);
 	});
 
+	it('names an ID-only manifest asset from live state when its media type is only in the HTTP framing', async () => {
+		// ANS-110 assets keep the image as process data, so the node answers with a multipart
+		// body and `content-type` describes that framing rather than the artwork.
+		const image = `https://arweave.net/${assetA}`;
+		const collection: Collection = {
+			id: 'images',
+			name: 'Moments in Costa Rica',
+			description: 'Moments',
+			kind: 'images',
+			assets: [{ id: assetA, name: `${assetA.slice(0, 7)}…${assetA.slice(-6)}`, image }],
+		};
+		const state = parseAssetState({
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			implements: 'ANS-110',
+			ticker: 'ASSET',
+			name: 'Vista Rica',
+			title: 'Vista Rica',
+			'content-type': 'multipart/form-data; boundary="2YAQq6kR1LLvf5TOewW"',
+			'ao-body-key': 'data',
+			'base-collection': 'Moments in Costa Rica',
+			'total-supply': '1',
+			denomination: '0',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+
+		await expect(
+			resolveAssetCandidates(
+				[{ processId: assetA, height: 1, timestamp: 1, sources: ['initial-holder'] }],
+				[collection],
+				{ read: async () => ({ provider: 'https://compute.example', state }) }
+			)
+		).resolves.toMatchObject([{ asset: { id: assetA, name: 'Vista Rica', image }, collection: { id: 'images' } }]);
+	});
+
 	it('shares one concurrency budget across progressively enqueued pages', async () => {
 		const started: string[] = [];
 		const releases: Array<() => void> = [];

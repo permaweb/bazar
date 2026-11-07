@@ -1854,17 +1854,20 @@ function supportedAsset(
 	);
 	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
-		const asset = collectionAsset(indexedCollection, activity.processId, computed.state);
+		const indexed = collectionAsset(indexedCollection, activity.processId, computed.state);
 		const liveAtomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state)?.asset;
+		// The name does not depend on the media type, which a multipart HTTP response can hide,
+		// so an ID-only manifest entry still gets its title when the full live record is rejected.
+		const liveName = liveAtomicAsset?.name || computed.state.name.trim();
+		const asset =
+			indexed && liveName && indexed.name === `${indexed.id.slice(0, 7)}…${indexed.id.slice(-6)}`
+				? { ...indexed, name: liveName }
+				: indexed;
 		return asset
 			? {
 					asset: liveAtomicAsset
 						? {
 								...asset,
-								name:
-									asset.name === `${asset.id.slice(0, 7)}…${asset.id.slice(-6)}`
-										? liveAtomicAsset.name
-										: asset.name,
 								...(liveAtomicAsset.image ? { image: liveAtomicAsset.image } : {}),
 								...(liveAtomicAsset.media ? { media: liveAtomicAsset.media } : {}),
 						  }

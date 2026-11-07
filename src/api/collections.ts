@@ -267,6 +267,8 @@ const IMAGE_COLLECTIONS = [
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
+const ASSET_INDEX_RETRY_DELAYS_MS = [1_000, 3_000] as const;
+const ASSET_INDEX_RETRY_AFTER_MAX_MS = 10_000;
 export const BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS = 300_000;
 export const COLLECTION_AO_READ_TIMEOUT_MS = 45_000;
 
@@ -726,11 +728,78 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 	return assetFromMintState(node.id, tags) ?? undefined;
 }
 
+/**
+ * Arweave GraphQL sheds load with 429 and 5xx responses. A short retry keeps one busy moment
+ * from leaving every card titled with its process ID for the rest of the visit.
+ */
+async function postAtomicAssetIndex<T>(
+	fetcher: typeof fetch,
+	query: string,
+	variables: Record<string, unknown>,
+	signal: AbortSignal | undefined,
+	retryDelaysMs: readonly number[]
+): Promise<{ response: Response; body: T | undefined }> {
+	for (let attempt = 0; ; attempt += 1) {
+		let result: { response: Response; body: T | undefined } | undefined;
+		let failure: unknown;
+		try {
+			result = await fetchJsonWithDeadline<T>(
+				fetcher,
+				arweaveGraphqlEndpoint(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ query, variables }),
+					signal,
+				},
+				{ timeoutError: 'collection-asset-index-timeout' }
+			);
+		} catch (error) {
+			throwIfAborted(signal);
+			failure = error;
+		}
+		const status = result?.response.status ?? 0;
+		const transient = !result || status === 429 || status >= 500;
+		if (!transient || attempt >= retryDelaysMs.length) {
+			if (result) return result;
+			throw failure;
+		}
+		await waitBeforeRetry(retryAfterMs(result?.response) ?? retryDelaysMs[attempt], signal);
+	}
+}
+
+function retryAfterMs(response: Response | undefined): number | undefined {
+	const seconds = Number(response?.headers.get('retry-after') ?? NaN);
+	return Number.isFinite(seconds) && seconds >= 0
+		? Math.min(seconds * 1_000, ASSET_INDEX_RETRY_AFTER_MAX_MS)
+		: undefined;
+}
+
+function waitBeforeRetry(ms: number, signal?: AbortSignal): Promise<void> {
+	throwIfAborted(signal);
+	return new Promise((resolve, reject) => {
+		const onAbort = () => {
+			clearTimeout(timer);
+			try {
+				throwIfAborted(signal);
+			} catch (error) {
+				reject(error);
+			}
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
+}
+
 /** Replace ID-only manifest placeholders with immutable transaction metadata. */
 export async function enrichImageCollectionAssetMetadata(
 	collection: Collection,
 	signal?: AbortSignal,
-	fetcher: typeof fetch = globalThis.fetch.bind(globalThis)
+	fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
+	retryDelaysMs: readonly number[] = ASSET_INDEX_RETRY_DELAYS_MS
 ): Promise<Collection> {
 	if (collection.kind !== 'images') return collection;
 	const unresolved = collection.assets.filter((asset) => asset.name === shortId(asset.id));
@@ -748,39 +817,32 @@ export async function enrichImageCollectionAssetMetadata(
 	};
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		try {
-			const { response, body } = await fetchJsonWithDeadline<AtomicAssetIndexPayload>(
+			const { response, body } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
 				fetcher,
-				arweaveGraphqlEndpoint(),
-				{
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({
-						query: `query BazarAtomicAssetsByCollection($collection: [String!]!, $after: String) {
-							transactions(
-								after: $after
-								first: ${GRAPHQL_PAGE_SIZE}
-								sort: HEIGHT_DESC
-								tags: [
-									{ name: "base-collection", values: $collection }
-									{ name: "device", values: ["process@1.0"] }
-									{ name: "execution-device", values: ["token@1.0"] }
-									{ name: "swap-device", values: ["arweave-swap@1.0"] }
-									{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-									{ name: "hint-ui-style", values: ["non-fungible"] }
-									{ name: "scheduler-mode", values: ["all"] }
-									{ name: "total-supply", values: ["1"] }
-									{ name: "denomination", values: ["0"] }
-									{ name: "ticker", values: ["ASSET"] }
-								]) {
-								pageInfo { hasNextPage }
-								edges { cursor node { id tags { name value } } }
-							}
-						}`,
-						variables: { collection: [collection.name], after: cursor },
-					}),
-					signal,
-				},
-				{ timeoutError: 'collection-asset-index-timeout' }
+				`query BazarAtomicAssetsByCollection($collection: [String!]!, $after: String) {
+					transactions(
+						after: $after
+						first: ${GRAPHQL_PAGE_SIZE}
+						sort: HEIGHT_DESC
+						tags: [
+							{ name: "base-collection", values: $collection }
+							{ name: "device", values: ["process@1.0"] }
+							{ name: "execution-device", values: ["token@1.0"] }
+							{ name: "swap-device", values: ["arweave-swap@1.0"] }
+							{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+							{ name: "hint-ui-style", values: ["non-fungible"] }
+							{ name: "scheduler-mode", values: ["all"] }
+							{ name: "total-supply", values: ["1"] }
+							{ name: "denomination", values: ["0"] }
+							{ name: "ticker", values: ["ASSET"] }
+						]) {
+						pageInfo { hasNextPage }
+						edges { cursor node { id tags { name value } } }
+					}
+				}`,
+				{ collection: [collection.name], after: cursor },
+				signal,
+				retryDelaysMs
 			);
 			const connection: AtomicAssetIndexConnection | undefined = body?.data?.transactions;
 			if (
@@ -812,23 +874,16 @@ export async function enrichImageCollectionAssetMetadata(
 	);
 	await mapConcurrent(batches, 2, async (batch) => {
 		try {
-			const { response, body } = await fetchJsonWithDeadline<any>(
+			const { response, body } = await postAtomicAssetIndex<any>(
 				fetcher,
-				arweaveGraphqlEndpoint(),
-				{
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({
-						query: `query BazarAtomicAssetsByIds($ids: [ID!]!) {
-							transactions(ids: $ids, first: 9) {
-								edges { node { id tags { name value } } }
-							}
-						}`,
-						variables: { ids: batch.map((asset) => asset.id) },
-					}),
-					signal,
-				},
-				{ timeoutError: 'collection-asset-index-timeout' }
+				`query BazarAtomicAssetsByIds($ids: [ID!]!) {
+					transactions(ids: $ids, first: 9) {
+						edges { node { id tags { name value } } }
+					}
+				}`,
+				{ ids: batch.map((asset) => asset.id) },
+				signal,
+				retryDelaysMs
 			);
 			if (response.ok && !body?.errors?.length && Array.isArray(body?.data?.transactions?.edges)) {
 				indexEdges(body.data.transactions.edges);
