@@ -286,7 +286,7 @@ export async function createDispatchPlan(
 		throw new Error('dispatch-insufficient-token-balance');
 	}
 	const baseline: Record<string, string> = {};
-	for (const row of rows) baseline[row.address] = state.balances[row.address] ?? '0';
+	for (const row of rows) baseline[row.address] = liquidBalanceOf(state, row.address);
 	return {
 		processId,
 		sender,
@@ -398,7 +398,7 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 				for (const row of batch) {
 					if (row.status !== 'posted') continue;
 					const target = BigInt(plan.baseline[row.address] ?? '0') + BigInt(row.quantity);
-					if (BigInt(state.balances[row.address] ?? '0') >= target) {
+					if (BigInt(liquidBalanceOf(state, row.address)) >= target) {
 						row.status = 'settled';
 						if (row.transactionId) storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${row.transactionId}`);
 						changed = true;

@@ -1,0 +1,323 @@
+{
+	"source": "hb_committer:encode/2, decode/1 and address/1; HyperBEAM 6f759d3b6",
+	"valid": [
+		{
+			"raw": "kY9RAgTJEImkBpiKgVeXrsGV02T-D4dI3ZvSpnn7HSk",
+			"host": "uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegg"
+		},
+		{
+			"raw": "1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw",
+			"host": "uri-did-ar-1utlv5gvfq5m46tq-dtejl7riy7vcaomxq7fbf82yzw5okz9n67k"
+		},
+		{
+			"raw": "BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc",
+			"host": "uri-did-ar-blyliozptmb-olb8wycvk-ynhiu1szmkpqswx4konwckuob4lihs"
+		},
+		{
+			"raw": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+			"host": "uri-did-ar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaoxyydezg8"
+		},
+		{
+			"raw": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaao",
+			"host": "uri-did-ar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaao000000000"
+		},
+		{
+			"raw": "__________________________________________Y",
+			"host": "uri-did-ar-------------------------------------------yoxyydezg8"
+		},
+		{
+			"raw": "------------------------------------------8",
+			"host": "uri-did-ar-------------------------------------------8000000000"
+		},
+		{
+			"raw": "0123456789012345678901234567890123456789010",
+			"host": "uri-did-ar-0123456789012345678901234567890123456789010000000000"
+		},
+		{
+			"raw": "000000000000000000000000000000000000000000A",
+			"host": "uri-did-ar-000000000000000000000000000000000000000000a000000008"
+		},
+		{
+			"raw": "A000000000000000000000000000000000000000000",
+			"host": "uri-did-ar-a000000000000000000000000000000000000000000cgzh6phq8"
+		},
+		{
+			"raw": "3z9hmASpL9tAVxktxD3XSOp3itxSvEmM6AUkwBS4ERk",
+			"host": "uri-did-ar-3z9hmaspl9tavxktxd3xsop3itxsvemm6aukwbs4erk0n4tfhbxs"
+		},
+		{
+			"raw": "tAcRqIxwOXVvuKc4J-q-LA_loDRsp-ChBK3A_HZPUo0",
+			"host": "uri-did-ar-tacrqixwoxvvukc4j-q-la-lodrsp-chbk3a-hzpuo089s0siew0"
+		},
+		{
+			"raw": "Qz6_W8A9_6OFNmcyB6ISgWEs71-qm8ek1bm-L9sSzxo",
+			"host": "uri-did-ar-qz6-w8a9-6ofnmcyb6isgwes71-qm8ek1bm-l9sszxof2psnsuv4"
+		},
+		{
+			"raw": "iBhdEo2ZIuDmvNMrB7bH8g8nlo6rRHodjRzfJQ9599M",
+			"host": "uri-did-ar-ibhdeo2ziudmvnmrb7bh8g8nlo6rrhodjrzfjq9599m76ce64buw"
+		},
+		{
+			"raw": "G8XQ498OoSxNAHhmjRSST5UQa74XPhlt5Q_hOpALCTc",
+			"host": "uri-did-ar-g8xq498oosxnahhmjrsst5uqa74xphlt5q-hopalctcha4ocwwz4"
+		},
+		{
+			"raw": "Ih-K8jcqlQZPLvfXcSIWqatG5--YSC_SN-EG-D6qdWk",
+			"host": "uri-did-ar-ih-k8jcqlqzplvfxcsiwqatg5--ysc-sn-eg-d6qdwke2rtd7028"
+		},
+		{
+			"raw": "slNmj2tZ8f8oUigxkx5NPFo95TOWWvIulhc1Q3wBcss",
+			"host": "uri-did-ar-slnmj2tz8f8ouigxkx5npfo95towwviulhc1q3wbcss37v5b808w"
+		},
+		{
+			"raw": "FWGt4GIcWs9Et4BSH5Wh4LGbTlAylFuGDEAy_Cijojs",
+			"host": "uri-did-ar-fwgt4gicws9et4bsh5wh4lgbtlaylfugdeay-cijojsmgskw143k"
+		},
+		{
+			"raw": "F-twA0tbcQklIdGExeewadR95lflGu8r4RoAwRUDaUM",
+			"host": "uri-did-ar-f-twa0tbcqklidgexeewadr95lflgu8r4roawrudaumda2ozbc9k"
+		},
+		{
+			"raw": "Oyimw3ZsYpWtrZdtNJcF70k5P7_evk-stYYtLN-ihdM",
+			"host": "uri-did-ar-oyimw3zsypwtrzdtnjcf70k5p7-evk-styytln-ihdmcq9bvpzig"
+		},
+		{
+			"raw": "4IShBae31Zm4NG08ulrFG3VtfinH73f9nv8x_erjE4k",
+			"host": "uri-did-ar-4ishbae31zm4ng08ulrfg3vtfinh73f9nv8x-erje4ka5ud3x8v4"
+		},
+		{
+			"raw": "OQs2oJUCsF1PjCeuomNsa3_QWyfXQu0yB0_-ofiI6-Q",
+			"host": "uri-did-ar-oqs2ojucsf1pjceuomnsa3-qwyfxqu0yb0--ofii6-qjf6nqs0nc"
+		},
+		{
+			"raw": "wizu5muKsQRIPIMFMXOzP5kt1Py0VyhMYO-daZoccFk",
+			"host": "uri-did-ar-wizu5muksqripimfmxozp5kt1py0vyhmyo-dazoccfk059dbllw0"
+		},
+		{
+			"raw": "gJL-AbnOMaSc44D8L-Hua2t9XBXF8ey2rZjGDEJzpDU",
+			"host": "uri-did-ar-gjl-abnomasc44d8l-hua2t9xbxf8ey2rzjgdejzpduaajblv448"
+		},
+		{
+			"raw": "f96O6_OI_P9meom-YEMMxuGYsaeMtgOjnN0JiFozNuM",
+			"host": "uri-did-ar-f96o6-oi-p9meom-yemmxugysaemtgojnn0jifoznum2bbju767c"
+		},
+		{
+			"raw": "kka-Hpup9d5br3ZqJW63JemnVR-5PX-qeTyTjg9B3jU",
+			"host": "uri-did-ar-kka-hpup9d5br3zqjw63jemnvr-5px-qetytjg9b3ju0s3l9nkg8"
+		},
+		{
+			"raw": "UIXLmdvh43TM0yHltYGC0sQs9IQMaM-rF7BhioKF59Y",
+			"host": "uri-did-ar-uixlmdvh43tm0yhltygc0sqs9iqmam-rf7bhiokf59ynejejsvd4"
+		},
+		{
+			"raw": "jgDRwMj_6UVA5TTiVtRYm-Pjhl3AVZpzJpeu84o2ToM",
+			"host": "uri-did-ar-jgdrwmj-6uva5ttivtrym-pjhl3avzpzjpeu84o2tom57j8lnodk"
+		},
+		{
+			"raw": "6fNEDlUYg5qmANsHtUAPjsKHzgMh-tYCr9EDzkR6HJg",
+			"host": "uri-did-ar-6fnedluyg5qmanshtuapjskhzgmh-tycr9edzkr6hjg5r4zjg1ww"
+		},
+		{
+			"raw": "FCNv5CH-nduDd6GbYM5x3WVXBLzvwiXJKH-xESe6ZWk",
+			"host": "uri-did-ar-fcnv5ch-ndudd6gbym5x3wvxblzvwixjkh-xese6zwkmf10fuhio"
+		},
+		{
+			"raw": "p5Ec39wo5qGGfjWbpCYIGqz6aS_es-l40qaN2ST6jD4",
+			"host": "uri-did-ar-p5ec39wo5qggfjwbpcyigqz6as-es-l40qan2st6jd434xrj6mc0"
+		},
+		{
+			"raw": "IVSMZrRDR9h357QFolASHNqHzUlLEi8DJPffO2zXX4Y",
+			"host": "uri-did-ar-ivsmzrrdr9h357qfolashnqhzullei8djpffo2zxx4yoi8b00k88"
+		},
+		{
+			"raw": "vC2d3JhX5TWYZ32-qColg4eeic5sAyx32CUYe_PxqUM",
+			"host": "uri-did-ar-vc2d3jhx5twyz32-qcolg4eeic5sayx32cuye-pxqum6rofuofbs"
+		},
+		{
+			"raw": "WOxFLt5yeZuvIWZO3JUyl7WSrZ6V8jgXEFk616MvMe8",
+			"host": "uri-did-ar-woxflt5yezuviwzo3juyl7wsrz6v8jgxefk616mvme8l2r1029i8"
+		},
+		{
+			"raw": "eaiB-ZpjbQrXXxb1NmiYK1n4u5bD-7RJFV_noI26nLE",
+			"host": "uri-did-ar-eaib-zpjbqrxxxb1nmiyk1n4u5bd-7rjfv-noi26nle1zd8sezvc"
+		},
+		{
+			"raw": "KCoWPz5vUqs1z4OAeTabzjPPWh8VHSgihGCVptB-GuI",
+			"host": "uri-did-ar-kcowpz5vuqs1z4oaetabzjppwh8vhsgihgcvptb-guil3gm7cgbs"
+		},
+		{
+			"raw": "wcPI_fIuOkre95bI_a9znX07Ii-ZWJHrj0lcpx-5Mqg",
+			"host": "uri-did-ar-wcpi-fiuokre95bi-a9znx07ii-zwjhrj0lcpx-5mqg5p7yo5j4w"
+		},
+		{
+			"raw": "aI6UpR7lCKledhKUr7emAEtDLBXZiQyA3fI73oyqTCY",
+			"host": "uri-did-ar-ai6upr7lckledhkur7emaetdlbxziqya3fi73oyqtcy89bhvmeyg"
+		},
+		{
+			"raw": "wAavNeO0ygIquYZZOhSLTxlvGGFo7pZgTuqn4zjmasE",
+			"host": "uri-did-ar-waavneo0ygiquyzzohsltxlvggfo7pzgtuqn4zjmase7843qz9c8"
+		},
+		{
+			"raw": "wan66QgAjTTzibHboqGo6DAfepQkEu9uYpnJ4n6J36o",
+			"host": "uri-did-ar-wan66qgajttzibhboqgo6dafepqkeu9uypnj4n6j36o0ivsslagw"
+		},
+		{
+			"raw": "VgIxaJcTpZM7bIrD5rLyQ3MOSeHGsMYQxB6Oja0mBEw",
+			"host": "uri-did-ar-vgixajctpzm7bird5rlyq3mosehgsmyqxb6oja0mbewg45mxotgw"
+		},
+		{
+			"raw": "_lsN7KAGF04hUQiOGn1g_pGBlGfbXXCa5aGcAaPNPj8",
+			"host": "uri-did-ar--lsn7kagf04huqiogn1g-pgblgfbxxca5agcaapnpj8erlo6lja8"
+		},
+		{
+			"raw": "LeRGIcdu3y3rvC32LMtSxQNrGRnco68MCohsxI2_rro",
+			"host": "uri-did-ar-lergicdu3y3rvc32lmtsxqnrgrnco68mcohsxi2-rrohxhdvsfnk"
+		},
+		{
+			"raw": "g0QGNu_3suwPeO97jkgKAz6K62fm7LZXzpvN_bIap0Q",
+			"host": "uri-did-ar-g0qgnu-3suwpeo97jkgkaz6k62fm7lzxzpvn-biap0q5npzm5wnc"
+		},
+		{
+			"raw": "6q8YBfLsahju5aeQn3mQhlE0GWXZ8LnejUXZJi5XNa4",
+			"host": "uri-did-ar-6q8ybflsahju5aeqn3mqhle0gwxz8lnejuxzji5xna42j7qi1c9s"
+		},
+		{
+			"raw": "aHD4b2Vg3VsNCkfQronfapa2pHpiWJQAYNdf91ljQVg",
+			"host": "uri-did-ar-ahd4b2vg3vsnckfqronfapa2phpiwjqayndf91ljqvg9kz2azdbk"
+		},
+		{
+			"raw": "6ILdaiR_StofcA8ZGL0jt8cwrWKvFfXOyN6XbLrQlpE",
+			"host": "uri-did-ar-6ildair-stofca8zgl0jt8cwrwkvffxoyn6xblrqlpe9p3ey5oi0"
+		},
+		{
+			"raw": "Ub4EWNILHOL_Uxbn5HMQnCb12LRXA37fjEUp9v-Cvds",
+			"host": "uri-did-ar-ub4ewnilhol-uxbn5hmqncb12lrxa37fjeup9v-cvdsfl4mi094w"
+		},
+		{
+			"raw": "D2XdLXbvtgL5VUUUiSdR1c8zalbDiIqoyxIulwAWlJo",
+			"host": "uri-did-ar-d2xdlxbvtgl5vuuuisdr1c8zalbdiiqoyxiulwawljogrz0dxln4"
+		},
+		{
+			"raw": "uQmP54UXrcIyGPjNfYBPVcl3-yIYWk2OdSq36C5cHYk",
+			"host": "uri-did-ar-uqmp54uxrciygpjnfybpvcl3-yiywk2odsq36c5chyk83rfm20j4"
+		},
+		{
+			"raw": "lVNJgUINmh5dPNO1Z8biH5IHQgh-z0TBh-B3zchJesI",
+			"host": "uri-did-ar-lvnjguinmh5dpno1z8bih5ihqgh-z0tbh-b3zchjesiblm5o40nc"
+		},
+		{
+			"raw": "yNJhFu0w-YFqBf3wYbJTUUVHLziNmBTpbzPwg2nby9A",
+			"host": "uri-did-ar-ynjhfu0w-yfqbf3wybjtuuvhlzinmbtpbzpwg2nby9aa68ht1yx4"
+		},
+		{
+			"raw": "rjyLjZmjlUL3ivg9u7Qsgc2UGZ7BtfYKCAEGPpWEJXA",
+			"host": "uri-did-ar-rjyljzmjlul3ivg9u7qsgc2ugz7btfykcaegppwejxa1zgyncn3s"
+		},
+		{
+			"raw": "1ZboBtNL19QwS58A7DQPAvqQxPqhf-OXKcsVx24N538",
+			"host": "uri-did-ar-1zbobtnl19qws58a7dqpavqqxpqhf-oxkcsvx24n5387bn8tvdq8"
+		},
+		{
+			"raw": "VS19Zyxbu8z7IQpCXjah1lvGY9PTw5URTI68nHzyg5Q",
+			"host": "uri-did-ar-vs19zyxbu8z7iqpcxjah1lvgy9ptw5urti68nhzyg5qjhq3g8jk8"
+		},
+		{
+			"raw": "WgX4fTKagyHyAG9POxG4EK7dzSHLODth3wOCQHTq_8k",
+			"host": "uri-did-ar-wgx4ftkagyhyag9poxg4ek7dzshlodth3wocqhtq-8kg6wjevq1s"
+		},
+		{
+			"raw": "2s7uiZzbaHEbKxaxcI1oSxkwYhY6LvjKgOWj8AIhKCI",
+			"host": "uri-did-ar-2s7uizzbahebkxaxci1osxkwyhy6lvjkgowj8aihkci0fgjr7ni0"
+		},
+		{
+			"raw": "aw5L-o3JsZzMEhsr0NItpymNek1ytLod8bvsXVaACmY",
+			"host": "uri-did-ar-aw5l-o3jszzmehsr0nitpymnek1ytlod8bvsxvaacmy1oub1ahd4"
+		},
+		{
+			"raw": "LBn8Mov8yrkj7gktkSOpzMn7N7vw0sZdL-ErZoT_SFc",
+			"host": "uri-did-ar-lbn8mov8yrkj7gktksopzmn7n7vw0szdl-erzot-sfcjhjmkq2gg"
+		},
+		{
+			"raw": "zHTAw1P-LAB6_43H21VmOPUiYP6h3AvOLwQALbatkM4",
+			"host": "uri-did-ar-zhtaw1p-lab6-43h21vmopuiyp6h3avolwqalbatkm4b72maeads"
+		},
+		{
+			"raw": "H8JEryuW0BaaF34lWa8p4EhHROS4UB0QRNdsn3s88wc",
+			"host": "uri-did-ar-h8jeryuw0baaf34lwa8p4ehhros4ub0qrndsn3s88wch9utyejgg"
+		},
+		{
+			"raw": "jvOw18RHbiwKkczFhndAoFSTE7WFNFwdElh8ou0E6fU",
+			"host": "uri-did-ar-jvow18rhbiwkkczfhndaofste7wfnfwdelh8ou0e6fu3f04rb03s"
+		},
+		{
+			"raw": "Rs7L6qfeaGaRCkhW7x9zePndnfpphXhjfOTssz5_e6w",
+			"host": "uri-did-ar-rs7l6qfeagarckhw7x9zepndnfpphxhjfotssz5-e6we2btju14w"
+		},
+		{
+			"raw": "DSHKp9DG8f9pJgOr7EMVxWB5KSOmz6VynvjdbYIg4KE",
+			"host": "uri-did-ar-dshkp9dg8f9pjgor7emvxwb5ksomz6vynvjdbyig4kenoiihcv4o"
+		},
+		{
+			"raw": "DMakzMqYpjYNQv3oN4BRftv8MrMAzTug4KVFOoFmaXo",
+			"host": "uri-did-ar-dmakzmqypjynqv3on4brftv8mrmaztug4kvfoofmaxoj7skcy2s0"
+		},
+		{
+			"raw": "aDurwMQgyAp2JJDU1zsnGHarB_EcgFU_bpEl-4LHNPA",
+			"host": "uri-did-ar-adurwmqgyap2jjdu1zsngharb-ecgfu-bpel-4lhnpa6ume7sum0"
+		},
+		{
+			"raw": "-N5JTWIPhbHP7QArsepPv5P36qS0uKXH8UWzyrBBwNM",
+			"host": "uri-did-ar--n5jtwiphbhp7qarseppv5p36qs0ukxh8uwzyrbbwnm99z036cpk"
+		},
+		{
+			"raw": "dc4fTmwFLqb-wIkEKpaSj9qE6pacmbNfaJShgZImrF4",
+			"host": "uri-did-ar-dc4ftmwflqb-wikekpasj9qe6pacmbnfajshgzimrf40xedmzjww"
+		},
+		{
+			"raw": "5pao7Gt_KUqlYFkSVmSTHxKZeYe7Uv_-_CCdNUkq3Dw",
+			"host": "uri-did-ar-5pao7gt-kuqlyfksvmsthxkzeye7uv---ccdnukq3dw0kcv7rp5c"
+		},
+		{
+			"raw": "rw_1Q5ljdnRXcJ5jMT2iM4KmKSGQ4t4bqcbIfcahkn4",
+			"host": "uri-did-ar-rw-1q5ljdnrxcj5jmt2im4kmksgq4t4bqcbifcahkn43x14lkz5s"
+		},
+		{
+			"raw": "QIJ2MHa9ruOoXlLrWJMWnUXQVzl2FiUeDmmeZAMjjmY",
+			"host": "uri-did-ar-qij2mha9ruooxllrwjmwnuxqvzl2fiuedmmezamjjmyn0elt2wso"
+		},
+		{
+			"raw": "FbFlUQ91FEvoYzM2qXrGLGZNXENtspf8E_tNOsFH1_0",
+			"host": "uri-did-ar-fbfluq91fevoyzm2qxrglgznxentspf8e-tnosfh1-0gu3hxi3f4"
+		},
+		{
+			"raw": "MbZ9unz9bi11QPnJbZCkW48tRJVmIHIwJNThvurNRgI",
+			"host": "uri-did-ar-mbz9unz9bi11qpnjbzckw48trjvmihiwjnthvurnrgifleym1dgo"
+		},
+		{
+			"raw": "2Z5YQ1JD2f75yIJzuNVTtPuk0Lr4AJ0p6udPqZ4Nn1c",
+			"host": "uri-did-ar-2z5yq1jd2f75yijzunvttpuk0lr4aj0p6udpqz4nn1c8vaem2l34"
+		}
+	],
+	"invalidHostAccounts": [
+		"",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegg\n",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegg?hint=x",
+		" uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegg",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegg ",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2keg",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegg0",
+		"URI-DID-AR-KY9RAGTJEIMKBPIKGVEXRSGV02T-D4DI3ZVSPNN7HSK8XYJ2KEGG",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8XYJ2KEGG",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk-xyj2kegg",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hskc27ed8rw2",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegl",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegn",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hskoxyydezgg",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsl8xyj2kegg",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegi",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegk",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegm",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegh",
+		"uri-did-ar-ky9ragtjeimkbpikgvexrsgv02t-d4di3zvspnn7hsk8xyj2kegj"
+	]
+}

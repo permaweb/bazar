@@ -196,6 +196,7 @@ describe('fungible holders', () => {
 		const liquidOnly = 'c'.repeat(43);
 		const ethereumHolder = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
 		const legacyHolder = '_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs';
+		const ethereumHostHolder = 'uri-did-pkh-eip155-1-0x1234567890abcdef1234567890abcdef12345678';
 		const open = purchaseOrder('d'.repeat(43), listedOnly, '300', '1');
 		const reserved = {
 			...purchaseOrder('e'.repeat(43), listedOnly, '200', '1'),
@@ -217,6 +218,7 @@ describe('fungible holders', () => {
 				[listedOnly]: '0',
 				[liquidOnly]: '500',
 				[legacyHolder]: '100',
+				[ethereumHostHolder]: '50',
 				invalid: '1000',
 			},
 			orders: {
@@ -235,6 +237,7 @@ describe('fungible holders', () => {
 			{ address: listedOnly, liquid: '0', listed: '500', total: '500' },
 			{ address: liquidOnly, liquid: '500', listed: '0', total: '500' },
 			{ address: legacyHolder, liquid: '100', listed: '0', total: '100' },
+			{ address: ethereumHostHolder, liquid: '50', listed: '0', total: '50' },
 		]);
 	});
 

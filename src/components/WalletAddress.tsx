@@ -1,12 +1,14 @@
 import React from 'react';
 import { Check, CircleAlert, Copy } from 'lucide-react';
 
+import { displayAccount } from 'helpers/host-account';
+
 import { Button } from './Button';
 import { ProfileIdentityForAddress } from './ProfileIdentity';
 import { Tooltip } from './Tooltip';
 
 export function WalletAddress({
-	address,
+	address: account,
 	className = '',
 	full = false,
 	label = 'wallet',
@@ -18,6 +20,7 @@ export function WalletAddress({
 	label?: string;
 	tooltipEscapesOverflow?: boolean;
 }) {
+	const address = displayAccount(account);
 	const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
 	const resetTimer = React.useRef<number | null>(null);
 	React.useEffect(
