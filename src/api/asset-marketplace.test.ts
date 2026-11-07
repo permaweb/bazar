@@ -369,6 +369,64 @@ describe('asset state', () => {
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
 	});
 
+	it('resolves a linked carrier value from the serving node', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const valueLink = 'V'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const requests: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				requests.push(url);
+				if (url.endsWith('/balances/device')) return new Response('message@1.0');
+				if (url.includes(balancesLink)) return jsonResponse({ device: 'json@1.0', [owner]: '1' });
+				if (url.includes(valueLink)) return jsonResponse({ device: 'json@1.0', target: manifestId });
+				return jsonResponse({
+					'execution-device': 'carrier@1.0',
+					'total-supply': '1',
+					balances: `ao:${balancesLink}`,
+					value: `ao:${valueLink}`,
+				});
+			},
+		});
+
+		expect(result.state.value).toMatchObject({ target: manifestId });
+		expect(requests).toContain(`/${valueLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('fails closed when a linked carrier value cannot be read', async () => {
+		const valueLink = 'V'.repeat(43);
+		await expect(
+			readAssetState(processId, {
+				provider: 'https://compute.example',
+				maxAttempts: 1,
+				fetch: async (input) => {
+					if (String(input).includes(valueLink)) return new Response('unavailable', { status: 502 });
+					return jsonResponse({
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						balances: {},
+						value: `ao:${valueLink}`,
+					});
+				},
+			})
+		).rejects.toThrow('HTTP 502');
+		await expect(
+			readAssetState(processId, {
+				provider: 'https://compute.example',
+				maxAttempts: 1,
+				fetch: async () =>
+					jsonResponse({
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						balances: {},
+						value: 'ao:not-a-message-id',
+					}),
+			})
+		).rejects.toThrow('invalid-asset-state-link');
+	});
+
 	it.each(['A work — kept forever', 'Café · 東京', '🎨 Permanent art', 'Legacy café'])(
 		'decodes display metadata from HTTP header octets: %s',
 		async (description) => {
