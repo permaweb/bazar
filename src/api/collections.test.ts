@@ -355,12 +355,70 @@ describe('collection index loading', () => {
 				return { id, name: `${id.slice(0, 7)}…${id.slice(-6)}` };
 			}),
 		};
-		const fetcher = vi.fn(async () => new Response('unavailable', { status: 503 }));
+		const fetcher = vi.fn(
+			async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('unavailable', { status: 503 })
+		);
 
 		await expect(
-			enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch)
+			enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch, [0, 0])
 		).resolves.toEqual(collection);
-		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(
+			fetcher.mock.calls.every(([, init]) =>
+				JSON.parse(String(init?.body)).query.includes('BazarAtomicAssetsByCollection')
+			)
+		).toBe(true);
+	});
+
+	it('retries a rate-limited collection index instead of leaving ID placeholders as titles', async () => {
+		const owner = 'O'.repeat(43);
+		const id = 'A'.repeat(43);
+		const collection: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Moments in Costa Rica',
+			description: '',
+			kind: 'images',
+			assets: [{ id, name: `${id.slice(0, 7)}…${id.slice(-6)}` }],
+		};
+		const responses = [
+			() => new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } }),
+			() =>
+				Response.json({
+					data: {
+						transactions: {
+							pageInfo: { hasNextPage: false },
+							edges: [
+								{
+									cursor: '0',
+									node: {
+										id,
+										tags: [
+											{ name: 'Device', value: 'process@1.0' },
+											{ name: 'Execution-Device', value: 'token@1.0' },
+											{ name: 'Swap-Device', value: 'arweave-swap@1.0' },
+											{ name: 'Scheduler-Device', value: 'arweave-scheduler@1.0' },
+											{ name: 'Scheduler-Mode', value: 'all' },
+											{ name: 'Initial-Holder', value: owner },
+											{ name: 'Total-Supply', value: '1' },
+											{ name: 'Denomination', value: '0' },
+											{ name: 'Ticker', value: 'ASSET' },
+											{ name: 'Name', value: 'Vista Rica' },
+											{ name: 'Hint-UI-Style', value: 'non-fungible' },
+											{ name: 'Content-Type', value: 'image/jpeg' },
+										],
+									},
+								},
+							],
+						},
+					},
+				}),
+		];
+		const fetcher = vi.fn(async () => responses.shift()!());
+
+		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch, [0]);
+
+		expect(enriched.assets[0].name).toBe('Vista Rica');
+		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 
 	it('discovers scheduled carrier collections by the COLLECTION ticker without an app tag', async () => {
