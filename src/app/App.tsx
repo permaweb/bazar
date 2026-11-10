@@ -202,6 +202,7 @@ import {
 	prefersPermawebOsAo,
 	usesPermawebOsAo,
 } from 'helpers/config';
+import { sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
@@ -8575,7 +8576,7 @@ function SetProfilePictureButton({
 			if (
 				current.state.totalSupply !== '1' ||
 				current.state.denomination > 0 ||
-				ownerOfAsset(current.state) !== owner
+				!sameAccount(ownerOfAsset(current.state), owner)
 			) {
 				throw new Error('This wallet no longer owns this unique asset.');
 			}
@@ -8925,7 +8926,7 @@ function AssetView() {
 	React.useEffect(() => {
 		if (!wallet.address || !state) return;
 		const currentOrder = liveOrder(state);
-		if (currentOrder?.status === 'reserved' && currentOrder.buyer === wallet.address) {
+		if (currentOrder?.status === 'reserved' && sameAccount(currentOrder.buyer, wallet.address)) {
 			setActivityRequested(true);
 		}
 	}, [state, wallet.address]);
@@ -9163,7 +9164,7 @@ function AssetView() {
 
 			const order = liveOrder(state);
 			const mayHaveRegistration = Boolean(
-				order && order.creator !== walletAddress && hasStoredSignedTransaction(localStorage)
+				order && !sameAccount(order.creator, walletAddress) && hasStoredSignedTransaction(localStorage)
 			);
 			if (!savedOperation && !mayHaveRegistration) {
 				setUnavailableRecovery((current) => (current?.key === pendingOperationKey ? null : current));
@@ -9383,7 +9384,7 @@ function AssetView() {
 	const owner = state ? ownerOfAsset(state) : null;
 	const order = state ? liveOrder(state) : null;
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
-	const mine = Boolean(wallet.address && owner === wallet.address);
+	const mine = Boolean(wallet.address && sameAccount(owner, wallet.address));
 	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
 	const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
@@ -11879,7 +11880,7 @@ export function externalReservationTransaction(
 	if (
 		!buyer ||
 		order?.status !== 'reserved' ||
-		order.buyer !== buyer ||
+		!sameAccount(order.buyer, buyer) ||
 		!Number.isSafeInteger(order.reservedUntil) ||
 		order.reservedUntil! < order.deadline
 	)
@@ -11909,8 +11910,8 @@ export function atomicPurchaseRecoveryStatus(
 	const currentOrder = state.orders[expectedOrder.orderId];
 	const orderUnchanged = Boolean(
 		currentOrder &&
-			currentOrder.creator === expectedOrder.creator &&
-			currentOrder.recipient === expectedOrder.recipient &&
+			sameAccount(currentOrder.creator, expectedOrder.creator) &&
+			sameAccount(currentOrder.recipient, expectedOrder.recipient) &&
 			currentOrder.asking === expectedOrder.asking &&
 			currentOrder.deposit === expectedOrder.deposit &&
 			currentOrder.minimumFee === expectedOrder.minimumFee &&
@@ -11920,7 +11921,8 @@ export function atomicPurchaseRecoveryStatus(
 	);
 	if (
 		orderUnchanged &&
-		(currentOrder.status === 'open' || (currentOrder.status === 'reserved' && currentOrder.buyer === buyer))
+		(currentOrder.status === 'open' ||
+			(currentOrder.status === 'reserved' && sameAccount(currentOrder.buyer, buyer)))
 	) {
 		return 'resumable';
 	}
@@ -11936,18 +11938,19 @@ export function atomicOperationStateError(
 	if (!assetBalanceStateAvailable(state)) return ASSET_BALANCE_STATE_UNAVAILABLE;
 	const currentOrder = expectedOrder ? state.orders[expectedOrder.orderId] : null;
 	const orderUnchanged = Boolean(
-		currentOrder &&
-			currentOrder.creator === expectedOrder?.creator &&
+		expectedOrder &&
+			currentOrder &&
+			sameAccount(currentOrder.creator, expectedOrder.creator) &&
 			currentOrder.asking === expectedOrder.asking &&
 			currentOrder.quantity === expectedOrder.quantity
 	);
 	if (kind === 'buy') {
-		return !orderUnchanged || !atomicOrderCanBeBought(currentOrder) || currentOrder.creator === owner
+		return !orderUnchanged || !atomicOrderCanBeBought(currentOrder) || sameAccount(currentOrder.creator, owner)
 			? 'market-state-changed'
 			: '';
 	}
 	if (kind === 'cancel') {
-		return !orderUnchanged || currentOrder?.status !== 'open' || currentOrder.creator !== owner
+		return !orderUnchanged || currentOrder?.status !== 'open' || !sameAccount(currentOrder.creator, owner)
 			? 'market-state-changed'
 			: '';
 	}

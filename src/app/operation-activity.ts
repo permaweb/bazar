@@ -10,6 +10,8 @@ import {
 import type { AssetSummary, Collection } from 'api/collections';
 import { filledOrder, parseTokenAmount } from 'api/order-matching';
 
+import { sameAccount } from 'helpers/host-account';
+
 import {
 	atomicPurchaseStorageKey,
 	fungibleBatchStorageKey,
@@ -99,7 +101,7 @@ export function operationRecoveryCanStillApply(
 	if (kind === 'cancel') {
 		if (!isRecord(record.order) || typeof record.order.orderId !== 'string') return false;
 		const current = state.orders[record.order.orderId];
-		return Boolean(current?.status === 'open' && current.creator === owner);
+		return Boolean(current?.status === 'open' && sameAccount(current.creator, owner));
 	}
 	if (kind === 'sell' && typeof record.txId === 'string' && state.orders[record.txId]) return false;
 	if (!assetBalanceStateAvailable(state) && (kind === 'sell' || kind === 'transfer')) return true;
@@ -162,15 +164,15 @@ function purchaseOrderStillAvailable(state: AssetState, buyer: string, order: Sw
 	}
 	return Boolean(
 		current &&
-			current.creator === expected.creator &&
-			current.recipient === expected.recipient &&
+			sameAccount(current.creator, expected.creator) &&
+			sameAccount(current.recipient, expected.recipient) &&
 			current.asking === expected.asking &&
 			current.deposit === expected.deposit &&
 			current.minimumFee === expected.minimumFee &&
 			current.deadline === expected.deadline &&
 			current.createdAt === expected.createdAt &&
 			current.quantity === expected.quantity &&
-			(current.status === 'open' || (current.status === 'reserved' && current.buyer === buyer))
+			(current.status === 'open' || (current.status === 'reserved' && sameAccount(current.buyer, buyer)))
 	);
 }
 

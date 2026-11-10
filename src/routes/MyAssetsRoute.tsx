@@ -23,6 +23,7 @@ import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
 import { Tooltip } from 'components/Tooltip';
+import { sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import {
 	assetGroupRevealAnnouncement,
@@ -682,7 +683,7 @@ export default function MyAssetsRoute({
 
 export function listedUniquePrice(result: ResolvedAsset, address: string): string | undefined {
 	if (result.collection.kind === 'tokens') return undefined;
-	const order = liveOrdersOfAsset(result.state).find((candidate) => candidate.creator === address);
+	const order = liveOrdersOfAsset(result.state).find((candidate) => sameAccount(candidate.creator, address));
 	return order ? orderPriceLabel(order, result.state) : undefined;
 }
 
