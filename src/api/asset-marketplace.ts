@@ -702,10 +702,12 @@ async function parseStateResponse(
 			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher)];
 		})
 	);
+	const linkedValue = await readLinkedValue(raw.value, base, requestInit, fetcher);
 	const parsed = parseAssetStateValue({
 		...raw,
 		...(!includeBalances ? { balances: {} } : {}),
 		...Object.fromEntries(linked.map(([key, value]) => [key, value])),
+		...(linkedValue === undefined ? {} : { value: linkedValue }),
 	});
 	const holderBalancesAvailable =
 		includeBalances && !linked.some(([key, _value, available]) => key === 'balances' && available === false);
@@ -713,6 +715,23 @@ async function parseStateResponse(
 	return parsed.activeReservation && readReservationHeight
 		? normalizeAssetStateReservations(parsed.state, await readReservationHeight())
 		: parsed.state;
+}
+
+/** A carrier reports its value as a link until its first `set`, for example on a new collection. */
+async function readLinkedValue(
+	value: unknown,
+	base: string,
+	requestInit: RequestInit,
+	fetcher: typeof fetch
+): Promise<unknown> {
+	const id = linkedMessageId(value);
+	if (!id) return undefined;
+	const response = await fetcher(`${base}${id}~message@1.0/serialize~json@1.0`, { signal: requestInit.signal });
+	requestInit.signal?.throwIfAborted();
+	if (!response.ok) throw new Error(`HTTP ${response.status}`);
+	const body = await response.text();
+	requestInit.signal?.throwIfAborted();
+	return unwrapState(parseLosslessJson(body));
 }
 
 async function readLinkedStateTable(

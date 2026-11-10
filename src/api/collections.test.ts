@@ -117,6 +117,45 @@ describe('direct collection links', () => {
 		});
 	});
 
+	it('loads a carrier that still reports its initial manifest as a linked message', async () => {
+		const valueLink = 'V'.repeat(43);
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollectionById')) return indexResponse([candidate()]);
+			if (String(input).includes(`${collectionId}~process@1.0/compute`)) {
+				return Response.json(
+					{
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						value: `ao:${valueLink}`,
+						balances: { ['O'.repeat(43)]: '1' },
+						orders: {},
+					},
+					{ headers: { 'codec-device': 'json@1.0' } }
+				);
+			}
+			if (String(input).includes(`${valueLink}~message@1.0/serialize~json@1.0`)) {
+				return Response.json({ device: 'json@1.0', target: initialManifest });
+			}
+			if (String(input).endsWith(`/tx/${initialManifest}/data`)) {
+				return new Response(encodeUtf8Json({ name: 'First-slot collection', assets: [assetId] }));
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const aoFetch = Object.assign(fetcher, { peers: ['https://peer.example'] });
+		vi.stubGlobal('window', { aoFetch });
+		connectPermawebOsTestWallet();
+
+		await expect(loadBazarCollectionById(collectionId)).resolves.toMatchObject({
+			id: collectionId,
+			name: 'First-slot collection',
+			manifestId: initialManifest,
+			indexSource: 'carrier',
+			assets: [{ id: assetId }],
+		});
+	});
+
 	it('does not request invalid or hidden collection IDs', async () => {
 		const fetcher = vi.fn();
 		vi.stubGlobal('fetch', fetcher);
