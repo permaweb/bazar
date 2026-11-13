@@ -7,16 +7,18 @@ export const HIDDEN_COLLECTION_IDS = [
 	'URixqjoeFos9u43kCRNjnTM8k3ZBertrUFjiBhktXyM',
 ] as const;
 
-/** Immutable test-token process IDs intentionally excluded from every public asset surface. */
+/** Immutable asset process IDs intentionally excluded from every public asset surface. */
 export const HIDDEN_ASSET_IDS = [
 	'66azdZXrCXt-W5pP8IeBbX1tQ6TyiSebc9099PNB2y8', // MINTF — Mint CLI Zeta
 	'7T99-MfMpuIx9qZMRSACFQK6j49HlXCHZ9nKUwts26c', // MINTE — Mint CLI Epsilon
 	'9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA', // MINTA — Mint CLI Alpha
 	'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', // WEAVE — Weave Credit
+	'K2y_4xRwoL5UItTx_0sr4gOsrcOqAXTBDvPUtitmhSs', // AOX -- Legacy wAR
 	'MtNTshqw3VkML6cOe4y1yOFAVupRWz1O7b2j6ay01qM', // TKEY — Thousand Tiny Owners
 	'VeS61CgitggqhFBnUwXwyZJHoJQPfYffTk-UWq3VXoY', // MINTG — Mint CLI Eta
 	'YCmcwhXELMf_U5t8-d_hJDEVq6l_y1_2NLGwq7USXNY', // Blacklisted token
 	'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', // PCMKQA1 — PcMK spawn trade transfer
 	'bvusPIjS4eVoVppxMvTKdiEd856VLZWNbff9RGWfe_0', // YELLOW — ao-types tag
 	'cT_QvNJkzjSfkazrgv0HTwsoMVFFchvx0btwR0s5mPI', // MINTH — Mint CLI Theta
+	'hmW7EXCHRzfC6YAE8FKInptdS8-6BOl3fxjZfxmAOpY', // AOX -- Legacy wUSDC
 ] as const;
