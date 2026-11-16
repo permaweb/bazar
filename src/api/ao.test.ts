@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	aoRoutingScopeFromLocation,
-	DEFAULT_COMPUTE_GATEWAYS,
 	type EffectivePermawebNetworkPolicy,
 	observerRelayFromLocation,
 	permanentContentGatewayFromLocation,
@@ -257,12 +256,23 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(aoFetch(override)).toBe(override);
 	});
 
-	it('uses Bazar AO.js when PermawebOS has not injected a transport', () => {
+	it('routes default Bazar reads to the serving origin after an explicit peer selection', async () => {
+		vi.stubGlobal('window', browserWindow(undefined, '?node=https://previous.example'));
+		const nativeFetch = vi.fn(async () => new Response('ok'));
+		vi.stubGlobal('fetch', nativeFetch);
+
+		expect(await (await aoFetch()('/first')).text()).toBe('ok');
+		nativeFetch.mockClear();
 		vi.stubGlobal('window', browserWindow());
 
 		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
-		expect(direct.peers).toEqual(DEFAULT_COMPUTE_GATEWAYS);
-		expect(aoPeers()).toEqual(DEFAULT_COMPUTE_GATEWAYS);
+		expect(direct.peers).toEqual(['https://bazar.example']);
+		expect(aoPeers()).toEqual(['https://bazar.example']);
+		await direct('/process~process@1.0/now?max-age=60', { method: 'GET' });
+		expect(nativeFetch).toHaveBeenCalledWith(
+			'https://bazar.example/process~process@1.0/now?max-age=60',
+			expect.objectContaining({ method: 'GET' })
+		);
 	});
 
 	it('uses Bazar AO.js with the fallback peers when the user disables PermawebOS', () => {

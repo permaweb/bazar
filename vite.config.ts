@@ -1,9 +1,30 @@
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
-export default defineConfig({
+function aoCoreProxy(mode: string): Record<string, ProxyOptions> {
+	const { AO_CORE_PROXY_TARGET } = loadEnv(mode, process.cwd(), 'AO_CORE_PROXY_TARGET');
+	const target = AO_CORE_PROXY_TARGET?.trim() || 'https://arweave.net';
+
+	const url = URL.canParse(target) ? new URL(target) : undefined;
+	if (
+		!url ||
+		!['http:', 'https:'].includes(url.protocol) ||
+		url.username ||
+		url.password ||
+		url.href !== `${url.origin}/`
+	) {
+		throw new TypeError('AO_CORE_PROXY_TARGET must be an HTTP or HTTPS origin.');
+	}
+
+	return {
+		// Match root device routes, with or without an Arweave ID.
+		'^/(?:[A-Za-z0-9_-]{43})?~[A-Za-z0-9_-]+@': { target: url.origin, changeOrigin: true },
+	};
+}
+
+export default defineConfig(({ command, isPreview, mode }) => ({
 	base: './',
 	plugins: [
 		nodePolyfills({
@@ -46,5 +67,6 @@ export default defineConfig({
 		host: '127.0.0.1',
 		port: 3000,
 		strictPort: true,
+		proxy: command === 'serve' && !isPreview ? aoCoreProxy(mode) : undefined,
 	},
-});
+}));

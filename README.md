@@ -98,9 +98,19 @@ Vite serves the application on `http://127.0.0.1:3000` by default. When the Perm
 wallet is connected in Bazar, Bazar uses its injected `window.aoFetch` singleton
 by default, sharing AO.js peer and rate-limit state with other applications.
 The AO Core control in the header can disable that transport and use Bazar's own
-AO.js singleton instead. Its ordered fallback peer list defaults to Alpha
-and Charlie and can also be supplied with `VITE_COMPUTE_GATEWAY` or a comma-separated
-`node` query parameter:
+AO.js client instead. Bazar routes AO requests to root-relative paths on the
+origin serving the app by default. In local development, Vite proxies those
+same-origin AO requests to `https://arweave.net` by default. To use another
+AO-Core node, set its origin when starting Vite:
+
+```sh
+AO_CORE_PROXY_TARGET=http://127.0.0.1:3101 npm run start
+```
+
+You can also set `AO_CORE_PROXY_TARGET` in `.env.local`. Use the HTTP or HTTPS
+origin of your AO-Core node. Leave `VITE_COMPUTE_GATEWAY` and the `node` query
+parameter unset to use the proxy. Those settings still let the browser connect
+directly to one or more AO-Core nodes:
 
 ```text
 http://127.0.0.1:3000/?node=https://alpha.example,https://charlie.example#/asset/…

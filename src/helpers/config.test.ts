@@ -9,8 +9,6 @@ import {
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
 	bazarAoTransportUrl,
-	computeGatewayForEnvironment,
-	computeGatewaysForEnvironment,
 	currentPermawebOsNetworkPolicy,
 	DEFAULT_ARWEAVE_GATEWAY,
 	fallbackAoPeersFromLocation,
@@ -21,8 +19,6 @@ import {
 	observerRelayFromLocation,
 	permanentContentGatewayFromLocation,
 	permawebOsAoAvailable,
-	PRODUCTION_COMPUTE_GATEWAY,
-	PRODUCTION_COMPUTE_GATEWAYS,
 	refreshPermawebOsNetworkPolicy,
 	setAoWalletConnection,
 	usesPermawebOsAo,
@@ -57,12 +53,20 @@ describe('Arweave gateway routing', () => {
 		vi.resetModules();
 	});
 
-	it('uses the production Bazar fallback peers during local development too', () => {
-		expect(computeGatewayForEnvironment(true)).toBe(PRODUCTION_COMPUTE_GATEWAY);
-		expect(computeGatewayForEnvironment(false)).toBe(PRODUCTION_COMPUTE_GATEWAY);
-		expect(computeGatewaysForEnvironment(true)).toEqual(PRODUCTION_COMPUTE_GATEWAYS);
-		expect(computeGatewaysForEnvironment(false)).toEqual(PRODUCTION_COMPUTE_GATEWAYS);
-		expect(computeGatewayForEnvironment(true, 'http://127.0.0.1:3101/path')).toBe('http://127.0.0.1:3101');
+	it('uses the serving origin for AO in hosted and local sessions', () => {
+		expect(fallbackAoPeersFromLocation(location())).toEqual(['https://bazar.arweave.net']);
+		expect(
+			fallbackAoPeersFromLocation(location({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' }))
+		).toEqual(['http://127.0.0.1:3000']);
+	});
+
+	it('honors a configured AO peer and gives the URL override precedence', async () => {
+		vi.stubEnv('VITE_COMPUTE_GATEWAY', 'http://127.0.0.1:3101/path');
+		const { fallbackAoPeersFromLocation: configuredPeers } = await import('./config');
+		expect(configuredPeers(location())).toEqual(['http://127.0.0.1:3101']);
+		expect(configuredPeers(location({ search: '?node=https://compute.example' }))).toEqual([
+			'https://compute.example',
+		]);
 	});
 
 	it('parses comma-separated, whitespace-separated, and JSON peer lists', () => {

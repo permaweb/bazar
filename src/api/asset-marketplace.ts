@@ -996,7 +996,7 @@ async function parseRevalidatedState(
 			state: await parseStateResponse(
 				response,
 				path,
-				servingNode ? `${servingNode}/` : '/',
+				'/',
 				requestInit,
 				fetcher,
 				readReservationHeight,
