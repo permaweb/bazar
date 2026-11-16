@@ -1,4 +1,4 @@
-import { ao, type AoCacheMetadata, type AoCacheStatus, type AoClient, cacheMetadata, createAo } from 'ao.js';
+import { type AoCacheMetadata, type AoCacheStatus, cacheMetadata, createAo } from 'ao.js';
 
 import {
 	AO_WALLET_CONNECTION_EVENT,
@@ -44,14 +44,9 @@ function directAoFetch(): BazarAoPeerFetch {
 	return bazarTransport.fetcher;
 }
 
-export function aoClient(nodes?: Nodes): AoClient {
-	const peers = nodeList(nodes ?? fallbackAoPeersFromLocation());
-	return ao(peerConfig(peers, 'discover'));
-}
-
 export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): BazarAoPeerFetch {
 	const peers = Object.freeze(nodeList(nodes));
-	const client = override ? createAo(peerConfig(peers, false), override) : aoClient(peers);
+	const client = createAo(peerConfig(peers, override ? false : 'discover'), override);
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
 	const routed = ((input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init)) as BazarAoPeerFetch;
 	let readiness: Promise<readonly string[]> | undefined;

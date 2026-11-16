@@ -49,11 +49,6 @@ export function setAoWalletConnection(address: string | null, scope: AoRoutingSc
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
 	: 'https://arweave.net';
-export const PRODUCTION_COMPUTE_GATEWAYS = [
-	'https://alpha.neo.zephyrdev.xyz',
-	'https://charlie.neo2.zephyrdev.xyz',
-] as const;
-export const PRODUCTION_COMPUTE_GATEWAY = PRODUCTION_COMPUTE_GATEWAYS[0];
 export const AO_TRANSPORT_QUERY_PARAMETER = 'ao-transport';
 export const BAZAR_AO_TRANSPORT = 'bazar';
 
@@ -75,26 +70,14 @@ export function normalizeComputeGateways(value: string, defaultProtocol = 'https
 	return origins.length && origins.every(Boolean) ? [...new Set(origins as string[])] : null;
 }
 
-export function computeGatewaysForEnvironment(_development: boolean, configured = configuredComputeGateway): string[] {
-	if (configured) {
-		const parsed = normalizeComputeGateways(configured);
-		if (!parsed) throw new TypeError('invalid-compute-gateways');
-		return parsed;
-	}
-	return [...PRODUCTION_COMPUTE_GATEWAYS];
-}
-
-export function computeGatewayForEnvironment(development: boolean, configured = configuredComputeGateway) {
-	return computeGatewaysForEnvironment(development, configured)[0];
-}
-
-export const DEFAULT_COMPUTE_GATEWAYS = computeGatewaysForEnvironment(import.meta.env.DEV);
-export const DEFAULT_COMPUTE_GATEWAY = DEFAULT_COMPUTE_GATEWAYS[0];
 export const NAMES_NAMESPACE_ID =
 	import.meta.env.VITE_NAMES_NAMESPACE_ID ?? 'fQXYPE9MAcfI1wV2CwJ3sJIhgT9btBOlYFOKFDGhAs0';
-export const AO_MAINNET = { app1: DEFAULT_COMPUTE_GATEWAY };
 
 type GatewayLocation = Pick<Location, 'protocol' | 'hostname' | 'port' | 'search' | 'hash'>;
+
+function locationOrigin(location: GatewayLocation): string {
+	return `${location.protocol}//${location.hostname}${location.port ? `:${location.port}` : ''}`;
+}
 
 function queryValue(location: Pick<GatewayLocation, 'search' | 'hash'>, name: string): string | null {
 	const hashQueryIndex = location.hash?.indexOf('?') ?? -1;
@@ -134,7 +117,7 @@ export function arweaveGatewayFromLocation(
 	if (!['http:', 'https:'].includes(location.protocol) || isLocalGatewayHost(location.hostname)) {
 		return DEFAULT_ARWEAVE_GATEWAY;
 	}
-	return `${location.protocol}//${location.hostname}${location.port ? `:${location.port}` : ''}`;
+	return locationOrigin(location);
 }
 
 export function arweaveClientConfig(gateway = arweaveGatewayFromLocation()) {
@@ -165,7 +148,7 @@ export function arweaveDataFallbackUrls(
 	if (!location) return [value];
 	let url: URL;
 	try {
-		url = new URL(value, `${location.protocol}//${location.hostname}${location.port ? `:${location.port}` : ''}`);
+		url = new URL(value, locationOrigin(location));
 	} catch {
 		return [value];
 	}
@@ -210,9 +193,17 @@ export function usesPermawebOsAo(
 export function fallbackAoPeersFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
 ): string[] {
-	if (!location) return [...DEFAULT_COMPUTE_GATEWAYS];
-	const requested = queryValue(location, 'node')?.trim();
-	return (requested && normalizeComputeGateways(requested, location.protocol)) || [...DEFAULT_COMPUTE_GATEWAYS];
+	const requested = location && queryValue(location, 'node')?.trim();
+	const override = requested && normalizeComputeGateways(requested, location?.protocol);
+	if (override) return override;
+
+	if (configuredComputeGateway) {
+		const configured = normalizeComputeGateways(configuredComputeGateway);
+		if (!configured) throw new TypeError('invalid-compute-gateways');
+		return configured;
+	}
+
+	return location && ['http:', 'https:'].includes(location.protocol) ? [locationOrigin(location)] : [];
 }
 
 export async function loadPermawebOsNetworkPolicy(
