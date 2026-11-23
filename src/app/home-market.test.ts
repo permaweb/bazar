@@ -42,6 +42,7 @@ import {
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
 	HOME_ASSET_PAGE_SIZE,
+	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	HOME_DISCOVER_UNIQUE_PREVIEW,
 	HOME_SUMMARY_AUTO_RETRY_LIMIT,
@@ -54,6 +55,7 @@ import {
 	homeCollectionFloorsPending,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
+	homeDiscoverOverdueFailure,
 	homeDiscoverPagesFull,
 	homeDiscoverPending,
 	homeDiscoveryAssets,
@@ -1465,6 +1467,23 @@ describe('Home market summary retries', () => {
 		expect(homeDiscoverDisplay(true, true, 3)).toBe('results');
 		expect(homeDiscoverDisplay(false, false, 3)).toBe('results');
 		expect(homeDiscoverDisplay(false, false, 0)).toBe('empty');
+	});
+
+	it('turns a loader that outlives its deadline with nothing to show into one failure with Retry', () => {
+		expect(HOME_DISCOVER_LOADING_DEADLINE_MS).toBe(15_000);
+		expect(homeDiscoverDisplay(true, false, 0, true)).toBe('failed');
+		expect(homeDiscoverBusy(homeDiscoverDisplay(true, false, 0, true), true)).toBe(false);
+		// Cards that arrive late replace the failure; a settled empty view stays empty.
+		expect(homeDiscoverDisplay(true, false, 2, true)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 0, true)).toBe('empty');
+
+		expect(homeDiscoverOverdueFailure(true, [])).toEqual({ source: 'compute', kind: 'unavailable' });
+		expect(homeDiscoverOverdueFailure(true, ['unavailable', 'rate-limited'])).toEqual({
+			source: 'compute',
+			kind: 'rate-limited',
+		});
+		// Without a market shell the collection index is what has not answered.
+		expect(homeDiscoverOverdueFailure(false, [])).toEqual({ source: 'index', kind: 'unavailable' });
 	});
 
 	it('stops the header refresh spinner and aria-busy once Discover shows a terminal failure', () => {

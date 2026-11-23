@@ -3410,10 +3410,36 @@ export type HomeDiscoverDisplay = 'loading' | 'failed' | 'results' | 'empty';
  * the initial loader instead of being stacked above it, while cards that are
  * already visible stay on screen.
  */
-export function homeDiscoverDisplay(pending: boolean, failed: boolean, visibleAssetCount: number): HomeDiscoverDisplay {
+export function homeDiscoverDisplay(
+	pending: boolean,
+	failed: boolean,
+	visibleAssetCount: number,
+	loadingOverdue = false
+): HomeDiscoverDisplay {
 	if (visibleAssetCount > 0) return 'results';
 	if (failed) return 'failed';
-	return homeMarketShowsInitialLoader(pending, visibleAssetCount) ? 'loading' : 'empty';
+	if (!homeMarketShowsInitialLoader(pending, visibleAssetCount)) return 'empty';
+	// A loader with nothing to show past its deadline becomes the failure state.
+	return loadingOverdue ? 'failed' : 'loading';
+}
+
+/** How long Discover may show only "Loading marketplace assets…" before it offers Retry. */
+export const HOME_DISCOVER_LOADING_DEADLINE_MS = 15_000;
+
+/**
+ * The failure Discover reports when its loader passes the deadline without a
+ * terminal error: reads that hang on a rate-limited or unreachable peer fail
+ * too slowly to trip the compute circuit, so the deadline names the likely
+ * cause from what has failed so far.
+ */
+export function homeDiscoverOverdueFailure(
+	shellReady: boolean,
+	failureKinds: Iterable<MarketplaceFailureKind>
+): { source: 'compute' | 'index'; kind: MarketplaceFailureKind } {
+	return {
+		source: shellReady ? 'compute' : 'index',
+		kind: [...failureKinds].includes('rate-limited') ? 'rate-limited' : 'unavailable',
+	};
 }
 
 /** A terminal Discover failure is not busy: no header spinner or aria-busy beside the error block. */
@@ -4624,7 +4650,7 @@ function Home() {
 		summaries: displayAssetPrices,
 	});
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
-	const discoverFailure = market.error
+	const reportedDiscoverFailure = market.error
 		? { message: market.error, retry: market.retry }
 		: portableHomeListingsFailure
 		? {
@@ -4635,10 +4661,42 @@ function Home() {
 				retry: () => setPortableHomeRetry((current) => current + 1),
 		  }
 		: undefined;
+	const [discoverDeadlineRun, setDiscoverDeadlineRun] = React.useState(0);
+	const discoverLoadingOverdue = useHomeDisplayDeadlines(
+		[aoRoutingScope, portableHomeRetry, discoverDeadlineRun, assetType, assetView, normalizedQuery].join('|'),
+		homeTab === 'discover' &&
+			!reportedDiscoverFailure &&
+			homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length)
+			? ['discover']
+			: [],
+		HOME_DISCOVER_LOADING_DEADLINE_MS
+	).has('discover');
+	const overdueDiscoverFailure = discoverLoadingOverdue
+		? homeDiscoverOverdueFailure(
+				marketShellReady,
+				summaryFailures.map((failure) => failure.kind)
+		  )
+		: undefined;
+	const discoverFailure =
+		reportedDiscoverFailure ??
+		(overdueDiscoverFailure
+			? {
+					message: marketplaceRequestFailureMessage(
+						overdueDiscoverFailure.source,
+						overdueDiscoverFailure.kind
+					),
+					retry: () => {
+						setDiscoverDeadlineRun((run) => run + 1);
+						if (marketShellReady) setPortableHomeRetry((current) => current + 1);
+						else market.retry();
+					},
+			  }
+			: undefined);
 	const discoverDisplay = homeDiscoverDisplay(
 		discoverResultsPending,
 		Boolean(discoverFailure),
-		displayedAssets.length
+		displayedAssets.length,
+		discoverLoadingOverdue
 	);
 	const discoverBusy = homeDiscoverBusy(discoverDisplay, discoverResultsPending);
 	const pageRefreshing =
