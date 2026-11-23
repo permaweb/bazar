@@ -114,7 +114,19 @@ type ProfileEditUpdate = {
 	removeAvatar: boolean;
 };
 
-function ProfileEditDialog({
+/**
+ * Always-mounted polite status region. It must exist before its text changes,
+ * because a live region inserted together with its text is often not announced.
+ */
+export function ProfileStatusAnnouncement({ message }: { message: string | null }) {
+	return (
+		<p aria-live="polite" className="sr-only" role="status">
+			{message ?? ''}
+		</p>
+	);
+}
+
+export function ProfileEditDialog({
 	onClose,
 	onSave,
 	open,
@@ -132,10 +144,12 @@ function ProfileEditDialog({
 	const [avatarPreview, setAvatarPreview] = React.useState('');
 	const [dragging, setDragging] = React.useState(false);
 	const [removeAvatar, setRemoveAvatar] = React.useState(false);
-	const [status, setStatus] = React.useState('');
+	// null while editing; the current wallet step while a save is in flight.
+	const [savePhase, setSavePhase] = React.useState<string | null>(null);
 	const [error, setError] = React.useState('');
 	const fileInput = React.useRef<HTMLInputElement>(null);
-	const busy = Boolean(status);
+	const dropzone = React.useRef<HTMLButtonElement>(null);
+	const busy = savePhase !== null;
 	const displayNameChanged = displayName.trim() !== (profile.displayName ?? '').trim();
 	const pictureChanged = Boolean(avatarFile) || removeAvatar;
 	const close = React.useCallback(() => {
@@ -150,7 +164,7 @@ function ProfileEditDialog({
 		setAvatarPreview(profile.avatar ?? '');
 		setDragging(false);
 		setRemoveAvatar(false);
-		setStatus('');
+		setSavePhase(null);
 		setError('');
 	}, [open, profile.avatar, profile.displayName]);
 
@@ -168,12 +182,15 @@ function ProfileEditDialog({
 
 	const submit = async (event: React.FormEvent) => {
 		event.preventDefault();
+		// Every control is disabled while saving; keep focus inside the dialog
+		// instead of letting it fall to <body> with the disabled submit button.
+		dialogRef.current?.focus();
 		setError('');
-		setStatus(avatarFile ? 'Preparing picture…' : 'Preparing profile…');
+		setSavePhase(avatarFile ? 'Preparing picture…' : 'Preparing profile…');
 		try {
-			await onSave({ displayName, displayNameChanged, avatarFile, removeAvatar }, setStatus);
+			await onSave({ displayName, displayNameChanged, avatarFile, removeAvatar }, setSavePhase);
 		} catch (cause) {
-			setStatus('');
+			setSavePhase(null);
 			setError(profileUpdateError(cause));
 		}
 	};
@@ -253,6 +270,7 @@ function ProfileEditDialog({
 							}`}
 							disabled={busy}
 							onClick={() => fileInput.current?.click()}
+							ref={dropzone}
 							onDragEnter={(event) => {
 								event.preventDefault();
 								setDragging(true);
@@ -286,6 +304,9 @@ function ProfileEditDialog({
 								onClick={() => {
 									setAvatarFile(null);
 									setRemoveAvatar(true);
+									// This button unmounts once the preview clears; hand focus to the
+									// dropzone, which now reads "Choose profile picture".
+									window.requestAnimationFrame(() => dropzone.current?.focus());
 								}}
 								size="custom"
 								variant="ghost"
@@ -299,6 +320,7 @@ function ProfileEditDialog({
 							{error}
 						</p>
 					) : null}
+					<ProfileStatusAnnouncement message={savePhase} />
 					<p className="profile-edit-form__note">
 						Your profile is saved permanently on Arweave. A new picture may require two wallet approvals.
 					</p>
@@ -311,7 +333,7 @@ function ProfileEditDialog({
 							type="submit"
 							variant="primary"
 						>
-							{status || 'Save profile'}
+							{savePhase ?? 'Save profile'}
 						</Button>
 					</div>
 				</form>
@@ -351,11 +373,13 @@ export default function ProfileRoute() {
 	const [profile, setProfile] = React.useState<Awaited<ReturnType<typeof readAccountProfile>>>();
 	const [error, setError] = React.useState('');
 	const [editOpen, setEditOpen] = React.useState(false);
+	const [savedNotice, setSavedNotice] = React.useState<string | null>(null);
 	const editTrigger = React.useRef<HTMLButtonElement | null>(null);
 
 	React.useEffect(() => {
 		setError('');
 		setProfile(undefined);
+		setSavedNotice(null);
 		if (!ADDRESS.test(address)) {
 			setError('This is not a valid Arweave profile address.');
 			return;
@@ -380,6 +404,7 @@ export default function ProfileRoute() {
 	};
 	const openEditor = (trigger: HTMLButtonElement) => {
 		editTrigger.current = trigger;
+		setSavedNotice(null);
 		setEditOpen(true);
 	};
 	const saveProfile = async (update: ProfileEditUpdate, onStatus: (status: string) => void) => {
@@ -398,6 +423,9 @@ export default function ProfileRoute() {
 		});
 		setProfile(updated);
 		setEditOpen(false);
+		// The dialog's own status region unmounts on close and focus returns to the
+		// edit trigger in a frame; announce the result on the page after that.
+		window.requestAnimationFrame(() => setSavedNotice('Profile saved.'));
 	};
 	return (
 		<>
@@ -417,6 +445,7 @@ export default function ProfileRoute() {
 				profile={summary}
 				restoreTarget={() => editTrigger.current}
 			/>
+			<ProfileStatusAnnouncement message={savedNotice} />
 		</>
 	);
 }

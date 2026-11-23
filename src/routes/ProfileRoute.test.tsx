@@ -1,7 +1,14 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
 
-import { ProfilePage } from './ProfileRoute';
+vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
+vi.mock('./MyAssetsRoute', () => ({ default: () => null }));
+vi.mock('providers/WalletProvider', () => ({
+	useWallet: () => ({ address: 'abcdefghijklmno0123456789ABCDEFGHIJKLMNOPQ' }),
+}));
+
+import ProfileRoute, { ProfileEditDialog, ProfilePage, ProfileStatusAnnouncement } from './ProfileRoute';
 
 const profile = {
 	address: 'abcdefghijklmno0123456789ABCDEFGHIJKLMNOPQ',
@@ -9,6 +16,12 @@ const profile = {
 	bio: 'Building permanent things.',
 	displayName: 'Alice on Arweave',
 };
+
+const STATUS_REGION = /<p aria-live="polite" class="sr-only" role="status">([^<]*)<\/p>/g;
+
+function statusRegions(markup: string) {
+	return [...markup.matchAll(STATUS_REGION)].map((match) => match[1]);
+}
 
 describe('ProfileRoute', () => {
 	it('renders profile detail, action, and route content', () => {
@@ -40,5 +53,44 @@ describe('ProfileRoute', () => {
 
 		expect(markup).toContain('aria-label="Edit profile picture"');
 		expect(markup).toContain('aria-label="Edit profile"');
+	});
+});
+
+describe('profile save announcements', () => {
+	it('mounts an empty polite status region in the editor before any save phase arrives', () => {
+		const markup = renderToStaticMarkup(
+			<ProfileEditDialog
+				onClose={() => undefined}
+				onSave={async () => undefined}
+				open
+				profile={profile}
+				restoreTarget={() => null}
+			/>
+		);
+		const dialog = markup.slice(markup.indexOf('role="dialog"'));
+
+		expect(statusRegions(dialog)).toEqual(['']);
+		// The visible submit label stays as it was while idle.
+		expect(markup).toContain('Save profile</button>');
+	});
+
+	it('renders the save phase as status text and nothing when idle', () => {
+		expect(statusRegions(renderToStaticMarkup(<ProfileStatusAnnouncement message="Approve picture…" />))).toEqual([
+			'Approve picture…',
+		]);
+		expect(statusRegions(renderToStaticMarkup(<ProfileStatusAnnouncement message={null} />))).toEqual(['']);
+	});
+
+	it('keeps a page-level status region mounted for the result after the editor closes', () => {
+		const markup = renderToStaticMarkup(
+			<MemoryRouter initialEntries={[`/profile/${profile.address}`]}>
+				<Routes>
+					<Route element={<ProfileRoute />} path="/profile/:address" />
+				</Routes>
+			</MemoryRouter>
+		);
+
+		expect(markup).not.toContain('role="dialog"');
+		expect(statusRegions(markup)).toEqual(['']);
 	});
 });
