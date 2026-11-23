@@ -9,7 +9,7 @@ import {
 	liquidBalanceOf,
 } from 'api/asset-marketplace';
 import { DISPLAY_STATE_TIMEOUT_ERROR, readAssetStateWithDeadline } from 'api/asset-state-store';
-import { AssetTransactionClient } from 'api/asset-transactions';
+import { ASSET_BALANCE_PROOF_UNAVAILABLE, AssetTransactionClient } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import {
 	createDispatchPlan,
@@ -21,6 +21,7 @@ import {
 	dispatchDiscardConfirmation,
 	type DispatchPlan,
 	dispatchPlanProgress,
+	type DispatchRow,
 	type DispatchRowStatus,
 	estimateDispatchCost,
 	fetchTransferReward,
@@ -67,18 +68,31 @@ export function dispatchErrorMessage(cause: unknown): string {
 		return 'Arweave rejected a transfer Bazar had just signed, so it was never accepted. Bazar deleted that signature. Resume signs a replacement for this holder only.';
 	}
 	if (code === DISPATCH_SIGNED_TRANSACTION_REJECTED) {
-		const addresses = (cause as { addresses?: unknown }).addresses;
-		const rows =
-			Array.isArray(addresses) && addresses.length > 1
-				? `${addresses.length} rows marked Rejected`
-				: 'the row marked Rejected';
-		return `Arweave rejected the saved signed transfer for ${rows}. It may have been posted before an interruption, so Bazar will not replace it on its own. Discard this row's rejected signature to sign a replacement; Bazar first checks whether the recipient balance already rose and marks the row settled instead.`;
+		const listed = (cause as { addresses?: unknown }).addresses;
+		const proven = (cause as { processRejected?: unknown }).processRejected;
+		const processRejected = Array.isArray(proven) ? proven.length : 0;
+		const gatewayRejected = Math.max((Array.isArray(listed) ? listed.length : 1) - processRejected, 0);
+		const parts: string[] = [];
+		if (gatewayRejected) {
+			const rows = gatewayRejected > 1 ? `${gatewayRejected} rows marked Rejected` : 'the row marked Rejected';
+			parts.push(
+				`Arweave rejected the saved signed transfer for ${rows}. It may have been posted before an interruption, so Bazar will not replace it on its own. Discard this row's rejected signature to sign a replacement; Bazar first checks whether the recipient balance already rose and marks the row settled instead.`
+			);
+		}
+		if (processRejected) {
+			const rows =
+				processRejected > 1 ? `${processRejected} rows marked Not applied` : 'the row marked Not applied';
+			parts.push(
+				`The token process reached the exact transfer for ${rows} and did not apply it, so no tokens moved. Bazar will not re-sign on its own: choose Sign again on a row to delete its rejected signature, then Resume signs a replacement for that holder only.`
+			);
+		}
+		return parts.join(' ');
 	}
 	switch (message) {
 		case 'dispatch-insufficient-token-balance':
 			return 'Your token balance is smaller than the total quantity in the holder list.';
 		case 'dispatch-self-recipient':
-			return 'Remove your own address from the list. A transfer to yourself is a no-op that balance-based settlement cannot verify.';
+			return 'Remove your own address from the list. A transfer to yourself is a no-op that Bazar cannot verify as delivered.';
 		case ASSET_BALANCE_STATE_UNAVAILABLE:
 			return 'The configured AO routes did not return a complete holder balance table. Bazar did not sign a transfer. Retry after complete state is available; any saved dispatch progress remains available.';
 		case DISPLAY_STATE_TIMEOUT_ERROR:
@@ -87,6 +101,11 @@ export function dispatchErrorMessage(cause: unknown): string {
 			return 'Bazar found a transaction ID for this dispatch row, but its saved signed transaction could not be restored. It may already have reached Arweave, so Bazar will not sign a replacement. Keep this dispatch plan for manual review, or restore the original browser data before resuming.';
 		case 'asset-state-timeout':
 			return 'Timed out waiting for settlement. Nothing was lost: posted transfers stay posted — resume to continue watching without re-sending.';
+		case 'fungible-transfer-proof-mismatch':
+			return "Bazar found a dispatched transfer in the token schedule, but it does not match the row's sender, recipient and quantity, so its outcome is unknown. The row stays Posted and its signed transaction stays saved for manual review. Nothing was re-signed.";
+		case ASSET_BALANCE_PROOF_UNAVAILABLE:
+		case 'scheduled-action-state-missing':
+			return 'Bazar found a dispatched transfer at its exact schedule slot, but the configured AO routes did not return the state needed to prove its receipt. The row stays Posted; resume to check again without re-sending.';
 		case 'wallet-sign-unavailable':
 			return 'Connect an Arweave wallet extension that supports transaction signing.';
 		case 'asset-purchase-insufficient-funds':
@@ -315,6 +334,28 @@ const STATUS_LABEL: Record<DispatchRowStatus, string> = {
 	settled: 'Settled',
 	rejected: 'Rejected',
 };
+
+/**
+ * Row status text. Plans with a startingSlot settle on the exact receipt;
+ * older plans only checked the balance, and say so.
+ */
+export function dispatchRowStatusLabel(
+	plan: Pick<DispatchPlan, 'startingSlot'>,
+	row: Pick<DispatchRow, 'status' | 'rejectedBy'>
+): string {
+	if (row.status === 'rejected' && row.rejectedBy === 'process') return 'Not applied';
+	if (row.status === 'settled' && plan.startingSlot === undefined) return 'Settled (balance-checked)';
+	return STATUS_LABEL[row.status];
+}
+
+export function notAppliedSignAgainConfirmation(address: string): string {
+	return (
+		`The token process reached the transfer to ${shortAddress(
+			address
+		)} and did not apply it, so no tokens moved.\n\n` +
+		"Bazar deletes this row's rejected signature. Resume then checks fresh holder state and signs a replacement for this holder only.\n\nContinue?"
+	);
+}
 
 export function rejectedSignatureConfirmation(address: string): string {
 	return (
@@ -547,7 +588,11 @@ export default function DispatchRoute() {
 	const discardRejected = async (address: string) => {
 		if (!plan || busy) return;
 		// Fail closed without a DOM confirm, like discarding the plan.
-		if (!(globalThis.window?.confirm?.(rejectedSignatureConfirmation(address)) ?? false)) return;
+		const processRejected = plan.rows.some((row) => row.address === address && row.rejectedBy === 'process');
+		const confirmation = processRejected
+			? notAppliedSignAgainConfirmation(address)
+			: rejectedSignatureConfirmation(address);
+		if (!(globalThis.window?.confirm?.(confirmation) ?? false)) return;
 		setDiscardingRow(address);
 		setRunError(null);
 		setRowNotice(null);
@@ -739,7 +784,7 @@ export default function DispatchRoute() {
 											{row.status === 'settled' ? (
 												<Check className="ui-icon ui-icon--sm" aria-hidden="true" />
 											) : null}{' '}
-											{STATUS_LABEL[row.status]}
+											{dispatchRowStatusLabel(plan, row)}
 											{row.status === 'rejected' ? (
 												<>
 													{' '}
@@ -752,12 +797,18 @@ export default function DispatchRoute() {
 														aria-label={
 															discardingRow === row.address
 																? undefined
+																: row.rejectedBy === 'process'
+																? `Sign again for ${shortAddress(row.address)}`
 																: `Discard rejected signature for ${shortAddress(
 																		row.address
 																  )}`
 														}
 													>
-														{discardingRow === row.address
+														{row.rejectedBy === 'process'
+															? discardingRow === row.address
+																? 'Clearing…'
+																: 'Sign again…'
+															: discardingRow === row.address
 															? 'Checking balance…'
 															: 'Discard rejected signature…'}
 													</Button>
@@ -776,7 +827,11 @@ export default function DispatchRoute() {
 							</span>
 							<div>
 								<strong>All transfers settled</strong>
-								<p>Every recipient balance has risen by its dispatched quantity.</p>
+								<p>
+									{plan.startingSlot === undefined
+										? 'Every recipient balance has risen by its dispatched quantity (balance-checked).'
+										: "Bazar verified each transfer's Debit and Credit notices at its exact token schedule slot."}
+								</p>
 							</div>
 						</div>
 					) : null}
