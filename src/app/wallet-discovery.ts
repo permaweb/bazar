@@ -365,6 +365,10 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 			}
 			if (!active()) return;
 			if (!discoveryFailure) options.onDiscoveryComplete?.();
+			// When the index fails, the candidates this scan already knew (a stored or earlier scan) are still
+			// this wallet's history: check their live state rather than show nothing. The failure is still
+			// reported, so the inventory says it may be incomplete.
+			if (discoveryFailure) discoveredCandidates = [...session.scan.found.values()];
 			resolvePage(discoveredCandidates.filter((candidate) => !session.screened.has(candidate.processId)));
 			let resolutionFailure: unknown;
 			for (;;) {

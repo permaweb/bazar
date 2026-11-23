@@ -128,6 +128,23 @@ describe('wallet discovery run', () => {
 		expect(test.verify).not.toHaveBeenCalled();
 	});
 
+	it('checks the candidates a stored scan already knew when the index fails', async () => {
+		const test = harness([images([assetA, assetB])], async (scan) => {
+			// A stored scan restored two candidates; its catch-up then fails on the index.
+			expect([...scan.found.keys()].sort()).toEqual([assetA, assetB]);
+			throw new Error('asset-discovery-graphql-timeout');
+		});
+		test.session.scan.found.set(assetA, candidate(assetA, 30));
+		test.session.scan.found.set(assetB, candidate(assetB, 20));
+
+		await runWalletDiscovery(test.options).finished;
+
+		expect(test.reads.sort()).toEqual([assetA, assetB]);
+		expect(test.resolvedIds()).toEqual([assetA, assetB]);
+		// The failure is still reported, so the inventory says it may be incomplete.
+		expect(test.status().phase).not.toBe('done');
+	});
+
 	it('resolves a candidate whose collection arrives after the run finished', async () => {
 		const test = harness([images([assetA])], async (_scan, onPage) => {
 			onPage([candidate(assetA, 30), candidate(assetB, 20)]);
