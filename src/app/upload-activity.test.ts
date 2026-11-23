@@ -262,6 +262,11 @@ describe('upload result announcements', () => {
 				})
 			)
 		);
+	// Text of the always-mounted outcome region (hidden-operation-outcome-notice), or null when absent.
+	const outcomeRegion = (markup: string) =>
+		markup
+			.match(/<div aria-atomic="true" class="sr-only" role="status">([\s\S]*?)<\/div>/)?.[1]
+			.replace(/<[^>]+>/g, '') ?? null;
 
 	it('reads a failed upload as an alert, not a polite status', () => {
 		const markup = render({
@@ -275,14 +280,15 @@ describe('upload result announcements', () => {
 		expect(markup).toContain('Upload needs attention');
 		expect(markup).toContain('<p role="alert">The wallet rejected the signature request.</p>');
 		expect(markup).not.toContain('aria-live="polite"');
+		// The failure is read once, as the alert: the outcome region stays mounted but empty.
+		expect(outcomeRegion(markup)).toBe('');
 	});
 
 	it('keeps a finished upload as a polite status', () => {
 		const markup = render({ ...upload, phase: 'done', status: 'Submitted to Arweave.', collectionId: 'c' });
 
-		// The always-mounted outcome region (hidden-operation-outcome-notice) carries the polite status.
-		expect(markup).toContain('<div aria-atomic="true" class="sr-only" role="status">');
-		expect(markup).toContain('Submitted to Arweave.');
+		// The always-mounted outcome region carries the polite status.
+		expect(outcomeRegion(markup)).toContain('Submitted to Arweave.');
 		expect(markup).not.toContain('role="alert"');
 	});
 });
