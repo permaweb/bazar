@@ -1344,14 +1344,14 @@ export function FungibleAssetView({
 										<h1>
 											{wallet.address
 												? holderBalancesAvailable
-													? 'No liquid tokens'
+													? fungibleEmptyBalanceCopy('sell', listed, state).title
 													: 'Balance unavailable'
 												: 'Connect to list'}
 										</h1>
 										<small>
 											{wallet.address
 												? holderBalancesAvailable
-													? 'Tokens already listed for sale are not available for a new listing.'
+													? fungibleEmptyBalanceCopy('sell', listed, state).detail
 													: 'Complete holder balance state is required before listing tokens.'
 												: 'Connect your wallet to see the tokens available to list.'}
 										</small>
@@ -1373,7 +1373,7 @@ export function FungibleAssetView({
 												? 'Balance unavailable'
 												: listingBalance > 0n
 												? tokenLabel(liquid, state)
-												: 'No liquid tokens'
+												: fungibleEmptyBalanceCopy('transfer', listed, state).title
 											: 'Connect to transfer'}
 									</h1>
 									<small>
@@ -1382,7 +1382,7 @@ export function FungibleAssetView({
 												? 'Complete holder balance state is required before transferring tokens.'
 												: listingBalance > 0n
 												? 'Choose a recipient and amount in the transfer review.'
-												: 'Tokens listed for sale are not available to transfer.'
+												: fungibleEmptyBalanceCopy('transfer', listed, state).detail
 											: 'Connect your wallet to see the tokens available to transfer.'}
 									</small>
 								</div>
@@ -4775,6 +4775,26 @@ function orderPriceLabel(order: SwapOrder, state: AssetState) {
 
 function tokenLabel(raw: string, state: AssetState) {
 	return `${formatGroupedTokenAmount(raw, state.denomination)} ${formatTickerLabel(state.ticker, 'tokens')}`;
+}
+
+/**
+ * Copy for the Sell and Transfer panels when the connected wallet has no liquid
+ * balance. `listed` counts open and reserved orders (listedBalanceOf); only open
+ * listings can be cancelled, so the copy says so rather than blaming listings
+ * when the wallet holds none of the token.
+ */
+export function fungibleEmptyBalanceCopy(mode: 'sell' | 'transfer', listed: string, state: AssetState) {
+	const ticker = formatTickerLabel(state.ticker || 'Token');
+	if (BigInt(listed) > 0n) {
+		return {
+			title: `No liquid ${ticker}`,
+			detail: `${tokenLabel(listed, state)} is in open or reserved listings; cancel an open listing to free it.`,
+		};
+	}
+	return {
+		title: `No ${ticker} in this wallet`,
+		detail: `This wallet holds no ${ticker} to ${mode === 'sell' ? 'list' : 'transfer'}.`,
+	};
 }
 
 export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
