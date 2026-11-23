@@ -266,9 +266,15 @@ const servingOriginsWithoutCompute = new Map<string, boolean>();
 
 export type AoPeerPlan = {
 	peers: string[];
-	/** Last-resort peers are a priority order; selected or configured peers share reads by hashpath. */
+	/** A `?node=` selection, VITE_COMPUTE_GATEWAY, or the last-resort default peers. */
+	source: 'selected' | 'configured' | 'default';
+	/**
+	 * Peers are a priority order: the first answers every read and the next is tried
+	 * when it fails, answers inadmissibly, or is still silent after the hedge delay.
+	 * Every plan with peers is ordered; only the empty plan outside HTTP(S) is not.
+	 */
 	ordered: boolean;
-	/** The serving origin, while it still leads the last-resort peers. */
+	/** The serving origin, while it still leads the default peers. */
 	servingOrigin?: string;
 };
 
@@ -295,24 +301,32 @@ export function aoPeerPlanFromLocation(
 ): AoPeerPlan {
 	const requested = location && queryValue(location, 'node')?.trim();
 	const override = requested && normalizeComputeGateways(requested, location?.protocol);
-	if (override) return { peers: override, ordered: false };
+	if (override) return { peers: override, source: 'selected', ordered: true };
 
 	if (configuredComputeGateway) {
 		const configured = normalizeComputeGateways(configuredComputeGateway);
 		if (!configured) throw new TypeError('invalid-compute-gateways');
-		return { peers: configured, ordered: false };
+		return { peers: configured, source: 'configured', ordered: true };
 	}
 
-	if (!location || !['http:', 'https:'].includes(location.protocol)) return { peers: [], ordered: false };
+	if (!location || !['http:', 'https:'].includes(location.protocol))
+		return { peers: [], source: 'default', ordered: false };
 	const origin = locationOrigin(location);
-	if (servingOriginWithoutCompute(origin)) return { peers: [...DEFAULT_COMPUTE_GATEWAYS], ordered: true };
-	return { peers: [...new Set([origin, ...DEFAULT_COMPUTE_GATEWAYS])], ordered: true, servingOrigin: origin };
+	if (servingOriginWithoutCompute(origin))
+		return { peers: [...DEFAULT_COMPUTE_GATEWAYS], source: 'default', ordered: true };
+	return {
+		peers: [...new Set([origin, ...DEFAULT_COMPUTE_GATEWAYS])],
+		source: 'default',
+		ordered: true,
+		servingOrigin: origin,
+	};
 }
 
 /** Bazar's peer plan as it stood before any serving origin was dropped from it. */
 function undroppedAoPeers(location: GatewayLocation | undefined): string[] {
 	const plan = aoPeerPlanFromLocation(location);
-	if (!location || !plan.ordered || plan.servingOrigin) return plan.peers;
+	// Only the default peers ever lead with the serving origin; selected and configured lists are used as given.
+	if (!location || plan.source !== 'default' || plan.servingOrigin || !plan.peers.length) return plan.peers;
 	return [...new Set([locationOrigin(location), ...plan.peers])];
 }
 

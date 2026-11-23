@@ -68,6 +68,7 @@ describe('Arweave gateway routing', () => {
 		).toEqual(['http://127.0.0.1:3000', 'https://arweave.net']);
 		expect(aoPeerPlanFromLocation(location())).toEqual({
 			peers: ['https://bazar.arweave.net', 'https://arweave.net'],
+			source: 'default',
 			ordered: true,
 			servingOrigin: 'https://bazar.arweave.net',
 		});
@@ -75,11 +76,17 @@ describe('Arweave gateway routing', () => {
 		expect(fallbackAoPeersFromLocation(location({ protocol: 'file:' }))).toEqual([]);
 	});
 
-	it('gives a URL peer selection precedence over the default compute peers', () => {
+	it('gives a URL peer selection precedence over the default compute peers, in the order given', () => {
 		const selected = location({ search: `?node=${encodeURIComponent('https://compute.example, alpha.example')}` });
 		expect(aoPeerPlanFromLocation(selected)).toEqual({
 			peers: ['https://compute.example', 'https://alpha.example'],
-			ordered: false,
+			source: 'selected',
+			ordered: true,
+		});
+		expect(aoPeerPlanFromLocation(location({ hash: '#/assets?node=https://only.example' }))).toEqual({
+			peers: ['https://only.example'],
+			source: 'selected',
+			ordered: true,
 		});
 	});
 
@@ -117,11 +124,55 @@ describe('Arweave gateway routing', () => {
 			fallbackAoPeersFromLocation: configuredPeers,
 		} = await import('./config');
 		expect(configuredPeers(location())).toEqual(['http://127.0.0.1:3101']);
-		expect(configuredPlan(location())).toEqual({ peers: ['http://127.0.0.1:3101'], ordered: false });
+		expect(configuredPlan(location())).toEqual({
+			peers: ['http://127.0.0.1:3101'],
+			source: 'configured',
+			ordered: true,
+		});
 		expect(configuredSelection(['http://127.0.0.1:3101'], location())).toBeNull();
 		expect(configuredPeers(location({ search: '?node=https://compute.example' }))).toEqual([
 			'https://compute.example',
 		]);
+	});
+
+	it('keeps a configured AO peer list in its given priority order', async () => {
+		vi.stubEnv('VITE_COMPUTE_GATEWAY', 'https://primary.example, https://fallback.example');
+		const { aoPeerPlanFromLocation: configuredPlan } = await import('./config');
+		expect(configuredPlan(location())).toEqual({
+			peers: ['https://primary.example', 'https://fallback.example'],
+			source: 'configured',
+			ordered: true,
+		});
+	});
+
+	it('keeps a configured AO peer list as the routing scope and lets the editor select the serving origin', async () => {
+		vi.stubEnv('VITE_COMPUTE_GATEWAY', 'https://mystical.computer,https://arweave.net');
+		vi.resetModules();
+		const configured = await import('./config');
+		const served = location({ hostname: 'bazar.mystical.computer' });
+		const withOrigin = ['https://bazar.mystical.computer', 'https://mystical.computer', 'https://arweave.net'];
+
+		expect(configured.aoRoutingScopeFromLocation(served)).toBe('https://mystical.computer,https://arweave.net');
+		expect(
+			configured.aoPeerSelectionQuery(['https://mystical.computer', 'https://arweave.net'], served)
+		).toBeNull();
+		expect(configured.aoPeerSelectionQuery(withOrigin, served)).toBe(withOrigin.join(','));
+	});
+
+	it('scopes AO routing to a URL peer selection without the serving origin', () => {
+		const served = location({ hostname: 'bazar.mystical.computer' });
+		const selected = location({ hostname: 'bazar.mystical.computer', search: '?node=https://mystical.computer' });
+
+		expect(aoRoutingScopeFromLocation(selected)).toBe('https://mystical.computer');
+		expect(
+			aoRoutingScopeFromLocation(
+				location({
+					hostname: 'bazar.mystical.computer',
+					hash: '#/assets?node=https://mystical.computer,https://arweave.net',
+				})
+			)
+		).toBe('https://mystical.computer,https://arweave.net');
+		expect(aoRoutingScopeFromLocation(served)).toBe('https://bazar.mystical.computer,https://arweave.net');
 	});
 
 	it('drops a serving origin without process compute from the default peers only', () => {
@@ -129,7 +180,11 @@ describe('Arweave gateway routing', () => {
 		const selected = location({ hostname: 'static-host.example', search: '?node=https://static-host.example' });
 		markServingOriginWithoutCompute('https://static-host.example');
 
-		expect(aoPeerPlanFromLocation(served)).toEqual({ peers: ['https://arweave.net'], ordered: true });
+		expect(aoPeerPlanFromLocation(served)).toEqual({
+			peers: ['https://arweave.net'],
+			source: 'default',
+			ordered: true,
+		});
 		expect(fallbackAoPeersFromLocation(selected)).toEqual(['https://static-host.example']);
 		expect(fallbackAoPeersFromLocation(location({ hostname: 'other-host.example' }))).toEqual([
 			'https://other-host.example',
@@ -153,7 +208,11 @@ describe('Arweave gateway routing', () => {
 
 		vi.resetModules();
 		const reloaded = await import('./config');
-		expect(reloaded.aoPeerPlanFromLocation(served)).toEqual({ peers: ['https://arweave.net'], ordered: true });
+		expect(reloaded.aoPeerPlanFromLocation(served)).toEqual({
+			peers: ['https://arweave.net'],
+			source: 'default',
+			ordered: true,
+		});
 		expect(reloaded.aoRoutingScopeFromLocation(served)).toBe(before);
 		expect(reloaded.aoPeerSelectionQuery(['https://arweave.net'], served)).toBeNull();
 		expect(reloaded.aoPeerSelectionQuery(['https://arns-host.example', 'https://arweave.net'], served)).toBeNull();
