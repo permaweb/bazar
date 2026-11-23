@@ -1,5 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CollectionActivityEvent, ResolvedAsset } from 'api/asset-discovery';
@@ -23,9 +24,13 @@ import {
 	collectionCardPriceLabel,
 	collectionDefaultsToListed,
 	CollectionDescription,
+	collectionListedFromSearch,
 	collectionListingScopeVersion,
 	collectionPriceRetryNotice,
 	collectionRecipientsWithoutListingCandidates,
+	CollectionTabs,
+	collectionViewFromSearch,
+	collectionViewSearch,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
 	compareCollectionAssetNames,
@@ -2036,5 +2041,53 @@ describe('Home market tabs', () => {
 			'home-discover-tab',
 			'home-discover-tab',
 		]);
+	});
+});
+
+describe('Collection listing view in the URL', () => {
+	it('reads ?view as items, offers or the collection default', () => {
+		expect(collectionViewFromSearch('?view=items')).toBe('items');
+		expect(collectionViewFromSearch('?q=a&view=offers')).toBe('offers');
+		expect(collectionViewFromSearch('?view=grid')).toBeNull();
+		expect(collectionViewFromSearch('')).toBeNull();
+		expect(collectionListedFromSearch('?view=items', 'arweave-names')).toBe(false);
+		expect(collectionListedFromSearch('', 'arweave-names')).toBe(true);
+		expect(collectionListedFromSearch('?view=offers', 'x')).toBe(true);
+		expect(collectionListedFromSearch('', 'x')).toBe(false);
+		expect(collectionListedFromSearch('?view=unknown', 'arweave-names')).toBe(true);
+	});
+	it('writes the view and keeps the other params', () => {
+		expect(collectionViewSearch('', 'items')).toBe('?view=items');
+		expect(collectionViewSearch('?q=moon+cat&view=offers', 'items')).toBe('?q=moon+cat&view=items');
+		const next = collectionViewSearch('?q=moon%20cat&gateway=g', 'offers');
+		expect(new URLSearchParams(next).get('q')).toBe('moon cat');
+		expect(new URLSearchParams(next).get('gateway')).toBe('g');
+		expect(collectionListedFromSearch(next, 'x')).toBe(true);
+	});
+	it('maps the tab buttons and the Show select to the same view', () => {
+		// Items tab and Show "All assets" both write items; Offers tab and "Listed for sale" both write offers.
+		for (const collectionId of ['arweave-names', 'x']) {
+			expect(collectionListedFromSearch(collectionViewSearch('', 'items'), collectionId)).toBe(false);
+			expect(collectionListedFromSearch(collectionViewSearch('', 'offers'), collectionId)).toBe(true);
+		}
+	});
+	it('links the Activity page Items tab to an explicit items view', () => {
+		const collection: Collection = {
+			id: 'arweave-names',
+			name: 'Arweave Names',
+			description: '',
+			kind: 'names',
+			assets: [],
+		};
+		const html = renderToStaticMarkup(
+			React.createElement(
+				MemoryRouter,
+				null,
+				React.createElement(CollectionTabs, { collection, active: 'activity' })
+			)
+		);
+		expect(html).toContain('href="/collection/arweave-names?view=items"');
+		expect(html).toContain('href="/collection/arweave-names?view=offers"');
+		expect(html).toContain('href="/collection/arweave-names/activity"');
 	});
 });
