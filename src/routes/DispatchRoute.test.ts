@@ -1,5 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Route, Routes } from 'react-router-dom';
+import { StaticRouter } from 'react-router-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { TransactionDispatchRejectedError } from 'weave-wrangler';
 
@@ -14,7 +16,7 @@ import {
 
 import { assetStateErrorMessage } from '../app/App';
 
-import {
+import DispatchRoute, {
 	dispatchEndActivity,
 	DispatchRecipientCell,
 	dispatchErrorMessage,
@@ -208,6 +210,39 @@ describe('dispatch start single flight', () => {
 		expect(request.onPreparingChange).not.toHaveBeenCalled();
 		expect(request.abortRef.current).toBeNull();
 		expect(request.readWalletBalance).not.toHaveBeenCalled();
+	});
+});
+
+vi.mock('providers/WalletProvider', async (importOriginal) => ({
+	...(await importOriginal<typeof import('providers/WalletProvider')>()),
+	useWallet: () => ({ address: '' }),
+}));
+
+function renderAt(path: string) {
+	return renderToStaticMarkup(
+		React.createElement(
+			StaticRouter,
+			{ location: path },
+			React.createElement(
+				Routes,
+				null,
+				React.createElement(Route, {
+					path: '/dispatch/:processId',
+					element: React.createElement(DispatchRoute),
+				})
+			)
+		)
+	);
+}
+
+describe('invalid dispatch id', () => {
+	it('explains the bad process ID and links back to Discover instead of dead-ending', () => {
+		const markup = renderAt('/dispatch/abc');
+
+		expect(markup).toContain('<h1>Unknown token</h1>');
+		expect(markup).toContain('not a 43-character Arweave process ID');
+		expect(markup).toContain('href="/discover"');
+		expect(markup).toContain('Discover');
 	});
 });
 
