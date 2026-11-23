@@ -11,9 +11,21 @@ import { arweaveGatewayFromLocation } from 'helpers/config';
 
 import { insertAcceptedProof, upsertAcceptedProof } from './acceptedProofs';
 
+/**
+ * - checking: no block poll has finished yet.
+ * - live: the last poll reached the block source.
+ * - stale: the last poll failed after earlier blocks were seen; the numbers stay frozen at the last success.
+ * - unavailable: polls failed and no block has been seen.
+ */
+export type ArweaveMiningTelemetryStatus = 'checking' | 'live' | 'stale' | 'unavailable';
+
+const MINING_TELEMETRY_STATUSES: readonly ArweaveMiningTelemetryStatus[] = ['checking', 'live', 'stale', 'unavailable'];
+
+/** One finished poll of the block source. */
+export type MiningPollResult = { ok: true; proof: ArweaveAcceptedProof } | { ok: false };
+
 export type ArweaveMiningTelemetry = {
-	available: boolean;
-	checked: boolean;
+	status: ArweaveMiningTelemetryStatus;
 	candidateRate?: number;
 	averageCandidateRate?: number;
 	diskReadRate?: number;
@@ -40,9 +52,15 @@ type MiningNetworkTracker = {
 	lastCountedHeight?: number;
 };
 
-/** Caches written before the accepted-block counter existed lack it; they restore instead of resetting. */
-type CachedMiningTelemetry = Omit<ArweaveMiningTelemetry, 'acceptedBlocksSinceStart'> &
-	Partial<Pick<ArweaveMiningTelemetry, 'acceptedBlocksSinceStart'>>;
+/**
+ * Caches written before the accepted-block counter existed lack it, and caches written before `status` existed
+ * carry the older `checked`/`available` pair instead; both restore instead of resetting.
+ */
+type CachedMiningTelemetry = Omit<ArweaveMiningTelemetry, 'acceptedBlocksSinceStart' | 'status'> &
+	Partial<Pick<ArweaveMiningTelemetry, 'acceptedBlocksSinceStart' | 'status'>> & {
+		available?: boolean;
+		checked?: boolean;
+	};
 type CachedMiningNetworkTracker = Omit<MiningNetworkTracker, 'acceptedBlocksSinceStart'> &
 	Partial<Pick<MiningNetworkTracker, 'acceptedBlocksSinceStart'>>;
 
@@ -107,12 +125,7 @@ export function useArweaveMiningTelemetry(
 				recordMiningSample(tracker, now, proof.estimatedCandidateRate, proof.estimatedDiskReadRate);
 				recordAcceptedBlock(tracker, proof.height);
 				setTelemetry((current) => {
-					const next = telemetryFromTracker(
-						current,
-						tracker,
-						insertAcceptedProof(current.acceptedProofs, proof),
-						true
-					);
+					const next = nextMiningTelemetry(current, tracker, { ok: true, proof });
 					telemetryRef.current = next;
 					return next;
 				});
@@ -151,15 +164,11 @@ export function useArweaveMiningTelemetry(
 				}
 			} catch {
 				if (!controller.signal.aborted) {
+					// The tracker is not advanced here: old rates are not extrapolated while the source is unreachable.
+					// The next success estimates the gap, as the first sample does back to submission.
 					const tracker = trackerRef.current;
-					accumulateMiningEstimate(tracker, Date.now());
 					setTelemetry((current) => {
-						const next = telemetryFromTracker(
-							current,
-							tracker,
-							current.acceptedProofs,
-							current.acceptedProofs.length > 0
-						);
+						const next = nextMiningTelemetry(current, tracker, { ok: false });
 						telemetryRef.current = next;
 						return next;
 					});
@@ -172,9 +181,10 @@ export function useArweaveMiningTelemetry(
 			controller.abort();
 			if (timer !== undefined) window.clearTimeout(timer);
 			const tracker = trackerRef.current;
-			accumulateMiningEstimate(tracker, Date.now());
 			const current = telemetryRef.current;
-			const next = telemetryFromTracker(current, tracker, current.acceptedProofs, current.available);
+			// Only a live source has rates worth carrying forward to the moment of unmount.
+			if (current.status === 'live') accumulateMiningEstimate(tracker, Date.now());
+			const next = telemetryFromTracker(current, tracker, current.acceptedProofs, current.status);
 			telemetryRef.current = next;
 			writeMiningTelemetrySession(
 				browserSessionStorage(),
@@ -262,9 +272,10 @@ export function writeMiningTelemetrySession(
 }
 
 function restoredMiningTelemetrySession(
-	telemetry: CachedMiningTelemetry,
+	cachedTelemetry: CachedMiningTelemetry,
 	cachedTracker: CachedMiningNetworkTracker
 ): MiningTelemetrySession {
+	const { available, checked, status, ...telemetry } = cachedTelemetry;
 	let tracker: MiningNetworkTracker;
 	if (cachedTracker.acceptedBlocksSinceStart === undefined) {
 		// A cache written before the session counter existed: its proof list is everything it can tell us.
@@ -275,17 +286,32 @@ function restoredMiningTelemetrySession(
 		tracker = { ...cachedTracker, acceptedBlocksSinceStart: cachedTracker.acceptedBlocksSinceStart };
 	}
 	return {
-		telemetry: { ...telemetry, acceptedBlocksSinceStart: tracker.acceptedBlocksSinceStart },
+		telemetry: {
+			...telemetry,
+			status: status ?? legacyMiningTelemetryStatus(checked, available),
+			acceptedBlocksSinceStart: tracker.acceptedBlocksSinceStart,
+		},
 		tracker,
 	};
 }
 
+/** The pre-`status` pair could not tell a stale source from a live one, so `available` restores as live. */
+function legacyMiningTelemetryStatus(checked?: boolean, available?: boolean): ArweaveMiningTelemetryStatus {
+	if (!checked) return 'checking';
+	return available ? 'live' : 'unavailable';
+}
+
+function isMiningTelemetryStatus(value: unknown): value is ArweaveMiningTelemetryStatus {
+	return MINING_TELEMETRY_STATUSES.includes(value as ArweaveMiningTelemetryStatus);
+}
+
 function isMiningTelemetry(value: unknown): value is CachedMiningTelemetry {
 	if (!value || typeof value !== 'object') return false;
-	const telemetry = value as Partial<ArweaveMiningTelemetry>;
+	const telemetry = value as Partial<CachedMiningTelemetry>;
 	return Boolean(
-		typeof telemetry.available === 'boolean' &&
-			typeof telemetry.checked === 'boolean' &&
+		(telemetry.status === undefined
+			? typeof telemetry.available === 'boolean' && typeof telemetry.checked === 'boolean'
+			: isMiningTelemetryStatus(telemetry.status)) &&
 			isOptionalFiniteNumber(telemetry.candidateRate) &&
 			isOptionalFiniteNumber(telemetry.averageCandidateRate) &&
 			isOptionalFiniteNumber(telemetry.diskReadRate) &&
@@ -372,16 +398,35 @@ export function accumulateMiningEstimate(tracker: MiningNetworkTracker, now: num
 	tracker.lastAt = now;
 }
 
+/**
+ * The one transition for a finished poll. A success goes live with the tracker's numbers. A failure keeps
+ * every number as it was, so stale data is never presented as advancing; it is stale once a block was seen.
+ */
+export function nextMiningTelemetry(
+	current: ArweaveMiningTelemetry,
+	tracker: MiningNetworkTracker,
+	result: MiningPollResult
+): ArweaveMiningTelemetry {
+	if (result.ok) {
+		return telemetryFromTracker(
+			current,
+			tracker,
+			insertAcceptedProof(current.acceptedProofs, result.proof),
+			'live'
+		);
+	}
+	return { ...current, status: current.acceptedProofs.length > 0 ? 'stale' : 'unavailable' };
+}
+
 function telemetryFromTracker(
 	current: ArweaveMiningTelemetry,
 	tracker: MiningNetworkTracker,
 	acceptedProofs: ArweaveAcceptedProof[],
-	available: boolean
+	status: ArweaveMiningTelemetryStatus
 ): ArweaveMiningTelemetry {
 	return {
 		...current,
-		available,
-		checked: true,
+		status,
 		candidateRate: tracker.candidateRate,
 		averageCandidateRate: tracker.duration
 			? tracker.weightedCandidateTotal / tracker.duration
@@ -409,8 +454,7 @@ export function createMiningNetworkTracker(startedAt: number): MiningNetworkTrac
 
 function initialTelemetry(blockOrigin: string): ArweaveMiningTelemetry {
 	return {
-		available: false,
-		checked: false,
+		status: 'checking',
 		candidatesSinceStart: 0,
 		bytesReadSinceStart: 0,
 		acceptedBlocksSinceStart: 0,
