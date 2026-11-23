@@ -4,6 +4,9 @@ import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from './asset-trans
 import {
 	createDispatchPlan,
 	discardDispatchPlan,
+	dispatchDiscardConfirmation,
+	type DispatchRow,
+	dispatchRowInFlight,
 	estimateDispatchCost,
 	isDispatchPlan,
 	loadDispatchPlan,
@@ -184,6 +187,89 @@ describe('dispatch plan persistence', () => {
 		discardDispatchPlan(processId, storage);
 		expect(loadDispatchPlan(processId, storage)).toBeNull();
 		expect(storage.getItem(signedKey)).toBeNull();
+	});
+});
+
+describe('dispatch discard confirmation', () => {
+	const txA = 'T'.repeat(43);
+	const txB = 'U'.repeat(43);
+	const addressC = 'C'.repeat(43);
+	const rowsPlan = (rows: DispatchRow[]) => ({
+		processId,
+		sender,
+		createdAt: 1,
+		baseline: Object.fromEntries(rows.map((row) => [row.address, '0'])),
+		rows,
+	});
+
+	it('marks a row in flight from signing until settlement', () => {
+		expect(dispatchRowInFlight({ status: 'unsent' })).toBe(false);
+		expect(dispatchRowInFlight({ status: 'unsent', transactionId: txA })).toBe(true);
+		expect(dispatchRowInFlight({ status: 'posted', transactionId: txA })).toBe(true);
+		expect(dispatchRowInFlight({ status: 'posted' })).toBe(true);
+		expect(dispatchRowInFlight({ status: 'settled', transactionId: txA })).toBe(false);
+		expect(dispatchRowInFlight({ status: 'settled' })).toBe(false);
+	});
+
+	it('needs no confirmation without a plan, for an untouched plan, or for a complete plan', () => {
+		expect(dispatchDiscardConfirmation(null)).toBeNull();
+		expect(
+			dispatchDiscardConfirmation(
+				rowsPlan([
+					{ address: addressA, quantity: '1', status: 'unsent' },
+					{ address: addressB, quantity: '1', status: 'unsent' },
+				])
+			)
+		).toBeNull();
+		expect(
+			dispatchDiscardConfirmation(
+				rowsPlan([
+					{ address: addressA, quantity: '1', status: 'settled', transactionId: txA },
+					{ address: addressB, quantity: '1', status: 'settled', transactionId: txB },
+				])
+			)
+		).toBeNull();
+	});
+
+	it('counts posted rows and warns that re-dispatching the list sends again', () => {
+		const message = dispatchDiscardConfirmation(
+			rowsPlan([
+				{ address: addressA, quantity: '1', status: 'posted', transactionId: txA },
+				{ address: addressB, quantity: '1', status: 'posted', transactionId: txB },
+				{ address: addressC, quantity: '1', status: 'unsent' },
+			])
+		);
+		expect(message).toMatch(/^2 transfers are posted or signed but not settled yet/);
+		expect(message).toContain('deletes the saved signed transactions needed for manual review');
+		expect(message).toContain('send to those recipients a second time');
+		expect(message).toContain('Resume');
+	});
+
+	it('counts a signed unsent row, which may have been posted before a crash', () => {
+		const message = dispatchDiscardConfirmation(
+			rowsPlan([
+				{ address: addressA, quantity: '1', status: 'settled', transactionId: txA },
+				{ address: addressB, quantity: '1', status: 'unsent', transactionId: txB },
+				{ address: addressC, quantity: '1', status: 'unsent' },
+			])
+		);
+		expect(message).toMatch(/^1 transfer is posted or signed but not settled yet/);
+	});
+
+	it('stays consistent with the rows discardDispatchPlan would delete signed records for', () => {
+		const storage = memoryStorage();
+		const plan = rowsPlan([
+			{ address: addressA, quantity: '1', status: 'unsent', transactionId: txA },
+			{ address: addressB, quantity: '1', status: 'posted', transactionId: txB },
+		]);
+		saveDispatchPlan(plan, storage);
+		storage.setItem(`${SIGNED_TRANSACTION_PREFIX}${txA}`, '{}');
+		storage.setItem(`${SIGNED_TRANSACTION_PREFIX}${txB}`, '{}');
+		expect(dispatchDiscardConfirmation(loadDispatchPlan(processId, storage))).toMatch(/^2 transfers are/);
+		discardDispatchPlan(processId, storage);
+		expect(loadDispatchPlan(processId, storage)).toBeNull();
+		expect(storage.getItem(`${SIGNED_TRANSACTION_PREFIX}${txA}`)).toBeNull();
+		expect(storage.getItem(`${SIGNED_TRANSACTION_PREFIX}${txB}`)).toBeNull();
 	});
 });
 

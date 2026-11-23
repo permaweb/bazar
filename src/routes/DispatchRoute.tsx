@@ -16,6 +16,7 @@ import {
 	DEFAULT_DISPATCH_BATCH_SIZE,
 	discardDispatchPlan,
 	DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED,
+	dispatchDiscardConfirmation,
 	type DispatchPlan,
 	estimateDispatchCost,
 	fetchTransferReward,
@@ -488,8 +489,12 @@ export default function DispatchRoute() {
 		}
 	};
 
+	const discardConfirmation = dispatchDiscardConfirmation(plan);
+
 	const discard = () => {
 		if (running) return;
+		// Fail closed without a DOM confirm: in-flight rows are never forgotten silently.
+		if (discardConfirmation && !(globalThis.window?.confirm?.(discardConfirmation) ?? false)) return;
 		if (plan) dispatchActivity(plan.sender, 'done', '', 0);
 		discardDispatchPlan(processId);
 		setPlan(null);
@@ -600,7 +605,7 @@ export default function DispatchRoute() {
 								</Button>
 							) : null}
 							<Button type="button" size="custom" variant="danger" onClick={discard} disabled={running}>
-								{planComplete ? 'Clear' : 'Discard plan'}
+								{planComplete ? 'Clear' : discardConfirmation ? 'Discard plan…' : 'Discard plan'}
 							</Button>
 						</div>
 					</div>
