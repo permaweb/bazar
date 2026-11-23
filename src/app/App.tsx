@@ -2061,7 +2061,7 @@ function Header() {
 						<input
 							ref={inputRef}
 							aria-label="Search tokens, collections, and Uniques"
-							placeholder="Search tokens, collections, and assets"
+							placeholder="Search tokens, collections, and Uniques"
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							onClick={openSearch}
