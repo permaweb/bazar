@@ -24,10 +24,10 @@ function render(overrides: Partial<React.ComponentProps<typeof CollectionAppendD
 	const props: React.ComponentProps<typeof CollectionAppendDialog> = {
 		collectionName: 'Colours',
 		error: null,
-		estimate: null,
-		estimating: false,
+		estimate: { status: 'idle' },
 		files: [],
 		onClose,
+		onRetryEstimate: () => undefined,
 		onSelectFiles: () => undefined,
 		onSubmit: () => undefined,
 		previews: [],
@@ -43,6 +43,10 @@ function render(overrides: Partial<React.ComponentProps<typeof CollectionAppendD
 
 function statusRegion(markup: string) {
 	return markup.match(/<span aria-atomic="true" role="status">([^<]*)<\/span>/)?.[1];
+}
+
+function submitButton(markup: string) {
+	return markup.match(/<button[^>]*class="[^"]*\bwide\b[^"]*"[^>]*>/)?.[0] ?? '';
 }
 
 describe('CollectionAppendDialog', () => {
@@ -78,7 +82,7 @@ describe('CollectionAppendDialog', () => {
 		expect(statusRegion(working.markup)).toBe(phase);
 		expect(working.markup).not.toContain('Ready');
 
-		const estimating = render({ estimating: true });
+		const estimating = render({ estimate: { status: 'checking' } });
 		expect(statusRegion(estimating.markup)).toBe('');
 		expect(estimating.markup).toContain('Checking Arweave storage cost…');
 
@@ -94,6 +98,49 @@ describe('CollectionAppendDialog', () => {
 		expect(markup).toContain('Could not add assets');
 		expect(markup).toContain('User rejected the request.');
 		expect(markup).not.toContain('Unable to load');
+	});
+
+	it('never shows a total or an enabled submit while the cost is being re-checked', () => {
+		const files = [
+			new File(['a'], 'a.png', { type: 'image/png' }),
+			new File(['b'], 'b.png', { type: 'image/png' }),
+		];
+		const ready = render({
+			files,
+			estimate: { status: 'ready', estimate: { assetCount: 2, total: 2_000_000_000_000n, transactionCount: 4 } },
+		});
+		expect(ready.markup).toContain('· 4 transactions</strong>');
+		expect(submitButton(ready.markup)).not.toContain('disabled=""');
+
+		const checking = render({ files, estimate: { status: 'checking' } });
+		expect(checking.markup).toContain('Checking Arweave storage cost…');
+		expect(checking.markup).not.toContain('transactions</strong>');
+		expect(checking.markup).toContain('<strong>—</strong>');
+		expect(submitButton(checking.markup)).toContain('disabled=""');
+	});
+
+	it('keeps a failed cost check apart from append failures and offers a retry', () => {
+		const files = [new File(['a'], 'a.png', { type: 'image/png' })];
+		const onRetryEstimate = vi.fn();
+		const failed = render({ files, estimate: { status: 'failed', message: 'mint price 503' }, onRetryEstimate });
+
+		expect(failed.markup).toContain('Could not check the storage cost');
+		expect(failed.markup).toContain('mint price 503');
+		expect(failed.markup).not.toContain('Could not add assets');
+		expect(failed.markup).toContain('Storage cost unavailable');
+		expect(failed.markup).toContain('<strong>—</strong>');
+		expect(failed.markup).toContain('Retry cost check');
+		expect(submitButton(failed.markup)).toContain('disabled=""');
+
+		// An append failure with a fresh estimate still allows another attempt.
+		const retryable = render({
+			files,
+			error: 'User rejected the request.',
+			estimate: { status: 'ready', estimate: { assetCount: 1, total: 1_000_000_000_000n, transactionCount: 3 } },
+		});
+		expect(retryable.markup).toContain('Could not add assets');
+		expect(retryable.markup).not.toContain('Retry cost check');
+		expect(submitButton(retryable.markup)).not.toContain('disabled=""');
 	});
 
 	it('shows keyboard focus on the dropzone that hides its file input', () => {
