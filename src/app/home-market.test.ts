@@ -67,6 +67,7 @@ import {
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
 	homeSummaryRequestKeys,
+	homeSummaryWindow,
 	homeTabFromPathname,
 	homeTabPath,
 	homeTokenPriceChangeLabel,
@@ -738,6 +739,64 @@ describe('Home market summary retries', () => {
 		expect(homeListingCrawlDemand({ ...view, assetView: 'price-low', assetPage: 1 })).toBeUndefined();
 		expect(homeListingCrawlDemand({ ...view, assetView: 'price-high', assetPage: 1 })).toBeUndefined();
 		expect(homeListingCrawlDemand({ ...view, query: 'rare', assetPage: 1 })).toBeUndefined();
+	});
+
+	it('reads card summaries only for the listings the visible pages plus one ahead need', () => {
+		const collection = (kind: Collection['kind']): Collection => ({
+			id: kind,
+			name: kind,
+			description: '',
+			kind,
+			assets: [],
+		});
+		const tokens = collection('tokens');
+		const images = collection('images');
+		const card = (id: string, owner: Collection) => ({ asset: { id: id.repeat(43) }, collection: owner });
+		const listed: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const unlisted: HomeMarketSummary = { status: 'resolved', value: null };
+		const view = { assetView: 'listed' as const, query: '', assetPage: 1, tokenPage: 1 };
+		const [uniqueDemand] = homeListingCrawlDemand({ ...view, assetType: 'atomic' })!;
+		const demand = [{ ...uniqueDemand, count: 3 }];
+		const ids = (cards: Array<{ asset: { id: string } }>) => cards.map(({ asset }) => asset.id[0]).join('');
+		const candidates = ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => card(id, images));
+
+		// Nothing known yet: only the first three unknown candidates are read.
+		expect(ids(homeSummaryWindow(candidates, demand, {}))).toBe('ABC');
+		// Known listings fill the demand without a read; an unlisted one frees its slot.
+		expect(
+			ids(
+				homeSummaryWindow(candidates, demand, {
+					['A'.repeat(43)]: listed,
+					['B'.repeat(43)]: unlisted,
+				})
+			)
+		).toBe('ABCD');
+		// Crawl listings lead the candidates with known prices, so they leave no
+		// speculative reads; later known summaries are kept but never re-read.
+		expect(
+			ids(
+				homeSummaryWindow(candidates, demand, {
+					['A'.repeat(43)]: listed,
+					['B'.repeat(43)]: listed,
+					['C'.repeat(43)]: listed,
+					['F'.repeat(43)]: unlisted,
+				})
+			)
+		).toBe('ABCF');
+
+		// Each demand counts only its own type, so token rows do not use up Unique slots.
+		const overview = homeListingCrawlDemand({ ...view, assetType: 'all' })!.map((entry, index) => ({
+			...entry,
+			count: index === 0 ? 1 : 2,
+		}));
+		const mixed = [card('T', tokens), card('A', images), card('U', tokens), card('B', images), card('V', tokens)];
+		expect(ids(homeSummaryWindow(mixed, overview, {}))).toBe('TAU');
+
+		// While the crawl works, only candidates with known summaries stay in the window.
+		expect(ids(homeSummaryWindow(candidates, demand, { ['B'.repeat(43)]: listed }, false))).toBe('B');
+
+		// Price order and search rank every candidate.
+		expect(ids(homeSummaryWindow(candidates, undefined, {}))).toBe('ABCDEF');
 	});
 
 	it('keeps malformed or unverified asset shells outside the actionable asset boundary', () => {

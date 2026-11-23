@@ -3179,6 +3179,39 @@ export function homeListingCrawlDemand(
 	return [demand((page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, view.assetType)];
 }
 
+/**
+ * The candidates whose card summary home may read for a bounded view: every
+ * candidate whose summary is already known, plus unknown candidates in order
+ * while a demand they match is still short of known listings and earlier
+ * unknown reads. A candidate that turns out unlisted frees its slot, so the
+ * next one is read. An unbounded demand (price order, search) keeps them all.
+ * While the listing crawl is still working, `speculate` is false: the crawl's
+ * listings carry their price, so unknown candidates wait instead of competing
+ * with it for the same peers.
+ */
+export function homeSummaryWindow<T extends { asset: Pick<AssetSummary, 'id'>; collection: Collection }>(
+	candidates: readonly T[],
+	demands: readonly HomeListingDemand[] | undefined,
+	summaries: Readonly<Record<string, HomeMarketSummary>>,
+	speculate = true
+): T[] {
+	if (!demands || demands.some(({ count }) => !Number.isFinite(count))) return [...candidates];
+	const covered = demands.map(() => 0);
+	return candidates.filter((candidate) => {
+		const matching = demands.flatMap((demand, index) =>
+			!demand.matches || demand.matches(candidate) ? [index] : []
+		);
+		const summary = summaries[candidate.asset.id];
+		if (summary) {
+			if (homeMarketSummaryListed(summary)) for (const index of matching) covered[index] += 1;
+			return true;
+		}
+		if (!speculate || !matching.some((index) => covered[index] < demands[index].count)) return false;
+		for (const index of matching) covered[index] += 1;
+		return true;
+	});
+}
+
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
 	return view === 'all' || homeMarketSummaryListed(summary);
 }
@@ -3614,8 +3647,14 @@ function Home() {
 			: [];
 	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
 	const [tokenPriceChanges, setTokenPriceChanges] = React.useState<Record<string, number | null | 'unavailable'>>({});
+	// Listed views learn which candidates are listed from these summaries, so they
+	// read only as many unknown candidates as the visible pages plus one ahead need.
+	const summaryWindow = React.useMemo(
+		() => homeSummaryWindow(assetCandidates, homeListingDemand, displayAssetPrices, !portableHomeListingsLoading),
+		[assetCandidates, displayAssetPrices, homeListingDemand, portableHomeListingsLoading]
+	);
 	const assets =
-		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
+		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : summaryWindow;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
 	const summaryPriorityKey = [
 		...new Set(

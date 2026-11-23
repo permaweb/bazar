@@ -16,7 +16,7 @@ type ListingCallback = (result: ResolvedAsset | null, candidate: AssetCandidate,
 /** How many live listings matching `matches` the visible pages (plus one page ahead) need. */
 export type HomeListingDemand = {
 	count: number;
-	matches?: (result: ResolvedAsset) => boolean;
+	matches?: (result: Pick<ResolvedAsset, 'collection'>) => boolean;
 	/**
 	 * Whether a discovered candidate could still turn into a listing `matches`
 	 * accepts. Only admitted candidates are read for this demand; leave it out
