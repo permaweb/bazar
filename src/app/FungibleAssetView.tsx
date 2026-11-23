@@ -136,8 +136,8 @@ import {
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
 	initialOperationPhase,
-	operationAfterProvenRejection,
 	type OperationActivityPhase,
+	operationAfterProvenRejection,
 	operationRecoveryCanStillApply,
 } from './operation-activity';
 import {

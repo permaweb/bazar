@@ -18,13 +18,13 @@ import { assetStateErrorMessage } from '../app/App';
 
 import DispatchRoute, {
 	dispatchEndActivity,
-	DispatchRecipientCell,
 	dispatchErrorMessage,
 	dispatchFeeLabel,
 	DispatchFeeNotice,
 	dispatchFeeStatus,
 	DispatchPlanStatus,
 	dispatchPlanStatusText,
+	DispatchRecipientCell,
 	dispatchRowStatusLabel,
 	DispatchRunError,
 	type DispatchStartRequest,

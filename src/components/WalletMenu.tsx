@@ -7,8 +7,8 @@ import { groupDecimalAmount } from 'helpers/token-display';
 import { useTheme } from 'providers/ThemeProvider';
 import {
 	useWallet,
-	type WalletBalanceStatus,
 	WALLET_DISCONNECT_UNCONFIRMED_MESSAGE,
+	type WalletBalanceStatus,
 	type WalletConnectionStatus,
 	walletDisconnectPlan,
 	type WalletKind,

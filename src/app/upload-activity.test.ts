@@ -18,10 +18,10 @@ import {
 	observeUploadActivityTransactions,
 	type UploadActivity,
 	uploadActivityEyebrow,
-	UploadActivityPanel,
-	type UploadObserverAvailability,
 	uploadActivityObserverKey,
+	UploadActivityPanel,
 	uploadActivitySyncSteps,
+	type UploadObserverAvailability,
 } from './App';
 
 const processId = 'P'.repeat(43);
