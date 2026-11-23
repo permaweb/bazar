@@ -9873,7 +9873,16 @@ function AssetView() {
 					{ show: false }
 				);
 			}
-		})().catch(() => undefined);
+		})().then(
+			() => {
+				if (!controller.signal.aborted)
+					setRecoveryNotice((current) => savedActionCheckNotice(current, 'checked'));
+			},
+			() => {
+				if (!controller.signal.aborted)
+					setRecoveryNotice((current) => savedActionCheckNotice(current, 'failed'));
+			}
+		);
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
@@ -12574,6 +12583,24 @@ export function externalReservationTransaction(
 				ARWEAVE_ADDRESS.test(event.id)
 		) ?? null
 	);
+}
+
+export const SAVED_ACTION_CHECK_FAILED_NOTICE =
+	'Could not check this browser for a saved action. It will be checked again when the asset refreshes.';
+
+// The saved-action check shares the asset's single recovery notice. A failure
+// is appended to whatever the check already reported, and the next completed
+// check removes it again without touching the other notice.
+export function savedActionCheckNotice(current: string, outcome: 'checked' | 'failed'): string {
+	const suffix = ` ${SAVED_ACTION_CHECK_FAILED_NOTICE}`;
+	const base =
+		current === SAVED_ACTION_CHECK_FAILED_NOTICE
+			? ''
+			: current.endsWith(suffix)
+			? current.slice(0, -suffix.length)
+			: current;
+	if (outcome === 'checked') return base;
+	return base ? `${base}${suffix}` : SAVED_ACTION_CHECK_FAILED_NOTICE;
 }
 
 export function atomicPurchaseRecoveryStatus(
