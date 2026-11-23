@@ -101,7 +101,13 @@ import { optionalMotionBehavior } from 'helpers/motion';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
-import { ASSET_STATE_UNAVAILABLE_HEADING, collectionDisplayName, MarketSelect } from './App';
+import {
+	ASSET_STATE_UNAVAILABLE_HEADING,
+	collectionDisplayName,
+	MarketSelect,
+	type PurchaseSequenceStepState,
+	purchaseSequenceStepStatus,
+} from './App';
 import {
 	isTerminalPurchaseFailureCode,
 	marketplaceCodedError,
@@ -2006,7 +2012,7 @@ export type FungiblePurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
 	label: string;
 	detail: string;
-	state: 'done' | 'active' | 'next';
+	state: PurchaseSequenceStepState;
 };
 
 const PAYMENT_PURCHASE_STAGES = new Set([
@@ -2062,12 +2068,17 @@ export function FungiblePurchaseSequence({
 		<section aria-label="Purchase transaction sequence" className="purchase-sequence">
 			<ol>
 				{steps.map((step, index) => (
-					<li className={step.state} key={step.key}>
+					<li
+						aria-current={step.state === 'active' ? 'step' : undefined}
+						className={step.state}
+						key={step.key}
+					>
 						<span aria-hidden="true" className="purchase-sequence-marker">
 							{step.state === 'done' ? <Check /> : index + 1}
 						</span>
 						<span className="purchase-sequence-copy">
 							<strong>{step.label}</strong>
+							<span className="sr-only">{`, ${purchaseSequenceStepStatus(step.state)}`}</span>
 						</span>
 					</li>
 				))}

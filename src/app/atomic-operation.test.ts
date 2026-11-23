@@ -259,6 +259,39 @@ describe('atomic purchase failure trace', () => {
 		expect(sequence).toContain('aria-label="Asset purchase transaction sequence"');
 		expect(sequence).toContain('Reserve asset');
 		expect(sequence).toContain('Verify ownership');
+		expect(sequence.match(/aria-current="step"/g)).toHaveLength(1);
+		expect(sequence.match(/<li[^>]*aria-current="step"[^>]*>.*?<\/li>/)?.[0]).toContain('Pay seller');
+		expect(sequence.match(/<span class="sr-only">, completed<\/span>/g)).toHaveLength(2);
+		expect(sequence.match(/<span class="sr-only">, in progress<\/span>/g)).toHaveLength(1);
+		expect(sequence.match(/<span class="sr-only">, not started<\/span>/g)).toHaveLength(1);
+	});
+
+	it('names every NFT purchase step state for screen readers as the purchase advances', () => {
+		const stepStatus = (stage: string) =>
+			Array.from(
+				renderToStaticMarkup(React.createElement(AtomicPurchaseSequence, { state: { stage } as any })).matchAll(
+					/<strong>([^<]+)<\/strong><span class="sr-only">, ([^<]+)<\/span>/g
+				),
+				(match) => `${match[1]}: ${match[2]}`
+			);
+
+		expect(stepStatus('signing')).toEqual([
+			'Sign reservation: in progress',
+			'Reserve asset: not started',
+			'Pay seller: not started',
+			'Verify ownership: not started',
+		]);
+		expect(stepStatus('ownership-verifying')).toEqual([
+			'Sign reservation: completed',
+			'Reserve asset: completed',
+			'Pay seller: completed',
+			'Verify ownership: in progress',
+		]);
+		const complete = renderToStaticMarkup(
+			React.createElement(AtomicPurchaseSequence, { state: { stage: 'complete' } as any })
+		);
+		expect(stepStatus('complete').every((entry) => entry.endsWith(': completed'))).toBe(true);
+		expect(complete).not.toContain('aria-current');
 	});
 
 	it('keeps reservation signing active until the first NFT transaction is prepared', () => {
