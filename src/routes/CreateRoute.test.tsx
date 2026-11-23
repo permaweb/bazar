@@ -1,5 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
@@ -44,5 +45,30 @@ describe('fungible mint presentation', () => {
 		expect(markup).toContain('Token live on Bazar');
 		expect(markup).toContain('Token logo transaction');
 		expect(markup).not.toContain('mint-success');
+	});
+});
+
+describe('collection image selection', () => {
+	// CreateRoute has no render harness here (node environment, no DOM), so these guard the
+	// wiring; the selection rules themselves are unit-tested in CollectionSelectionNotice.test.tsx.
+	const source = readFileSync(new URL('./CreateRoute.tsx', import.meta.url), 'utf8');
+	const collectionEstimateEffect =
+		source.match(/React\.useEffect\(\(\) => \{\s*if \(mode !== 'collection'[\s\S]*?\n\t\}, \[[^\]]*\]\);/)?.[0] ??
+		'';
+
+	it('keeps the over-10 notice out of the error slot that the estimate run clears', () => {
+		expect(collectionEstimateEffect).toContain('setError(null)');
+		expect(collectionEstimateEffect).not.toContain('Dropped');
+		expect(source).not.toMatch(/setError\([^;]*up to 10 images/);
+		expect(source).toContain('<CollectionSelectionNotice dropped={collectionDropped} />');
+	});
+
+	it('appends from "Add images" and replaces from the dropzone', () => {
+		expect(source).toMatch(/openFilePicker\('append'\)[^\n]*\n[^\n]*\/> Add images/);
+		expect(source).toMatch(/onClick=\{\(\) => openFilePicker\('replace'\)\}\s*onDragOver/);
+		expect(source).toMatch(
+			/selectCollectionFiles\(Array\.from\(event\.target\.files \?\? \[\]\), collectionPickMode\.current\);/
+		);
+		expect(source).toMatch(/collectionPickMode\.current = 'replace';\s*\/\/[^\n]*\n\s*event\.target\.value = '';/);
 	});
 });

@@ -150,6 +150,7 @@ import { assetOperationPendingActionLabel, AssetOperationStatus } from 'componen
 import { AudioArtwork } from 'components/AudioArtwork';
 import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
+import { CollectionSelectionNotice, mergeCollectionFiles } from 'components/CollectionSelectionNotice';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel, type ErrorPanelAction } from 'components/ErrorPanel';
 import { InteractiveHtmlArtwork } from 'components/InteractiveHtmlArtwork';
@@ -5921,6 +5922,7 @@ function CollectionView() {
 	);
 	const [appendOpen, setAppendOpen] = React.useState(false);
 	const [appendFiles, setAppendFiles] = React.useState<File[]>([]);
+	const [appendDropped, setAppendDropped] = React.useState(0);
 	const [appendEstimate, setAppendEstimate] = React.useState<CollectionMintEstimate | null>(null);
 	const [appendEstimating, setAppendEstimating] = React.useState(false);
 	const [appendWorking, setAppendWorking] = React.useState(false);
@@ -6082,6 +6084,7 @@ function CollectionView() {
 				extended: true,
 			});
 			setAppendFiles([]);
+			setAppendDropped(0);
 			setAppendEstimate(null);
 			setAppendOpen(false);
 		} catch (cause) {
@@ -6947,13 +6950,16 @@ function CollectionView() {
 			{appendOpen && ownedCollection ? (
 				<CollectionAppendDialog
 					collectionName={collection.name}
+					dropped={appendDropped}
 					error={appendError}
 					estimate={appendEstimate}
 					estimating={appendEstimating}
 					files={appendFiles}
 					onClose={() => setAppendOpen(false)}
 					onSelectFiles={(files) => {
-						setAppendFiles(files.slice(0, 10));
+						const selection = mergeCollectionFiles([], files);
+						setAppendFiles(selection.files);
+						setAppendDropped(selection.dropped);
 						setAppendError(null);
 					}}
 					onSubmit={() => void appendToCollection()}
@@ -7528,6 +7534,7 @@ function CollectionAnalyticsPanel({
  */
 export function CollectionAppendDialog({
 	collectionName,
+	dropped = 0,
 	error,
 	estimate,
 	estimating,
@@ -7541,6 +7548,8 @@ export function CollectionAppendDialog({
 	working,
 }: {
 	collectionName: string;
+	/** Picked images the 10-per-batch cap left out of the current selection. */
+	dropped?: number;
 	error: string | null;
 	estimate: CollectionMintEstimate | null;
 	estimating: boolean;
@@ -7607,6 +7616,7 @@ export function CollectionAppendDialog({
 						<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
 					</span>
 				</label>
+				<CollectionSelectionNotice dropped={dropped} />
 				{files.length ? (
 					<div className="collection-append-preview" aria-label="Selected images">
 						{previews.map(({ file, url }) => (

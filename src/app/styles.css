@@ -2469,6 +2469,10 @@ main {
 	opacity: 0;
 }
 
+.collection-append-dialog .collection-selection-notice {
+	margin: 0 0 16px;
+}
+
 .collection-append-preview {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
@@ -8848,6 +8852,9 @@ body input:focus-visible {
 	color: var(--muted-subtle);
 	font-size: var(--type-body);
 	line-height: 1.5;
+}
+.collection-selection-notice {
+	margin: 12px 0 0;
 }
 .mint-cost-note {
 	padding: 11px 12px;
