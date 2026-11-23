@@ -3553,3 +3553,67 @@ describe('live candidate resolution', () => {
 		).toBe('owned');
 	});
 });
+
+describe('slow index retry for market activity', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('gives the retry of a timed-out market-activity read the longer deadline', async () => {
+		vi.useFakeTimers();
+		let attempt = 0;
+		const fetcher = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((resolve, reject) => {
+					attempt += 1;
+					const answerAfterMs = 20_000; // a cold arweave.net query, past the 15 s first deadline
+					const timer = setTimeout(
+						() =>
+							resolve(
+								Response.json({
+									data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+								})
+							),
+						answerAfterMs
+					);
+					init?.signal?.addEventListener('abort', () => {
+						clearTimeout(timer);
+						reject(init.signal?.reason);
+					});
+				})
+		);
+		const read = discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			recipients: ['A'.repeat(43)],
+			listingsOnly: true,
+			retryDelaysMs: [1_000],
+			retryTimeoutMs: 45_000,
+		});
+		const outcome = expect(read).resolves.toEqual([]);
+
+		// This file configures two indexes, so the first attempt spends 15 s on each before the retry.
+		await vi.advanceTimersByTimeAsync(2 * 15_000 + 1_000 + 20_000);
+
+		await outcome;
+		expect(attempt).toBe(3);
+	});
+
+	it('keeps the first deadline for retries when no retry deadline is given', async () => {
+		vi.useFakeTimers();
+		const fetcher = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+				})
+		);
+		const read = discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			recipients: ['A'.repeat(43)],
+			retryDelaysMs: [1_000],
+		});
+		const outcome = expect(read).rejects.toThrow();
+
+		await vi.advanceTimersByTimeAsync(2 * 15_000 + 1_000 + 2 * 15_000);
+
+		await outcome;
+		expect(fetcher).toHaveBeenCalledTimes(4);
+	});
+});

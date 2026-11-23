@@ -136,7 +136,7 @@ import {
 	withVisibleCollectionAssets,
 } from 'api/collections';
 import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
-import { GRAPHQL_RETRY_DELAYS_MS } from 'api/graphql';
+import { GRAPHQL_RETRY_DELAYS_MS, GRAPHQL_SLOW_RETRY_TIMEOUT_MS } from 'api/graphql';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -6574,6 +6574,8 @@ export type CollectionCardPrice =
 
 /** How long a visible card may say "Checking…" before it admits the price did not arrive. */
 export const COLLECTION_PRICE_DISPLAY_DEADLINE_MS = 15_000;
+/** Recipients per collection listing-activity query (see the batch comment where it is used). */
+const COLLECTION_LISTING_BATCH_SIZE = 40;
 
 export function collectionCardPriceLabel(
 	price: CollectionCardPrice | undefined,
@@ -7953,6 +7955,12 @@ function CollectionView() {
 									signal: controller.signal,
 									listingsOnly: true,
 									concurrency: 1,
+									// arweave.net answers a cold 100-recipient filter in 18-24 s, past the 15 s
+									// deadline, and the same query in about 1 s once it has run: 40 recipients
+									// fit the deadline cold, and one patient retry finishes a slow batch.
+									batchSize: COLLECTION_LISTING_BATCH_SIZE,
+									retryDelaysMs: [GRAPHQL_RETRY_DELAYS_MS[0]],
+									retryTimeoutMs: GRAPHQL_SLOW_RETRY_TIMEOUT_MS,
 									onBatch: (candidates, completedRecipients) => {
 										resolvePage(candidates, completedRecipients);
 										if (controller.signal.aborted || listingActivityScope.current !== listingScope)

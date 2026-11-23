@@ -116,6 +116,8 @@ type IndexRetryOptions = {
 	 * default: callers that already retry a failed read themselves keep it single-shot.
 	 */
 	retryDelaysMs?: readonly number[];
+	/** Deadline for those retries; the first attempt keeps `requestTimeoutMs`. */
+	retryTimeoutMs?: number;
 };
 
 export type WalletCandidateAlias = 'initiallyHeld' | 'marketActions' | 'receivedTransfers';
@@ -1083,7 +1085,7 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 			body: payload,
 			endpoint,
 		} = await retryTransientGraphql(
-			() =>
+			(attempt) =>
 				postGraphql<any>(
 					fetcher,
 					pageEndpoints,
@@ -1108,7 +1110,8 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 						signal: options.signal,
 					},
 					{
-						timeoutMs: options.requestTimeoutMs,
+						timeoutMs:
+							attempt > 0 ? options.retryTimeoutMs ?? options.requestTimeoutMs : options.requestTimeoutMs,
 						timeoutError: 'asset-activity-graphql-timeout',
 					}
 				),
