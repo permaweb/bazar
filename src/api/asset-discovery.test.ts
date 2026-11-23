@@ -3617,3 +3617,45 @@ describe('slow index retry for market activity', () => {
 		expect(fetcher).toHaveBeenCalledTimes(4);
 	});
 });
+
+describe('batched market activity in an index outage', () => {
+	it('stops starting batches after consecutive failures and reports them', async () => {
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+		const recipients = Array.from({ length: 10 }, (_, index) => `${String.fromCharCode(65 + index)}`.repeat(43));
+
+		await expect(
+			discoverMarketActivityBatched({
+				fetch: fetcher as typeof fetch,
+				recipients,
+				batchSize: 2,
+				concurrency: 1,
+				listingsOnly: true,
+				stopAfterConsecutiveFailures: 2,
+			})
+		).rejects.toThrow('asset-activity-batch-failed');
+		// Two batches, each tried once on each of this file's two indexes; three batches never start.
+		expect(fetcher).toHaveBeenCalledTimes(4);
+	});
+
+	it('keeps going after a failure that a success interrupts', async () => {
+		let call = 0;
+		const fetcher = vi.fn(async () => {
+			call += 1;
+			// Batch 1 fails on both indexes, batch 2 succeeds, batches 3-5 succeed.
+			if (call <= 2) return new Response('busy', { status: 503 });
+			return Response.json({ data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } } });
+		});
+		const recipients = Array.from({ length: 10 }, (_, index) => `${String.fromCharCode(65 + index)}`.repeat(43));
+
+		await expect(
+			discoverMarketActivityBatched({
+				fetch: fetcher as typeof fetch,
+				recipients,
+				batchSize: 2,
+				concurrency: 1,
+				stopAfterConsecutiveFailures: 2,
+			})
+		).rejects.toThrow('asset-activity-batch-failed');
+		expect(fetcher).toHaveBeenCalledTimes(2 + 4);
+	});
+});

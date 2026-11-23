@@ -181,6 +181,12 @@ type BatchedMarketActivityOptions = Omit<MarketActivityOptions, 'onPage' | 'reci
 	recipients: string[];
 	batchSize?: number;
 	concurrency?: number;
+	/**
+	 * Stop starting batches after this many fail in a row and report the failure, so an index
+	 * outage surfaces after a few batches instead of after every one has used its deadline and
+	 * retry. Completed batches were already reported through `onBatch`.
+	 */
+	stopAfterConsecutiveFailures?: number;
 	onBatch?: (candidates: AssetCandidate[], recipients: string[]) => void | Promise<void>;
 };
 
@@ -1148,11 +1154,15 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 	const found = new Map<string, AssetCandidate>();
 	let nextBatch = 0;
 	const failures: unknown[] = [];
+	let consecutiveFailures = 0;
+	const stopAfter = options.stopAfterConsecutiveFailures;
+	const stopped = () => stopAfter !== undefined && consecutiveFailures >= stopAfter;
 
 	await Promise.all(
 		Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
 			while (true) {
 				options.signal?.throwIfAborted();
+				if (stopped()) return;
 				const batch = batches[nextBatch++];
 				if (!batch) return;
 				try {
@@ -1163,8 +1173,11 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 					});
 					options.signal?.throwIfAborted();
 					for (const candidate of candidates) mergeCandidate(found, candidate);
+					consecutiveFailures = 0;
 					await options.onBatch?.(candidates, batch);
 				} catch (cause) {
+					options.signal?.throwIfAborted();
+					consecutiveFailures += 1;
 					failures.push(cause);
 				}
 			}

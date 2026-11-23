@@ -128,9 +128,10 @@ export async function postGraphql<T = unknown>(
 export const GRAPHQL_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000];
 
 /**
- * Deadline for a retry of a query whose first attempt hit its deadline. A query shape arweave.net
- * has not run recently can take 18-24 s the first time (a 100-recipient market-activity filter,
- * measured 2026-11-23) and about 1 s once it has run, so one patient retry finishes it.
+ * Deadline for the retry of a read that opted into it, after any transient failure (most often
+ * its first attempt hitting its deadline). A query shape arweave.net has not run recently can take
+ * 18-24 s the first time (a 100-recipient market-activity filter, measured 2026-11-23) and about
+ * 1 s once it has run, so one patient retry finishes it.
  */
 export const GRAPHQL_SLOW_RETRY_TIMEOUT_MS = 45_000;
 const GRAPHQL_RETRY_AFTER_MAX_MS = 10_000;

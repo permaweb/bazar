@@ -7961,6 +7961,9 @@ function CollectionView() {
 									batchSize: COLLECTION_LISTING_BATCH_SIZE,
 									retryDelaysMs: [GRAPHQL_RETRY_DELAYS_MS[0]],
 									retryTimeoutMs: GRAPHQL_SLOW_RETRY_TIMEOUT_MS,
+									// In an index outage, report after two failed batches (about a minute)
+									// instead of after every batch; Retry asks only for the rest.
+									stopAfterConsecutiveFailures: 2,
 									onBatch: (candidates, completedRecipients) => {
 										resolvePage(candidates, completedRecipients);
 										if (controller.signal.aborted || listingActivityScope.current !== listingScope)
