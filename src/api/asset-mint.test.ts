@@ -136,7 +136,7 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
-			image: `https://arweave.net/${processId}`,
+			image: `https://arweave.net/raw/${processId}`,
 		});
 		expect(
 			mintMetadata({ name: ' Signal #1 ', description: ' Permanent ', contentType: 'image/png' }, mediaId)
@@ -189,8 +189,8 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal',
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/${mediaId}`,
-			image: `https://arweave.net/${artworkId}`,
+			media: `https://arweave.net/raw/${mediaId}`,
+			image: `https://arweave.net/raw/${artworkId}`,
 			artist: 'Kite Array',
 			album: 'Long Orbit',
 			duration: 125,
@@ -210,8 +210,8 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'OBELISK',
 			contentType: 'text/html',
-			media: `https://arweave.net/${processId}`,
-			image: `https://arweave.net/${previewId}`,
+			media: `https://arweave.net/raw/${processId}`,
+			image: `https://arweave.net/raw/${previewId}`,
 		});
 		expect(assetFromMintState(processId, { ...interactive, 'asset-preview': undefined })).toBeNull();
 		expect(assetFromMintState(processId, { ...interactive, 'asset-preview-content-type': 'text/html' })).toBeNull();
@@ -374,7 +374,7 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
-			image: `https://arweave.net/${mediaId}`,
+			image: `https://arweave.net/raw/${mediaId}`,
 		});
 	});
 

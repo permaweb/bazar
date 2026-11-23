@@ -114,7 +114,7 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'AntiqueWhite',
 				contentType: 'image/png',
-				image: `https://arweave.net/${processId}`,
+				image: `https://arweave.net/raw/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'Created on Bazar', kind: 'images' },
 		});
@@ -168,8 +168,8 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'OBELISK',
 				contentType: 'text/html',
-				media: `https://arweave.net/${processId}`,
-				image: `https://arweave.net/${previewId}`,
+				media: `https://arweave.net/raw/${processId}`,
+				image: `https://arweave.net/raw/${previewId}`,
 			},
 		});
 	});
@@ -229,7 +229,7 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'lucifer shrek',
 				contentType: 'image/webp',
-				image: `https://arweave.net/${processId}`,
+				image: `https://arweave.net/raw/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'Created on Bazar' },
 		});
@@ -2485,8 +2485,8 @@ describe('live candidate resolution', () => {
 				id: processId,
 				name: 'Portable asset',
 				contentType: 'audio/mpeg',
-				media: `https://arweave.net/${mediaId}`,
-				image: `https://arweave.net/${artworkId}`,
+				media: `https://arweave.net/raw/${mediaId}`,
+				image: `https://arweave.net/raw/${artworkId}`,
 			},
 			collection: { id: 'created-assets', name: 'Portable collection' },
 		});
@@ -2499,7 +2499,7 @@ describe('live candidate resolution', () => {
 				'asset-artwork': undefined,
 			})
 		);
-		expect(embeddedImage?.asset.image).toBe(`https://arweave.net/${processId}`);
+		expect(embeddedImage?.asset.image).toBe(`https://arweave.net/raw/${processId}`);
 		await expect(
 			resolveAssetCandidates(verification.supported, [tokenCollection], {
 				read: async () => ({ provider: 'https://compute.example', state }),
