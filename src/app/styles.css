@@ -2088,6 +2088,21 @@ main {
 	min-height: calc(100vh - 122px);
 	min-height: calc(100dvh - 122px);
 }
+/* While the route is still reading (a region marked aria-busy, or a Loading status), main fills the
+   viewport below the 61px header so the footer waits below the fold instead of sitting inside it and
+   being pushed down by every card that arrives. A settled short page drops back to the rule above and
+   keeps its footer in view without extra scroll. */
+main:has([aria-busy='true'], .loading) {
+	min-height: calc(100vh - 61px);
+	min-height: calc(100dvh - 61px);
+}
+@media (min-width: 1051px) {
+	/* Desktop Home is a fixed frame that scrolls inside itself above the footer. */
+	main:has(> .home-shell) {
+		min-height: calc(100vh - 122px);
+		min-height: calc(100dvh - 122px);
+	}
+}
 .max-view-wrapper {
 	width: 100%;
 	max-width: var(--max-view-width);
