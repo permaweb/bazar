@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, Check, InfinityIcon, Info, Upload, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, InfinityIcon, Info, RefreshCw, Upload, X } from 'lucide-react';
 import type { Consensus, ObserverView } from 'weave-wrangler';
 
 import {
@@ -285,6 +285,7 @@ export function fileDropzoneProps(working: boolean, openPicker: () => void, acce
 export function MintSubmitButton({
 	blocked,
 	connected,
+	describedBy,
 	mode,
 	phaseLabel,
 	submission,
@@ -292,13 +293,21 @@ export function MintSubmitButton({
 }: {
 	blocked: boolean;
 	connected: boolean;
+	/** The estimate failure that blocks this submit, when there is one. */
+	describedBy?: string;
 	mode: CreateMode;
 	phaseLabel: string;
 	submission: MintSubmission | null;
 	working: boolean;
 }) {
 	return (
-		<Button className="mint-submit" type="submit" size="custom" disabled={working || blocked}>
+		<Button
+			aria-describedby={describedBy}
+			className="mint-submit"
+			type="submit"
+			size="custom"
+			disabled={working || blocked}
+		>
 			{working
 				? phaseLabel || MINT_PREFLIGHT_LABEL[submission ?? 'mint']
 				: connected
@@ -857,6 +866,85 @@ export function scheduleEstimate(
 	};
 }
 
+export type MintEstimateMode = 'asset' | 'collection' | 'fungible';
+/** An estimate that settled with an error. It lives apart from the form's own message. */
+export type MintEstimateFailure = { message: string; retryable: boolean };
+export type MintEstimateFailures = Partial<Record<MintEstimateMode, MintEstimateFailure>>;
+export type MintEstimateStatus = 'idle' | 'checking' | 'ready' | 'failed';
+/**
+ * The form's single message slot. A `selection` message (files dropped past the
+ * collection limit, a rejected logo) stays until the user changes that selection;
+ * a `submit` message (a mint precondition or failure) goes stale once the inputs
+ * change enough to start a new estimate.
+ */
+export type CreateFormMessage = { text: string; origin: 'selection' | 'submit' };
+
+/**
+ * Input-validation codes (validateMintInput and friends throw TypeError('mint-…'))
+ * fail the same way on every retry, so only other causes offer Retry.
+ */
+export function mintEstimateFailure(cause: unknown): MintEstimateFailure {
+	return {
+		message: mintErrorMessage(cause),
+		retryable: !(cause instanceof TypeError && /^[a-z]+(?:-[a-z0-9]+)+$/.test(cause.message)),
+	};
+}
+
+export function withMintEstimateFailure(
+	failures: MintEstimateFailures,
+	mode: MintEstimateMode,
+	failure: MintEstimateFailure | null
+): MintEstimateFailures {
+	if ((failures[mode] ?? null) === failure) return failures;
+	const next = { ...failures };
+	if (failure) next[mode] = failure;
+	else delete next[mode];
+	return next;
+}
+
+export function mintEstimateStatus({
+	estimating,
+	hasEstimate,
+	failure,
+}: {
+	estimating: boolean;
+	hasEstimate: boolean;
+	failure: MintEstimateFailure | null;
+}): MintEstimateStatus {
+	if (estimating) return 'checking';
+	if (hasEstimate) return 'ready';
+	return failure ? 'failed' : 'idle';
+}
+
+export function messageAfterEstimateStart(message: CreateFormMessage | null): CreateFormMessage | null {
+	return message?.origin === 'submit' ? null : message;
+}
+
+export function MintEstimateFailureNotice({
+	failure,
+	id,
+	onRetry,
+}: {
+	failure: MintEstimateFailure;
+	id: string;
+	onRetry(): void;
+}) {
+	return (
+		<div className={`inline-error${failure.retryable ? ' retry-notice' : ''}`}>
+			<span id={id} role={failure.retryable ? 'status' : undefined}>
+				{failure.retryable ? `Could not check the network cost (${failure.message}).` : failure.message}
+			</span>
+			{failure.retryable ? (
+				<Button aria-describedby={id} className="with-icon" size="custom" type="button" onClick={onRetry}>
+					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry cost check
+				</Button>
+			) : null}
+		</div>
+	);
+}
+
+const ESTIMATE_FAILURE_ID = 'create-estimate-failure';
+
 export default function CreateRoute() {
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
@@ -903,6 +991,8 @@ export default function CreateRoute() {
 	const [estimate, setEstimate] = React.useState<MintEstimate | null>(null);
 	const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
 	const [estimating, setEstimating] = React.useState(false);
+	const [estimateFailures, setEstimateFailures] = React.useState<MintEstimateFailures>({});
+	const [estimateRetry, setEstimateRetry] = React.useState(0);
 	const [udlEnabled, setUdlEnabled] = React.useState(true);
 	const [udlTerms, setUdlTerms] = React.useState<UdlTerms>(() => udlTermsForPreset('share-with-credit'));
 	const [udlConfigurationMode, setUdlConfigurationMode] = React.useState<UdlConfigurationMode>('configured');
@@ -910,7 +1000,10 @@ export default function CreateRoute() {
 	const udlPreset = UDL_PRESET_OPTIONS.find(({ value }) => udlTermsMatchPreset(udlTerms, value))?.value ?? null;
 	const [phase, setPhase] = React.useState<MintPhase | null>(null);
 	const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
-	const [error, setError] = React.useState<string | null>(null);
+	const [formMessage, setFormMessage] = React.useState<CreateFormMessage | null>(null);
+	const error = formMessage?.text ?? null;
+	const setError = (text: string | null, origin: CreateFormMessage['origin'] = 'submit') =>
+		setFormMessage(text === null ? null : { text, origin });
 	const [result, setResult] = React.useState<MintedAsset | null>(null);
 	const resultReady = useMintLive(result?.id);
 	const [collectionResult, setCollectionResult] = React.useState<CollectionMintResult | null>(null);
@@ -1069,6 +1162,7 @@ export default function CreateRoute() {
 		return () => controller.abort();
 	}, [fungibleResult]);
 	React.useEffect(() => {
+		setEstimateFailures((current) => withMintEstimateFailure(current, 'asset', null));
 		if (mode !== 'asset' || !file || !name.trim()) {
 			setEstimate(null);
 			return;
@@ -1076,9 +1170,11 @@ export default function CreateRoute() {
 		const reset = assetQuoteReset.current;
 		quoteClearsError(reset, [activeUdl, artwork, audioMetadata, description, file, mode, name]);
 		return scheduleEstimate((signal) => {
+			// Changed inputs drop a stale submit message but keep selection notices; a refresh caused by
+			// kept paid progress (same inputs) leaves a failed run's message visible.
 			if (reset.clearError) {
 				reset.clearError = false;
-				setError(null);
+				setFormMessage(messageAfterEstimateStart);
 			}
 			return new AssetMintClient()
 				.estimate(
@@ -1100,12 +1196,16 @@ export default function CreateRoute() {
 						if (!signal.aborted) setEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!signal.aborted) setError(mintErrorMessage(cause));
+						if (!signal.aborted)
+							setEstimateFailures((current) =>
+								withMintEstimateFailure(current, 'asset', mintEstimateFailure(cause))
+							);
 					}
 				);
 		}, setEstimating);
-	}, [activeUdl, artwork, audioMetadata, description, file, mode, name, reusedArtworkId]);
+	}, [activeUdl, artwork, audioMetadata, description, estimateRetry, file, mode, name, reusedArtworkId]);
 	React.useEffect(() => {
+		setEstimateFailures((current) => withMintEstimateFailure(current, 'collection', null));
 		if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
 			setCollectionEstimate(null);
 			return;
@@ -1113,9 +1213,11 @@ export default function CreateRoute() {
 		const reset = collectionQuoteReset.current;
 		quoteClearsError(reset, [activeUdl, collectionFiles, description, mode, name]);
 		return scheduleEstimate((signal) => {
+			// Changed inputs drop a stale submit message but keep selection notices; a refresh caused by
+			// kept paid progress (same inputs) leaves a failed run's message visible.
 			if (reset.clearError) {
 				reset.clearError = false;
-				setError(null);
+				setFormMessage(messageAfterEstimateStart);
 			}
 			return new CollectionMintClient()
 				.estimate({ files: collectionFiles, name, description, udl: activeUdl }, signal, reusedCollectionAssets)
@@ -1124,29 +1226,36 @@ export default function CreateRoute() {
 						if (!signal.aborted) setCollectionEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!signal.aborted) setError(mintErrorMessage(cause));
+						if (!signal.aborted)
+							setEstimateFailures((current) =>
+								withMintEstimateFailure(current, 'collection', mintEstimateFailure(cause))
+							);
 					}
 				);
 		}, setEstimating);
-	}, [activeUdl, collectionFiles, description, mode, name, reusedCollectionAssets]);
+	}, [activeUdl, collectionFiles, description, estimateRetry, mode, name, reusedCollectionAssets]);
 	React.useEffect(() => {
+		setEstimateFailures((current) => withMintEstimateFailure(current, 'fungible', null));
 		if (mode !== 'fungible' || !fungibleReady) {
 			setFungibleEstimate(null);
 			return;
 		}
 		return scheduleEstimate((signal) => {
-			setError(null);
+			setFormMessage(messageAfterEstimateStart);
 			return new AssetMintClient().estimateFungible(fungibleInput, logo ?? undefined, signal).then(
 				(nextEstimate) => {
 					if (!signal.aborted) setFungibleEstimate(nextEstimate);
 				},
 				(cause) => {
-					if (!signal.aborted) setError(mintErrorMessage(cause));
+					if (!signal.aborted)
+						setEstimateFailures((current) =>
+							withMintEstimateFailure(current, 'fungible', mintEstimateFailure(cause))
+						);
 				}
 			);
 		}, setEstimating);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [mode, fungibleReady, name, description, ticker, wholeSupply, denomination, logo, logoTxId]);
+	}, [mode, fungibleReady, name, description, ticker, wholeSupply, denomination, logo, logoTxId, estimateRetry]);
 
 	const selectFile = (next: File | null) => {
 		const request = ++metadataRequest.current;
@@ -1194,7 +1303,7 @@ export default function CreateRoute() {
 	const selectCollectionFiles = (next: File[]) => {
 		setCollectionFiles(next.slice(0, 10));
 		setCollectionEstimate(null);
-		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
+		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null, 'selection');
 		setCollectionResult(null);
 	};
 	const selectLogo = (next: File | null) => {
@@ -1205,7 +1314,7 @@ export default function CreateRoute() {
 				setLogo(null);
 				setLogoTxId('');
 				setFungibleEstimate(null);
-				setError(mintErrorMessage(cause));
+				setError(mintErrorMessage(cause), 'selection');
 				if (logoInput.current) logoInput.current.value = '';
 				return;
 			}
@@ -1422,6 +1531,12 @@ export default function CreateRoute() {
 		  }[phase]
 		: '';
 	const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
+	const activeEstimateFailure = estimateFailures[mode] ?? null;
+	const estimateStatus = mintEstimateStatus({
+		estimating,
+		hasEstimate: Boolean(mode === 'fungible' ? fungibleEstimate : activeEstimate),
+		failure: activeEstimateFailure,
+	});
 	const activeUploadBytes = mode === 'asset' && estimate ? estimate.assetBytes + estimate.artworkBytes : null;
 	const outcome = visibleMintOutcome(mode, { result, collectionResult });
 	/** Leaves the selected tab's finished result and clears its media so the next mint starts fresh. */
@@ -2299,7 +2414,7 @@ export default function CreateRoute() {
 						<div>
 							<span>Estimated network cost</span>
 							<strong>
-								{estimating ? (
+								{estimateStatus === 'checking' ? (
 									'Checking…'
 								) : activeEstimate ? (
 									<ArCurrencyText>{`${winstonToAr(
@@ -2364,6 +2479,13 @@ export default function CreateRoute() {
 							<span>{error}</span>
 						</div>
 					) : null}
+					{estimateStatus === 'failed' && activeEstimateFailure ? (
+						<MintEstimateFailureNotice
+							failure={activeEstimateFailure}
+							id={ESTIMATE_FAILURE_ID}
+							onRetry={() => setEstimateRetry((current) => current + 1)}
+						/>
+					) : null}
 					{outcome ? (
 						<MintOutcomeCard
 							onCreateAnother={createAnother}
@@ -2392,6 +2514,7 @@ export default function CreateRoute() {
 						</Button>
 					) : (
 						<MintSubmitButton
+							describedBy={estimateStatus === 'failed' ? ESTIMATE_FAILURE_ID : undefined}
 							blocked={
 								Boolean(wallet.address && readingAudioMetadata) ||
 								Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
