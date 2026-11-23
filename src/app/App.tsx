@@ -3352,6 +3352,34 @@ export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean)
 	return display !== 'failed' && pending;
 }
 
+export const HOME_SUMMARY_AUTO_RETRY_DELAY_MS = 15_000;
+/** Background retries of failed card summaries before only a manual Retry restarts them. */
+export const HOME_SUMMARY_AUTO_RETRY_LIMIT = 2;
+
+/** Whether a `failedAssetIds|failedCollectionIds` key names any failed summary. */
+export function homeSummaryFailuresPresent(failureKey: string) {
+	return failureKey.replace('|', '').length > 0;
+}
+
+/**
+ * Failed card summaries are retried in the background a bounded number of
+ * times, so a peer that keeps failing settles on Unavailable instead of
+ * re-entering a busy retry every 15 s.
+ */
+export function homeSummaryAutoRetryDue(state: {
+	failureKey: string;
+	rounds: number;
+	retrying: boolean;
+	computeCircuitOpen: boolean;
+}) {
+	return (
+		homeSummaryFailuresPresent(state.failureKey) &&
+		!state.retrying &&
+		!state.computeCircuitOpen &&
+		state.rounds < HOME_SUMMARY_AUTO_RETRY_LIMIT
+	);
+}
+
 export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
 	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
 }
@@ -4406,15 +4434,22 @@ function Home() {
 		setSummaryRetrying(true);
 		setSummaryRetry((current) => current + 1);
 	};
+	const summaryAutoRetryRounds = React.useRef(0);
+	if (!homeSummaryFailuresPresent(summaryFailureKey)) summaryAutoRetryRounds.current = 0;
 	React.useEffect(() => {
 		if (
-			!summaryFailureKey ||
-			summaryFailureKey === '|' ||
-			summaryRetrying ||
-			portableHomeListingsFailure?.source === 'compute'
+			!homeSummaryAutoRetryDue({
+				failureKey: summaryFailureKey,
+				rounds: summaryAutoRetryRounds.current,
+				retrying: summaryRetrying,
+				computeCircuitOpen: portableHomeListingsFailure?.source === 'compute',
+			})
 		)
 			return;
-		const timer = window.setTimeout(retryMarketSummaries, 15_000);
+		const timer = window.setTimeout(() => {
+			summaryAutoRetryRounds.current += 1;
+			retryMarketSummaries();
+		}, HOME_SUMMARY_AUTO_RETRY_DELAY_MS);
 		return () => window.clearTimeout(timer);
 	}, [portableHomeListingsFailure, summaryFailureKey, summaryRetrying]);
 	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);

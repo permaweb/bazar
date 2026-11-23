@@ -44,6 +44,7 @@ import {
 	HOME_ASSET_PAGE_SIZE,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	HOME_DISCOVER_UNIQUE_PREVIEW,
+	HOME_SUMMARY_AUTO_RETRY_LIMIT,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
@@ -68,6 +69,8 @@ import {
 	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
+	homeSummaryAutoRetryDue,
+	homeSummaryFailuresPresent,
 	homeSummaryRequestKeys,
 	homeSummaryWindow,
 	homeTabFromPathname,
@@ -1274,6 +1277,19 @@ describe('Home market summary retries', () => {
 				{ shown: 11, pageSize: 12, page: 1, pageCount: 1 },
 			])
 		).toBe(false);
+	});
+
+	it('retries failed card summaries in the background only a bounded number of times', () => {
+		expect(homeSummaryFailuresPresent('|')).toBe(false);
+		expect(homeSummaryFailuresPresent('a|')).toBe(true);
+		expect(homeSummaryFailuresPresent('|c')).toBe(true);
+		const due = { failureKey: 'a|', rounds: 0, retrying: false, computeCircuitOpen: false };
+		expect(homeSummaryAutoRetryDue(due)).toBe(true);
+		expect(homeSummaryAutoRetryDue({ ...due, rounds: HOME_SUMMARY_AUTO_RETRY_LIMIT - 1 })).toBe(true);
+		expect(homeSummaryAutoRetryDue({ ...due, rounds: HOME_SUMMARY_AUTO_RETRY_LIMIT })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, failureKey: '|' })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, retrying: true })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, computeCircuitOpen: true })).toBe(false);
 	});
 
 	it('shows the home loader only while results are pending and no assets are visible', () => {
