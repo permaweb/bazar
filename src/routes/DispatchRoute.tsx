@@ -35,7 +35,7 @@ import { Tooltip } from 'components/Tooltip';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
-import { winstonToAr } from '../app/App';
+import { assetStateErrorMessage, winstonToAr } from '../app/App';
 import { announceFungibleOperationActivityChange } from '../app/operation-activity';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -76,6 +76,87 @@ export function dispatchErrorMessage(cause: unknown): string {
 	return message || 'Dispatch failed.';
 }
 
+const MINTED_TOKEN_HINT =
+	'If this token was minted recently, it only becomes readable once the arweave-scheduler sequences its creation — around 20 minutes on mainnet.';
+const TRANSPORT_STATE_FAILURES = [
+	'Failed to fetch',
+	'fetch failed',
+	'compute-provider-failed',
+	'compute-provider-timeout',
+];
+
+/**
+ * Copy for a failed token-state read. Uses the asset page's cause-specific
+ * mapping; the freshly-minted hint is added only when the cause could be a
+ * token that is not sequenced yet (not found / unrecognised), never for a
+ * rate limit, peer outage, timeout or unreachable peer.
+ */
+export function dispatchStateReadMessage(cause: unknown): string {
+	const message = cause instanceof Error ? cause.message : String(cause);
+	const base = assetStateErrorMessage(cause);
+	const transport =
+		/^HTTP (?:429|5\d\d)(?:\b|$)/i.test(message) ||
+		/response[-\s]+quorum[-\s]+not[-\s]+met/i.test(message) ||
+		message === DISPLAY_STATE_TIMEOUT_ERROR ||
+		TRANSPORT_STATE_FAILURES.includes(message);
+	return transport ? base : `${base} ${MINTED_TOKEN_HINT}`;
+}
+
+/** Fixed, short copy for a failed network-fee quote; raw codes never reach the UI. */
+export function transferRewardErrorMessage(cause: unknown): string {
+	const message = cause instanceof Error ? cause.message : String(cause);
+	return message === 'transfer-price-429'
+		? 'The Arweave gateway is rate-limiting network fee checks. Wait briefly and retry.'
+		: 'Network fee could not be checked. Retry.';
+}
+
+/**
+ * The network-fee quote as explicit state:
+ * - idle: nothing to show yet (no rows, or no wallet while the quote is pending)
+ * - checking: a connected wallet is waiting on the quote that gates sending
+ * - error: the quote failed; a Retry re-requests only the fee
+ * - ready: the quote is known
+ */
+export type DispatchFeeStatus = 'idle' | 'checking' | 'error' | 'ready';
+
+export function dispatchFeeStatus(input: {
+	walletConnected: boolean;
+	rowsParsed: boolean;
+	reward: bigint | null;
+	rewardError: string | null;
+}): DispatchFeeStatus {
+	if (!input.rowsParsed) return 'idle';
+	if (input.rewardError) return 'error';
+	if (input.reward !== null) return 'ready';
+	return input.walletConnected ? 'checking' : 'idle';
+}
+
+export function dispatchFeeLabel(status: DispatchFeeStatus, totalWinston: bigint | null): string {
+	if (status === 'ready' && totalWinston !== null) return `${winstonToAr(totalWinston.toString())} AR`;
+	if (status === 'checking') return 'Checking…';
+	if (status === 'error') return 'Unavailable';
+	return '—';
+}
+
+export function DispatchFeeNotice(props: { message: string; blocksDispatch: boolean; onRetry: () => void }) {
+	return (
+		<div className="mint-recovery" role="status">
+			<div>
+				<strong>Network fee unavailable</strong>
+				<span>
+					{props.message}
+					{props.blocksDispatch ? ' Sign and dispatch stays disabled until the fee is known.' : ''}
+				</span>
+			</div>
+			<div>
+				<Button type="button" size="custom" onClick={props.onRetry}>
+					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+				</Button>
+			</div>
+		</div>
+	);
+}
+
 const STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
 
 export default function DispatchRoute() {
@@ -89,6 +170,9 @@ export default function DispatchRoute() {
 	const [stateAttempt, setStateAttempt] = React.useState(0);
 	const [holderRows, setHolderRows] = React.useState<HolderDraftRow[]>([{ address: '', quantity: '' }]);
 	const [reward, setReward] = React.useState<bigint | null>(null);
+	const [rewardError, setRewardError] = React.useState<string | null>(null);
+	// Separate from stateAttempt: retrying the fee must not re-read the token state.
+	const [rewardAttempt, setRewardAttempt] = React.useState(0);
 	const [plan, setPlan] = React.useState<DispatchPlan | null>(() => (validId ? loadDispatchPlan(processId) : null));
 	const [running, setRunning] = React.useState(false);
 	const [runError, setRunError] = React.useState<string | null>(null);
@@ -105,12 +189,8 @@ export default function DispatchRoute() {
 				(result) => {
 					if (!controller.signal.aborted) setState(result.state);
 				},
-				() => {
-					if (!controller.signal.aborted) {
-						setStateError(
-							'The token process state is not readable yet. A freshly minted token only becomes readable once the arweave-scheduler sequences its creation — around 20 minutes on mainnet. Retry once it has settled.'
-						);
-					}
+				(cause) => {
+					if (!controller.signal.aborted) setStateError(dispatchStateReadMessage(cause));
 				}
 			)
 			.finally(() => {
@@ -119,16 +199,22 @@ export default function DispatchRoute() {
 		return () => controller.abort();
 	}, [processId, validId, stateAttempt]);
 	React.useEffect(() => {
+		// Every attempt starts clean so a fee or error from another token or an
+		// earlier attempt is never shown.
+		setReward(null);
+		setRewardError(null);
 		if (!validId || !state) return;
 		const controller = new AbortController();
 		void fetchTransferReward(arweaveGatewayFromLocation(), processId, undefined, controller.signal).then(
 			(value) => {
 				if (!controller.signal.aborted) setReward(value);
 			},
-			() => undefined
+			(cause) => {
+				if (!controller.signal.aborted) setRewardError(transferRewardErrorMessage(cause));
+			}
 		);
 		return () => controller.abort();
-	}, [processId, validId, state]);
+	}, [processId, validId, state, rewardAttempt]);
 
 	// The K/V rows are the editable source of truth; serialize non-empty rows
 	// back to the CSV the strict parser/validator already understands.
@@ -145,6 +231,12 @@ export default function DispatchRoute() {
 		[state, text]
 	);
 	const estimate = parsed?.rows.length && reward !== null ? estimateDispatchCost(parsed.rows, reward) : null;
+	const feeStatus = dispatchFeeStatus({
+		walletConnected: Boolean(wallet.address),
+		rowsParsed: Boolean(parsed?.rows.length),
+		reward,
+		rewardError,
+	});
 	const needsCostApproval = Boolean(estimate && requiresCostConfirmation(estimate.totalWinston));
 	const planSettled = plan ? plan.rows.filter((row) => row.status === 'settled').length : 0;
 	const planPosted = plan ? plan.rows.filter((row) => row.status === 'posted').length : 0;
@@ -287,7 +379,7 @@ export default function DispatchRoute() {
 			{stateError ? (
 				<div className="mint-recovery" role="status">
 					<div>
-						<strong>Token state not readable yet</strong>
+						<strong>Token state unavailable</strong>
 						<span>{stateError}</span>
 					</div>
 					<div>
@@ -512,11 +604,16 @@ export default function DispatchRoute() {
 									</div>
 									<div>
 										<span>Total AR cost</span>
-										<strong>
-											{estimate ? `${winstonToAr(estimate.totalWinston.toString())} AR` : '—'}
-										</strong>
+										<strong>{dispatchFeeLabel(feeStatus, estimate?.totalWinston ?? null)}</strong>
 									</div>
 								</div>
+								{feeStatus === 'error' && rewardError ? (
+									<DispatchFeeNotice
+										message={rewardError}
+										blocksDispatch={Boolean(wallet.address)}
+										onRetry={() => setRewardAttempt((current) => current + 1)}
+									/>
+								) : null}
 								<div className="mint-notice">
 									<Info className="ui-icon" aria-hidden="true" />
 									<span>
