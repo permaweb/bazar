@@ -20,6 +20,8 @@ export type ArweaveMiningTelemetry = {
 	averageDiskReadRate?: number;
 	candidatesSinceStart: number;
 	bytesReadSinceStart: number;
+	/** Every distinct accepted block height seen this session; acceptedProofs is only the bounded display list. */
+	acceptedBlocksSinceStart: number;
 	sourceLabel: string;
 	acceptedProofs: ArweaveAcceptedProof[];
 };
@@ -33,7 +35,16 @@ type MiningNetworkTracker = {
 	duration: number;
 	candidatesSinceStart: number;
 	bytesReadSinceStart: number;
+	acceptedBlocksSinceStart: number;
+	/** Highest block height already counted, so a re-polled tip or a same-height fork is not counted twice. */
+	lastCountedHeight?: number;
 };
+
+/** Caches written before the accepted-block counter existed lack it; they restore instead of resetting. */
+type CachedMiningTelemetry = Omit<ArweaveMiningTelemetry, 'acceptedBlocksSinceStart'> &
+	Partial<Pick<ArweaveMiningTelemetry, 'acceptedBlocksSinceStart'>>;
+type CachedMiningNetworkTracker = Omit<MiningNetworkTracker, 'acceptedBlocksSinceStart'> &
+	Partial<Pick<MiningNetworkTracker, 'acceptedBlocksSinceStart'>>;
 
 type MiningTelemetryStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -94,6 +105,7 @@ export function useArweaveMiningTelemetry(
 				const now = Date.now();
 				const tracker = trackerRef.current;
 				recordMiningSample(tracker, now, proof.estimatedCandidateRate, proof.estimatedDiskReadRate);
+				recordAcceptedBlock(tracker, proof.height);
 				setTelemetry((current) => {
 					const next = telemetryFromTracker(
 						current,
@@ -212,7 +224,7 @@ export function miningTelemetrySession(
 			if (value !== null) storage.removeItem(key);
 			return fresh;
 		}
-		return { telemetry: value.telemetry, tracker: value.tracker };
+		return restoredMiningTelemetrySession(value.telemetry, value.tracker);
 	} catch {
 		try {
 			storage.removeItem(key);
@@ -249,7 +261,26 @@ export function writeMiningTelemetrySession(
 	}
 }
 
-function isMiningTelemetry(value: unknown): value is ArweaveMiningTelemetry {
+function restoredMiningTelemetrySession(
+	telemetry: CachedMiningTelemetry,
+	cachedTracker: CachedMiningNetworkTracker
+): MiningTelemetrySession {
+	let tracker: MiningNetworkTracker;
+	if (cachedTracker.acceptedBlocksSinceStart === undefined) {
+		// A cache written before the session counter existed: its proof list is everything it can tell us.
+		const heights = telemetry.acceptedProofs.map((proof) => proof.height);
+		tracker = { ...cachedTracker, acceptedBlocksSinceStart: new Set(heights).size };
+		if (heights.length) tracker.lastCountedHeight = Math.max(...heights);
+	} else {
+		tracker = { ...cachedTracker, acceptedBlocksSinceStart: cachedTracker.acceptedBlocksSinceStart };
+	}
+	return {
+		telemetry: { ...telemetry, acceptedBlocksSinceStart: tracker.acceptedBlocksSinceStart },
+		tracker,
+	};
+}
+
+function isMiningTelemetry(value: unknown): value is CachedMiningTelemetry {
 	if (!value || typeof value !== 'object') return false;
 	const telemetry = value as Partial<ArweaveMiningTelemetry>;
 	return Boolean(
@@ -261,6 +292,7 @@ function isMiningTelemetry(value: unknown): value is ArweaveMiningTelemetry {
 			isOptionalFiniteNumber(telemetry.averageDiskReadRate) &&
 			isFiniteNonNegative(telemetry.candidatesSinceStart) &&
 			isFiniteNonNegative(telemetry.bytesReadSinceStart) &&
+			isOptionalFiniteNonNegative(telemetry.acceptedBlocksSinceStart) &&
 			typeof telemetry.sourceLabel === 'string' &&
 			Array.isArray(telemetry.acceptedProofs) &&
 			telemetry.acceptedProofs.every(
@@ -273,7 +305,7 @@ function isMiningTelemetry(value: unknown): value is ArweaveMiningTelemetry {
 	);
 }
 
-function isMiningNetworkTracker(value: unknown): value is MiningNetworkTracker {
+function isMiningNetworkTracker(value: unknown): value is CachedMiningNetworkTracker {
 	if (!value || typeof value !== 'object') return false;
 	const tracker = value as Partial<MiningNetworkTracker>;
 	return Boolean(
@@ -284,7 +316,9 @@ function isMiningNetworkTracker(value: unknown): value is MiningNetworkTracker {
 			isFiniteNonNegative(tracker.weightedDiskTotal) &&
 			isFiniteNonNegative(tracker.duration) &&
 			isFiniteNonNegative(tracker.candidatesSinceStart) &&
-			isFiniteNonNegative(tracker.bytesReadSinceStart)
+			isFiniteNonNegative(tracker.bytesReadSinceStart) &&
+			isOptionalFiniteNonNegative(tracker.acceptedBlocksSinceStart) &&
+			isOptionalFiniteNonNegative(tracker.lastCountedHeight)
 	);
 }
 
@@ -294,6 +328,20 @@ function isOptionalFiniteNumber(value: unknown) {
 
 function isFiniteNonNegative(value: unknown) {
 	return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function isOptionalFiniteNonNegative(value: unknown) {
+	return value === undefined || isFiniteNonNegative(value);
+}
+
+/**
+ * Counts an accepted block the first time its height is seen. The first tip observed counts too, matching
+ * the accepted-proof list, so the total equals the list length until the list reaches its display cap.
+ */
+export function recordAcceptedBlock(tracker: MiningNetworkTracker, height: number): void {
+	if (tracker.lastCountedHeight !== undefined && height <= tracker.lastCountedHeight) return;
+	tracker.acceptedBlocksSinceStart += 1;
+	tracker.lastCountedHeight = height;
 }
 
 export function recordMiningSample(
@@ -342,6 +390,7 @@ function telemetryFromTracker(
 		averageDiskReadRate: tracker.duration ? tracker.weightedDiskTotal / tracker.duration : tracker.diskReadRate,
 		candidatesSinceStart: tracker.candidatesSinceStart,
 		bytesReadSinceStart: tracker.bytesReadSinceStart,
+		acceptedBlocksSinceStart: tracker.acceptedBlocksSinceStart,
 		acceptedProofs,
 	};
 }
@@ -354,6 +403,7 @@ export function createMiningNetworkTracker(startedAt: number): MiningNetworkTrac
 		duration: 0,
 		candidatesSinceStart: 0,
 		bytesReadSinceStart: 0,
+		acceptedBlocksSinceStart: 0,
 	};
 }
 
@@ -363,6 +413,7 @@ function initialTelemetry(blockOrigin: string): ArweaveMiningTelemetry {
 		checked: false,
 		candidatesSinceStart: 0,
 		bytesReadSinceStart: 0,
+		acceptedBlocksSinceStart: 0,
 		sourceLabel: sourceLabel(blockOrigin),
 		acceptedProofs: [],
 	};

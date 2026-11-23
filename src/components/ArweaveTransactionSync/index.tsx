@@ -254,7 +254,10 @@ export function ArweaveTransactionSync({
 					label: language.transactionSyncMiningDiskTotal,
 					value: formatBytes(miningTelemetry.bytesReadSinceStart, language),
 				},
-				{ label: language.transactionSyncMiningAccepted, value: String(acceptedProofs.length) },
+				{
+					label: language.transactionSyncMiningAccepted,
+					value: String(miningTelemetry.acceptedBlocksSinceStart),
+				},
 			],
 		},
 	};
