@@ -203,7 +203,9 @@ describe('Home market summary retries', () => {
 		const discover = renderToStaticMarkup(
 			React.createElement(DiscoveryAssetArtwork, { asset, collection, priority: true })
 		);
-		const collectionCard = renderToStaticMarkup(React.createElement(AssetCardArtwork, { asset, collection }));
+		const collectionCard = renderToStaticMarkup(
+			React.createElement(AssetCardArtwork, { asset, collection, priority: true })
+		);
 
 		expect(discover).toContain(`src="${logo}"`);
 		expect(discover).toContain('home-asset-media');

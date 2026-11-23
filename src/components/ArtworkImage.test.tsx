@@ -2,17 +2,30 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+	acquireArtworkSlot,
 	advanceArtworkLoad,
 	ARTWORK_CANDIDATE_TIMEOUT_MS,
+	ARTWORK_HOST_CONCURRENCY,
+	ARTWORK_PRELOAD_MARGIN,
+	ARTWORK_RETRY_DELAY_MS,
 	type ArtworkCandidateImage,
+	artworkFailurePlan,
+	artworkFetchPriority,
+	artworkHasStarted,
 	ArtworkImage,
+	artworkInViewport,
 	type ArtworkLoadEvent,
 	artworkLoadIsEmpty,
 	type ArtworkLoadState,
 	type ArtworkRacers,
+	artworkSlotHost,
+	type ArtworkSlotQueues,
+	type ArtworkStartState,
+	artworkVisibleSrc,
+	artworkWantsSlot,
 	cancelArtworkRacers,
 	initialArtworkLoadState,
-	observeArtworkVisibility,
+	observeArtworkNearness,
 	settleArtworkImage,
 	startArtworkCandidate,
 	startArtworkCandidateTimer,
@@ -59,6 +72,18 @@ describe('ArtworkImage', () => {
 		expect(markup).toContain('decoding="async"');
 		expect(markup).toContain('width="320"');
 		expect(markup).toContain('height="240"');
+	});
+
+	it('gives lazy artwork no src until it is near the viewport and holds a slot, and eager artwork one at once', () => {
+		const lazy = renderToStaticMarkup(<ArtworkImage src="https://arweave.net/raw/lazy" />);
+		const eager = renderToStaticMarkup(<ArtworkImage loading="eager" src="https://arweave.net/raw/eager" />);
+		const high = renderToStaticMarkup(<ArtworkImage fetchPriority="high" src="https://arweave.net/raw/high" />);
+
+		expect(lazy).not.toContain('src=');
+		expect(lazy).toContain('is-loading');
+		expect(eager).toContain('src="https://arweave.net/raw/eager"');
+		expect(high).toContain('src="https://arweave.net/raw/high"');
+		expect(high).toContain('fetchpriority="high"');
 	});
 
 	it('treats only an undecodable image without size as an empty load', () => {
@@ -213,38 +238,101 @@ describe('ArtworkImage', () => {
 		expect(racers.size).toBe(0);
 	});
 
-	it('starts the candidate clock on intersection, or at once without IntersectionObserver', () => {
+	it('reports nearness each time it changes, or near at once without IntersectionObserver', () => {
 		const visible = vi.fn();
-		const cleanup = observeArtworkVisibility({} as Element, visible, undefined);
-		expect(visible).toHaveBeenCalledOnce();
+		const cleanup = observeArtworkNearness({} as Element, visible, undefined);
+		expect(visible).toHaveBeenCalledExactlyOnceWith(true);
 		cleanup();
 
 		let notify: IntersectionObserverCallback = () => undefined;
 		const observe = vi.fn();
 		const disconnect = vi.fn();
+		const options: Array<IntersectionObserverInit | undefined> = [];
 		class StubObserver {
-			constructor(callback: IntersectionObserverCallback) {
+			constructor(callback: IntersectionObserverCallback, init?: IntersectionObserverInit) {
 				notify = callback;
+				options.push(init);
 			}
 			observe = observe;
 			disconnect = disconnect;
 		}
 		const element = {} as Element;
-		const onVisible = vi.fn();
-		const stop = observeArtworkVisibility(
+		const onChange = vi.fn();
+		const stop = observeArtworkNearness(
 			element,
-			onVisible,
-			StubObserver as unknown as typeof IntersectionObserver
+			onChange,
+			StubObserver as unknown as typeof IntersectionObserver,
+			ARTWORK_PRELOAD_MARGIN
 		);
 		expect(observe).toHaveBeenCalledWith(element);
+		expect(options).toEqual([{ rootMargin: '200px' }]);
 
-		notify([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
-		expect(onVisible).not.toHaveBeenCalled();
-		notify([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
-		expect(onVisible).toHaveBeenCalledOnce();
-		expect(disconnect).toHaveBeenCalledOnce();
+		const entry = (isIntersecting: boolean) => ({ isIntersecting } as IntersectionObserverEntry);
+		notify([entry(false)], {} as IntersectionObserver);
+		notify([entry(true)], {} as IntersectionObserver);
+		// A fast scroll can batch several records for one element; the latest one wins.
+		notify([entry(true), entry(false)], {} as IntersectionObserver);
+		expect(onChange.mock.calls).toEqual([[false], [true], [false]]);
+		expect(disconnect).not.toHaveBeenCalled();
 		stop();
-		expect(disconnect).toHaveBeenCalledTimes(2);
+		expect(disconnect).toHaveBeenCalledOnce();
+	});
+
+	it('starts queued lazy artwork at once when it becomes eager or high priority after mount', () => {
+		const sources = ['https://arweave.net/raw/a', 'https://ardrive.net/raw/a'];
+		const queued: ArtworkStartState = {
+			...initialArtworkLoadState,
+			scheduled: true,
+			started: false,
+			near: true,
+		};
+		expect(artworkHasStarted(queued)).toBe(false);
+		expect(artworkVisibleSrc(queued, sources)).toBeUndefined();
+		expect(artworkWantsSlot(queued)).toBe(true);
+
+		// A re-sort moves the card to index 0: it gives up its place in the queue and gets a src.
+		const promoted = { ...queued, scheduled: false };
+		expect(artworkWantsSlot(promoted)).toBe(false);
+		expect(artworkHasStarted(promoted)).toBe(true);
+		expect(artworkVisibleSrc(promoted, sources)).toBe(sources[0]);
+
+		// Once latched as started, moving back down keeps the download in flight.
+		expect(artworkVisibleSrc({ ...queued, started: true }, sources)).toBe(sources[0]);
+		// A fallback candidate is shown by index; the retry pause shows none.
+		expect(artworkVisibleSrc({ ...promoted, sourceIndex: 1 }, sources)).toBe(sources[1]);
+		expect(artworkVisibleSrc({ ...promoted, status: 'error' }, sources)).toBeUndefined();
+	});
+
+	it('leaves the slot queue when queued artwork scrolls out of the preload margin, not once granted', () => {
+		const queued: ArtworkStartState = {
+			...initialArtworkLoadState,
+			scheduled: true,
+			started: false,
+			near: true,
+		};
+		expect(artworkWantsSlot(queued)).toBe(true);
+		expect(artworkWantsSlot({ ...queued, near: false })).toBe(false);
+		expect(artworkWantsSlot({ ...queued, near: false, started: true })).toBe(true);
+		expect(artworkWantsSlot({ ...queued, nextIndex: 2 })).toBe(false);
+		expect(artworkWantsSlot({ ...queued, sourceIndex: 1, nextIndex: 2 })).toBe(false);
+		expect(artworkWantsSlot({ ...queued, status: 'loaded' })).toBe(false);
+	});
+
+	it('grants slots to on-screen artwork first once cards scrolled past have left the queue', async () => {
+		const queues: ArtworkSlotQueues = new Map();
+		const granted: number[] = [];
+		const release = Array.from({ length: 10 }, (_, index) =>
+			acquireArtworkSlot(`https://arweave.net/raw/${index}`, () => granted.push(index), { queues, limit: 2 })
+		);
+		await Promise.resolve();
+		expect(granted).toEqual([0, 1]);
+		// A fast scroll passed cards 2-7 while they were queued; they leave the queue.
+		for (const index of [2, 3, 4, 5, 6, 7]) release[index]();
+		release[0]();
+		release[1]();
+		await new Promise((resolve) => setTimeout(resolve));
+		expect(granted).toEqual([0, 1, 8, 9]);
+		release.forEach((done) => done());
 	});
 
 	it('races the next candidate after eight seconds while a slow first one keeps downloading', () => {
@@ -270,5 +358,86 @@ describe('ArtworkImage', () => {
 		expect(state).toEqual({ sourceIndex: 0, pending: [], nextIndex: 2, status: 'loaded' });
 		expect(startArtworkCandidateTimer(state, sourceCount, dispatch)).toBeTypeOf('function');
 		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('charges each host its own slot budget and grants waiting artwork in arrival order', () => {
+		const queues: ArtworkSlotQueues = new Map();
+		expect(ARTWORK_HOST_CONCURRENCY).toBe(6);
+		const granted: string[] = [];
+		const release = Array.from({ length: 8 }, (_, index) =>
+			acquireArtworkSlot(`https://arweave.net/raw/${index}`, () => granted.push(`a${index}`), {
+				queues,
+				limit: 6,
+			})
+		);
+		const other = acquireArtworkSlot('https://ardrive.net/raw/x', () => granted.push('ardrive'), {
+			queues,
+			limit: 6,
+		});
+		return Promise.resolve().then(async () => {
+			expect(granted).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'ardrive']);
+			// Leaving the queue before the grant gives up the place without spending a slot.
+			release[6]();
+			release[0]();
+			await new Promise((resolve) => setTimeout(resolve));
+			expect(granted).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'ardrive', 'a7']);
+			release.forEach((done) => done());
+			other();
+		});
+	});
+
+	it('frees a slot held by a stalled download after the hold limit', async () => {
+		vi.useFakeTimers();
+		const queues: ArtworkSlotQueues = new Map();
+		const granted: number[] = [];
+		const first = acquireArtworkSlot('https://arweave.net/raw/a', () => granted.push(1), {
+			queues,
+			limit: 1,
+			maxHoldMs: 8_000,
+		});
+		const second = acquireArtworkSlot('https://arweave.net/raw/b', () => granted.push(2), {
+			queues,
+			limit: 1,
+			maxHoldMs: 8_000,
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		expect(granted).toEqual([1]);
+		await vi.advanceTimersByTimeAsync(7_999);
+		expect(granted).toEqual([1]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(granted).toEqual([1, 2]);
+		first();
+		second();
+		await vi.advanceTimersByTimeAsync(8_000);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('spends no slot on data and blob URLs', () => {
+		const queues: ArtworkSlotQueues = new Map();
+		const onGranted = vi.fn();
+		acquireArtworkSlot('data:image/svg+xml,%3csvg/%3e', onGranted, { queues, limit: 1 });
+		expect(onGranted).toHaveBeenCalledOnce();
+		expect(queues.size).toBe(0);
+		expect(artworkSlotHost('https://arweave.net/raw/id')).toBe('arweave.net');
+		expect(artworkSlotHost('/artwork.png', 'https://bazar.arweave.net/')).toBe('bazar.arweave.net');
+		expect(artworkSlotHost('blob:https://bazar.arweave.net/1')).toBeUndefined();
+	});
+
+	it('fetches artwork started in the preload margin at low priority unless the caller asked otherwise', () => {
+		expect(artworkInViewport({ top: 850, bottom: 1050 }, 900)).toBe(true);
+		expect(artworkInViewport({ top: 950, bottom: 1150 }, 900)).toBe(false);
+		expect(artworkFetchPriority('auto', true, false)).toBe('low');
+		expect(artworkFetchPriority(undefined, true, true)).toBeUndefined();
+		expect(artworkFetchPriority('auto', true, true)).toBe('auto');
+		expect(artworkFetchPriority('high', false, false)).toBe('high');
+		expect(artworkFetchPriority(undefined, false, false)).toBeUndefined();
+	});
+
+	it('retries failed artwork once after a pause before showing the fallback', () => {
+		expect(ARTWORK_RETRY_DELAY_MS).toBe(5_000);
+		expect(artworkFailurePlan('loading', false)).toEqual({ show: 'image' });
+		expect(artworkFailurePlan('loaded', true)).toEqual({ show: 'image' });
+		expect(artworkFailurePlan('error', false)).toEqual({ show: 'image', retryInMs: 5_000 });
+		expect(artworkFailurePlan('error', true)).toEqual({ show: 'fallback' });
 	});
 });
