@@ -5164,7 +5164,7 @@ function Home() {
 		floors: collectionFloors,
 		overdue: overdueCollectionFloors,
 	});
-	const collectionFloorRetryNotice = collectionPriceRetryNotice({
+	const collectionFloorRetryNoticeNow = collectionPriceRetryNotice({
 		activityError: false,
 		activityLoading: false,
 		cardPricesFailed: false,
@@ -5173,6 +5173,18 @@ function Home() {
 		overdue: collectionSummariesRetrying ? 0 : overdueCollectionFloorIds.length,
 		unavailable: failedCollectionIds.length,
 	});
+	// Held through the retry it offers, so it does not blink (a render-phase update, as useStableOrder).
+	const [shownCollectionFloorNotice, setShownCollectionFloorNotice] = React.useState<PriceRetryNotice>();
+	const collectionFloorRetryNotice = heldPriceRetryNotice(
+		shownCollectionFloorNotice,
+		collectionFloorRetryNoticeNow,
+		collectionSummariesRetrying
+	);
+	if (
+		collectionFloorRetryNotice.visible !== shownCollectionFloorNotice?.visible ||
+		collectionFloorRetryNotice.unavailable !== shownCollectionFloorNotice?.unavailable
+	)
+		setShownCollectionFloorNotice(collectionFloorRetryNotice);
 	const retryCollectionFloors = () => {
 		summaryAutoRetryRounds.current = 0;
 		setCollectionFloorDeadlineRun((run) => run + 1);
@@ -5456,26 +5468,6 @@ function Home() {
 									id="home-collections-panel"
 									role="tabpanel"
 								>
-									{collectionFloorRetryNotice.visible && !market.error ? (
-										<div className="inline-error retry-notice">
-											<span role="status">
-												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
-												{collectionFloorRetryNotice.unavailable === 1
-													? 'floor remains'
-													: 'floors remain'}{' '}
-												unavailable. The collections stay browsable.
-											</span>
-											<Button
-												className="with-icon"
-												disabled={summaryRetrying}
-												onClick={retryCollectionFloors}
-												size="custom"
-												type="button"
-											>
-												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-											</Button>
-										</div>
-									) : null}
 									{collections.length || collectionResultsPending ? (
 										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
@@ -5599,6 +5591,27 @@ function Home() {
 											) ? (
 												<HomeMarketGhostCard kind="collection" />
 											) : null}
+										</div>
+									) : null}
+									{/* After the grid, so its arrival never pushes painted cards down. */}
+									{collectionFloorRetryNotice.visible && !market.error ? (
+										<div className="inline-error retry-notice home-collection-floor-notice">
+											<span role="status">
+												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
+												{collectionFloorRetryNotice.unavailable === 1
+													? 'floor remains'
+													: 'floors remain'}{' '}
+												unavailable. The collections stay browsable.
+											</span>
+											<Button
+												className="with-icon"
+												disabled={summaryRetrying}
+												onClick={retryCollectionFloors}
+												size="custom"
+												type="button"
+											>
+												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+											</Button>
 										</div>
 									) : null}
 									{collectionResultsReady && !market.error && collections.length === 0 ? (
@@ -6584,6 +6597,21 @@ export function collectionPriceRetryNotice({
 	const visible =
 		!listedOnly && ((!cardPricesLoading && (cardPricesFailed || unavailable > 0)) || countedOverdue > 0);
 	return { visible, unavailable: visible && !cardPricesFailed ? unavailable + countedOverdue : 0 };
+}
+
+type PriceRetryNotice = ReturnType<typeof collectionPriceRetryNotice>;
+
+/**
+ * A price retry notice that stays up through the retry it offers. Without this it blinks off when
+ * a retry (manual or automatic) starts and back on when the retry fails again. The held copy keeps
+ * the last count, which stays true until the retry settles: those floors are still unavailable.
+ */
+export function heldPriceRetryNotice(
+	shown: PriceRetryNotice | undefined,
+	next: PriceRetryNotice,
+	retrying: boolean
+): PriceRetryNotice {
+	return retrying && shown?.visible ? shown : next;
 }
 
 type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';

@@ -1161,6 +1161,9 @@ p {
 	grid-template-columns: repeat(2, minmax(260px, 1fr));
 	gap: 12px;
 }
+.inline-error.home-collection-floor-notice {
+	margin: var(--space-5) 0 0;
+}
 .home-feature-card {
 	min-width: 0;
 	padding: 0;

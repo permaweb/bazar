@@ -59,6 +59,7 @@ import {
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
 	globalCatalogueActivity,
+	heldPriceRetryNotice,
 	HOME_ASSET_PAGE_SIZE,
 	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
@@ -1620,6 +1621,20 @@ describe('Home market summary retries', () => {
 			unavailable: 0,
 		});
 		expect(collectionPriceRetryNotice({ ...base, listedOnly: true, unavailable: 2 }).visible).toBe(false);
+	});
+
+	it('holds a shown floor retry notice through the retry instead of blinking it off and on', () => {
+		const shown = { visible: true, unavailable: 2 };
+		// A retry starts: collectionPriceRetryNotice hides while prices load, the held notice stays.
+		expect(heldPriceRetryNotice(shown, { visible: false, unavailable: 0 }, true)).toBe(shown);
+		// The retry settled: whatever it found now shows (fewer floors, or none).
+		expect(heldPriceRetryNotice(shown, { visible: true, unavailable: 1 }, false)).toEqual({
+			visible: true,
+			unavailable: 1,
+		});
+		expect(heldPriceRetryNotice(shown, { visible: false, unavailable: 0 }, false).visible).toBe(false);
+		// Nothing was shown before the retry: nothing is held.
+		expect(heldPriceRetryNotice(undefined, { visible: false, unavailable: 0 }, true).visible).toBe(false);
 	});
 
 	it('renders exactly one Discover state so a failure replaces the loader but keeps visible cards', () => {
