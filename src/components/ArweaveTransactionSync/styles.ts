@@ -287,7 +287,7 @@ export const RiskNote = styled.p`
 	position: relative;
 	z-index: 2;
 	margin: 7px 0 0;
-	color: #525252;
+	color: ${(props) => props.theme.colors.font.alt1};
 	font-size: ${(props) => props.theme.typography.size.small};
 `;
 
