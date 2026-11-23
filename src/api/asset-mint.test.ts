@@ -587,6 +587,135 @@ describe('asset mint contract', () => {
 		expect(loadMintActivities(store)).toEqual([]);
 	});
 
+	describe('collection runs check the wallet before the first signature', () => {
+		// Every transaction prices at 100 and the wallet holds 250, so each
+		// per-transaction check passes on its own while the run as a whole
+		// (3 assets + manifest + carrier/update = 500) is unaffordable.
+		function shortWalletHarness(options: { balance?: string; activeAddress?: string } = {}) {
+			const store = storage();
+			const urls: string[] = [];
+			const posts: string[] = [];
+			const createTransaction = vi.fn(async () => {
+				const transaction: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+				transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+				transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+				return transaction;
+			});
+			let signed = 0;
+			const sign = vi.fn(async () => ({
+				id: String.fromCharCode(65 + signed++).repeat(43),
+				owner: 'signed-owner',
+				tags: [],
+				signature: 'signed',
+			}));
+			const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				urls.push(url);
+				if (init?.method === 'POST') {
+					posts.push(url);
+					return new Response('', { status: 200 });
+				}
+				return url.includes('/wallet/') ? new Response(options.balance ?? '250') : new Response('100');
+			}) as typeof fetch;
+			const client = new CollectionMintClient({
+				arweave: {
+					createTransaction,
+					transactions: {},
+					wallets: { ownerToAddress: vi.fn(async () => owner) },
+				},
+				fetch: fetchMock,
+				storage: store,
+				wallet: {
+					getActiveAddress: vi.fn(async () => options.activeAddress ?? owner),
+					sign,
+				} as any,
+			});
+			const files = [1, 2, 3].map(
+				(size) => new File([new Uint8Array(size)], `asset-${size}.png`, { type: 'image/png' })
+			);
+			return { client, createTransaction, files, posts, sign, store, urls };
+		}
+
+		const collection = {
+			id: 'C'.repeat(43),
+			manifestId: 'O'.repeat(43),
+			owner,
+			createdAt: 1,
+			name: 'Happy agents',
+			description: 'A collection',
+			kind: 'images' as const,
+			assets: [],
+			total: 0,
+		};
+
+		it('rejects a collection mint the wallet cannot pay for in full', async () => {
+			const harness = shortWalletHarness();
+			const estimate = await harness.client.estimate({ name: 'Short', description: '', files: harness.files });
+			expect(estimate.total).toBe(500n);
+
+			await expect(
+				harness.client.mint({ name: 'Short', description: '', files: harness.files }, owner, {
+					allowHighCost: true,
+				})
+			).rejects.toThrow('mint-insufficient-balance');
+
+			expect(harness.sign).not.toHaveBeenCalled();
+			expect(harness.createTransaction).not.toHaveBeenCalled();
+			expect(harness.posts).toEqual([]);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintedCollections(harness.store)).toEqual([]);
+		});
+
+		it('rejects an append the wallet cannot pay for once the target-priced update is included', async () => {
+			// 3 assets + manifest = 400 would fit a 450 balance; the carrier update
+			// priced against the collection target makes it 500.
+			const harness = shortWalletHarness({ balance: '450' });
+			const estimate = await harness.client.estimateAppend(collection, harness.files);
+			expect(estimate.total).toBe(500n);
+
+			await expect(
+				harness.client.append(collection, harness.files, owner, { allowHighCost: true })
+			).rejects.toThrow('mint-insufficient-balance');
+
+			expect(harness.urls).toContain(`https://arweave.net/price/0/${collection.id}`);
+			expect(harness.sign).not.toHaveBeenCalled();
+			expect(harness.createTransaction).not.toHaveBeenCalled();
+			expect(harness.posts).toEqual([]);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+		});
+
+		it('still runs a collection mint whose balance covers the whole estimate exactly', async () => {
+			const harness = shortWalletHarness({ balance: '500' });
+
+			await harness.client.mint({ name: 'Exact', description: '', files: harness.files }, owner, {
+				allowHighCost: true,
+			});
+
+			expect(harness.sign).toHaveBeenCalledTimes(5);
+			expect(harness.posts).toHaveLength(5);
+			expect(loadMintedCollections(harness.store)).toHaveLength(1);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+		});
+
+		it.each(['mint', 'append'] as const)(
+			'rejects %s for a switched wallet account before pricing anything',
+			async (run) => {
+				const harness = shortWalletHarness({ balance: '1000', activeAddress: 'X'.repeat(43) });
+
+				await expect(
+					run === 'mint'
+						? harness.client.mint({ name: 'Switched', description: '', files: harness.files }, owner, {
+								allowHighCost: true,
+						  })
+						: harness.client.append(collection, harness.files, owner, { allowHighCost: true })
+				).rejects.toThrow('wallet-account-changed');
+
+				expect(harness.urls).toEqual([]);
+				expect(harness.sign).not.toHaveBeenCalled();
+			}
+		);
+	});
+
 	it('explains the bytes and transaction count in a single-asset quote', async () => {
 		const fetchMock = vi.fn(async () => new Response('3'));
 		const estimate = await new AssetMintClient({ fetch: fetchMock as typeof fetch }).estimate({

@@ -610,6 +610,20 @@ export class AssetMintClient {
 	async priceData(bytes: number, signal?: AbortSignal, target?: string): Promise<bigint> {
 		return this.#uploader.price(bytes, signal, target);
 	}
+
+	/** Reject before any signature when `owner` is not the connected wallet account. */
+	async assertOwner(owner: string): Promise<void> {
+		return this.#uploader.assertOwner(owner);
+	}
+
+	/**
+	 * Reject before any signature when `owner` cannot pay `required` winston.
+	 * Multi-transaction runs check their whole estimate here first, as `mint`
+	 * does for its asset and artwork pair.
+	 */
+	async assertBalance(owner: string, required: bigint, signal?: AbortSignal): Promise<void> {
+		return this.#uploader.assertBalance(owner, required, signal);
+	}
 }
 
 export class CollectionMintClient {
@@ -660,10 +674,14 @@ export class CollectionMintClient {
 		} = {}
 	): Promise<CollectionMintResult> {
 		validateCollectionMintInput(input);
+		await this.#assetClient.assertOwner(owner);
 		const estimate = await this.estimate(input, options.signal);
 		if (isHighMintCost(estimate.total) && !options.allowHighCost) {
 			throw new Error('mint-high-cost-confirmation-required');
 		}
+		// Check the whole run before the first prompt: per-asset checks alone let
+		// a short wallet pay for assets that never join the collection.
+		await this.#assetClient.assertBalance(owner, estimate.total, options.signal);
 		const assets: MintedAsset[] = [];
 		for (const [index, file] of input.files.entries()) {
 			const result = await this.#assetClient.mint(
@@ -780,10 +798,12 @@ export class CollectionMintClient {
 	): Promise<CollectionAppendResult> {
 		assertAddress(collection.id, 'invalid-collection-process-id');
 		if (collection.owner !== owner) throw new Error('collection-owner-mismatch');
+		await this.#assetClient.assertOwner(owner);
 		const estimate = await this.estimateAppend(collection, files, options.signal);
 		if (isHighMintCost(estimate.total) && !options.allowHighCost) {
 			throw new Error('mint-high-cost-confirmation-required');
 		}
+		await this.#assetClient.assertBalance(owner, estimate.total, options.signal);
 		const additions: MintedAsset[] = [];
 		for (const [index, file] of files.entries()) {
 			const result = await this.#assetClient.mint(
