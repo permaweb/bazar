@@ -14,7 +14,12 @@ import {
 } from 'api/profile';
 
 import { Button } from 'components/Button';
-import { ProfileAvatar, type ProfileSummary, shortProfileAddress } from 'components/ProfileIdentity';
+import {
+	announceProfileUpdated,
+	ProfileAvatar,
+	type ProfileSummary,
+	shortProfileAddress,
+} from 'components/ProfileIdentity';
 import { useWallet } from 'providers/WalletProvider';
 
 import './ProfileRoute.css';
@@ -481,6 +486,7 @@ export default function ProfileRoute() {
 	const saveProfile = async (update: ProfileEditUpdate, onStatus: (status: string) => void) => {
 		const updated = await saveProfileEdit(new ProfileClient(), address, update, uploadedAvatar, onStatus);
 		setProfile(updated);
+		announceProfileUpdated(window, address, updated);
 		setEditOpen(false);
 	};
 	return (

@@ -1,6 +1,8 @@
 import React from 'react';
 
-import { profileAvatarUrl, profileDisplayName, readAccountProfile } from 'api/profile';
+import { type AccountProfile, profileAvatarUrl, profileDisplayName, readAccountProfile } from 'api/profile';
+
+import { sameAccount } from 'helpers/host-account';
 
 import './ProfileIdentity.css';
 
@@ -91,25 +93,69 @@ export function ProfileIdentityForAddress({
 	return <ProfileIdentity className={className} profile={profile} showAvatar={showAvatar} size={size} />;
 }
 
+/** Window event announcing a saved profile, so every mounted identity view shows it at once. */
+export const PROFILE_UPDATED_EVENT = 'bazar:profile-updated';
+
+export type ProfileUpdatedDetail = { address: string; profile: AccountProfile };
+
+/** A profile read result, keyed by the address it was read for. */
+export type LoadedAccountProfile = { address: string; profile: AccountProfile | null };
+
+/** The summary for `address`; a profile loaded for any other address contributes nothing. */
+export function profileSummaryFor(address: string, loaded: LoadedAccountProfile | undefined): ProfileSummary {
+	const profile = loaded?.address === address ? loaded.profile : undefined;
+	const displayName = profileDisplayName(profile);
+	const avatar = profileAvatarUrl(profile);
+	return { address, ...(displayName ? { displayName } : {}), ...(avatar ? { avatar } : {}) };
+}
+
+export function profileUpdateMatches(event: Event, address: string): boolean {
+	const detail = (event as CustomEvent<Partial<ProfileUpdatedDetail> | null>).detail;
+	return Boolean(detail?.profile) && sameAccount(detail?.address, address);
+}
+
+export function announceProfileUpdated(target: EventTarget, address: string, profile: AccountProfile) {
+	target.dispatchEvent(
+		new CustomEvent<ProfileUpdatedDetail>(PROFILE_UPDATED_EVENT, { detail: { address, profile } })
+	);
+}
+
+export function subscribeProfileUpdated(
+	target: EventTarget,
+	address: string,
+	onUpdate: (profile: AccountProfile) => void
+): () => void {
+	const listener = (event: Event) => {
+		if (profileUpdateMatches(event, address)) onUpdate((event as CustomEvent<ProfileUpdatedDetail>).detail.profile);
+	};
+	target.addEventListener(PROFILE_UPDATED_EVENT, listener);
+	return () => target.removeEventListener(PROFILE_UPDATED_EVENT, listener);
+}
+
 export function useAccountProfileSummary(address: string): ProfileSummary {
-	const [profile, setProfile] = React.useState<Awaited<ReturnType<typeof readAccountProfile>>>();
+	const [loaded, setLoaded] = React.useState<LoadedAccountProfile>();
 	React.useEffect(() => {
 		if (!/^[A-Za-z0-9_-]{43}$/.test(address)) {
-			setProfile(undefined);
+			setLoaded(undefined);
 			return;
 		}
 		const controller = new AbortController();
+		// A saved profile wins over a read that was already in flight when it was announced.
+		let announced = false;
+		const unsubscribe = subscribeProfileUpdated(window, address, (profile) => {
+			announced = true;
+			setLoaded({ address, profile });
+		});
 		void readAccountProfile(address, { signal: controller.signal }).then(
-			(value) => {
-				if (!controller.signal.aborted) setProfile(value);
+			(profile) => {
+				if (!controller.signal.aborted && !announced) setLoaded({ address, profile });
 			},
 			() => undefined
 		);
-		return () => controller.abort();
+		return () => {
+			unsubscribe();
+			controller.abort();
+		};
 	}, [address]);
-	return {
-		address,
-		...(profileDisplayName(profile) ? { displayName: profileDisplayName(profile) } : {}),
-		...(profileAvatarUrl(profile) ? { avatar: profileAvatarUrl(profile) } : {}),
-	};
+	return profileSummaryFor(address, loaded);
 }
