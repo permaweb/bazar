@@ -94,9 +94,10 @@ import { accountAddress, sameAccount } from 'helpers/host-account';
 import { optionalMotionBehavior } from 'helpers/motion';
 import {
 	formatArAmount,
+	formatGroupedTokenAmount,
 	formatTickerLabel,
 	formatTokenDescription,
-	groupDecimalAmount,
+	formatTokenQuantity,
 	parseArAmount,
 } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
@@ -1506,7 +1507,7 @@ export function FungibleAssetView({
 							<TokenPriceChart
 								error={askError}
 								floorValue={best ? unitPriceWinston(best, state.denomination).toString() : null}
-								formatValue={(value) => `${formatArAmount(value)} AR / ${ticker}`}
+								formatValue={(value) => fungibleUnitPriceLabel(value, state)}
 								hasNextPage={askHasNextPage}
 								loading={askLoading}
 								loadingMore={askLoadingMore}
@@ -4770,17 +4771,18 @@ function unitPriceWinston(order: SwapOrder, denomination: number): bigint {
 	return (BigInt(order.asking) * scale + BigInt(order.quantity) - 1n) / BigInt(order.quantity);
 }
 
+/** The one AR-per-token price label on the token page, shared by the order
+ * book and the price chart ('0.5 $AR / $PIXL'). */
+export function fungibleUnitPriceLabel(unitWinston: string, state: Pick<AssetState, 'ticker'>) {
+	return formatArCurrencyText(`${formatArAmount(unitWinston)} AR / ${formatTickerLabel(state.ticker, 'token')}`);
+}
+
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
-	return formatArCurrencyText(
-		`${formatArAmount(unitPriceWinston(order, state.denomination).toString())} AR / ${formatTickerLabel(
-			state.ticker,
-			'token'
-		)}`
-	);
+	return fungibleUnitPriceLabel(unitPriceWinston(order, state.denomination).toString(), state);
 }
 
 function tokenLabel(raw: string, state: AssetState) {
-	return `${formatGroupedTokenAmount(raw, state.denomination)} ${formatTickerLabel(state.ticker, 'tokens')}`;
+	return formatTokenQuantity(raw, state, 'tokens');
 }
 
 export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
@@ -4844,10 +4846,6 @@ export function fungibleTransferSubmitLabel(
 	fullRecipient = false
 ) {
 	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : short(recipient)}`;
-}
-
-function formatGroupedTokenAmount(raw: string, denomination: number) {
-	return groupDecimalAmount(formatTokenAmount(raw, denomination));
 }
 
 function assetDescription(state: AssetState, fallback: string) {

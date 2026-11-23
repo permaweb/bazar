@@ -217,6 +217,9 @@ export function TokenPriceChart({
 }: {
 	points: TokenPricePoint[];
 	floorValue: string | null;
+	/** Bare ticker or name for the aria-labels. It deliberately has no $ prefix,
+	 * which a screen reader would read as "dollar"; visible prices come from
+	 * formatValue in the shared $ ticker form. */
 	ticker: string;
 	loading: boolean;
 	error: string | null;

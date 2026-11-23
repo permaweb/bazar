@@ -3,7 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { DISPLAY_STATE_TIMEOUT_ERROR } from 'api/asset-state-store';
 import { DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED } from 'api/fungible-dispatch';
 
-import { dispatchErrorMessage } from './DispatchRoute';
+import { dispatchErrorMessage, tokenAmount } from './DispatchRoute';
+
+describe('dispatch token amounts', () => {
+	it('shows the same $ ticker form as the token page', () => {
+		expect(tokenAmount('1000000', { denomination: 3, ticker: 'PIXL' })).toBe('1,000 $PIXL');
+		expect(tokenAmount('1234567', { denomination: 2, ticker: 'PIXL' })).toBe('12,345.67 $PIXL');
+	});
+
+	it('keeps the plain tokens noun when the ticker is missing', () => {
+		expect(tokenAmount('1000', { denomination: 0, ticker: '' })).toBe('1,000 tokens');
+	});
+});
 
 describe('dispatch recovery errors', () => {
 	it('explains why a missing signed transaction requires manual review instead of replacement', () => {

@@ -44,6 +44,7 @@ import {
 	FungibleSettlementRecoveryPanel,
 	fungibleTransferRecipientError,
 	fungibleTransferSubmitLabel,
+	fungibleUnitPriceLabel,
 	isRecoverableBatch,
 	latestRecoverableSnapshot,
 	MatchedListingsReview,
@@ -1274,6 +1275,25 @@ describe('fungible order action names', () => {
 		expect(fungibleListingAccessibleLabel(first, state)).toContain(first.creator);
 		expect(fungibleListingAccessibleLabel(second, state)).toContain(second.creator);
 		expect(fungibleListingAccessibleLabel(first, state)).not.toBe(fungibleListingAccessibleLabel(second, state));
+	});
+});
+
+describe('fungible price and quantity labels', () => {
+	it('gives the price chart and the order book one $AR / $ticker label', () => {
+		const state = { ticker: 'PIXL', denomination: 0 } as AssetState;
+		const order = { creator: 'A'.repeat(43), quantity: '2', asking: '1000000000000' } as SwapOrder;
+
+		expect(fungibleUnitPriceLabel('500000000000', state)).toBe('0.5 $AR / $PIXL');
+		expect(fungibleListingAccessibleLabel(order, state)).toBe(
+			`2 $PIXL, 0.5 $AR / $PIXL, 1 $AR total, seller ${'A'.repeat(43)}`
+		);
+		expect(fungibleUnitPriceLabel('500000000000', { ticker: '' })).toBe('0.5 $AR / $token');
+	});
+
+	it('uses a plain tokens noun for quantities when the ticker is missing', () => {
+		const state = { ticker: '', denomination: 0 } as AssetState;
+
+		expect(fungibleTransferSubmitLabel('2000', state, 'c'.repeat(43))).toBe('Send 2,000 tokens to cccccc…ccccc');
 	});
 });
 
