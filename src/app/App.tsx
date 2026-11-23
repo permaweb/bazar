@@ -3654,9 +3654,37 @@ export function homeTokenPriceChangePercent(
 	return Number(scaled) / 100;
 }
 
-export function homeTokenPriceChangeLabel(change: number | null | 'unavailable') {
-	if (change === null || change === 'unavailable' || !Number.isFinite(change)) return '—';
-	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+/**
+ * What a token row's 24h change cell says once it is no longer "Checking…". "—" alone cannot tell
+ * a quiet token from a failed read, so each non-number keeps its meaning: too few listings in the
+ * window, a read that failed (retried while the row stays visible), or one still on its way.
+ */
+export function homeTokenPriceChangeDisplay(change: HomeTokenPriceChange | undefined): {
+	text: string;
+	description?: string;
+} {
+	if (change === 'unavailable')
+		return { text: 'Unavailable', description: 'The 24h change could not be read. It is retried automatically.' };
+	if (change === undefined) return { text: '—', description: 'The 24h change is still loading.' };
+	if (change === null || !Number.isFinite(change)) return { text: '—', description: 'Not enough data in 24h' };
+	return { text: `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%` };
+}
+
+export function homeTokenPriceChangeLabel(change: HomeTokenPriceChange | undefined) {
+	return homeTokenPriceChangeDisplay(change).text;
+}
+
+/** The settled 24h change: "—" reads as its meaning to assistive tech, and every non-number has a tooltip. */
+export function HomeTokenPriceChangeValue({ change }: { change: HomeTokenPriceChange | undefined }) {
+	const { text, description } = homeTokenPriceChangeDisplay(change);
+	if (!description) return <>{text}</>;
+	if (text !== '—') return <span title={description}>{text}</span>;
+	return (
+		<span title={description}>
+			<span aria-hidden="true">{text}</span>
+			<span className="sr-only">{description}</span>
+		</span>
+	);
 }
 
 /** How long a token row may say "Checking…" for its 24h change before it shows "—". */
@@ -5299,7 +5327,7 @@ function Home() {
 							value: homeTokenPriceChangePending(change, overdueTokenPriceChanges.has(asset.id)) ? (
 								<HomePendingMarketValue />
 							) : (
-								homeTokenPriceChangeLabel(change ?? null)
+								<HomeTokenPriceChangeValue change={change} />
 							),
 							tone:
 								typeof change !== 'number'

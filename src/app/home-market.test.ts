@@ -105,6 +105,7 @@ import {
 	homeTabPath,
 	homeTokenPlaceholderRows,
 	homeTokenPriceChangeCurrent,
+	homeTokenPriceChangeDisplay,
 	homeTokenPriceChangeDueAt,
 	homeTokenPriceChangeFailed,
 	homeTokenPriceChangeLabel,
@@ -112,6 +113,7 @@ import {
 	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
 	homeTokenPriceChangeRequests,
+	HomeTokenPriceChangeValue,
 	isFungiblePendingMint,
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
@@ -228,6 +230,36 @@ describe('Home market summary retries', () => {
 		expect(homeTokenPriceChangeLabel(-12.5)).toBe('-12.5%');
 		expect(homeTokenPriceChangeLabel(null)).toBe('—');
 		expect(homeTokenPriceChangeLabel(Number.POSITIVE_INFINITY)).toBe('—');
+	});
+
+	it('tells a token with too little 24h data apart from a 24h change that could not be read', () => {
+		expect(homeTokenPriceChangeDisplay(null)).toEqual({ text: '—', description: 'Not enough data in 24h' });
+		expect(homeTokenPriceChangeDisplay('unavailable')).toEqual({
+			text: 'Unavailable',
+			description: 'The 24h change could not be read. It is retried automatically.',
+		});
+		// Past the display deadline with no answer yet: neither "no data" nor a failure.
+		expect(homeTokenPriceChangeDisplay(undefined)).toEqual({
+			text: '—',
+			description: 'The 24h change is still loading.',
+		});
+		expect(homeTokenPriceChangeDisplay(2.5)).toEqual({ text: '+2.5%' });
+		// A stale value lapses to "Unavailable", never to the no-data dash.
+		const stale = { value: 4, readAt: 0, checkedAt: 0 };
+		expect(homeTokenPriceChangeLabel(homeTokenPriceChangeCurrent(stale, HOME_TOKEN_CHANGE_MAX_AGE_MS + 1))).toBe(
+			'Unavailable'
+		);
+
+		const render = (change: number | null | 'unavailable' | undefined) =>
+			renderToStaticMarkup(React.createElement(HomeTokenPriceChangeValue, { change }));
+		// The dash is hidden from assistive tech, which reads its meaning instead; both have a tooltip.
+		expect(render(null)).toBe(
+			'<span title="Not enough data in 24h"><span aria-hidden="true">—</span><span class="sr-only">Not enough data in 24h</span></span>'
+		);
+		expect(render('unavailable')).toBe(
+			'<span title="The 24h change could not be read. It is retried automatically.">Unavailable</span>'
+		);
+		expect(render(-3)).toBe('-3%');
 	});
 
 	it('renders collection descriptions as collapsed, wrappable header copy', () => {
