@@ -1512,6 +1512,57 @@ describe('fungible asset transactions', () => {
 		}
 	);
 
+	function rewardSigningAdapter(reward: string, quantity: string, fillQuantity: string) {
+		const subject = client(async (transaction) => ({
+			id: transaction.id,
+			owner: transaction.owner,
+			reward,
+			tags: transaction.tags,
+			signature: 'wallet-signature',
+		}));
+		const order = { ...swapOrder(transactionId, quantity, '1000000'), minimumFee: '100000000' };
+		const adapter = subject.client.purchaseAdapter({
+			processId,
+			order,
+			fillQuantity,
+			buyer: seller,
+			startingBalance: '0',
+			network: { tip: () => 1000 } as any,
+		});
+		return { subject, adapter };
+	}
+
+	it.each([
+		['2000', '1', '1'],
+		['99999999', '1', '1'],
+		['33333333', '3000000000000', '1000000000000'],
+	])(
+		'refuses a registration whose wallet lowered the reward to %s below the legacy floor (lot %s, fill %s)',
+		async (reward, quantity, fillQuantity) => {
+			const { subject, adapter } = rewardSigningAdapter(reward, quantity, fillQuantity);
+			await expect(adapter.prepareRegistration(new AbortController().signal)).rejects.toThrow(
+				'wallet-modified-transaction-fields'
+			);
+			const keys = Array.from({ length: subject.storage.length }, (_, index) => subject.storage.key(index));
+			expect(keys.filter((key) => key?.startsWith('bazar-signed-transaction:'))).toEqual([]);
+		}
+	);
+
+	it.each([
+		['100000000', '1', '1'],
+		['100000001', '1', '1'],
+		['33333334', '3000000000000', '1000000000000'],
+	])(
+		'accepts a registration signed at or above the legacy floor with reward %s (lot %s, fill %s)',
+		async (reward, quantity, fillQuantity) => {
+			const { subject, adapter } = rewardSigningAdapter(reward, quantity, fillQuantity);
+			const prepared = await adapter.prepareRegistration(new AbortController().signal);
+			const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+			expect(stored.transaction.reward).toBe(reward);
+			expect(stored.intent.reward).toBe(reward);
+		}
+	);
+
 	it('coalesces identical price targets across a matched purchase batch', async () => {
 		const requests: string[] = [];
 		const subject = new AssetTransactionClient({

@@ -1094,6 +1094,12 @@ export class AssetTransactionClient {
 		if (typeof signedReward !== 'string' || !/^\d+$/.test(signedReward)) {
 			throw new Error('wallet-modified-transaction-fields');
 		}
+		// The reward floor is part of the intent: a reservation signed below an
+		// older order's minimum fee is rejected by the token device, so refuse it
+		// here before it is persisted or dispatched.
+		if (fields.rewardFloor && BigInt(signedReward) < BigInt(fields.rewardFloor)) {
+			throw new Error('wallet-modified-transaction-fields');
+		}
 		// Wander finalizes the network reward as part of the signed fields it
 		// returns. Keep the business intent strict, then make that exact signed
 		// reward immutable for persistence, recovery, and dispatch.
