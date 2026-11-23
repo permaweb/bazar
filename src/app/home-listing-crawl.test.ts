@@ -210,18 +210,20 @@ describe('home listing crawl', () => {
 		let finished = false;
 		void crawl.finished.then(() => (finished = true));
 
-		// Page one leaves the demand one listing short, so exactly one more page is read.
+		// Page one leaves the demand one listing short, so exactly one more page is
+		// fetched, and only one of its candidates is read.
 		await vi.waitFor(() => expect(idle).toEqual([true]));
 		expect(fetcher).toHaveBeenCalledTimes(2);
-		expect(test.reads).toEqual(ids.slice(0, 6));
+		expect(test.reads).toEqual(ids.slice(0, 4));
 		expect(finished).toBe(false);
 
-		// Paging forward resumes the same crawl only as far as the new demand.
+		// Paging forward reads the fetched backlog first, then resumes the same
+		// crawl only as far as the new demand.
 		demand = [{ count: 10 }];
 		crawl.demandChanged();
 		await vi.waitFor(() => expect(idle).toEqual([true, false, true]));
 		expect(fetcher).toHaveBeenCalledTimes(4);
-		expect(test.reads).toEqual(ids.slice(0, 12));
+		expect(test.reads).toEqual(ids.slice(0, 10));
 
 		// Unbounded views (price order, search) drain the remaining history.
 		demand = undefined;
@@ -229,6 +231,118 @@ describe('home listing crawl', () => {
 		await crawl.finished;
 		expect(fetcher).toHaveBeenCalledTimes(5);
 		expect(test.reads).toEqual(ids);
+	});
+
+	it('reads a discovered page only as far as the demand needs and keeps the rest for later', async () => {
+		const ids = Array.from({ length: 8 }, (_, index) => String.fromCharCode(65 + index).repeat(43));
+		const test = harness([images(ids)]);
+		let demand: HomeListingDemand[] = [{ count: 3 }];
+		const idle: boolean[] = [];
+		let pagesRead = 0;
+		const crawl = createHomeListingCrawl({
+			...test.options,
+			signal: new AbortController().signal,
+			discover: async (onPage) => {
+				pagesRead += 1;
+				await onPage(ids.map((id, index) => candidate(id, 100 - index)));
+			},
+			demand: () => demand,
+			onIdle: (value) => idle.push(value),
+		});
+		// Demand is met, so the crawl pauses inside its only page instead of finishing.
+		await vi.waitFor(() => expect(idle).toEqual([true]));
+		expect(pagesRead).toBe(1);
+		expect(test.reads).toEqual(ids.slice(0, 3));
+
+		demand = [{ count: 5 }];
+		crawl.demandChanged();
+		await vi.waitFor(() => expect(test.settled.map((result) => result.asset.id)).toEqual(ids.slice(0, 5)));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(test.reads).toEqual(ids.slice(0, 5));
+		expect(pagesRead).toBe(1);
+		expect(idle.at(-1)).toBe(true);
+	});
+
+	it('still reads a newer candidate whose support arrives after older listings met the demand', async () => {
+		const ids = Array.from({ length: 4 }, (_, index) => String.fromCharCode(68 + index).repeat(43));
+		const test = harness([images(ids)]);
+		const crawl = createHomeListingCrawl({
+			...test.options,
+			signal: new AbortController().signal,
+			discover: async (onPage) =>
+				onPage([
+					candidate(assetA, 90),
+					candidate(assetB, 5),
+					...ids.map((id, index) => candidate(id, 50 - index)),
+				]),
+			demand: () => [{ count: 3 }],
+		});
+		await vi.waitFor(() => expect(test.reads).toEqual(ids.slice(0, 3)));
+
+		// A and B were waiting for their collection. A is newer than the listings
+		// shown, so it is read; B is older than all of them and stays unread.
+		test.setCollections([images([assetA, assetB, ...ids])]);
+		crawl.supportChanged();
+		await vi.waitFor(() => expect(test.reads).toEqual([...ids.slice(0, 3), assetA]));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(test.reads).toEqual([...ids.slice(0, 3), assetA]);
+	});
+
+	it('stops counting a hung read as a listing after the slow-read allowance', async () => {
+		const test = harness([images([assetA, assetB, assetC])]);
+		const hung = deferred();
+		const reads: string[] = [];
+		createHomeListingCrawl({
+			...test.options,
+			signal: new AbortController().signal,
+			slowReadMs: 30,
+			read: async (processId) => {
+				reads.push(processId);
+				if (processId === assetA) await hung.promise;
+				return { provider: 'https://compute.example', state: liveState() };
+			},
+			discover: async (onPage) => onPage([candidate(assetA, 30), candidate(assetB, 20), candidate(assetC, 10)]),
+			demand: () => [{ count: 1 }],
+		});
+		await vi.waitFor(() => expect(reads).toEqual([assetA]));
+		// A stays pending; once it is slow, B is read to fill the demand, and C is not.
+		await vi.waitFor(() => expect(reads).toEqual([assetA, assetB]));
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		expect(reads).toEqual([assetA, assetB]);
+		hung.resolve();
+	});
+
+	it('reads only candidates a short demand admits', async () => {
+		const tokensCollection: Collection = {
+			id: 'tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [{ id: assetC, name: 'Token C' }],
+		};
+		const test = harness([tokensCollection, images([assetA, assetB])]);
+		const isToken = (processId: string) => processId === assetC;
+		const crawl = createHomeListingCrawl({
+			...test.options,
+			signal: new AbortController().signal,
+			discover: async (onPage) => onPage([candidate(assetA, 30), candidate(assetB, 20), candidate(assetC, 10)]),
+			demand: () => [
+				{
+					count: 1,
+					matches: (result) => result.collection.kind !== 'tokens',
+					admits: (next) => !isToken(next.processId),
+				},
+				{
+					count: 1,
+					matches: (result) => result.collection.kind === 'tokens',
+					admits: (next) => isToken(next.processId),
+				},
+			],
+		});
+		// One unique and one token fill both demands; the second unique is never read.
+		await vi.waitFor(() => expect(test.reads).toEqual([assetA, assetC]));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(test.reads).toEqual([assetA, assetC]);
 	});
 
 	it('counts only listings that match the visible asset type', async () => {
