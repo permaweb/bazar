@@ -45,6 +45,7 @@ import {
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	HOME_DISCOVER_UNIQUE_PREVIEW,
 	HOME_SUMMARY_AUTO_RETRY_LIMIT,
+	HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
@@ -76,7 +77,9 @@ import {
 	homeTabFromPathname,
 	homeTabPath,
 	homeTokenPriceChangeLabel,
+	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
+	homeTokenPriceChangeRequests,
 	isFungiblePendingMint,
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
@@ -1290,6 +1293,31 @@ describe('Home market summary retries', () => {
 		expect(homeSummaryAutoRetryDue({ ...due, failureKey: '|' })).toBe(false);
 		expect(homeSummaryAutoRetryDue({ ...due, retrying: true })).toBe(false);
 		expect(homeSummaryAutoRetryDue({ ...due, computeCircuitOpen: true })).toBe(false);
+	});
+
+	it('reads each token row 24h change once and ends its spinner at the display deadline', () => {
+		expect(HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS).toBe(8_000);
+		// Rows that reorder or page back in keep the value already read.
+		expect(homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: 1.5, c: 'unavailable' })).toEqual(['b']);
+		expect(homeTokenPriceChangeRequests(['a'], { a: null })).toEqual([]);
+		expect(homeTokenPriceChangePending(undefined, false)).toBe(true);
+		expect(homeTokenPriceChangePending(undefined, true)).toBe(false);
+		expect(homeTokenPriceChangeLabel(null)).toBe('—');
+		expect(homeTokenPriceChangePending(2, true)).toBe(false);
+		// Per-row deadlines from the shared helper: a row revealed later gets its own start.
+		const deadlines = createCollectionPriceDeadlines();
+		expect(
+			observeCollectionPriceDeadlines(deadlines, 'scope', ['a'], 0, HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS)
+		).toEqual({ overdue: [], nextDeadline: 8_000 });
+		expect(
+			observeCollectionPriceDeadlines(
+				deadlines,
+				'scope',
+				['a', 'b'],
+				8_000,
+				HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
+			)
+		).toEqual({ overdue: ['a'], nextDeadline: 16_000 });
 	});
 
 	it('shows the home loader only while results are pending and no assets are visible', () => {

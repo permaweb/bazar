@@ -3286,6 +3286,56 @@ export function homeTokenPriceChangeLabel(change: number | null | 'unavailable')
 	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 }
 
+/** How long a token row may say "Checking…" for its 24h change before it shows "—". */
+export const HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS = 8_000;
+
+/** Visible token rows whose 24h change has not been read yet. */
+export function homeTokenPriceChangeRequests(
+	tokenIds: readonly string[],
+	known: Readonly<Record<string, number | null | 'unavailable'>>
+) {
+	return [...new Set(tokenIds)].filter((tokenId) => tokenId && known[tokenId] === undefined);
+}
+
+/** A late value still replaces "—"; the deadline only ends the spinner. */
+export function homeTokenPriceChangePending(change: number | null | 'unavailable' | undefined, overdue: boolean) {
+	return change === undefined && !overdue;
+}
+
+/**
+ * Display-only deadlines for home values that may never arrive, tracked per
+ * key with the collection page's deadline helper. They never cancel a read,
+ * and only a scope change re-arms them.
+ */
+function useHomeDisplayDeadlines(scope: string, pendingIds: readonly string[], deadlineMs: number) {
+	const deadlines = React.useRef(createCollectionPriceDeadlines());
+	const [overdue, setOverdue] = React.useState<ReadonlySet<string>>(() => new Set());
+	const pendingKey = pendingIds.join(',');
+	React.useEffect(() => {
+		let timer: number | undefined;
+		const update = () => {
+			const observed = observeCollectionPriceDeadlines(
+				deadlines.current,
+				scope,
+				pendingKey ? pendingKey.split(',') : [],
+				Date.now(),
+				deadlineMs
+			);
+			setOverdue((current) =>
+				current.size === observed.overdue.length && observed.overdue.every((id) => current.has(id))
+					? current
+					: new Set(observed.overdue)
+			);
+			if (observed.nextDeadline !== null) {
+				timer = window.setTimeout(update, Math.max(0, observed.nextDeadline - Date.now()));
+			}
+		};
+		update();
+		return () => window.clearTimeout(timer);
+	}, [deadlineMs, pendingKey, scope]);
+	return overdue;
+}
+
 export function homeMarketSummariesReady(
 	loading: boolean,
 	keys: string[],
@@ -3705,7 +3755,13 @@ function Home() {
 			? assetPagination.items.filter(({ collection }) => collection.kind === 'tokens')
 			: [];
 	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
-	const [tokenPriceChanges, setTokenPriceChanges] = React.useState<Record<string, number | null | 'unavailable'>>({});
+	const [tokenPriceChangeState, setTokenPriceChangeState] = React.useState<{
+		scope: string;
+		values: Record<string, number | null | 'unavailable'>;
+	}>({ scope: homeListingSnapshotScope, values: {} });
+	// Values read for another index or AO routing scope are dropped, not shown.
+	const tokenPriceChanges =
+		tokenPriceChangeState.scope === homeListingSnapshotScope ? tokenPriceChangeState.values : {};
 	// Listed views learn which candidates are listed from these summaries, so they
 	// read only as many unknown candidates as the visible pages plus one ahead need.
 	const summaryWindow = React.useMemo(
@@ -3782,15 +3838,21 @@ function Home() {
 		},
 		[assetSummaryQueue]
 	);
+	const tokenPriceChangesRef = React.useRef(tokenPriceChanges);
+	tokenPriceChangesRef.current = tokenPriceChanges;
 	React.useEffect(() => {
-		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) {
-			setTokenPriceChanges({});
-			return;
-		}
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) return;
+		// Rows that move or page in and out keep the change already read for them.
+		const tokenIds = homeTokenPriceChangeRequests(visibleDiscoverTokenKey.split(','), tokenPriceChangesRef.current);
+		if (!tokenIds.length) return;
+		const scope = homeListingSnapshotScope;
+		const publish = (values: Record<string, number | null | 'unavailable'>) =>
+			setTokenPriceChangeState((current) => ({
+				scope,
+				values: { ...(current.scope === scope ? current.values : {}), ...values },
+			}));
 		const controller = new AbortController();
-		const tokenIds = visibleDiscoverTokenKey.split(',');
 		const eventLimit = 200;
-		setTokenPriceChanges({});
 		void discoverCollectionActivity({
 			actions: ['make-offer'],
 			limit: eventLimit,
@@ -3801,7 +3863,7 @@ function Home() {
 				if (controller.signal.aborted) return;
 				const now = Date.now();
 				const windowComplete = events.length < eventLimit;
-				setTokenPriceChanges(
+				publish(
 					Object.fromEntries(
 						tokenIds.map((tokenId) => [
 							tokenId,
@@ -3816,12 +3878,17 @@ function Home() {
 			},
 			() => {
 				if (!controller.signal.aborted) {
-					setTokenPriceChanges(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable'])));
+					publish(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable' as const])));
 				}
 			}
 		);
 		return () => controller.abort();
 	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
+	const overdueTokenPriceChanges = useHomeDisplayDeadlines(
+		homeListingSnapshotScope,
+		visibleDiscoverTokens.map(({ asset }) => asset.id).filter((id) => tokenPriceChanges[id] === undefined),
+		HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
+	);
 	React.useEffect(() => {
 		if (!marketShellReady || !shouldLoadAssetSummaries) {
 			setPortableHomeListingsLoading(false);
@@ -4557,8 +4624,11 @@ function Home() {
 						}}
 						secondaryMetric={{
 							label: '24h change',
-							value:
-								change === undefined ? <HomePendingMarketValue /> : homeTokenPriceChangeLabel(change),
+							value: homeTokenPriceChangePending(change, overdueTokenPriceChanges.has(asset.id)) ? (
+								<HomePendingMarketValue />
+							) : (
+								homeTokenPriceChangeLabel(change ?? null)
+							),
 							tone:
 								typeof change !== 'number'
 									? 'muted'
