@@ -15,8 +15,10 @@ import {
 	loadFungibleOperationActivities,
 	loadOperationActivities,
 	mergeFungibleOperationActivities,
+	type Operation,
 	OPERATION_ACTIVITY_STORAGE_KEY,
 	type OperationActivity,
+	operationAfterProvenRejection,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	removeFungibleOperationActivity,
@@ -365,6 +367,64 @@ function fungibleActivity(overrides: Partial<FungibleOperationActivitySummary> =
 		...overrides,
 	};
 }
+
+describe('fresh attempt after a proven rejection', () => {
+	const rejectedId = 'R'.repeat(43);
+	const recipient = 'C'.repeat(43);
+
+	it('drops the discarded signature and its slot baseline from a cancellation but keeps the order', () => {
+		const rejected: Operation = { kind: 'cancel', order, resumeId: rejectedId, startingSlot: 42 };
+
+		const fresh = operationAfterProvenRejection(rejected);
+
+		expect(fresh).toEqual({ kind: 'cancel', order });
+		expect('resumeId' in fresh).toBe(false);
+		expect('startingSlot' in fresh).toBe(false);
+	});
+
+	it('drops the discarded signature and its slot baseline from a transfer but keeps the recipient', () => {
+		const rejected: Operation = { kind: 'transfer', resumeId: rejectedId, startingSlot: 7, value: recipient };
+
+		expect(operationAfterProvenRejection(rejected)).toEqual({ kind: 'transfer', value: recipient });
+	});
+
+	it('drops a gateway-rejected listing signature but keeps the asking price', () => {
+		const rejected: Operation = { kind: 'sell', resumeId: rejectedId, value: '1.5' };
+
+		expect(operationAfterProvenRejection(rejected)).toEqual({ kind: 'sell', value: '1.5' });
+	});
+
+	it('keeps every fungible form field so the dialog can sign a replacement in place', () => {
+		expect(
+			operationAfterProvenRejection({
+				kind: 'transfer' as const,
+				quantity: '2.5',
+				recipient,
+				startingSlot: 9,
+				resumeId: rejectedId,
+			})
+		).toEqual({ kind: 'transfer', quantity: '2.5', recipient });
+		expect(
+			operationAfterProvenRejection({
+				kind: 'sell' as const,
+				quantity: '3',
+				unitPrice: '0.25',
+				resumeId: rejectedId,
+			})
+		).toEqual({ kind: 'sell', quantity: '3', unitPrice: '0.25' });
+		expect(
+			operationAfterProvenRejection({ kind: 'cancel' as const, order, startingSlot: 3, resumeId: rejectedId })
+		).toEqual({ kind: 'cancel', order });
+	});
+
+	it('leaves the rejected operation itself untouched', () => {
+		const rejected: Operation = { kind: 'cancel', order, resumeId: rejectedId, startingSlot: 42 };
+
+		operationAfterProvenRejection(rejected);
+
+		expect(rejected).toEqual({ kind: 'cancel', order, resumeId: rejectedId, startingSlot: 42 });
+	});
+});
 
 describe('fungible operation activity persistence', () => {
 	it('uses one active slot for asset mutations and a separate slot for purchases', () => {

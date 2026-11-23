@@ -29,6 +29,32 @@ export type Operation =
 	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
 	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
 
+/** Fields that point an operation at one exact signed transaction and its process-slot baseline. */
+type SignedTransactionPointer = 'resumeId' | 'startingSlot';
+
+export type OperationWithoutSignedTransaction<T> = T extends unknown ? Omit<T, SignedTransactionPointer> : never;
+
+/**
+ * The fresh attempt that follows a proven rejection of a signed sell, cancel or transfer.
+ *
+ * A dialog treats an operation with `resumeId` as "resume that exact signature" and skips the live-state and
+ * slot-baseline checks. Once live state or the submission gateway proves the signature was not applied and the
+ * dialog has discarded it, keeping `resumeId` (or its `startingSlot`) would make the next submit restore the
+ * discarded id. This drops both pointers and keeps everything the user chose (order, value, quantity,
+ * recipient, price), so the next submit re-reads live state, takes a new baseline and signs a new transaction.
+ * Works for the atomic and the fungible operation shapes.
+ */
+type ResumableOperation = { kind: string; resumeId?: string; startingSlot?: number };
+
+export function operationAfterProvenRejection<T extends ResumableOperation>(
+	operation: T
+): OperationWithoutSignedTransaction<T> {
+	const fresh: Partial<T> = { ...operation };
+	delete fresh.resumeId;
+	delete fresh.startingSlot;
+	return fresh as OperationWithoutSignedTransaction<T>;
+}
+
 export type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
 export type OperationActivity = {

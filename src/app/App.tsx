@@ -239,6 +239,7 @@ import {
 	type FungibleOperationActivityChange,
 	type FungibleOperationActivitySummary,
 	fungiblePurchaseRecoveryCanBeDiscarded,
+	operationAfterProvenRejection,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
@@ -11102,12 +11103,35 @@ function OperationDialog({
 				);
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
+				// The discarded signature must never be resumed, so "Try again" starts a fresh attempt.
+				onOperation(operationAfterProvenRejection(operation));
+				exactActionBaselineRef.current = null;
 			}
 			setFailureKind(marketplaceOperationFailure(cause));
 			setMessage(errorMessage(cause));
 			setPhase('error');
 		}
 	}
+
+	// A gateway-rejected signature is discarded and the same dialog returns to its form, keeping the user's
+	// input, so the next submit signs a replacement.
+	const discardRejectedSignatureAndSignAgain = (rejected: PreparedTransaction) => {
+		removeWalletRecordIf<any>(
+			localStorage,
+			operationStorageKey(asset.id, owner),
+			(record) => record?.txId === rejected.id
+		);
+		localStorage.removeItem(`bazar-signed-transaction:${rejected.id}`);
+		setTransaction(null);
+		onOperation(operationAfterProvenRejection(operation));
+		exactActionBaselineRef.current = null;
+		setViews([]);
+		setConfirmations(0);
+		setConsensus(null);
+		setFailureKind(null);
+		setMessage('');
+		setPhase('form');
+	};
 
 	const purchaseSteps: ArweaveSyncStep[] =
 		purchaseState && hasRecoverablePurchase(purchaseState)
@@ -11868,15 +11892,7 @@ function OperationDialog({
 							<Button
 								data-dialog-initial
 								size="custom"
-								onClick={() => {
-									removeWalletRecordIf<any>(
-										localStorage,
-										operationStorageKey(asset.id, owner),
-										(record) => record?.txId === transaction.id
-									);
-									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-									onClose(false);
-								}}
+								onClick={() => discardRejectedSignatureAndSignAgain(transaction)}
 								variant="danger"
 							>
 								Discard rejected signature and sign again
