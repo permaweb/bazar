@@ -134,7 +134,12 @@ import {
 	loadMintedAssets,
 	loadMintedCollections,
 	type MintedAsset,
+	type MintedByIndex,
 	type MintedCollection,
+	type MintProgress,
+	mintProgressKey,
+	pendingMintProgress,
+	reusableMintProgress,
 } from 'api/minted-assets';
 import { formatTokenAmount } from 'api/order-matching';
 import { ProfileClient } from 'api/profile';
@@ -5926,6 +5931,20 @@ function CollectionView() {
 	const [appendWorking, setAppendWorking] = React.useState(false);
 	const [appendStatus, setAppendStatus] = React.useState('');
 	const [appendError, setAppendError] = React.useState<string | null>(null);
+	// Assets a failed append already paid for, reused on retry while the wallet,
+	// collection and chosen files are unchanged; dropped once the append succeeds.
+	const [appendProgress, setAppendProgress] = React.useState<MintProgress<MintedByIndex> | null>(null);
+	const appendProgressKey =
+		wallet.address && collection && appendFiles.length
+			? mintProgressKey(wallet.address, {
+					collection: collection.id,
+					name: collection.name,
+					description: collection.description,
+					base: collection.assets.length,
+					files: appendFiles,
+			  })
+			: '';
+	const reusedAppendAssets = reusableMintProgress(appendProgress, appendProgressKey);
 	const appendPreviews = React.useMemo(
 		() => appendFiles.map((file) => ({ file, url: URL.createObjectURL(file) })),
 		[appendFiles]
@@ -6026,7 +6045,12 @@ function CollectionView() {
 		setAppendEstimating(true);
 		void import('api/asset-mint')
 			.then(({ CollectionMintClient }) =>
-				new CollectionMintClient().estimateAppend(ownedCollection, appendFiles, controller.signal)
+				new CollectionMintClient().estimateAppend(
+					ownedCollection,
+					appendFiles,
+					controller.signal,
+					reusedAppendAssets
+				)
 			)
 			.then(
 				(estimate) => {
@@ -6040,7 +6064,7 @@ function CollectionView() {
 				if (!controller.signal.aborted) setAppendEstimating(false);
 			});
 		return () => controller.abort();
-	}, [appendFiles, appendOpen, ownedCollection]);
+	}, [appendFiles, appendOpen, ownedCollection, reusedAppendAssets]);
 	const appendToCollection = async () => {
 		if (!collection || !ownedCollection || !wallet.address || !appendFiles.length || appendWorking) return;
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
@@ -6053,6 +6077,9 @@ function CollectionView() {
 			name: `${collection.name} additions`,
 			status: 'Preparing secure wallet approvals…',
 		});
+		// What this append pays for reaches state only if it fails, so the quote
+		// and its transaction count keep describing the append in flight.
+		let keepPaidProgress = () => {};
 		try {
 			const { CollectionMintClient } = await import('api/asset-mint');
 			const source: MintedCollection = {
@@ -6062,8 +6089,14 @@ function CollectionView() {
 				createdAt: ownedCollection.createdAt,
 				manifestId: collection.manifestId ?? ownedCollection.manifestId,
 			};
+			const paidAssets = pendingMintProgress(appendProgressKey, reusedAppendAssets);
+			keepPaidProgress = () => {
+				if (paidAssets.progress) setAppendProgress(paidAssets.progress);
+			};
 			const result = await new CollectionMintClient().append(source, appendFiles, wallet.address, {
 				allowHighCost: true,
+				minted: reusedAppendAssets,
+				onAssetMinted: (index, asset) => paidAssets.record((value) => ({ ...value, [index]: asset })),
 				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (phase) => {
 					const status = collectionAppendPhaseLabel(phase);
@@ -6074,6 +6107,7 @@ function CollectionView() {
 			const previousIds = new Set(collection.assets.map((asset) => asset.id));
 			const added = result.collection.assets.filter((asset) => !previousIds.has(asset.id));
 			market.addCollection(result.collection);
+			setAppendProgress(null);
 			finishUpload(uploadId, {
 				collectionId: collection.id,
 				assetIds: added.map((asset) => asset.id),
@@ -6085,6 +6119,7 @@ function CollectionView() {
 			setAppendOpen(false);
 		} catch (cause) {
 			const message = errorMessage(cause);
+			keepPaidProgress();
 			setAppendError(message);
 			failUpload(uploadId, message);
 		} finally {

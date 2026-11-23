@@ -4,7 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
 
-import { FungibleMintDialog, MintRecoveryActions, MintSubmitButton, runSingleFlight } from './CreateRoute';
+import {
+	FungibleMintDialog,
+	MintRecoveryActions,
+	MintSubmitButton,
+	quoteClearsError,
+	type QuoteErrorReset,
+	runSingleFlight,
+} from './CreateRoute';
 
 describe('fungible mint presentation', () => {
 	it('uses the marketplace operation side drawer for a completed token mint', () => {
@@ -81,6 +88,27 @@ describe('mint submit single flight', () => {
 		const run = vi.fn(() => Promise.resolve());
 		await expect(runSingleFlight(guard, run)).resolves.toBe(true);
 		expect(run).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('quote refresh keeps a failed run visible', () => {
+	it('clears the error for changed inputs but not for a refresh caused by kept paid progress', () => {
+		const file = new File([new Uint8Array(1)], 'one.png', { type: 'image/png' });
+		const reset: QuoteErrorReset = { inputs: null, clearError: false };
+
+		quoteClearsError(reset, ['Set', file]);
+		expect(reset.clearError).toBe(true);
+		reset.clearError = false;
+
+		// The run paid for an asset, so the quote refreshes with the same inputs.
+		quoteClearsError(reset, ['Set', file]);
+		expect(reset.clearError).toBe(false);
+
+		quoteClearsError(reset, ['Renamed', file]);
+		expect(reset.clearError).toBe(true);
+		// A quote superseded before its timer fired still owes the clear.
+		quoteClearsError(reset, ['Renamed', file]);
+		expect(reset.clearError).toBe(true);
 	});
 });
 
