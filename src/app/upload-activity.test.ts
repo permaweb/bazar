@@ -1,11 +1,16 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ObserverView } from 'weave-wrangler';
 
-import type { MintActivity } from 'api/mint-activity';
+import { MINT_ACTIVITY_ATTENTION_AFTER_MS, MINT_ACTIVITY_STALLED_STATUS, type MintActivity } from 'api/mint-activity';
 
 import {
+	mintActivityUploadActivity,
 	observeUploadActivityTransactions,
 	type UploadActivity,
+	UploadActivityPanel,
 	type UploadObserverAvailability,
 	uploadActivityObserverKey,
 	uploadActivitySyncSteps,
@@ -185,5 +190,51 @@ describe('upload observer watch lifecycle', () => {
 
 		expect(events.availability).toEqual(['loading']);
 		expect(runtime.release).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('background mint activity panel', () => {
+	const stalledAt = mint.createdAt + MINT_ACTIVITY_ATTENTION_AFTER_MS;
+
+	function renderPanel(activity: UploadActivity) {
+		return renderToStaticMarkup(
+			React.createElement(
+				MemoryRouter,
+				null,
+				React.createElement(UploadActivityPanel, {
+					activity,
+					relatedMintActivities: [mint],
+					visible: true,
+					onHide: vi.fn(),
+					onClose: vi.fn(),
+					onCheckAgain: vi.fn(),
+					onStopTracking: vi.fn(),
+				})
+			)
+		);
+	}
+
+	it('shows live tracking progress before the attention threshold', () => {
+		const activity = mintActivityUploadActivity(mint, stalledAt - 1);
+		expect(activity).toMatchObject({ phase: 'tracking', status: mint.status, assetId: processId });
+
+		const markup = renderPanel(activity);
+		expect(markup).toContain('Hide transaction details');
+		expect(markup).not.toContain('Check again');
+		expect(markup).not.toContain('Stop tracking');
+	});
+
+	it('matches the Activity menu once stalled and offers Check again and Stop tracking', () => {
+		const activity = mintActivityUploadActivity(mint, stalledAt);
+		expect(activity).toMatchObject({ phase: 'error', status: MINT_ACTIVITY_STALLED_STATUS });
+
+		const markup = renderPanel(activity);
+		expect(markup).toContain('Upload needs attention');
+		expect(markup).toContain('Bazar is still checking');
+		expect(markup).toContain('>Check again</button>');
+		expect(markup).toContain('>Stop tracking</button>');
+		expect(markup).toContain('aria-label="Close dialog"');
+		expect(markup).not.toContain('Hide transaction details');
+		expect(markup).not.toContain('operation-working');
 	});
 });

@@ -10184,6 +10184,21 @@ body input:focus-visible {
 	color: var(--ink);
 	font-weight: 500;
 }
+.upload-activity-actions {
+	display: grid;
+	gap: var(--space-2);
+	margin-bottom: var(--space-4);
+}
+.upload-activity-actions .ui-button {
+	width: 100%;
+}
+.upload-activity-actions p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-small);
+	line-height: 1.45;
+	text-align: center;
+}
 .fungible-mint-dialog .operation-working {
 	display: grid;
 	gap: 18px;
