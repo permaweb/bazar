@@ -60,10 +60,12 @@ import {
 	homeCollectionFloorsPending,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
+	homeDiscoverFailureNotice,
 	homeDiscoverOrderId,
 	homeDiscoverOrderSettled,
 	homeDiscoverOverdueFailure,
 	homeDiscoverPagesFull,
+	homeDiscoverPartialFailureMessage,
 	homeDiscoverPending,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
@@ -1549,6 +1551,16 @@ describe('Home market summary retries', () => {
 		expect(homeDiscoverDisplay(true, true, 3)).toBe('results');
 		expect(homeDiscoverDisplay(false, false, 3)).toBe('results');
 		expect(homeDiscoverDisplay(false, false, 0)).toBe('empty');
+	});
+
+	it('reports an index failure beside rendered cards as a compact notice, not the full error block', () => {
+		// Round 2: a GraphQL timeout showed "Unable to load" next to cards that had already rendered.
+		expect(homeDiscoverFailureNotice(homeDiscoverDisplay(false, true, 6))).toBe('inline');
+		expect(homeDiscoverFailureNotice(homeDiscoverDisplay(false, true, 0))).toBe('panel');
+		expect(homeDiscoverFailureNotice(homeDiscoverDisplay(true, false, 0))).toBe('none');
+		expect(homeDiscoverPartialFailureMessage('Arweave’s transaction index could not be read. Retry shortly.')).toBe(
+			'More listings could not be loaded. Arweave’s transaction index could not be read. Retry shortly.'
+		);
 	});
 
 	it('turns a loader that outlives its deadline with nothing to show into one failure with Retry', () => {

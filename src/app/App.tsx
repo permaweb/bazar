@@ -3447,6 +3447,19 @@ export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean)
 	return display !== 'failed' && pending;
 }
 
+/**
+ * Where a Discover failure is reported: beside cards that already rendered it is a compact inline
+ * notice that keeps them in view; with nothing to show it is the full error block in their place.
+ */
+export function homeDiscoverFailureNotice(display: HomeDiscoverDisplay): 'inline' | 'panel' | 'none' {
+	return display === 'results' ? 'inline' : display === 'failed' ? 'panel' : 'none';
+}
+
+/** The inline notice says what is missing (more listings), not that the shown cards failed. */
+export function homeDiscoverPartialFailureMessage(message: string) {
+	return `More listings could not be loaded. ${message}`;
+}
+
 export const HOME_SUMMARY_AUTO_RETRY_DELAY_MS = 15_000;
 /** Background retries of failed card summaries before only a manual Retry restarts them. */
 export const HOME_SUMMARY_AUTO_RETRY_LIMIT = 2;
@@ -4919,8 +4932,15 @@ function Home() {
 								) : null}
 							</div>
 							{homeTab === 'discover' ? (
-								discoverFailure && discoverDisplay === 'results' ? (
-									<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+								discoverFailure && homeDiscoverFailureNotice(discoverDisplay) === 'inline' ? (
+									<div className="collection-source-notice home-discover-partial-notice retry-notice">
+										<span role="status">
+											{homeDiscoverPartialFailureMessage(discoverFailure.message)}
+										</span>
+										<Button onClick={discoverFailure.retry} size="small">
+											Retry
+										</Button>
+									</div>
 								) : null
 							) : market.error ? (
 								<ErrorPanel message={market.error} onRetry={market.retry} />
@@ -5110,7 +5130,7 @@ function Home() {
 									id="home-discover-panel"
 									role="tabpanel"
 								>
-									{discoverDisplay === 'failed' && discoverFailure ? (
+									{homeDiscoverFailureNotice(discoverDisplay) === 'panel' && discoverFailure ? (
 										<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
 									) : discoverDisplay === 'loading' ? (
 										<div className="home-market-loading">
