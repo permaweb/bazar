@@ -13,12 +13,12 @@ import {
 } from './asset-marketplace';
 import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
+import { graphqlEndpointList, graphqlIdBatchSize, graphqlSupportsCount, postGraphql } from './graphql';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
 const GRAPHQL_ID_BATCH_SIZE = 100;
-const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
 const WALLET_SCAN_CACHE_VERSION = 1;
@@ -132,7 +132,9 @@ type WalletCandidateOptions = CandidateOptions & {
 	catchUp?: boolean;
 };
 
-type MarketActivityOptions = CandidateOptions & {
+type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> & {
+	/** `graphql` is the index that answered the page. */
+	onPage?: (candidates: AssetCandidate[], graphql: string) => void | Promise<void>;
 	recipients?: string[];
 	listingsOnly?: boolean;
 	acceptProcessId?: (processId: string) => boolean;
@@ -160,6 +162,8 @@ export type CollectionActivityPage = {
 	cursor: string | null;
 	hasNextPage: boolean;
 	totalCount: number | null;
+	/** The index that served this page; its cursor is only valid there, so pass it back with `cursor`. */
+	graphql: string;
 };
 
 export type CollectionActivityPageOptions = Omit<CollectionActivityOptions, 'limit' | 'onPage'> & {
@@ -438,10 +442,9 @@ export async function loadBazarAtomicAssetById(
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
 	if (!isVisibleAssetId(processId)) return null;
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+	const { response, body: payload } = await postGraphql<any>(
 		fetcher,
-		graphql,
+		graphqlEndpointList(options.graphql),
 		{
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -479,10 +482,9 @@ export async function searchBazarAtomicAssetsByName(
 	const titleCaseName = name.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
 	const names = [...new Set([name, name.toLowerCase(), titleCaseName, name.toUpperCase()])];
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+	const { response, body: payload } = await postGraphql<any>(
 		fetcher,
-		graphql,
+		graphqlEndpointList(options.graphql),
 		{
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -718,6 +720,7 @@ export async function discoverWalletAssetCandidates(
 ): Promise<AssetCandidate[]> {
 	if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	// The persisted scan stores index-specific cursors, so it stays on one endpoint.
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const scan = options.scan ?? createWalletCandidateScan(address, graphql);
 	if (scan.address !== address || scan.graphql !== graphql) {
@@ -913,7 +916,7 @@ export async function discoverWalletAssetCandidates(
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	let endpoints = graphqlEndpointList(options.graphql);
 	const found = new Map<string, AssetCandidate>();
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	let cursor: string | null = null;
@@ -923,9 +926,13 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 
 	while (true) {
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		const {
+			response,
+			body: payload,
+			endpoint,
+		} = await postGraphql<any>(
 			fetcher,
-			graphql,
+			endpoints,
 			{
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -963,10 +970,11 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 			mergeCandidate(found, candidate);
 			return firstOccurrence ? [candidate] : [];
 		});
-		await options.onPage?.(sortCandidates(pageCandidates));
+		await options.onPage?.(sortCandidates(pageCandidates), endpoint);
 		pages += 1;
 		if (pages >= maxPages || !connection.pageInfo.hasNextPage) return sortCandidates([...found.values()]);
 		cursor = advanceGraphqlCursor(connection, visited, 'asset-activity-pagination-stalled');
+		endpoints = [endpoint];
 	}
 }
 
@@ -1016,7 +1024,7 @@ export async function discoverCollectionActivityPage(
 	options: CollectionActivityPageOptions = {}
 ): Promise<CollectionActivityPage> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const allEndpoints = graphqlEndpointList(options.graphql);
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	const actions = [
 		...new Set(
@@ -1029,21 +1037,31 @@ export async function discoverCollectionActivityPage(
 	const pageSize = Math.max(1, Math.min(GRAPHQL_PAGE_SIZE, Math.floor(options.pageSize ?? GRAPHQL_PAGE_SIZE)));
 
 	if (options.recipients !== undefined && !recipients.length) {
-		return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
+		return { events: [], cursor: null, hasNextPage: false, totalCount: 0, graphql: allEndpoints[0] };
 	}
-	if (!actions.length) return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
+	if (!actions.length)
+		return { events: [], cursor: null, hasNextPage: false, totalCount: 0, graphql: allEndpoints[0] };
 
 	options.signal?.throwIfAborted();
-	const includeCount = !cursor && options.includeCount !== false;
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+	// A cursor belongs to the index that issued it; only a first page may fall back.
+	const endpoints = cursor ? allEndpoints.slice(0, 1) : allEndpoints;
+	const wantsCount = !cursor && options.includeCount !== false;
+	const {
+		response,
+		body: payload,
+		endpoint,
+	} = await postGraphql<any>(
 		fetcher,
-		graphql,
-		{
+		endpoints,
+		(target) => ({
 			method: 'POST',
 			priority: options.priority,
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
-				query: includeCount ? COLLECTION_ACTIVITY_PAGE_QUERY : COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
+				query:
+					wantsCount && graphqlSupportsCount(target)
+						? COLLECTION_ACTIVITY_PAGE_QUERY
+						: COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
 				variables: {
 					...(cursor ? { cursor } : {}),
 					first: pageSize,
@@ -1052,12 +1070,13 @@ export async function discoverCollectionActivityPage(
 				},
 			}),
 			signal: options.signal,
-		},
+		}),
 		{
 			timeoutMs: options.requestTimeoutMs,
 			timeoutError: 'collection-activity-graphql-timeout',
 		}
 	);
+	const includeCount = wantsCount && graphqlSupportsCount(endpoint);
 	if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
 	if (!payload) throw new Error('collection-activity-graphql-empty');
 	if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
@@ -1080,7 +1099,7 @@ export async function discoverCollectionActivityPage(
 			processIds,
 			options.requiredExecutionDevice,
 			fetcher,
-			graphql,
+			allEndpoints,
 			options
 		);
 		events = events.filter((event) => verified.has(event.processId));
@@ -1098,6 +1117,7 @@ export async function discoverCollectionActivityPage(
 		cursor: nextCursor,
 		hasNextPage: connection.pageInfo.hasNextPage,
 		totalCount,
+		graphql: endpoint,
 	};
 }
 
@@ -1105,7 +1125,8 @@ export async function discoverCollectionActivity(
 	options: CollectionActivityOptions
 ): Promise<CollectionActivityEvent[]> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const allEndpoints = graphqlEndpointList(options.graphql);
+	let endpoints = allEndpoints;
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 100)));
 	const actions = [
@@ -1125,9 +1146,13 @@ export async function discoverCollectionActivity(
 	if (!actions.length) return [];
 	while (events.length < limit) {
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		const {
+			response,
+			body: payload,
+			endpoint,
+		} = await postGraphql<any>(
 			fetcher,
-			graphql,
+			endpoints,
 			{
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -1172,7 +1197,7 @@ export async function discoverCollectionActivity(
 					unchecked,
 					options.requiredExecutionDevice,
 					fetcher,
-					graphql,
+					allEndpoints,
 					options
 				);
 				for (const id of unchecked) deviceMatches.set(id, verified.has(id));
@@ -1187,6 +1212,7 @@ export async function discoverCollectionActivity(
 			return events;
 		}
 		cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-pagination-stalled');
+		endpoints = [endpoint];
 	}
 	return events;
 }
@@ -1310,14 +1336,17 @@ export async function discoverAllCollectionActivityBatched(
 				const batch = batches[batchIndex];
 				if (!batch) return;
 				let cursor: string | null = null;
+				let graphql = options.graphql;
 				const visited = new Set<string>();
 				try {
 					for (let pageIndex = 0; pageIndex < MAX_GRAPHQL_PAGES; pageIndex += 1) {
 						const page = await discoverCollectionActivityPage({
 							...options,
+							graphql,
 							recipients: batch,
 							cursor,
 						});
+						graphql = page.graphql;
 						options.signal?.throwIfAborted();
 						for (const event of page.events) found.set(event.id, event);
 						await options.onPage?.(page.events, batch, {
@@ -1360,30 +1389,31 @@ async function verifyProcessDevices(
 	ids: string[],
 	device: string,
 	fetcher: typeof fetch,
-	graphql: string,
+	graphql: readonly string[],
 	options: Pick<CollectionActivityOptions, 'requestTimeoutMs' | 'signal'>
 ): Promise<Set<string>> {
 	if (!device.trim() || ids.some((id) => !ADDRESS.test(id))) {
 		throw new TypeError('invalid-collection-activity-device-filter');
 	}
 	const verified = new Set<string>();
-	const graphqlHost = new URL(graphql).hostname;
-	const batchSize =
-		graphqlHost === 'arweave.net' || graphqlHost.endsWith('.arweave.net')
-			? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
-			: GRAPHQL_ID_BATCH_SIZE;
+	const batchSize = graphqlIdBatchSize(graphql, GRAPHQL_ID_BATCH_SIZE);
 	const batches = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
 		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	for (const batch of batches) {
 		const requested = new Set(batch);
 		let cursor: string | null = null;
+		let endpoints = graphql;
 		const visited = new Set<string>();
 		while (true) {
 			options.signal?.throwIfAborted();
-			const { response, body: payload } = await fetchJsonWithDeadline<any>(
+			const {
+				response,
+				body: payload,
+				endpoint,
+			} = await postGraphql<any>(
 				fetcher,
-				graphql,
+				endpoints,
 				{
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
@@ -1412,6 +1442,7 @@ async function verifyProcessDevices(
 			}
 			if (!connection.pageInfo.hasNextPage) break;
 			cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-device-pagination-stalled');
+			endpoints = [endpoint];
 		}
 	}
 	return verified;
@@ -1629,12 +1660,8 @@ export async function verifyAssetCandidateSupport(
 	const unavailable = new Map<string, unknown>();
 	const ids = [...new Set(unindexed.map((candidate) => candidate.processId))];
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const graphqlHost = new URL(graphql).hostname;
-	const batchSize =
-		graphqlHost === 'arweave.net' || graphqlHost.endsWith('.arweave.net')
-			? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
-			: GRAPHQL_ID_BATCH_SIZE;
+	const endpoints = graphqlEndpointList(options.graphql);
+	const batchSize = graphqlIdBatchSize(endpoints, GRAPHQL_ID_BATCH_SIZE);
 	const chunks = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
 		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
@@ -1643,9 +1670,9 @@ export async function verifyAssetCandidateSupport(
 		const requested = new Set(chunk);
 		const verifiedChunk = new Set<string>();
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		const { response, body: payload } = await postGraphql<any>(
 			fetcher,
-			graphql,
+			endpoints,
 			{
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },

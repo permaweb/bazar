@@ -1324,6 +1324,8 @@ describe('wallet candidate discovery', () => {
 				batchSize: 2,
 				concurrency: 1,
 				fetch: fetcher as typeof fetch,
+				// One index: this covers batch isolation, not endpoint fallback.
+				graphql: 'https://arweave.net/graphql',
 				recipients,
 				onBatch: (_candidates, batch) => {
 					completed.push(batch);
@@ -1349,6 +1351,7 @@ describe('wallet candidate discovery', () => {
 					batchSize: 2,
 					concurrency: 2,
 					fetch: fetcher as typeof fetch,
+					graphql: 'https://arweave.net/graphql',
 					recipients,
 				});
 				throw new Error('expected activity failure');
@@ -1435,6 +1438,39 @@ describe('wallet candidate discovery', () => {
 		expect(emitted).toEqual([[assetA], [assetB]]);
 		expect(result.map((candidate) => candidate.processId)).toEqual([assetA, assetB]);
 		expect(result[0].height).toBe(30);
+	});
+
+	it('reports the index that answered each activity page', async () => {
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const cursor = JSON.parse(String(init?.body)).variables.cursor;
+			if (String(input) === 'https://arweave.net/graphql') return new Response('busy', { status: 429 });
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: !cursor },
+						edges: [activityEdge(cursor ? 'fallback-2' : 'fallback-1', cursor ? assetB : assetA, 30)],
+					},
+				},
+			});
+		});
+		const pages: Array<[string[], string | undefined]> = [];
+
+		await discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			onPage: (candidates, graphql) => {
+				pages.push([candidates.map((candidate) => candidate.processId), graphql]);
+			},
+		});
+
+		expect(pages).toEqual([
+			[[assetA], 'https://ardrive.net/graphql'],
+			[[assetB], 'https://ardrive.net/graphql'],
+		]);
+		expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+			'https://ardrive.net/graphql',
+		]);
 	});
 
 	it('can bound a recent market scan without requiring the complete history', async () => {
@@ -1631,7 +1667,63 @@ describe('wallet candidate discovery', () => {
 				fetch: fetcher as typeof fetch,
 				recipients: [assetA],
 			})
-		).resolves.toEqual({ events: [], cursor: null, hasNextPage: false, totalCount: null });
+		).resolves.toEqual({
+			events: [],
+			cursor: null,
+			hasNextPage: false,
+			totalCount: null,
+			graphql: 'https://arweave.net/graphql',
+		});
+	});
+
+	it('falls back to a count-free query on an index that rejects count and keeps its cursor there', async () => {
+		const requests: Array<{ url: string; query: string; variables: any }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			const body = JSON.parse(String(init?.body));
+			requests.push({ url, ...body });
+			if (url === 'https://arweave.net/graphql') return new Response('busy', { status: 503 });
+			if (/\bcount\b/.test(body.query)) {
+				return Response.json(
+					{ errors: [{ message: 'Cannot query field "count" on type "TransactionConnection".' }] },
+					{ status: 400 }
+				);
+			}
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: !body.variables.cursor },
+						edges: [activityEdge(body.variables.cursor ? 'ardrive-2' : 'ardrive-1', assetA, 42)],
+					},
+				},
+			});
+		});
+
+		const first = await discoverCollectionActivityPage({
+			fetch: fetcher as typeof fetch,
+			recipients: [assetA],
+		});
+		expect(first).toMatchObject({
+			cursor: 'ardrive-1',
+			hasNextPage: true,
+			totalCount: null,
+			graphql: 'https://ardrive.net/graphql',
+		});
+		expect(requests.map(({ url, query }) => [url, /\bcount\b/.test(query)])).toEqual([
+			['https://arweave.net/graphql', true],
+			['https://ardrive.net/graphql', false],
+		]);
+
+		const second = await discoverCollectionActivityPage({
+			fetch: fetcher as typeof fetch,
+			recipients: [assetA],
+			cursor: first.cursor,
+			graphql: first.graphql,
+		});
+		expect(second).toMatchObject({ hasNextPage: false, graphql: 'https://ardrive.net/graphql' });
+		expect(requests.slice(2).map(({ url, variables }) => [url, variables.cursor])).toEqual([
+			['https://ardrive.net/graphql', 'ardrive-1'],
+		]);
 	});
 
 	it('keeps the registered fill quantity needed to price purchase activity', async () => {
@@ -1733,6 +1825,8 @@ describe('wallet candidate discovery', () => {
 			discoverCollectionActivityBatched({
 				concurrency: 1,
 				fetch: fetcher as typeof fetch,
+				// One index: this covers batch isolation, not endpoint fallback.
+				graphql: 'https://arweave.net/graphql',
 				recipients,
 				onBatch: (_events, batch) => {
 					completed.push(batch);

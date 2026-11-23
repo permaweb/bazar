@@ -401,7 +401,8 @@ describe('collection index loading', () => {
 		await expect(
 			enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch, [0, 0])
 		).resolves.toEqual(collection);
-		expect(fetcher).toHaveBeenCalledTimes(3);
+		// Three attempts, each asking both configured indexes.
+		expect(fetcher).toHaveBeenCalledTimes(6);
 		expect(
 			fetcher.mock.calls.every(([, init]) =>
 				JSON.parse(String(init?.body)).query.includes('BazarAtomicAssetsByCollection')
@@ -1083,13 +1084,21 @@ describe('collection index loading', () => {
 			})
 		);
 		const progress: string[][] = [];
+		const backgroundUnavailable = vi.fn();
 
-		const result = await loadCollections(undefined, (collections) => {
-			progress.push(collections.map((collection) => collection.id));
-		});
+		const result = await loadCollections(
+			undefined,
+			(collections) => {
+				progress.push(collections.map((collection) => collection.id));
+			},
+			undefined,
+			backgroundUnavailable
+		);
 
 		expect(result.collections.map((collection) => collection.id)).toEqual(['arweave-names', 'fungible-tokens']);
-		expect(result.unavailable).toEqual(['Bazar Fungible Tokens', 'Bazar collection discovery']);
+		expect(result.unavailable[0]).toBe('Bazar Fungible Tokens');
+		// Discovery asks every configured index before it is reported unavailable.
+		await vi.waitFor(() => expect(backgroundUnavailable).toHaveBeenCalledWith('Bazar collection discovery'));
 		expect(progress.at(-1)).toEqual(['arweave-names', 'fungible-tokens']);
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});

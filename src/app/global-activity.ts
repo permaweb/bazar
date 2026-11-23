@@ -39,6 +39,8 @@ export function createGlobalActivityPager(
 ) {
 	const streams = new Map<GlobalActivityFilter, GlobalActivityPageState>();
 	const visited = new Map<GlobalActivityFilter, Set<string>>();
+	// Cursors are index-specific; each stream's next page returns to the index that issued its cursor.
+	const cursorIndexes = new Map<GlobalActivityFilter, string>();
 	const get = (filter: GlobalActivityFilter) => streams.get(filter) ?? emptyPage();
 	return {
 		get,
@@ -52,6 +54,9 @@ export function createGlobalActivityPager(
 				...options,
 				actions: filter === 'all' ? undefined : [filter],
 				cursor: refresh ? null : previous.cursor,
+				...(!refresh && previous.cursor && cursorIndexes.has(filter)
+					? { graphql: cursorIndexes.get(filter) }
+					: {}),
 				pageSize: GLOBAL_ACTIVITY_PAGE_SIZE,
 				includeCount: false,
 				signal,
@@ -75,6 +80,7 @@ export function createGlobalActivityPager(
 			};
 			streams.set(filter, next);
 			visited.set(filter, cursors);
+			cursorIndexes.set(filter, page.graphql);
 			return next;
 		},
 	};

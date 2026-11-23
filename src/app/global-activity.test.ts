@@ -19,7 +19,10 @@ function edge(id: string, cursor = id, processId = asset, action = 'make-offer',
 function response(edges: ReturnType<typeof edge>[], hasNextPage = true) {
 	return Response.json({ data: { transactions: { pageInfo: { hasNextPage }, edges } } });
 }
-function setup(responses: Array<Response | Error>) {
+function setup(
+	responses: Array<Response | Error>,
+	options: Pick<Parameters<typeof createGlobalActivityPager>[0], 'graphql'> = {}
+) {
 	const requests: Array<{ url: string; query: string; variables: any }> = [];
 	const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		requests.push({ url: String(input), ...JSON.parse(String(init?.body)) });
@@ -28,7 +31,7 @@ function setup(responses: Array<Response | Error>) {
 		if (!next) throw new Error('unexpected-request');
 		return next;
 	});
-	const pager = createGlobalActivityPager({ fetch: fetcher, acceptProcessId: (id) => id === asset });
+	const pager = createGlobalActivityPager({ ...options, fetch: fetcher, acceptProcessId: (id) => id === asset });
 	return { pager, fetcher, requests };
 }
 
@@ -110,12 +113,16 @@ describe('global activity native pagination', () => {
 	});
 
 	it('refreshes from the head and replaces old pages so a stale tail cannot skip history', async () => {
-		const { pager, requests } = setup([
-			response([edge('a', 'old-tail')]),
-			new Error('offline'),
-			response([edge('b', 'new-tail')]),
-			response([edge('c')], false),
-		]);
+		const { pager, requests } = setup(
+			[
+				response([edge('a', 'old-tail')]),
+				new Error('offline'),
+				response([edge('b', 'new-tail')]),
+				response([edge('c')], false),
+			],
+			// One index: this covers refresh failure, not endpoint fallback.
+			{ graphql: 'https://arweave.net/graphql' }
+		);
 		const first = await pager.load('all');
 		await expect(pager.load('all', { refresh: true })).rejects.toThrow('offline');
 		expect(pager.get('all')).toBe(first);
@@ -123,6 +130,21 @@ describe('global activity native pagination', () => {
 		await pager.load('all');
 		expect(requests[2].variables.cursor).toBeUndefined();
 		expect(requests[3].variables.cursor).toBe('new-tail');
+	});
+
+	it('returns to the index that issued a cursor for the next page', async () => {
+		const { pager, requests } = setup([
+			new Error('arweave.net offline'),
+			response([edge('a', 'ardrive-tail')]),
+			response([edge('b')], false),
+		]);
+		await pager.load('all');
+		await pager.load('all');
+		expect(requests.map(({ url, variables }) => [url, variables.cursor])).toEqual([
+			['https://arweave.net/graphql', undefined],
+			['https://ardrive.net/graphql', undefined],
+			['https://ardrive.net/graphql', 'ardrive-tail'],
+		]);
 	});
 
 	it('rejects repeated cursors and longer cycles without corrupting page state', async () => {
