@@ -8,7 +8,9 @@ import {
 	PROFILE_UPDATED_EVENT,
 	ProfileIdentity,
 	profilePath,
+	ProfileSaveError,
 	profileSummaryFor,
+	profileUpdateError,
 	profileUpdateMatches,
 	shortProfileAddress,
 	subscribeProfileUpdated,
@@ -97,5 +99,23 @@ describe('ProfileIdentity', () => {
 		expect(markup).toContain(shortProfileAddress(address));
 		expect(markup).not.toContain(`(${shortProfileAddress(address)})`);
 		expect(markup).toContain('profile-avatar--fallback');
+	});
+});
+
+describe('profileUpdateError', () => {
+	it('maps a bare ProfileClient error to profile copy with a plain fallback', () => {
+		expect(profileUpdateError(new Error('wallet-account-changed'))).toBe(
+			'The connected wallet changed. Return to your current wallet profile and try again.'
+		);
+		expect(profileUpdateError(new Error('profile-upload-500'))).toBe(
+			'Your profile could not be updated. Please try again.'
+		);
+		expect(profileUpdateError('declined')).toBe('Your profile could not be updated. Please try again.');
+	});
+
+	it('names a declined profile signature from its stage', () => {
+		expect(profileUpdateError(new ProfileSaveError('profile-signing', false, new Error('declined')))).toBe(
+			'Your wallet did not approve the profile.'
+		);
 	});
 });

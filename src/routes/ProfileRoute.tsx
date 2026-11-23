@@ -17,7 +17,10 @@ import { Button } from 'components/Button';
 import {
 	announceProfileUpdated,
 	ProfileAvatar,
+	ProfileSaveError,
+	type ProfileSaveStage,
 	type ProfileSummary,
+	profileUpdateError,
 	shortProfileAddress,
 } from 'components/ProfileIdentity';
 import { useWallet } from 'providers/WalletProvider';
@@ -120,27 +123,8 @@ export type ProfileEditUpdate = {
 	removeAvatar: boolean;
 };
 
-/**
- * Where a profile save stopped. A new picture and the profile are two separate signed,
- * paid L1 posts, so a failure after the picture landed must not lose it.
- */
-export type ProfileSaveStage =
-	| 'picture-preparing'
-	| 'picture-signing'
-	| 'picture-uploading'
-	| 'profile-preparing'
-	| 'profile-signing'
-	| 'profile-publishing';
-
 /** A picture whose upload was accepted, kept so a retry of the same File by the same owner reuses it. */
 export type UploadedProfileAvatar = { address: string; file: File; avatar: string };
-
-export class ProfileSaveError extends Error {
-	constructor(readonly stage: ProfileSaveStage, readonly pictureUploaded: boolean, cause: unknown) {
-		super(cause instanceof Error ? cause.message : String(cause), { cause });
-		this.name = 'ProfileSaveError';
-	}
-}
 
 export const PROFILE_PICTURE_REUSED_STATUS = 'Picture already uploaded. Preparing profile…';
 
@@ -405,38 +389,6 @@ function ProfileEditDialog({
 function profileImageError(file: File) {
 	if (!PROFILE_AVATAR_CONTENT_TYPES.includes(file.type)) return 'Choose a PNG, JPEG, WebP, or GIF image.';
 	if (!file.size || file.size > PROFILE_AVATAR_MAX_BYTES) return 'Choose an image smaller than 10 MB.';
-	return '';
-}
-
-const PROFILE_PICTURE_KEPT =
-	'Your picture was uploaded, but your profile was not published. Save again to finish. Only one approval is needed.';
-
-export function profileUpdateError(cause: unknown) {
-	const code = cause instanceof Error ? cause.message : '';
-	const stage = cause instanceof ProfileSaveError ? cause.stage : undefined;
-	const reason = profileSaveFailureReason(code, stage);
-	if (cause instanceof ProfileSaveError && cause.pictureUploaded) {
-		return reason ? `${reason} ${PROFILE_PICTURE_KEPT}` : PROFILE_PICTURE_KEPT;
-	}
-	return reason || 'Your profile could not be updated. Please try again.';
-}
-
-function profileSaveFailureReason(code: string, stage: ProfileSaveStage | undefined) {
-	switch (code) {
-		case 'invalid-profile-avatar':
-			return 'The existing profile picture is not a valid image reference. Choose a new picture and try again.';
-		case 'invalid-profile-avatar-type':
-			return 'Choose a PNG, JPEG, WebP, or GIF image.';
-		case 'invalid-profile-avatar-size':
-			return 'Choose an image smaller than 10 MB.';
-		case 'wallet-account-changed':
-			return 'The connected wallet changed. Return to your current wallet profile and try again.';
-		case 'wallet-sign-unavailable':
-			return 'Connect an Arweave wallet that can sign transactions.';
-	}
-	// The wallet's own sign call failed or was declined: nothing from this step was posted.
-	if (stage === 'picture-signing') return 'Your wallet did not approve the picture, so nothing was uploaded.';
-	if (stage === 'profile-signing') return 'Your wallet did not approve the profile.';
 	return '';
 }
 

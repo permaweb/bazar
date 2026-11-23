@@ -196,6 +196,7 @@ import {
 } from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
+import { ProfileSaveError, type ProfileSaveStage, profileUpdateError } from 'components/ProfileIdentity';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { TokenAvatar } from 'components/TokenAvatar';
@@ -10291,6 +10292,52 @@ function PendingAssetView() {
 	);
 }
 
+export const PROFILE_PICTURE_NOT_OWNED = 'This wallet no longer owns this unique asset.';
+
+export type ProfilePictureOutcome = { ok: true } | { ok: false; error: string };
+
+export type ProfilePictureIo = {
+	readState: (assetId: string) => Promise<{ state: AssetState }>;
+	client: Pick<ProfileClient, 'setAvatar'>;
+};
+
+/**
+ * Check that `owner` still holds this unique asset, then publish it as their profile picture.
+ * A failed ownership read keeps the marketplace copy (nothing was prepared or sent); a failed
+ * profile write uses the profile copy, since nothing is saved in the browser to resume.
+ */
+export async function setProfilePictureFromAsset(
+	{ assetId, image, owner }: { assetId: string; image: string; owner: string },
+	onPhase: (phase: 'signing' | 'uploading') => void,
+	io: ProfilePictureIo = { readState: readCurrentAssetState, client: new ProfileClient() }
+): Promise<ProfilePictureOutcome> {
+	let current: { state: AssetState };
+	try {
+		current = await io.readState(assetId);
+	} catch (cause) {
+		return { ok: false, error: errorMessage(cause) || 'Profile picture could not be updated.' };
+	}
+	if (
+		current.state.totalSupply !== '1' ||
+		current.state.denomination > 0 ||
+		!sameAccount(ownerOfAsset(current.state), owner)
+	) {
+		return { ok: false, error: PROFILE_PICTURE_NOT_OWNED };
+	}
+	let stage: ProfileSaveStage = 'profile-preparing';
+	try {
+		await io.client.setAvatar(owner, image, {
+			onPhase: (phase) => {
+				stage = phase === 'signing' ? 'profile-signing' : 'profile-publishing';
+				onPhase(phase);
+			},
+		});
+	} catch (cause) {
+		return { ok: false, error: profileUpdateError(new ProfileSaveError(stage, false, cause)) };
+	}
+	return { ok: true };
+}
+
 function SetProfilePictureButton({
 	assetId,
 	disabled,
@@ -10307,23 +10354,9 @@ function SetProfilePictureButton({
 	const apply = async () => {
 		setError('');
 		setStatus('checking');
-		try {
-			const current = await readCurrentAssetState(assetId);
-			if (
-				current.state.totalSupply !== '1' ||
-				current.state.denomination > 0 ||
-				!sameAccount(ownerOfAsset(current.state), owner)
-			) {
-				throw new Error('This wallet no longer owns this unique asset.');
-			}
-			await new ProfileClient().setAvatar(owner, image, {
-				onPhase: (phase) => setStatus(phase),
-			});
-			setStatus('done');
-		} catch (cause) {
-			setStatus('idle');
-			setError(errorMessage(cause) || 'Profile picture could not be updated.');
-		}
+		const outcome = await setProfilePictureFromAsset({ assetId, image, owner }, setStatus);
+		setStatus(outcome.ok ? 'done' : 'idle');
+		if (!outcome.ok) setError(outcome.error);
 	};
 	return (
 		<>

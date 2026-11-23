@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ProfileClient } from 'api/profile';
 
+import { ProfileSaveError, profileUpdateError } from 'components/ProfileIdentity';
+
 import {
 	PROFILE_PICTURE_REUSED_STATUS,
 	type ProfileEditUpdate,
 	ProfilePage,
-	ProfileSaveError,
-	profileUpdateError,
 	saveProfileEdit,
 	type UploadedProfileAvatar,
 } from './ProfileRoute';
