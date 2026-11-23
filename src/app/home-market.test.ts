@@ -14,11 +14,14 @@ import {
 	replaceHiddenCollectionAssetIndex,
 } from 'api/collections';
 
+import { nextStableOrder, stableOrderDiffers } from 'helpers/stable-order';
+
 import {
 	ACTIVITY_CATALOGUE_QUIET_MS,
 	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
 	activityCatalogueMembershipKey,
 	activityCatalogueRevealDelay,
+	activityLoadingPlacement,
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembership,
@@ -56,6 +59,7 @@ import {
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
 	globalCatalogueActivity,
+	heldPriceRetryNotice,
 	HOME_ASSET_PAGE_SIZE,
 	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
@@ -136,6 +140,7 @@ import {
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
 	tokenListingNoticeCopy,
+	tokenListingStatus,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
 	visibleActivityAssets,
@@ -929,10 +934,22 @@ describe('Home market summary retries', () => {
 		expect(assetDetailMembership(undefined, new Set(), true, false)).toBe('verified');
 	});
 
-	it('words the token listing notice as a pending check, then as an unverified listing', () => {
-		expect(tokenListingNoticeCopy(true).compact).toBe('Checking the Bazar listing…');
-		expect(tokenListingNoticeCopy(false).compact).toBe('Bazar listing could not be verified right now.');
-		expect(tokenListingNoticeCopy(false).message).toContain('read from live state');
+	it('words the token listing notice as a pending check, then as an unverified or checked listing', () => {
+		expect(tokenListingNoticeCopy('checking').compact).toBe('Checking the Bazar listing…');
+		expect(tokenListingNoticeCopy('unverified').compact).toBe('Bazar listing could not be verified right now.');
+		expect(tokenListingNoticeCopy('unverified').message).toContain('read from live state');
+		expect(tokenListingNoticeCopy('checked').compact).toBe('Bazar listing checked.');
+		expect(tokenListingNoticeCopy('checked').message).toContain('read from live state');
+	});
+
+	it('keeps a painted token listing line as checked instead of removing it', () => {
+		expect(tokenListingStatus('live', true, false)).toBe('checking');
+		expect(tokenListingStatus('live', false, true)).toBe('unverified');
+		// The line was painted while the index was unread: it stays, so the panels below hold still.
+		expect(tokenListingStatus('verified', false, true)).toBe('checked');
+		// Verified from the first paint: no line at all.
+		expect(tokenListingStatus('verified', false, false)).toBeNull();
+		expect(tokenListingStatus('unverified', true, true)).toBeNull();
 	});
 
 	it('keeps collection members out of the standalone created-assets collection', () => {
@@ -1606,6 +1623,20 @@ describe('Home market summary retries', () => {
 		expect(collectionPriceRetryNotice({ ...base, listedOnly: true, unavailable: 2 }).visible).toBe(false);
 	});
 
+	it('holds a shown floor retry notice through the retry instead of blinking it off and on', () => {
+		const shown = { visible: true, unavailable: 2 };
+		// A retry starts: collectionPriceRetryNotice hides while prices load, the held notice stays.
+		expect(heldPriceRetryNotice(shown, { visible: false, unavailable: 0 }, true)).toBe(shown);
+		// The retry settled: whatever it found now shows (fewer floors, or none).
+		expect(heldPriceRetryNotice(shown, { visible: true, unavailable: 1 }, false)).toEqual({
+			visible: true,
+			unavailable: 1,
+		});
+		expect(heldPriceRetryNotice(shown, { visible: false, unavailable: 0 }, false).visible).toBe(false);
+		// Nothing was shown before the retry: nothing is held.
+		expect(heldPriceRetryNotice(undefined, { visible: false, unavailable: 0 }, true).visible).toBe(false);
+	});
+
 	it('renders exactly one Discover state so a failure replaces the loader but keeps visible cards', () => {
 		expect(homeDiscoverDisplay(true, false, 0)).toBe('loading');
 		// A tripped compute circuit or failed discovery is terminal even while summaries remain pending.
@@ -1720,6 +1751,27 @@ describe('Home market summary retries', () => {
 		expect(globalCatalogueActivity(events, [tokens]).map((item) => item.id)).toEqual(['3']);
 		// The same loaded rows, filtered again once a streamed collection claims one; gateway order holds.
 		expect(globalCatalogueActivity(events, [tokens, images]).map((item) => item.id)).toEqual(['1', '3']);
+	});
+
+	it('appends rows a late collection claims instead of inserting them above painted rows', () => {
+		// Painted after the reveal: rows 3 and 5 (newest first).
+		const painted = nextStableOrder(undefined, ['3', '5'], 'all|0', false);
+		// A collection streaming in after the cap claims rows 1 (newest) and 4.
+		const ranked = ['1', '3', '4', '5'];
+		const held = nextStableOrder(painted, ranked, 'all|0', false);
+
+		expect(held.ids).toEqual(['3', '5', '1', '4']);
+		// The newest-first order is offered rather than applied, and applying it re-ranks.
+		expect(stableOrderDiffers(held.ids, ranked, 20)).toBe(true);
+		expect(nextStableOrder(held, ranked, 'all|1', false).ids).toEqual(ranked);
+	});
+
+	it('says Activity is loading without inserting a line above painted rows', () => {
+		expect(activityLoadingPlacement(false, 0, true)).toBeNull();
+		expect(activityLoadingPlacement(true, 0, true)).toBe('placeholder');
+		// Rows painted: the load-more button says "Loading activity…".
+		expect(activityLoadingPlacement(true, 20, true)).toBeNull();
+		expect(activityLoadingPlacement(true, 4, false)).toBe('after-list');
 	});
 
 	it('paints activity rows after a short catalogue quiet time, capped from market settle', () => {

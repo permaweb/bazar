@@ -21,6 +21,7 @@ import {
 	artworkSlotHost,
 	type ArtworkSlotQueues,
 	type ArtworkStartState,
+	artworkStateClass,
 	artworkVisibleSrc,
 	artworkWantsSlot,
 	cancelArtworkRacers,
@@ -80,10 +81,30 @@ describe('ArtworkImage', () => {
 		const high = renderToStaticMarkup(<ArtworkImage fetchPriority="high" src="https://arweave.net/raw/high" />);
 
 		expect(lazy).not.toContain('src=');
-		expect(lazy).toContain('is-loading');
+		expect(lazy).toContain('is-deferred');
+		expect(lazy).not.toContain('is-loading');
 		expect(eager).toContain('src="https://arweave.net/raw/eager"');
 		expect(high).toContain('src="https://arweave.net/raw/high"');
 		expect(high).toContain('fetchpriority="high"');
+	});
+
+	it('marks lazy artwork away from the viewport deferred and near or downloading artwork loading', () => {
+		const lazy = { scheduled: true, started: false } as const;
+
+		expect(artworkStateClass({ ...lazy, near: false, status: 'loading' })).toBe('is-deferred');
+		// Near and waiting for a host slot: queued for the viewer, so still loading.
+		expect(artworkStateClass({ ...lazy, near: true, status: 'loading' })).toBe('is-loading');
+		// Granted a slot, then scrolled away: the download is still in flight.
+		expect(artworkStateClass({ scheduled: true, started: true, near: false, status: 'loading' })).toBe(
+			'is-loading'
+		);
+		// Eager artwork is never deferred.
+		expect(artworkStateClass({ scheduled: false, started: false, near: false, status: 'loading' })).toBe(
+			'is-loading'
+		);
+		// A failed candidate waiting for its one retry keeps its box as loading.
+		expect(artworkStateClass({ ...lazy, near: false, status: 'error' })).toBe('is-loading');
+		expect(artworkStateClass({ ...lazy, near: false, status: 'loaded' })).toBe('is-loaded');
 	});
 
 	it('treats only an undecodable image without size as an empty load', () => {

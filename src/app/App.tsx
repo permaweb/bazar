@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import {
 	HashRouter,
 	Link,
@@ -5163,7 +5164,7 @@ function Home() {
 		floors: collectionFloors,
 		overdue: overdueCollectionFloors,
 	});
-	const collectionFloorRetryNotice = collectionPriceRetryNotice({
+	const collectionFloorRetryNoticeNow = collectionPriceRetryNotice({
 		activityError: false,
 		activityLoading: false,
 		cardPricesFailed: false,
@@ -5172,6 +5173,18 @@ function Home() {
 		overdue: collectionSummariesRetrying ? 0 : overdueCollectionFloorIds.length,
 		unavailable: failedCollectionIds.length,
 	});
+	// Held through the retry it offers, so it does not blink (a render-phase update, as useStableOrder).
+	const [shownCollectionFloorNotice, setShownCollectionFloorNotice] = React.useState<PriceRetryNotice>();
+	const collectionFloorRetryNotice = heldPriceRetryNotice(
+		shownCollectionFloorNotice,
+		collectionFloorRetryNoticeNow,
+		collectionSummariesRetrying
+	);
+	if (
+		collectionFloorRetryNotice.visible !== shownCollectionFloorNotice?.visible ||
+		collectionFloorRetryNotice.unavailable !== shownCollectionFloorNotice?.unavailable
+	)
+		setShownCollectionFloorNotice(collectionFloorRetryNotice);
 	const retryCollectionFloors = () => {
 		summaryAutoRetryRounds.current = 0;
 		setCollectionFloorDeadlineRun((run) => run + 1);
@@ -5455,26 +5468,6 @@ function Home() {
 									id="home-collections-panel"
 									role="tabpanel"
 								>
-									{collectionFloorRetryNotice.visible && !market.error ? (
-										<div className="inline-error retry-notice">
-											<span role="status">
-												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
-												{collectionFloorRetryNotice.unavailable === 1
-													? 'floor remains'
-													: 'floors remain'}{' '}
-												unavailable. The collections stay browsable.
-											</span>
-											<Button
-												className="with-icon"
-												disabled={summaryRetrying}
-												onClick={retryCollectionFloors}
-												size="custom"
-												type="button"
-											>
-												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-											</Button>
-										</div>
-									) : null}
 									{collections.length || collectionResultsPending ? (
 										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
@@ -5598,6 +5591,27 @@ function Home() {
 											) ? (
 												<HomeMarketGhostCard kind="collection" />
 											) : null}
+										</div>
+									) : null}
+									{/* After the grid, so its arrival never pushes painted cards down. */}
+									{collectionFloorRetryNotice.visible && !market.error ? (
+										<div className="inline-error retry-notice home-collection-floor-notice">
+											<span role="status">
+												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
+												{collectionFloorRetryNotice.unavailable === 1
+													? 'floor remains'
+													: 'floors remain'}{' '}
+												unavailable. The collections stay browsable.
+											</span>
+											<Button
+												className="with-icon"
+												disabled={summaryRetrying}
+												onClick={retryCollectionFloors}
+												size="custom"
+												type="button"
+											>
+												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+											</Button>
 										</div>
 									) : null}
 									{collectionResultsReady && !market.error && collections.length === 0 ? (
@@ -5834,6 +5848,18 @@ export function activityCatalogueRevealDelay(
 	return Math.max(0, Math.min(quietMs, settledAt + capMs - now));
 }
 
+/**
+ * Where the Activity panel says it is loading. With no rows painted it is the placeholder above the
+ * list. Once rows are painted, a line inserted above them (and removed when the page arrives) would
+ * move every row, so the load-more button carries "Loading activity…" instead, or a line after the
+ * list when there is no button.
+ */
+export function activityLoadingPlacement(busy: boolean, rowCount: number, hasMoreControl: boolean) {
+	if (!busy) return null;
+	if (!rowCount) return 'placeholder' as const;
+	return hasMoreControl ? null : ('after-list' as const);
+}
+
 /** True once the market has settled and its membership has been quiet briefly (or the cap passed). Stays true. */
 function useActivityCatalogueRevealed(marketLoading: boolean, collections: readonly Collection[]) {
 	const [revealed, setRevealed] = React.useState(false);
@@ -5908,7 +5934,26 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	// collections streaming in do not insert rows between ones already painted. Names for the rows
 	// already claimed are asked for meanwhile, so they paint named.
 	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections);
-	const filteredEvents = catalogueRevealed ? claimedEvents : [];
+	const revealedEvents = catalogueRevealed ? claimedEvents : [];
+	// Rows already painted keep their places: rows a collection streaming in after the reveal brings
+	// (the reveal waits at most ACTIVITY_CATALOGUE_WAIT_CAP_MS) are appended rather than inserted
+	// above them, and the newest-first order is offered instead of applied on its own. A filter change
+	// or the offer re-ranks.
+	const [activityOrderRevision, setActivityOrderRevision] = React.useState(0);
+	const rankedActivityIds = revealedEvents.map((event) => event.id);
+	const activityOrder = useStableOrder(rankedActivityIds, `${activityFilter}|${activityOrderRevision}`, false);
+	const filteredEvents = React.useMemo(
+		() => applyStableOrder(revealedEvents, activityOrder, (event) => event.id),
+		[activityOrder, revealedEvents]
+	);
+	const newerActivityOrder = stableOrderDiffers(activityOrder, rankedActivityIds, activityLimit);
+	const activityPanelRef = React.useRef<HTMLDivElement>(null);
+	const applyNewerActivityOrder = () => {
+		setActivityOrderRevision((current) => current + 1);
+		window.requestAnimationFrame(() =>
+			activityPanelRef.current?.querySelector<HTMLElement>('.activity-filter[aria-pressed="true"]')?.focus()
+		);
+	};
 	const busy = loading || (!catalogueRevealed && !error);
 	React.useEffect(() => {
 		if (!catalogueRevealed || loading || !loadAnnouncementPending.current) return;
@@ -5916,7 +5961,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setAnnouncement(`${catalogueEvents.length.toLocaleString()} indexed events loaded.`);
 	}, [catalogueEvents.length, catalogueRevealed, loading]);
 	useIndexedAssetNames(
-		visibleActivityAssets(claimedEvents.slice(0, activityLimit), (event) =>
+		visibleActivityAssets((catalogueRevealed ? filteredEvents : claimedEvents).slice(0, activityLimit), (event) =>
 			globalActivityCollection(collections, event.processId)
 		),
 		rememberIndexedAssets
@@ -5934,12 +5979,18 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(collections, event.processId);
 	const canReveal = activityLimit < filteredEvents.length;
+	const loadingPlacement = activityLoadingPlacement(
+		busy,
+		Math.min(activityLimit, filteredEvents.length),
+		canReveal || hasNextPage
+	);
 	return (
 		<div
 			aria-busy={busy}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
+			ref={activityPanelRef}
 			role="tabpanel"
 		>
 			<div aria-label="Filter global activity" className="activity-filters" role="group">
@@ -5959,9 +6010,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</Button>
 				))}
 			</div>
-			{busy ? (
+			{loadingPlacement === 'placeholder' ? (
 				<div className="global-activity-loading">
-					<Loading label={filteredEvents.length ? 'Loading activity…' : 'Loading recent activity…'} />
+					<Loading label="Loading recent activity…" />
 				</div>
 			) : null}
 			{error ? (
@@ -5994,6 +6045,32 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				}}
 				resolveCollection={resolveCollection}
 			/>
+			{loadingPlacement === 'after-list' ? (
+				<div className="global-activity-loading">
+					<Loading label="Loading activity…" />
+				</div>
+			) : null}
+			{/* Zero-height, with the offer fixed to the bottom of the viewport, so it never moves the rows. The
+			    Home sections are size containers, which would anchor a fixed descendant to the section, so the
+			    offer is portalled to the body as Tooltip does for its floating layer. */}
+			{typeof document !== 'undefined'
+				? createPortal(
+						<div className="collection-order-notice" aria-live="polite">
+							{newerActivityOrder ? (
+								<Button
+									aria-controls={activityListId}
+									className="collection-order-notice-button with-icon"
+									onClick={applyNewerActivityOrder}
+									size="custom"
+									type="button"
+								>
+									<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Show newest first
+								</Button>
+							) : null}
+						</div>,
+						document.body
+				  )
+				: null}
 			<p className="sr-only" role="status" aria-live="polite">
 				{announcement}
 			</p>
@@ -6007,7 +6084,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</p>
 				</div>
 			) : null}
-			{canReveal || hasNextPage ? (
+			{/* While the first rows load the placeholder says so; a button under an empty list would be pushed
+			    down by the rows it is waiting for. */}
+			{(canReveal || hasNextPage) && (filteredEvents.length || !busy) ? (
 				<Button
 					aria-controls={activityListId}
 					className="load-more"
@@ -6518,6 +6597,21 @@ export function collectionPriceRetryNotice({
 	const visible =
 		!listedOnly && ((!cardPricesLoading && (cardPricesFailed || unavailable > 0)) || countedOverdue > 0);
 	return { visible, unavailable: visible && !cardPricesFailed ? unavailable + countedOverdue : 0 };
+}
+
+type PriceRetryNotice = ReturnType<typeof collectionPriceRetryNotice>;
+
+/**
+ * A price retry notice that stays up through the retry it offers. Without this it blinks off when
+ * a retry (manual or automatic) starts and back on when the retry fails again. The held copy keeps
+ * the last count, which stays true until the retry settles: those floors are still unavailable.
+ */
+export function heldPriceRetryNotice(
+	shown: PriceRetryNotice | undefined,
+	next: PriceRetryNotice,
+	retrying: boolean
+): PriceRetryNotice {
+	return retrying && shown?.visible ? shown : next;
 }
 
 type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
@@ -8833,12 +8927,35 @@ function CollectionResultStatus({ message }: { message: string }) {
 	);
 }
 
+export type TokenListingStatus = 'checking' | 'unverified' | 'checked';
+
+/**
+ * The token page's listing line. While membership is `live` (shown from live state, token index
+ * unread) it says the check is running or could not finish. Once that line has been painted, a later
+ * `verified` keeps it as "checked" instead of removing it, so the panels below do not jump up by its
+ * height (round 3: a 102 px shift at ~5.8 s). A page that was verified from its first paint never
+ * shows it.
+ */
+export function tokenListingStatus(
+	membership: AssetDetailMembership,
+	marketLoading: boolean,
+	shown: boolean
+): TokenListingStatus | null {
+	if (membership === 'live') return marketLoading ? 'checking' : 'unverified';
+	return membership === 'verified' && shown ? 'checked' : null;
+}
+
 /** Copy for a token page shown from live state while the Bazar token index is unread or unreadable. */
-export function tokenListingNoticeCopy(checking: boolean) {
-	return checking
+export function tokenListingNoticeCopy(status: TokenListingStatus) {
+	return status === 'checking'
 		? {
 				message: 'Checking the Bazar listing. Balances and orders below are read from live state.',
 				compact: 'Checking the Bazar listing…',
+		  }
+		: status === 'checked'
+		? {
+				message: 'Bazar listing checked. Balances and orders below are read from live state.',
+				compact: 'Bazar listing checked.',
 		  }
 		: {
 				message:
@@ -8847,8 +8964,9 @@ export function tokenListingNoticeCopy(checking: boolean) {
 		  };
 }
 
-function TokenListingNotice({ checking, onRetry }: { checking: boolean; onRetry(): void }) {
-	const { message, compact } = tokenListingNoticeCopy(checking);
+function TokenListingNotice({ status, onRetry }: { status: TokenListingStatus; onRetry(): void }) {
+	const { message, compact } = tokenListingNoticeCopy(status);
+	const checking = status === 'checking';
 	return (
 		<div className="collection-source-notice collection-index-notice retry-notice">
 			<span role="status">
@@ -8860,14 +8978,15 @@ function TokenListingNotice({ checking, onRetry }: { checking: boolean; onRetry(
 				</span>
 				<span className="sr-only">{message}</span>
 			</span>
+			{/* Once checked there is nothing to retry; the button keeps its box so the line keeps its height. */}
 			<Button
 				aria-disabled={checking}
 				aria-label="Retry"
-				className="with-icon"
+				className={`with-icon${status === 'checked' ? ' retry-notice-placeholder' : ''}`}
 				size="custom"
 				type="button"
 				onClick={() => {
-					if (!checking) onRetry();
+					if (status === 'unverified') onRetry();
 				}}
 			>
 				<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
@@ -10468,6 +10587,12 @@ function AssetView() {
 		liveFungibleRoute
 	);
 	const membershipVerified = membership !== 'unverified';
+	// Once the listing line has been painted for this route it stays (as "checked") until the route changes.
+	const listingNoticeRoute = `${collectionId}/${assetId}`;
+	const [listingNoticeShownFor, setListingNoticeShownFor] = React.useState<string | null>(null);
+	if (membership === 'live' && listingNoticeShownFor !== listingNoticeRoute)
+		setListingNoticeShownFor(listingNoticeRoute);
+	const listingStatus = tokenListingStatus(membership, market.loading, listingNoticeShownFor === listingNoticeRoute);
 	const verifiedAsset = membershipVerified
 		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
 		: undefined;
@@ -11138,8 +11263,8 @@ function AssetView() {
 					asset={asset}
 					collection={collection}
 					collectionIndexNotice={
-						membership === 'live' ? (
-							<TokenListingNotice checking={market.loading} onRetry={market.retry} />
+						listingStatus ? (
+							<TokenListingNotice status={listingStatus} onRetry={market.retry} />
 						) : (
 							<CollectionIndexNotice
 								collection={collection}

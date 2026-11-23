@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Server } from 'lucide-react';
+import { CircleAlert, CircleCheck, RefreshCw, Server } from 'lucide-react';
 
 import {
 	type AssetCandidate,
@@ -412,6 +412,7 @@ export default function MyAssetsRoute({
 		uniqueView === 'all' ? visiblePreviews.filter((preview) => preview.collection.kind !== 'tokens') : [];
 	const failureBlock = walletFailureBlock(status, visibleResults.length + visiblePreviews.length);
 	const unavailableCopy = walletUnavailableCandidatesCopy(status, aggregateFailureMessage);
+	const resolutionSlot = walletResolutionSlot(status, failureBlock, working, resolutionCopy.announcement);
 	return (
 		<section className={pageClassName}>
 			{!embedded ? (
@@ -433,22 +434,25 @@ export default function MyAssetsRoute({
 					</div>
 				</div>
 			) : null}
-			{failureBlock === 'partial' ? (
-				<div className="my-assets-heading-status retry-notice">
-					<span role="status">{unavailableCopy}</span>
-					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-					</Button>
-				</div>
-			) : null}
 			<p className="sr-only" aria-live="polite" role="status">
 				{walletStatusAnnouncement(failureBlock, status.failures, resolutionCopy.announcement)}
 			</p>
-			{working ? (
-				<div className="my-assets-resolution-status" aria-busy="true">
+			{resolutionSlot ? (
+				<div className="my-assets-resolution-status" aria-busy={!resolutionSlot.settled}>
 					<div>
-						<Loading label={resolutionCopy.heading} />
-						<p>{resolutionCopy.announcement}</p>
+						{resolutionSlot.settled ? (
+							<div className="my-assets-resolution-settled">
+								{status.failures ? (
+									<CircleAlert className="ui-icon ui-icon--sm" aria-hidden="true" />
+								) : (
+									<CircleCheck className="ui-icon ui-icon--sm" aria-hidden="true" />
+								)}
+								{resolutionCopy.heading}
+							</div>
+						) : (
+							<Loading label={resolutionCopy.heading} />
+						)}
+						<p>{resolutionSlot.settled ? resolutionSlot.detail : resolutionCopy.announcement}</p>
 					</div>
 				</div>
 			) : null}
@@ -485,6 +489,14 @@ export default function MyAssetsRoute({
 						view={uniqueView}
 					/>
 				</>
+			) : null}
+			{failureBlock === 'partial' ? (
+				<div className="my-assets-heading-status my-assets-partial-notice retry-notice">
+					<span role="status">{unavailableCopy}</span>
+					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+					</Button>
+				</div>
 			) : null}
 			{failureBlock === 'empty' ? (
 				<div className="empty-state">
@@ -543,6 +555,25 @@ export function walletFailureBlock(
 	if (status.phase !== 'done') return 'none';
 	if (!visibleCount) return 'empty';
 	return status.failures ? 'partial' : 'none';
+}
+
+/**
+ * What the status slot above the asset groups shows. It holds the progress line while discovery
+ * runs and keeps the same two-line box once checks finish, so the groups below never move when work
+ * ends: a short count when some candidates could not be checked (the full explanation and Retry sit
+ * after the groups), or the resolved summary otherwise. A discovery error or the empty state carry
+ * their own blocks, so the slot gives way to them.
+ */
+export function walletResolutionSlot(
+	status: Pick<WalletResolutionStatus, 'failures' | 'phase' | 'total'>,
+	failureBlock: WalletFailureBlock,
+	working: boolean,
+	announcement: string
+): { settled: false } | { settled: true; detail: string } | null {
+	if (working) return { settled: false };
+	if (status.phase !== 'done') return null;
+	if (failureBlock === 'partial') return { settled: true, detail: walletUnavailableCandidatesCopy(status, '') };
+	return failureBlock === 'none' ? { settled: true, detail: announcement } : null;
 }
 
 /**

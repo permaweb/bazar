@@ -35,7 +35,8 @@
 .artwork-image {
 	transition: opacity 180ms ease;
 }
-.artwork-image.is-loading {
+.artwork-image.is-loading,
+.artwork-image.is-deferred {
 	opacity: 0 !important;
 }
 .artwork-fallback {
@@ -1160,6 +1161,9 @@ p {
 	grid-template-columns: repeat(2, minmax(260px, 1fr));
 	gap: 12px;
 }
+.inline-error.home-collection-floor-notice {
+	margin: var(--space-5) 0 0;
+}
 .home-feature-card {
 	min-width: 0;
 	padding: 0;
@@ -2086,6 +2090,21 @@ p {
 main {
 	min-height: calc(100vh - 122px);
 	min-height: calc(100dvh - 122px);
+}
+/* While the route is still reading (a region marked aria-busy, or a Loading status), main fills the
+   viewport below the 61px header so the footer waits below the fold instead of sitting inside it and
+   being pushed down by every card that arrives. A settled short page drops back to the rule above and
+   keeps its footer in view without extra scroll. */
+main:has([aria-busy='true'], .loading) {
+	min-height: calc(100vh - 61px);
+	min-height: calc(100dvh - 61px);
+}
+@media (min-width: 1051px) {
+	/* Desktop Home is a fixed frame that scrolls inside itself above the footer. */
+	main:has(> .home-shell) {
+		min-height: calc(100vh - 122px);
+		min-height: calc(100dvh - 122px);
+	}
 }
 .max-view-wrapper {
 	width: 100%;
@@ -5004,6 +5023,9 @@ input:focus {
 .my-assets-heading-status.retry-notice {
 	padding: var(--space-3) var(--space-4);
 	border-radius: 10px;
+}
+.retry-notice .retry-notice-placeholder {
+	visibility: hidden;
 }
 .retry-notice .with-icon > .ui-icon,
 .retry-notice-action > .ui-icon {
@@ -9958,6 +9980,28 @@ body input:focus-visible {
 	grid-column: 1 / -1;
 	min-height: 0;
 	padding: 0;
+}
+/* The settled line keeps the Loading line's box (see .loading) so the groups below hold still. */
+.my-assets-resolution-settled {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-height: 17px;
+	color: var(--muted-subtle);
+	font-size: var(--type-body);
+}
+.my-assets-resolution-settled > .ui-icon {
+	width: 17px;
+	height: 17px;
+	flex: none;
+}
+/* After the groups, so it never pushes painted cards down when the checks finish. */
+.my-assets-heading-status.my-assets-partial-notice {
+	max-width: none;
+	margin-top: var(--space-6);
+	justify-content: space-between;
+	text-align: left;
 }
 .my-assets-resolution-status p {
 	grid-column: 1 / -1;
