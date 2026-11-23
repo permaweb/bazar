@@ -6,6 +6,11 @@ import type { ObserverView } from 'weave-wrangler';
 
 import { MINT_ACTIVITY_ATTENTION_AFTER_MS, MINT_ACTIVITY_STALLED_STATUS, type MintActivity } from 'api/mint-activity';
 
+vi.mock('./useDialogFocus', async (importOriginal) => ({
+	...(await importOriginal<typeof import('./useDialogFocus')>()),
+	useDialogFocus: () => ({ current: null }),
+}));
+
 import {
 	mintActivityUploadActivity,
 	observeUploadActivityTransactions,
@@ -236,5 +241,45 @@ describe('background mint activity panel', () => {
 		expect(markup).toContain('aria-label="Close dialog"');
 		expect(markup).not.toContain('Hide transaction details');
 		expect(markup).not.toContain('operation-working');
+	});
+});
+
+describe('upload result announcements', () => {
+	const render = (activity: UploadActivity) =>
+		renderToStaticMarkup(
+			React.createElement(
+				MemoryRouter,
+				null,
+				React.createElement(UploadActivityPanel, {
+					activity,
+					relatedMintActivities: [],
+					visible: true,
+					onHide: () => undefined,
+					onClose: () => undefined,
+				})
+			)
+		);
+
+	it('reads a failed upload as an alert, not a polite status', () => {
+		const markup = render({
+			...upload,
+			phase: 'error',
+			status: 'The wallet rejected the signature request.',
+			transactionIds: [],
+			transactions: [],
+		});
+
+		expect(markup).toContain('Upload needs attention');
+		expect(markup).toContain('<p role="alert">The wallet rejected the signature request.</p>');
+		expect(markup).not.toContain('aria-live="polite"');
+	});
+
+	it('keeps a finished upload as a polite status', () => {
+		const markup = render({ ...upload, phase: 'done', status: 'Submitted to Arweave.', collectionId: 'c' });
+
+		// The always-mounted outcome region (hidden-operation-outcome-notice) carries the polite status.
+		expect(markup).toContain('<div aria-atomic="true" class="sr-only" role="status">');
+		expect(markup).toContain('Submitted to Arweave.');
+		expect(markup).not.toContain('role="alert"');
 	});
 });

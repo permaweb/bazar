@@ -1869,7 +1869,12 @@ export function UploadActivityPanel({
 					</div>
 					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
 				</div>
-				<OperationOutcomeAnnouncement active={!working} title={resultTitle} detail={displayedStatus} />
+				{/* A failure is read once as an alert in the panel body; only a finished upload is announced here. */}
+				<OperationOutcomeAnnouncement
+					active={activity.phase === 'done'}
+					title={resultTitle}
+					detail={displayedStatus}
+				/>
 				{working && !syncSteps.length ? (
 					<div className="operation-preparing">
 						<Loading label={displayedStatus} />
@@ -1914,7 +1919,11 @@ export function UploadActivityPanel({
 						</span>
 						<div>
 							<strong>{resultTitle}</strong>
-							<p>{displayedStatus}</p>
+							{activity.phase === 'error' ? (
+								<p role="alert">{displayedStatus}</p>
+							) : (
+								<p>{displayedStatus}</p>
+							)}
 						</div>
 					</div>
 				) : null}
