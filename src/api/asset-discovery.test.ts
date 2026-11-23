@@ -3925,3 +3925,30 @@ describe("a standalone mint found through the wallet's own mint record", () => {
 		);
 	});
 });
+
+describe('stored wallet scan version', () => {
+	it('seeds a full rescan from a version 1 scan, whose candidates lack the mint media type', () => {
+		const owner = 'kaYP9bJtpqON8Kyy3RbqnqdtDBDUsPTQTNUCvZtKiFI';
+		const held = 'H'.repeat(43);
+		const graphql = arweaveGraphqlEndpoint();
+		const values = new Map<string, string>([
+			[
+				`bazar.wallet-candidate-scan:v1:${owner}:${encodeURIComponent(graphql)}`,
+				JSON.stringify({ v: 1, a: owner, g: graphql, h: [held, null, null], c: [[held, 10, 20, 1]] }),
+			],
+		]);
+		const storage = { getItem: (key: string) => values.get(key) ?? null };
+
+		const scan = loadCompletedWalletCandidateScan(storage, owner, graphql);
+
+		expect([...(scan?.found.keys() ?? [])]).toEqual([held]);
+		// Not resumed from its heads: every alias is scanned again, so mint records fill in the media type.
+		expect(scan?.caughtUp).toBe(false);
+		expect([...(scan?.active ?? [])].sort()).toEqual(['initiallyHeld', 'marketActions', 'receivedTransfers']);
+		expect(scan?.heads).toEqual({
+			initiallyHeld: undefined,
+			marketActions: undefined,
+			receivedTransfers: undefined,
+		});
+	});
+});

@@ -33,7 +33,10 @@ const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
  * for the same first page, as a preview only (see discoverWalletAssetCandidates).
  */
 export const WALLET_SCAN_PREVIEW_AFTER_MS = 3_000;
-const WALLET_SCAN_CACHE_VERSION = 1;
+// 2: candidates carry `mintContentType` from their own mint record. A version 1 scan restored its
+// candidates without it, leaving a wallet's standalone mints dependent on a second index query, so a
+// version 1 scan only seeds a full rescan (see loadCompletedWalletCandidateScan).
+const WALLET_SCAN_CACHE_VERSION = 2;
 const ASSET_SUPPORT_CONCURRENCY = 2;
 export const ASSET_RESOLUTION_CONCURRENCY = 8;
 
@@ -602,12 +605,29 @@ export function loadCompletedWalletCandidateScan(
 	graphql = arweaveGraphqlEndpoint()
 ): WalletCandidateScan | undefined {
 	if (!ADDRESS.test(address)) return undefined;
+	const current = readStoredWalletCandidateScan(storage, address, graphql, WALLET_SCAN_CACHE_VERSION);
+	if (current) return restoredWalletCandidateScan(address, graphql, current.heads, current.found);
+	// A version 1 scan's candidates lack `mintContentType`. They seed a fresh full scan instead of being
+	// resumed: shown at once while the rescan fills the field in, and kept if the index fails.
+	const legacy = readStoredWalletCandidateScan(storage, address, graphql, 1);
+	if (!legacy) return undefined;
+	const scan = createWalletCandidateScan(address, graphql);
+	scan.found = legacy.found;
+	return scan;
+}
+
+function readStoredWalletCandidateScan(
+	storage: Pick<Storage, 'getItem'>,
+	address: string,
+	graphql: string,
+	version: number
+): { heads: WalletCandidateScan['heads']; found: Map<string, AssetCandidate> } | undefined {
 	try {
-		const value = storage.getItem(walletCandidateScanKey(address, graphql));
+		const value = storage.getItem(walletCandidateScanKey(address, graphql, version));
 		if (!value) return undefined;
 		const stored = JSON.parse(value) as StoredWalletCandidateScan;
 		if (
-			stored?.v !== WALLET_SCAN_CACHE_VERSION ||
+			stored?.v !== version ||
 			stored.a !== address ||
 			stored.g !== graphql ||
 			!Array.isArray(stored.h) ||
@@ -622,16 +642,14 @@ export function loadCompletedWalletCandidateScan(
 			if (!candidate || found.has(candidate.processId)) return undefined;
 			found.set(candidate.processId, candidate);
 		}
-		return restoredWalletCandidateScan(
-			address,
-			graphql,
-			{
+		return {
+			heads: {
 				initiallyHeld: stored.h[0]!,
 				marketActions: stored.h[1]!,
 				receivedTransfers: stored.h[2]!,
 			},
-			found
-		);
+			found,
+		};
 	} catch {
 		return undefined;
 	}
@@ -677,10 +695,8 @@ export function clearCompletedWalletCandidateScan(
 	}
 }
 
-function walletCandidateScanKey(address: string, graphql: string) {
-	return `${WALLET_CANDIDATE_SCAN_STORAGE_PREFIX}:v${WALLET_SCAN_CACHE_VERSION}:${address}:${encodeURIComponent(
-		graphql
-	)}`;
+function walletCandidateScanKey(address: string, graphql: string, version = WALLET_SCAN_CACHE_VERSION) {
+	return `${WALLET_CANDIDATE_SCAN_STORAGE_PREFIX}:v${version}:${address}:${encodeURIComponent(graphql)}`;
 }
 
 function restoredWalletCandidateScan(
