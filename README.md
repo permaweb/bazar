@@ -135,6 +135,17 @@ http://127.0.0.1:3000/?arweave-node=http://127.0.0.1:1984#/asset/…
 The AO peer pool and Arweave gateway selection are independent. Transactions
 are signed by the connected wallet and submitted through the selected Arweave gateway.
 
+### Analytics
+
+Builds and the dev server load no analytics script by default. To include one,
+set `VITE_ANALYTICS_SRC` to its HTTPS URL when building, or in `.env.local`:
+
+```sh
+VITE_ANALYTICS_SRC='https://stats.forward.computer/~analytics@1.0/script?key=0IQ2BPbwAoLoHaNyABbfLClzA4siDxLEOkOpcol_Jg4' npm run build
+```
+
+Vite then adds it to `index.html` as an `async` script at the end of `<body>`.
+
 ### HyperBEAM device configuration
 
 The published `token@1.0` implementation is
