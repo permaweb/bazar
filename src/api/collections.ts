@@ -11,7 +11,14 @@ import {
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 import { fetchJsonWithDeadline, fetchTextWithDeadline, operationWithDeadline } from './fetch-with-deadline';
-import { graphqlEndpointList, type GraphqlResult, graphqlSupportsCount, postGraphql } from './graphql';
+import {
+	GRAPHQL_RETRY_DELAYS_MS,
+	graphqlEndpointList,
+	type GraphqlResult,
+	graphqlSupportsCount,
+	postGraphql,
+	retryTransientGraphql,
+} from './graphql';
 import { assetFromMintState } from './minted-assets';
 
 export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
@@ -299,8 +306,7 @@ const IMAGE_COLLECTIONS = [
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
-const ASSET_INDEX_RETRY_DELAYS_MS = [1_000, 3_000] as const;
-const ASSET_INDEX_RETRY_AFTER_MAX_MS = 10_000;
+const ASSET_INDEX_RETRY_DELAYS_MS = GRAPHQL_RETRY_DELAYS_MS;
 export const BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS = 300_000;
 export const COLLECTION_AO_READ_TIMEOUT_MS = 45_000;
 
@@ -842,11 +848,9 @@ async function postAtomicAssetIndex<T>(
 	retryDelaysMs: readonly number[],
 	endpoints: readonly string[] = graphqlEndpointList()
 ): Promise<GraphqlResult<T>> {
-	for (let attempt = 0; ; attempt += 1) {
-		let result: GraphqlResult<T> | undefined;
-		let failure: unknown;
-		try {
-			result = await postGraphql<T>(
+	return retryTransientGraphql(
+		() =>
+			postGraphql<T>(
 				fetcher,
 				endpoints,
 				{
@@ -856,45 +860,10 @@ async function postAtomicAssetIndex<T>(
 					signal,
 				},
 				{ timeoutError: 'collection-asset-index-timeout' }
-			);
-		} catch (error) {
-			throwIfAborted(signal);
-			failure = error;
-		}
-		const status = result?.response.status ?? 0;
-		const transient = !result || status === 429 || status >= 500;
-		if (!transient || attempt >= retryDelaysMs.length) {
-			if (result) return result;
-			throw failure;
-		}
-		await waitBeforeRetry(retryAfterMs(result?.response) ?? retryDelaysMs[attempt], signal);
-	}
-}
-
-function retryAfterMs(response: Response | undefined): number | undefined {
-	const seconds = Number(response?.headers.get('retry-after') ?? NaN);
-	return Number.isFinite(seconds) && seconds >= 0
-		? Math.min(seconds * 1_000, ASSET_INDEX_RETRY_AFTER_MAX_MS)
-		: undefined;
-}
-
-function waitBeforeRetry(ms: number, signal?: AbortSignal): Promise<void> {
-	throwIfAborted(signal);
-	return new Promise((resolve, reject) => {
-		const onAbort = () => {
-			clearTimeout(timer);
-			try {
-				throwIfAborted(signal);
-			} catch (error) {
-				reject(error);
-			}
-		};
-		const timer = setTimeout(() => {
-			signal?.removeEventListener('abort', onAbort);
-			resolve();
-		}, ms);
-		signal?.addEventListener('abort', onAbort, { once: true });
-	});
+			),
+		retryDelaysMs,
+		signal
+	);
 }
 
 /**

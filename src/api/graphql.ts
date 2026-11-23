@@ -106,3 +106,66 @@ export async function postGraphql<T = unknown>(
 	if (preferred!.ok) return preferred!.value;
 	throw preferred!.error;
 }
+
+/** Delays before each retry of a transient index failure. */
+export const GRAPHQL_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000];
+const GRAPHQL_RETRY_AFTER_MAX_MS = 10_000;
+
+/**
+ * Run one index request, retrying it after `retryDelaysMs` while it fails transiently: a network
+ * error or deadline, a 429 (waiting for its Retry-After, capped at 10 s) or a 5xx. Any other answer
+ * is returned as is. Once the retries are spent, the last answer is returned or its error thrown,
+ * so callers keep their status and error handling. A caller abort stops at once.
+ */
+export async function retryTransientGraphql<R extends { response: Response }>(
+	request: () => Promise<R>,
+	retryDelaysMs: readonly number[],
+	signal?: AbortSignal
+): Promise<R> {
+	for (let attempt = 0; ; attempt += 1) {
+		let result: R | undefined;
+		let failure: unknown;
+		try {
+			result = await request();
+		} catch (error) {
+			throwIfAborted(signal);
+			failure = error;
+		}
+		const status = result?.response.status ?? 0;
+		const transient = !result || status === 429 || status >= 500;
+		if (!transient || attempt >= retryDelaysMs.length) {
+			if (result) return result;
+			throw failure;
+		}
+		await waitBeforeRetry(retryAfterMs(result?.response) ?? retryDelaysMs[attempt], signal);
+	}
+}
+
+function retryAfterMs(response: Response | undefined): number | undefined {
+	const seconds = Number(response?.headers.get('retry-after') ?? NaN);
+	return Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds * 1_000, GRAPHQL_RETRY_AFTER_MAX_MS) : undefined;
+}
+
+function waitBeforeRetry(ms: number, signal?: AbortSignal): Promise<void> {
+	throwIfAborted(signal);
+	return new Promise((resolve, reject) => {
+		const onAbort = () => {
+			clearTimeout(timer);
+			try {
+				throwIfAborted(signal);
+			} catch (error) {
+				reject(error);
+			}
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+	if (!signal?.aborted) return;
+	throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError');
+}

@@ -5,6 +5,7 @@ import {
 	graphqlIdBatchSize,
 	graphqlSupportsCount,
 	postGraphql,
+	retryTransientGraphql,
 	usableGraphqlPayload,
 } from './graphql';
 
@@ -221,6 +222,55 @@ describe('postGraphql', () => {
 		await rejection;
 		expect(aborted).toEqual([primary]);
 		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe('retryTransientGraphql', () => {
+	const answer = (status: number) => ({ response: new Response('', { status }) });
+
+	it('retries network failures, 429 and 5xx, then returns the first lasting answer', async () => {
+		const request = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('asset-discovery-graphql-timeout'))
+			.mockResolvedValueOnce(answer(429))
+			.mockResolvedValueOnce(answer(503))
+			.mockResolvedValueOnce(answer(200));
+
+		const result = await retryTransientGraphql(request, [0, 0, 0]);
+
+		expect(result.response.status).toBe(200);
+		expect(request).toHaveBeenCalledTimes(4);
+	});
+
+	it('returns a non-transient answer without retrying', async () => {
+		const request = vi.fn().mockResolvedValue(answer(400));
+
+		await expect(retryTransientGraphql(request, [0, 0])).resolves.toMatchObject({ response: { status: 400 } });
+		expect(request).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the last outcome once the retries are spent', async () => {
+		const failing = vi.fn().mockRejectedValue(new Error('asset-discovery-graphql-timeout'));
+		await expect(retryTransientGraphql(failing, [0])).rejects.toThrow('asset-discovery-graphql-timeout');
+		expect(failing).toHaveBeenCalledTimes(2);
+
+		const unavailable = vi.fn().mockResolvedValue(answer(503));
+		await expect(retryTransientGraphql(unavailable, [])).resolves.toMatchObject({ response: { status: 503 } });
+		expect(unavailable).toHaveBeenCalledTimes(1);
+	});
+
+	it('stops waiting for a retry when the caller aborts', async () => {
+		vi.useFakeTimers();
+		const controller = new AbortController();
+		const request = vi.fn().mockResolvedValue(answer(503));
+		const pending = retryTransientGraphql(request, [10_000], controller.signal);
+		const rejection = expect(pending).rejects.toThrow('stopped');
+
+		await vi.advanceTimersByTimeAsync(0);
+		controller.abort(new Error('stopped'));
+		await rejection;
+		expect(request).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 });
