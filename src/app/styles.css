@@ -9776,6 +9776,10 @@ body input:focus-visible {
 		padding: 0;
 	}
 	.home-market-layout {
+		/* The document scrolls here, so 100vw would include its scrollbar and overflow by half of it;
+		   undo the wrapper gutter instead (the wrapper spans the viewport below --max-view-width). */
+		width: auto;
+		margin-inline: calc(-1 * var(--page-gutter));
 		display: block;
 		overflow-y: visible;
 		overscroll-behavior: auto;
