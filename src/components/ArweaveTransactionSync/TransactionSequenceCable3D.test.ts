@@ -25,7 +25,6 @@ function fallbackLane(statusLabel: string): Infinity3DLane {
 	return {
 		observerUrl: 'https://observer.example',
 		label: 'Observer one',
-		detail: '',
 		statusLabel,
 		stages: [],
 		progress: 0,
