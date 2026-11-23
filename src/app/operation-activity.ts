@@ -8,6 +8,7 @@ import {
 	type SwapOrder,
 } from 'api/asset-marketplace';
 import type { AssetSummary, Collection } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import { filledOrder, parseTokenAmount } from 'api/order-matching';
 
 import { sameAccount } from 'helpers/host-account';
@@ -18,6 +19,7 @@ import {
 	hasRecoverablePurchase,
 	operationStorageKey,
 } from './operation-session';
+import { PURCHASE_REGISTRATION_TARGET } from './purchase-lifecycle';
 
 export const OPERATION_ACTIVITY_STORAGE_KEY = 'bazar-operation-activities:v1';
 export const FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY = 'bazar-fungible-operation-activities:v1';
@@ -30,6 +32,15 @@ export type Operation =
 	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
 
 export type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
+
+/**
+ * Depth an activity row counts toward before its dialog reports a live sync step.
+ * A purchase starts on its registration step; listing, cancel and transfer watch
+ * the asset transaction depth.
+ */
+export function operationConfirmationTarget(operation: Pick<Operation, 'kind'>): number {
+	return operation.kind === 'buy' ? PURCHASE_REGISTRATION_TARGET : ASSET_TRANSACTION_CONFIRMATION_TARGET;
+}
 
 export type OperationActivity = {
 	id: string;
@@ -259,7 +270,7 @@ export function discoverOperationActivities(
 				phase: 'working',
 				status: 'Resume saved purchase',
 				confirmations: 0,
-				confirmationTarget: 5,
+				confirmationTarget: operationConfirmationTarget({ kind: 'buy' }),
 				createdAt: finiteNonNegative(record.createdAt),
 			});
 			continue;
@@ -294,7 +305,7 @@ export function discoverOperationActivities(
 			phase: 'working',
 			status: 'Resume signed transaction',
 			confirmations: 0,
-			confirmationTarget: 5,
+			confirmationTarget: operationConfirmationTarget(restoredOperation),
 			createdAt: finiteNonNegative(record.createdAt),
 		});
 	}
@@ -392,7 +403,10 @@ function parseActivity(value: unknown): OperationActivity | null {
 		phase: value.phase,
 		status: value.status,
 		confirmations: finiteNonNegative(value.confirmations),
-		confirmationTarget: Math.max(1, finiteNonNegative(value.confirmationTarget) || 5),
+		confirmationTarget: Math.max(
+			1,
+			finiteNonNegative(value.confirmationTarget) || operationConfirmationTarget(value.operation)
+		),
 		createdAt: value.createdAt,
 	};
 }

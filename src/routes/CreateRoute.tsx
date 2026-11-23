@@ -34,6 +34,7 @@ import {
 } from 'api/asset-mint';
 import { confirmTransactionId } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 
 import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
 import { AudioArtwork } from 'components/AudioArtwork';
@@ -293,7 +294,7 @@ export function FungibleMintDialog({
 									{
 										key: 'mint',
 										label: 'Mint token',
-										target: 5,
+										target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 										terminal: true,
 										confirmations,
 										transaction: {
@@ -678,13 +679,13 @@ export default function CreateRoute() {
 		const controller = new AbortController();
 		void confirmTransactionId(fungibleResult.processId, {
 			signal: controller.signal,
-			target: 5,
+			target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 			onViews: setMintViews,
 			onConsensus: setMintConsensus,
 			onProgress: (progress) => setMintConfirmations(progress.confirmations),
 		})
 			.then(() => {
-				if (!controller.signal.aborted) setMintConfirmations(5);
+				if (!controller.signal.aborted) setMintConfirmations(ASSET_TRANSACTION_CONFIRMATION_TARGET);
 			})
 			.catch(() => undefined);
 		return () => controller.abort();

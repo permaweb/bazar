@@ -38,7 +38,6 @@ export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
 export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable';
 /** New listings impose no reservation reward floor; Arweave network rewards still apply. */
 export const DEFAULT_REGISTRATION_FEE = 0n;
-export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 /** No asset offer may exceed the maximum 66 million AR supply. */
 export const MAXIMUM_ASSET_OFFER_PRICE = 66_000_000_000_000_000_000n;
 const DEFAULT_OFFER_DEADLINE = 20;
