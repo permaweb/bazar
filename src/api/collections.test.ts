@@ -22,6 +22,7 @@ import {
 	loadBazarCollectionById,
 	loadCollections,
 	loadImageCollection,
+	loadIndexedAssetNames,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
@@ -2105,5 +2106,137 @@ describe('collection index loading', () => {
 
 		await expect(loadCollections(undefined, progress)).rejects.toThrow('collection-indexes-unavailable');
 		expect(progress).not.toHaveBeenCalled();
+	});
+});
+
+describe('indexed asset names for visible pages', () => {
+	const owner = 'O'.repeat(43);
+	const pageIds = Array.from({ length: 30 }, (_, index) => index.toString(36).padStart(43, 'P'));
+	const atomicTags = (extra: Array<{ name: string; value: string }>) => [
+		{ name: 'device', value: 'process@1.0' },
+		{ name: 'execution-device', value: 'token@1.0' },
+		{ name: 'swap-device', value: 'arweave-swap@1.0' },
+		{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+		{ name: 'scheduler-mode', value: 'all' },
+		{ name: 'initial-holder', value: owner },
+		{ name: 'total-supply', value: '1' },
+		{ name: 'denomination', value: '0' },
+		{ name: 'ticker', value: 'ASSET' },
+		{ name: 'hint-ui-style', value: 'non-fungible' },
+		{ name: 'content-type', value: 'image/png' },
+		...extra,
+	];
+	const answer = (edges: Array<{ id: string; tags: Array<{ name: string; value: string }> }>, hasNextPage = false) =>
+		Response.json({
+			data: {
+				transactions: {
+					pageInfo: { hasNextPage },
+					edges: edges.map((node) => ({ cursor: `c-${node.id}`, node })),
+				},
+			},
+		});
+
+	it('resolves a whole visible page with one exact-ID request', async () => {
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const { variables } = JSON.parse(String(init?.body));
+			return answer(
+				variables.ids.map((id: string, index: number) => ({
+					id,
+					tags: atomicTags([{ name: 'Name', value: `${index + 1}` }]),
+				}))
+			);
+		});
+
+		const names = await loadIndexedAssetNames(pageIds, { fetch: fetcher as typeof fetch, retryDelaysMs: [] });
+
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+		expect(request.query).toContain('BazarAssetNamesByIds');
+		expect(request.variables).toEqual({ ids: pageIds, first: 30, after: null });
+		expect(names.size).toBe(30);
+		expect(names.get(pageIds[0])).toMatchObject({ id: pageIds[0], name: '1', contentType: 'image/png' });
+		expect(names.get(pageIds[29])?.name).toBe('30');
+	});
+
+	it('prefers the Atomic Asset name tag, then title, then a bare name or title tag', async () => {
+		const [named, titled, bareName, bareTitle, tickerOnly, unknown] = pageIds;
+		const fetcher = vi.fn(async () =>
+			answer([
+				{
+					id: named,
+					tags: atomicTags([
+						{ name: 'Name', value: '88' },
+						{ name: 'Title', value: 'ignored' },
+					]),
+				},
+				{ id: titled, tags: atomicTags([{ name: 'Title', value: 'Sunrise' }]) },
+				{
+					id: bareName,
+					tags: [
+						{ name: 'Name', value: 'Legacy name' },
+						{ name: 'Title', value: 'ignored' },
+					],
+				},
+				{ id: bareTitle, tags: [{ name: 'Title', value: ' Legacy title ' }] },
+				{ id: tickerOnly, tags: [{ name: 'Ticker', value: 'ASSET' }] },
+			])
+		);
+
+		const names = await loadIndexedAssetNames([named, titled, bareName, bareTitle, tickerOnly, unknown], {
+			fetch: fetcher as typeof fetch,
+			retryDelaysMs: [],
+		});
+
+		expect(names.get(named)?.name).toBe('88');
+		expect(names.get(titled)?.name).toBe('Sunrise');
+		expect(names.get(bareName)).toEqual({ id: bareName, name: 'Legacy name' });
+		expect(names.get(bareTitle)).toEqual({ id: bareTitle, name: 'Legacy title' });
+		expect(names.has(tickerOnly)).toBe(false);
+		expect(names.has(unknown)).toBe(false);
+	});
+
+	it('follows a truncated answer on the index that issued the cursor', async () => {
+		const ids = pageIds.slice(0, 12);
+		const endpoints: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			endpoints.push(String(input));
+			const { variables } = JSON.parse(String(init?.body));
+			const page = variables.after ? ids.slice(10) : ids.slice(0, 10);
+			return answer(
+				page.map((id) => ({ id, tags: [{ name: 'Name', value: id.slice(-1) }] })),
+				!variables.after
+			);
+		});
+
+		const names = await loadIndexedAssetNames(ids, { fetch: fetcher as typeof fetch, retryDelaysMs: [] });
+
+		expect(names.size).toBe(12);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).variables.after).toBe(`c-${ids[9]}`);
+		expect(endpoints[1]).toBe(endpoints[0]);
+	});
+
+	it('sends one request per hundred IDs and skips invalid, hidden and repeated IDs', async () => {
+		const ids = Array.from({ length: 150 }, (_, index) => index.toString(36).padStart(43, 'B'));
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => answer([]));
+
+		await loadIndexedAssetNames([...ids, ids[0], 'short', HIDDEN_ASSET_IDS[0]], {
+			fetch: fetcher as typeof fetch,
+			retryDelaysMs: [],
+		});
+
+		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables.ids.length)).toEqual([
+			100, 50,
+		]);
+		await expect(loadIndexedAssetNames(['short'], { fetch: fetcher as typeof fetch })).resolves.toEqual(new Map());
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it('throws when the index is unavailable so the caller can retry later', async () => {
+		const fetcher = vi.fn(async () => new Response('unavailable', { status: 503 }));
+
+		await expect(
+			loadIndexedAssetNames(pageIds.slice(0, 3), { fetch: fetcher as typeof fetch, retryDelaysMs: [] })
+		).rejects.toThrow('asset-name-index-503');
 	});
 });
