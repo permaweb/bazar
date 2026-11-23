@@ -40,7 +40,6 @@ export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
 export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable';
 /** New listings impose no reservation reward floor; Arweave network rewards still apply. */
 export const DEFAULT_REGISTRATION_FEE = 0n;
-export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 const DEFAULT_OFFER_DEADLINE = 20;
 const SIGNATURE_WINDOW_BLOCKS = 40;
 const PRICE_REQUEST_CONCURRENCY = 8;

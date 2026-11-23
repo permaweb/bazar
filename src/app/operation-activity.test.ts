@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 
 import type { AssetOperationPhase } from 'components/AssetOperationStatus';
 import type { TransactionDialogPhase } from 'components/TransactionDialogControl';
@@ -23,8 +24,9 @@ import {
 	type Operation,
 	OPERATION_ACTIVITY_STORAGE_KEY,
 	type OperationActivity,
-	operationAfterProvenRejection,
 	type OperationActivityPhase,
+	operationAfterProvenRejection,
+	operationConfirmationTarget,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	removeFungibleOperationActivity,
@@ -33,6 +35,7 @@ import {
 	settledWhileHidden,
 	upsertFungibleOperationActivity,
 } from './operation-activity';
+import { PURCHASE_REGISTRATION_TARGET } from './purchase-lifecycle';
 
 const owner = 'A'.repeat(43);
 const otherOwner = 'B'.repeat(43);
@@ -200,6 +203,48 @@ describe('operation activity persistence', () => {
 		const [restored] = loadOperationActivities(storage, owner);
 		expect(restored.operation).toEqual({ kind: 'buy', order, resume: snapshot });
 		expect(restored.status).toBe('Resuming purchase…');
+	});
+
+	it('seeds asset operations at the asset depth and purchases at the registration depth', () => {
+		expect(operationConfirmationTarget({ kind: 'sell' })).toBe(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+		expect(operationConfirmationTarget({ kind: 'transfer' })).toBe(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+		expect(operationConfirmationTarget({ kind: 'cancel' })).toBe(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+		expect(operationConfirmationTarget({ kind: 'buy' })).toBe(PURCHASE_REGISTRATION_TARGET);
+	});
+
+	it('restores a cached row without a stored target to its operation depth', () => {
+		const storage = new MemoryStorage();
+		const order = { orderId: 'O'.repeat(43) } as SwapOrder;
+		const sell = { ...activity(), confirmationTarget: undefined };
+		const buy = {
+			...activity({
+				id: 'buy',
+				asset: { id: 'asset-2', name: 'Permanent Strata #002', image: 'https://arweave.net/image-2' },
+				operation: { kind: 'buy', order },
+				createdAt: 50,
+			}),
+			confirmationTarget: undefined,
+		};
+		storage.setItem(OPERATION_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, activities: [sell, buy] }));
+		storage.setItem(
+			`bazar-operation:asset-1:${owner}`,
+			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'sell', value: '0.5' })
+		);
+		storage.setItem(
+			`bazar-purchase:asset-2:${owner}`,
+			JSON.stringify({
+				buyer: owner,
+				order,
+				snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } },
+			})
+		);
+
+		expect(
+			loadOperationActivities(storage, owner).map((item) => [item.operation.kind, item.confirmationTarget])
+		).toEqual([
+			['sell', ASSET_TRANSACTION_CONFIRMATION_TARGET],
+			['buy', PURCHASE_REGISTRATION_TARGET],
+		]);
 	});
 
 	it('drops cached activity when its durable recovery record is gone', () => {

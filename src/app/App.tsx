@@ -128,6 +128,7 @@ import {
 	replaceHiddenCollectionAssetIndex,
 	withVisibleCollectionAssets,
 } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -278,8 +279,9 @@ import {
 	initialOperationPhase,
 	type Operation,
 	type OperationActivity as OperationActivityRecord,
-	operationAfterProvenRejection,
 	type OperationActivityPhase,
+	operationAfterProvenRejection,
+	operationConfirmationTarget,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
@@ -1237,7 +1239,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 								? 'Starting transaction…'
 								: 'Waiting for details',
 						confirmations: 0,
-						confirmationTarget: 5,
+						confirmationTarget: operationConfirmationTarget(input.operation),
 						createdAt: Date.now(),
 						origin: 'runtime',
 					},
@@ -11538,13 +11540,15 @@ function OperationDialog({
 			setConsensus(null);
 			await runtime.dispatchAndConfirm(prepared, {
 				signal,
-				target: 5,
+				target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 				onViews: setViews,
 				onConsensus: setConsensus,
 				onProgress: (progress) => setConfirmations(progress.confirmations),
 			});
-			setConfirmations(5);
-			setMessage('Five confirmations reached. Waiting for the scheduler safety depth and live asset state…');
+			setConfirmations(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+			setMessage(
+				`${ASSET_TRANSACTION_CONFIRMATION_TARGET} confirmations reached. Waiting for the scheduler safety depth and live asset state…`
+			);
 			if (operation.kind === 'sell') {
 				const expectedOffer = { seller: owner, quantity: '1', asking: arToWinston(operationValue) };
 				if (exactActionBaseline) {
@@ -11658,7 +11662,7 @@ function OperationDialog({
 				{
 					key: operation.kind,
 					label: operationLabel(operation.kind),
-					target: 5,
+					target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
@@ -11672,7 +11676,7 @@ function OperationDialog({
 			? 'register'
 			: operation.kind;
 	const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
-	const confirmationTarget = activeSyncStep?.target ?? 5;
+	const confirmationTarget = activeSyncStep?.target ?? operationConfirmationTarget(operation);
 	const activityConfirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
 	const visiblePhase =
 		operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;

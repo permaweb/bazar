@@ -46,6 +46,7 @@ import {
 	purchaseOrderSafetyError,
 } from 'api/asset-transactions';
 import type { AssetSummary, Collection } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import {
 	filledOrder,
 	formatTokenAmount,
@@ -2548,13 +2549,13 @@ function FungibleOperationDialog({
 			setConsensus(null);
 			await dispatchAndConfirm(prepared, {
 				signal,
-				target: 5,
+				target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 				onViews: setViews,
 				onConsensus: setConsensus,
 				onProgress: (progress) => setConfirmations(progress.confirmations),
 			});
-			setConfirmations(5);
-			setMessage('Five confirmations reached. Waiting for live token state…');
+			setConfirmations(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+			setMessage(`${ASSET_TRANSACTION_CONFIRMATION_TARGET} confirmations reached. Waiting for live token state…`);
 			if (operation.kind === 'sell') {
 				const expectedQuantity =
 					rawQuantity || parseTokenAmount(operation.quantity ?? quantity, state.denomination);
@@ -3069,7 +3070,7 @@ function FungibleOperationDialog({
 				{
 					key: operation.kind,
 					label: operationLabel(operation.kind),
-					target: 5,
+					target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
@@ -3693,7 +3694,11 @@ function FungibleOperationDialog({
 								startedAt={submittedAtRef.current}
 								steps={singleSteps}
 								activeStep={operation.kind}
-								pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
+								pendingAfterConfirmation={postConfirmationPendingLabel(
+									confirmations,
+									ASSET_TRANSACTION_CONFIRMATION_TARGET,
+									message
+								)}
 							/>
 						) : (
 							<Loading label="Preparing the signed transaction…" />
