@@ -37,12 +37,12 @@ function fallbackLane(statusLabel: string): Infinity3DLane {
 	};
 }
 
-function renderFallback(statusLabel: string) {
+function renderFallback(statusLabel: string, variant?: 'loading' | 'unavailable') {
 	return renderToStaticMarkup(
 		React.createElement(
 			ThemeProvider,
 			{ theme },
-			React.createElement(TransactionRendererFallback, { lanes: [fallbackLane(statusLabel)] })
+			React.createElement(TransactionRendererFallback, { lanes: [fallbackLane(statusLabel)], variant })
 		)
 	);
 }
@@ -211,6 +211,25 @@ describe('transaction map renderer fallback', () => {
 		expect(initial.indexOf('role="status"')).toBeLessThan(initial.indexOf('aria-label="Live observer status"'));
 		expect(changed).toContain('3 confirmations');
 		expect(changed).toContain('Transaction tracking continues with live observer status.');
+	});
+
+	it('defaults to the unavailable state so renderer failures keep their announcement', () => {
+		const markup = renderFallback('Waiting for transaction');
+		expect(markup).toContain('data-renderer-state="unavailable"');
+		expect(markup).toContain('3D network view unavailable');
+		expect(markup).toBe(renderFallback('Waiting for transaction', 'unavailable'));
+	});
+
+	it('shows a neutral loading state with no failure copy or live region while the chunk loads', () => {
+		const markup = renderFallback('Waiting for transaction', 'loading');
+		expect(markup).toContain('data-renderer-state="loading"');
+		expect(markup).toContain('Loading 3D network view…');
+		expect(markup).not.toContain('unavailable');
+		expect(markup).not.toContain('Transaction tracking continues');
+		expect(markup).not.toContain('role="status"');
+		expect(markup).not.toContain('aria-live');
+		expect(markup).toContain('aria-label="Live observer status"');
+		expect(markup).toContain('Waiting for transaction');
 	});
 
 	it('restores hidden cable progress to the latest live position without moving backward', () => {

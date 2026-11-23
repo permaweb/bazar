@@ -30,13 +30,32 @@ export class TransactionVisualizerBoundary extends React.Component<BoundaryProps
 	}
 }
 
-export function TransactionRendererFallback({ lanes }: { lanes: Infinity3DLane[] }) {
+/**
+ * Why the lane list stands in for the 3D network view.
+ * - `loading`: the lazy three.js chunk is still downloading (Suspense fallback). Neutral copy, no live region.
+ * - `unavailable`: WebGL could not start or the visualizer crashed. Announced once through role=status.
+ */
+export type TransactionRendererFallbackVariant = 'loading' | 'unavailable';
+
+export function TransactionRendererFallback({
+	lanes,
+	variant = 'unavailable',
+}: {
+	lanes: Infinity3DLane[];
+	variant?: TransactionRendererFallbackVariant;
+}) {
 	return (
-		<RendererFallback>
-			<div className="renderer-fallback-announcement" aria-atomic="true" aria-live="polite" role="status">
-				<strong>3D network view unavailable</strong>
-				<span>Transaction tracking continues with live observer status.</span>
-			</div>
+		<RendererFallback data-renderer-state={variant}>
+			{variant === 'loading' ? (
+				<div className="renderer-fallback-heading">
+					<strong>Loading 3D network view…</strong>
+				</div>
+			) : (
+				<div className="renderer-fallback-heading" aria-atomic="true" aria-live="polite" role="status">
+					<strong>3D network view unavailable</strong>
+					<span>Transaction tracking continues with live observer status.</span>
+				</div>
+			)}
 			<ul aria-label="Live observer status">
 				{lanes.slice(0, 8).map((lane) => (
 					<li key={lane.observerUrl}>
@@ -63,16 +82,16 @@ const RendererFallback = styled.div`
 	background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 94%, transparent);
 	color: ${(props) => props.theme.colors.font.alt1};
 
-	.renderer-fallback-announcement {
+	.renderer-fallback-heading {
 		display: grid;
 		gap: 6px;
 	}
 
-	.renderer-fallback-announcement > strong {
+	.renderer-fallback-heading > strong {
 		color: ${(props) => props.theme.colors.font.primary};
 	}
 
-	.renderer-fallback-announcement > span,
+	.renderer-fallback-heading > span,
 	small {
 		font-size: ${(props) => props.theme.typography.size.body};
 	}
