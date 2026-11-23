@@ -1826,6 +1826,12 @@ export function restrictAssetCandidates(candidates: AssetCandidate[], collection
 	return restrictAssetCandidatesWithIndex(candidates, candidateCollectionIndex(collections));
 }
 
+// An ANS-110 asset that keeps its media as process data is served as a multipart HTTP message, so a
+// live state read reports the multipart framing as `content-type` and the media type only travels in
+// the body. The signed mint record the support check validated carries it, and a process's tags never
+// change, so it is kept by process ID for the live read to fall back on.
+const verifiedMintContentTypes = new Map<string, string>();
+
 export async function verifyAssetCandidateSupport(
 	candidates: AssetCandidate[],
 	collections: Collection[],
@@ -1915,7 +1921,13 @@ export async function verifyAssetCandidateSupport(
 			}
 			// A well-formed indexed process can still use unsupported media or
 			// metadata. Exclude it without retrying the batch as an index failure.
-			if (atomicProcessNode(edge.node)) verifiedChunk.add(edge.node.id);
+			if (atomicProcessNode(edge.node)) {
+				verifiedChunk.add(edge.node.id);
+				const contentType = Object.fromEntries(
+					edge.node.tags.map(({ name, value }) => [name.toLowerCase(), value])
+				)['content-type'];
+				if (contentType) verifiedMintContentTypes.set(edge.node.id, contentType);
+			}
 		}
 		for (const processId of verifiedChunk) verified.add(processId);
 		return restrictAssetCandidates(
@@ -2146,7 +2158,13 @@ export function bazarAtomicAssetFromState(
 	) {
 		return null;
 	}
-	const asset = assetFromMintState(processId, state.raw);
+	const mintContentType = /^multipart\//i.test(String(state.raw['content-type'] ?? ''))
+		? verifiedMintContentTypes.get(processId)
+		: undefined;
+	const asset = assetFromMintState(
+		processId,
+		mintContentType ? { ...state.raw, 'content-type': mintContentType } : state.raw
+	);
 	if (!asset) return null;
 	const name = String(state.raw['base-collection'] ?? '').trim() || CREATED_COLLECTION_NAME;
 	return {

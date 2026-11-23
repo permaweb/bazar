@@ -29,7 +29,7 @@ import {
 	WALLET_SCAN_PREVIEW_AFTER_MS,
 	walletAssetGroup,
 } from './asset-discovery';
-import { parseAssetState } from './asset-marketplace';
+import { parseAssetState, readAssetState } from './asset-marketplace';
 import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from './collections';
 
 vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
@@ -3105,6 +3105,155 @@ describe('live candidate resolution', () => {
 				collection: { id: 'created-assets', name: 'Portable collection' },
 			},
 		]);
+	});
+
+	it('shows a standalone Bazar mint whose live state is served as a multipart message', async () => {
+		// Shaped on Ominous Dwelling (79OR…), minted at block 2048287 and listed at 2048303. The process
+		// keeps its PNG as data, so the node answers a HEAD compute read with the multipart framing as
+		// `content-type`; `image/png` only appears in the signed mint record and the response body.
+		const processId = '79ORfEkmKfcFZ1XkVUy_zP32bx1PweLWqgt9dvf8_2Y';
+		const creator = 'kaYP9bJtpqON8Kyy3RbqnqdtDBDUsPTQTNUCvZtKiFI';
+		const holder = 'uri-did-ar-kayp9bjtpqon8kyy3rbqnqdtdbdusptqtnucvztkifi4w3mt4vh4';
+		const balancesId = 'CiMpfJBtfv_jkrwCrkKnBc3BgxbVLoNejDjAM280dfE';
+		const ordersId = 'Iqvvnz4RBQIfWvDESCv1EbFrEtAYPzWbjTDoLehUBnc';
+		const orderMessageId = 'BFwApv35VkLQxtmeNW8L3t44QoehgBFK4_xpU-BTdA8';
+		const listingId = 'L3LkZjPa7RNOORR7Nk969_IFq2nHu_Z3hkunYeUFjx4';
+		const candidate: AssetCandidate = {
+			processId,
+			height: 2048303,
+			timestamp: 1795446674,
+			activityIds: [listingId],
+			sources: ['initial-holder', 'market-action'],
+			device: 'token@1.0',
+			processDevice: 'process@1.0',
+			assetType: 'non-fungible',
+			swapDevice: 'arweave-swap@1.0',
+			schedulerDevice: 'arweave-scheduler@1.0',
+			schedulerMode: 'all',
+		};
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const mintTags = [
+			['content-type', 'image/png'],
+			['hint-ui-style', 'non-fungible'],
+			['creator', creator],
+			['implements', 'ANS-110'],
+			['title', 'Ominous Dwelling'],
+			['device', 'process@1.0'],
+			['type', 'Process'],
+			['execution-device', 'token@1.0'],
+			['swap-device', 'arweave-swap@1.0'],
+			['scheduler-device', 'arweave-scheduler@1.0'],
+			['scheduler-mode', 'all'],
+			['initial-holder', creator],
+			['total-supply', '1'],
+			['denomination', '0'],
+			['ticker', 'ASSET'],
+			['name', 'Ominous Dwelling'],
+		].map(([name, value]) => ({ name, value }));
+		const graphql = vi.fn(async () =>
+			Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+					atomic: {
+						pageInfo: { hasNextPage: false },
+						edges: [{ cursor: 'atomic', node: { id: processId, tags: mintTags } }],
+					},
+				},
+			})
+		);
+		const compute = vi.fn(async (input: RequestInfo | URL) => {
+			const path = String(input);
+			if (path.startsWith(`/${processId}~process@1.0/`)) {
+				return new Response(null, {
+					headers: {
+						anchor: 'RpbiAWh0p8J4fM6lkS6lkBc9lPlY3Pqf335EzuzY5ylO_7zMjpAx__K5Q5c-aZZR',
+						'ao-body-key': 'data',
+						'ao-types': 'atom=("requires-determinism"), integer=("at-slot" "swap-height")',
+						'at-slot': '1',
+						balances: `ao:${balancesId}`,
+						'content-type': 'multipart/form-data; boundary="TZXKwew89BgOYS8bM78MbL8HdBlXbTXVM8vRwa_xGv8"',
+						creator,
+						denomination: '0',
+						description: 'Pixel Mosaic · replay seed pm1-20000000000000000000000000000000',
+						device: 'process@1.0',
+						'execution-device': 'token@1.0',
+						'hint-ui-style': 'non-fungible',
+						implements: 'ANS-110',
+						'initial-holder': creator,
+						'input-prefix': 'process',
+						name: 'Ominous Dwelling',
+						orders: `ao:${ordersId}`,
+						process: `ao:${processId}`,
+						'requires-determinism': 'true',
+						reward: '3391872646',
+						'scheduler-device': 'arweave-scheduler@1.0',
+						'scheduler-mode': 'all',
+						'swap-device': 'arweave-swap@1.0',
+						'swap-height': '2048303',
+						ticker: 'ASSET',
+						title: 'Ominous Dwelling',
+						'total-supply': '1',
+						type: 'Process',
+					},
+				});
+			}
+			if (path === `/${balancesId}~message@1.0/serialize~json@1.0`) {
+				return new Response(JSON.stringify({ device: 'json@1.0', [holder]: 0 }));
+			}
+			if (path === `/${ordersId}~message@1.0`) {
+				return new Response(null, {
+					headers: { device: 'message@1.0', [listingId.toLowerCase()]: `ao:${orderMessageId}` },
+				});
+			}
+			if (path === `/${orderMessageId}~message@1.0`) {
+				return new Response(null, {
+					headers: {
+						'ao-types': 'integer=("asking" "created-at" "deadline" "deposit" "minimum-fee" "quantity")',
+						asking: '2000000000000',
+						'created-at': '2048303',
+						creator: holder,
+						deadline: '20',
+						deposit: '0',
+						device: 'message@1.0',
+						'minimum-fee': '0',
+						'order-id': listingId,
+						quantity: '1',
+						recipient: holder,
+						status: 'open',
+					},
+				});
+			}
+			return new Response('not found', { status: 404 });
+		});
+
+		const verification = await verifyAssetCandidateSupport([candidate], [tokenCollection], {
+			fetch: graphql as typeof fetch,
+		});
+		expect(verification).toEqual({ supported: [candidate], unavailable: [] });
+		const resolved = await resolveAssetCandidates(verification.supported, [tokenCollection], {
+			requireHolderBalances: true,
+			read: (id, signal) =>
+				readAssetState(id, { fetch: compute as typeof fetch, signal, currentHeight: 2048400 }),
+		});
+
+		expect(resolved).toMatchObject([
+			{
+				asset: {
+					id: processId,
+					name: 'Ominous Dwelling',
+					contentType: 'image/png',
+					image: `https://arweave.net/raw/${processId}`,
+				},
+				collection: { id: 'created-assets', kind: 'images' },
+			},
+		]);
+		expect(walletAssetGroup(resolved[0], creator)).toBe('listed');
 	});
 
 	it('excludes unsupported indexed media without reporting an index failure or retrying healthy candidates', async () => {
