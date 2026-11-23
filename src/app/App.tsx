@@ -115,6 +115,7 @@ import {
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	preferResolvedAssetName,
 	replaceHiddenCollectionAssetIndex,
 	withIndexedAssetNames,
 	withVisibleCollectionAssets,
@@ -211,6 +212,7 @@ import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
+import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -3483,8 +3485,9 @@ function Home() {
 				.map(({ asset, collection, activity }) => {
 					const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
 					const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+					const named = preferResolvedAssetName(asset, currentAsset);
 					return {
-						asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+						asset: currentAsset?.image && !named.image ? { ...named, image: currentAsset.image } : named,
 						collection: currentCollection ?? collection,
 						activity,
 					};
@@ -3618,6 +3621,14 @@ function Home() {
 		...discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
 	];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
+	// Only the Uniques actually on screen: the overview preview, or the current page of the full grid.
+	useIndexedAssetNames(
+		(assetType === 'all'
+			? discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW)
+			: assetPagination.items
+		).flatMap(({ asset, collection }) => (collection.kind === 'images' ? [asset] : [])),
+		market.rememberIndexedAssets
+	);
 	const visibleDiscoverTokens =
 		assetType === 'all'
 			? discoverTokenPagination.items
@@ -4902,7 +4913,19 @@ export function globalActivityRevealDescription(
 	} events.`;
 }
 
+/** Image-collection assets behind the activity rows a list is showing, for batched name lookup. */
+export function visibleActivityAssets(
+	events: readonly CollectionActivityEvent[],
+	resolveCollection: (event: CollectionActivityEvent) => Collection | undefined
+): AssetSummary[] {
+	return events.flatMap((event) => {
+		const collection = resolveCollection(event);
+		return collection?.kind === 'images' ? collectionAsset(collection, event.processId) ?? [] : [];
+	});
+}
+
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
+	const { rememberIndexedAssets } = React.useContext(MarketContext);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
 	const [activityLimit, setActivityLimit] = React.useState(20);
 	const [request, setRequest] = React.useState({ kind: 'initial' as 'initial' | 'more', id: 0 });
@@ -4962,6 +4985,12 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
 
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
+	useIndexedAssetNames(
+		visibleActivityAssets(filteredEvents.slice(0, activityLimit), (event) =>
+			globalActivityCollection(collections, event.processId)
+		),
+		rememberIndexedAssets
+	);
 	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
 		{ value: 'all', label: 'All' },
 		{ value: 'make-offer', label: 'Listings' },
@@ -6197,7 +6226,12 @@ function CollectionView() {
 	const visibleAssets = React.useMemo(
 		() =>
 			listedOnly
-				? listed.map((result) => result.asset)
+				? listed.map((result) =>
+						preferResolvedAssetName(
+							result.asset,
+							collection ? collectionAsset(collection, result.asset.id) : undefined
+						)
+				  )
 				: collection && deferredQuery.trim()
 				? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
 				: collection?.assets ?? [],
@@ -6274,6 +6308,7 @@ function CollectionView() {
 	);
 	const progressiveRevealRef = useProgressiveReveal(limit < filtered.length, revealNextAssetPage);
 	const visiblePriceAssets = filtered.slice(0, limit);
+	useIndexedAssetNames(collection?.kind === 'images' ? visiblePriceAssets : [], market.rememberIndexedAssets);
 	const visiblePriceKey = visiblePriceAssets.map((asset) => asset.id).join(',');
 	const visibleUnavailablePrices = visiblePriceAssets.filter(
 		(asset) => cardPrices[asset.id]?.status === 'unavailable'
@@ -7715,6 +7750,10 @@ function CollectionActivityView() {
 	const activityWindowVersion = React.useMemo(
 		() => collection?.assets.map((asset) => asset.id).join('.') ?? '',
 		[collection?.assets]
+	);
+	useIndexedAssetNames(
+		visibleActivityAssets(events.slice(0, activityLimit), () => collection),
+		market.rememberIndexedAssets
 	);
 
 	React.useEffect(() => {

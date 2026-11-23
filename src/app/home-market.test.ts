@@ -94,6 +94,7 @@ import {
 	shouldLoadHomeCollectionSummaries,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
+	visibleActivityAssets,
 	withoutDuplicatedCreatedAssets,
 } from './App';
 import {
@@ -1987,5 +1988,38 @@ describe('collection snapshots published from the index walk', () => {
 		expect(retainedCollectionAssetNames([dumdumz('88')], moved)).toBe(moved);
 		const fresh = dumdumz(placeholder.name);
 		expect(retainedCollectionAssetNames([], fresh)).toBe(fresh);
+	});
+});
+
+describe('activity rows that need indexed names', () => {
+	it('returns only image-collection assets behind the visible rows', () => {
+		const imageId = 'I'.repeat(43);
+		const nameId = 'N'.repeat(43);
+		const images: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Dumdumz',
+			description: '',
+			kind: 'images',
+			assets: [{ id: imageId, name: 'IIIIIII…IIIIII' }],
+		};
+		const names: Collection = {
+			id: 'arweave-names',
+			name: 'Arweave Names',
+			description: '',
+			kind: 'names',
+			assets: [{ id: nameId, name: 'example' }],
+			namespace: { manifestId: 'M'.repeat(43), namesById: { [nameId]: 'example' } },
+		};
+		const event = (processId: string) => ({ processId } as CollectionActivityEvent);
+		const byId = new Map([
+			[imageId, images],
+			[nameId, names],
+		]);
+
+		expect(
+			visibleActivityAssets([event(imageId), event(nameId), event('U'.repeat(43))], (item) =>
+				byId.get(item.processId)
+			)
+		).toEqual([images.assets[0]]);
 	});
 });
