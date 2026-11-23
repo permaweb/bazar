@@ -5522,6 +5522,11 @@ export function collectionPriceRetryNotice({
 }
 
 type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
+
+/** The collection grid re-ranks at once when any of these viewer choices changes. */
+export function collectionAssetOrderKey(sort: CollectionSort, initial: string, query: string, listedOnly: boolean) {
+	return [sort, initial, query.trim().toLowerCase(), listedOnly ? 'listed' : 'all'].join('|');
+}
 type CollectionViewMode = 'comfortable' | 'compact' | 'list';
 type CollectionLiveListingRow = {
 	asset: AssetSummary;
@@ -6173,7 +6178,7 @@ function CollectionView() {
 				: collection?.assets ?? [],
 		[collection, deferredQuery, listed, listedOnly]
 	);
-	const filtered = React.useMemo(
+	const rankedAssets = React.useMemo(
 		() =>
 			visibleAssets
 				.filter(
@@ -6210,6 +6215,19 @@ function CollectionView() {
 				}),
 		[activityByAsset, cardPrices, collection?.kind, defaultIndex, deferredQuery, initial, sort, visibleAssets]
 	);
+	// Cards already painted keep their slots while listing activity and prices stream in; the grid re-ranks
+	// when the viewer changes the sort or filters, or once the listing scan has settled.
+	const assetOrder = useStableOrder(
+		rankedAssets.map((asset) => asset.id),
+		collectionAssetOrderKey(sort, initial, deferredQuery, listedOnly),
+		!activityState.loading && !cardPricesLoading
+	);
+	const filtered = React.useMemo(
+		() => applyStableOrder(rankedAssets, assetOrder, (asset) => asset.id),
+		[assetOrder, rankedAssets]
+	);
+	const collectionGridRef = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(collectionGridRef, assetOrder);
 	const liveListingRows = React.useMemo(() => {
 		const rows = listed
 			.flatMap((result) =>
@@ -7266,6 +7284,7 @@ function CollectionView() {
 					aria-label={`${collection.name} tokens`}
 					className="token-market-list collection-token-list"
 					id={assetGridId}
+					ref={collectionGridRef}
 					role="list"
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
@@ -7289,6 +7308,7 @@ function CollectionView() {
 									tone: price?.status === 'resolved' && price.label ? 'positive' : 'default',
 								}}
 								onWarm={() => prefetchAssetPage(asset.id, true)}
+								orderId={asset.id}
 								priority={index < 2}
 							/>
 						);
@@ -7302,6 +7322,7 @@ function CollectionView() {
 						collection.kind === 'names' ? ' names-collection-grid' : ''
 					}`}
 					id={assetGridId}
+					ref={collectionGridRef}
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
 						const price = cardPrices[asset.id];
@@ -7310,6 +7331,7 @@ function CollectionView() {
 								key={asset.id}
 								collection={collection}
 								asset={asset}
+								orderId={asset.id}
 								priority={index < 2}
 								collectionContext
 								badge={listedOnly ? 'For sale' : undefined}
@@ -8087,6 +8109,7 @@ export const AssetCard = React.memo(function AssetCard({
 	price,
 	priceListed = false,
 	collectionContext = false,
+	orderId,
 	priority = false,
 }: {
 	collection: Collection;
@@ -8095,6 +8118,8 @@ export const AssetCard = React.memo(function AssetCard({
 	price?: string;
 	priceListed?: boolean;
 	collectionContext?: boolean;
+	/** Identifies the card to useGridReorderMotion. */
+	orderId?: string;
 	priority?: boolean;
 }) {
 	return (
@@ -8102,6 +8127,7 @@ export const AssetCard = React.memo(function AssetCard({
 			className={`asset-card${collection.kind === 'tokens' ? ' token-asset-card' : ''}${
 				collectionContext ? ' collection-context' : ''
 			}`}
+			data-order-id={orderId}
 			onFocus={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			onMouseEnter={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}

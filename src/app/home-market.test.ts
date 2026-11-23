@@ -18,6 +18,7 @@ import {
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,
 	collectionActivityWindowDelta,
+	collectionAssetOrderKey,
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
 	collectionCardPriceLabel,
@@ -114,6 +115,17 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('re-ranks the collection grid at once only for viewer choices, not for streamed data', () => {
+		const recent = collectionAssetOrderKey('recent', 'all', '', false);
+		expect(collectionAssetOrderKey('recent', 'all', '  ', false)).toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'all', ' Dum ', false)).toBe(
+			collectionAssetOrderKey('recent', 'all', 'dum', false)
+		);
+		expect(collectionAssetOrderKey('price-low', 'all', '', false)).not.toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'D', '', false)).not.toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'all', '', true)).not.toBe(recent);
+	});
+
 	it('calculates cumulative order-book depth from ascending offer quantities', () => {
 		expect(cumulativeCollectionDepth([1, 1, 3, 5])).toEqual([10, 20, 50, 100]);
 		const fallback = cumulativeCollectionDepth([0, Number.NaN, -1]);
