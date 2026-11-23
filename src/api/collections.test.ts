@@ -323,7 +323,7 @@ describe('collection index loading', () => {
 
 		expect(enriched.assets[0].name).toBe('Color 1');
 		expect(enriched.assets[204].name).toBe('Color 205');
-		expect(enriched.assets[0].image).toBe(`https://arweave.net/${ids[0]}`);
+		expect(enriched.assets[0].image).toBe(`https://arweave.net/raw/${ids[0]}`);
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables)).toEqual([
 			{ collection: ['HTML Colors'], after: null },
@@ -708,7 +708,7 @@ describe('collection index loading', () => {
 			name: 'Unloaded Token',
 			ticker: 'NEW',
 			contentType: 'application/x.arweave-token',
-			image: `https://arweave.net/${logoId}`,
+			image: `https://arweave.net/raw/${logoId}`,
 		});
 		expect(
 			collectionAsset(
@@ -731,7 +731,7 @@ describe('collection index loading', () => {
 			name: 'Indexed Token',
 			ticker: 'NEW',
 			contentType: 'application/x.arweave-token',
-			image: `https://arweave.net/${logoId}`,
+			image: `https://arweave.net/raw/${logoId}`,
 		});
 		expect(
 			collectionAsset(tokens, processId, {

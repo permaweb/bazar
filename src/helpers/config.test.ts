@@ -17,6 +17,7 @@ import {
 	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
 	gatewaysFromLocation,
+	isArIoContentGateway,
 	loadPermawebOsNetworkPolicy,
 	markServingOriginWithoutCompute,
 	normalizeComputeGateways,
@@ -312,8 +313,94 @@ describe('Arweave gateway routing', () => {
 		expect(config.arweaveGraphqlEndpoint()).toBe('https://arweave.net/graphql');
 	});
 
-	it('builds an ordinary Arweave resource URL', () => {
+	it('builds an ordinary Arweave resource URL on HyperBEAM and unknown gateways', () => {
 		expect(arweaveDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/asset-id');
+		expect(arweaveDataUrl('asset-id', 'https://mystical.computer')).toBe('https://mystical.computer/asset-id');
+		expect(arweaveDataUrl('asset-id', 'https://alpha.neo.zephyrdev.xyz')).toBe(
+			'https://alpha.neo.zephyrdev.xyz/asset-id'
+		);
+		expect(arweaveDataUrl('asset-id', 'http://127.0.0.1:8734')).toBe('http://127.0.0.1:8734/asset-id');
+		expect(arweaveDataUrl('asset-id', 'https://mystical.computer/')).toBe('https://mystical.computer/asset-id');
+	});
+
+	it('reads item bytes from the raw route on AR.IO gateways and their ArNS subdomains', () => {
+		for (const gateway of [
+			'https://arweave.net',
+			'https://ardrive.net',
+			'https://bazar.arweave.net',
+			'https://bazar.ardrive.net',
+			'https://bazar.ar.io',
+			'https://ARWEAVE.NET/',
+		]) {
+			expect(arweaveDataUrl('asset-id', gateway)).toBe(`${gateway.replace(/\/$/, '')}/raw/asset-id`);
+		}
+		expect(isArIoContentGateway('https://ar.io')).toBe(false);
+		expect(arweaveDataUrl('asset-id', 'https://ar.io')).toBe('https://ar.io/asset-id');
+		expect(isArIoContentGateway('https://ar-io.dev')).toBe(false);
+		expect(isArIoContentGateway('https://notarweave.net')).toBe(false);
+		expect(isArIoContentGateway('https://arweave.net.example')).toBe(false);
+		expect(isArIoContentGateway('not a url')).toBe(false);
+	});
+
+	it('orders same-origin AR.IO raw content before public AR.IO fallbacks', () => {
+		const id = 'A'.repeat(43);
+		const chain = [
+			`https://bazar.arweave.net/raw/${id}`,
+			`https://ardrive.net/raw/${id}`,
+			`https://arweave.net/raw/${id}`,
+		];
+		expect(arweaveDataFallbackUrls(`https://bazar.arweave.net/${id}`, location())).toEqual(chain);
+		expect(arweaveDataFallbackUrls(`https://bazar.arweave.net/raw/${id}`, location())).toEqual(chain);
+		expect(arweaveDataFallbackUrls(`https://arweave.net/${id}`, location())).toEqual([
+			chain[0],
+			chain[2],
+			chain[1],
+		]);
+		expect(arweaveDataFallbackUrls(`https://mystical.computer/${id}`, location())).toEqual([
+			chain[0],
+			`https://mystical.computer/${id}`,
+			chain[1],
+			chain[2],
+		]);
+		expect(arweaveDataFallbackUrls(`https://mystical.computer/${id}`, location()).join()).not.toContain(
+			'ar-io.dev'
+		);
+	});
+
+	it('starts with the requested Arweave node and keeps its gateway kind', () => {
+		const id = 'A'.repeat(43);
+		const hyperbeam = location({ search: '?arweave-node=mystical.computer' });
+		expect(arweaveDataFallbackUrls(arweaveDataUrl(id, arweaveGatewayFromLocation(hyperbeam)), hyperbeam)).toEqual([
+			`https://mystical.computer/${id}`,
+			`https://bazar.arweave.net/raw/${id}`,
+			`https://ardrive.net/raw/${id}`,
+			`https://arweave.net/raw/${id}`,
+		]);
+		const ario = location({
+			hostname: 'localhost',
+			protocol: 'http:',
+			port: '3000',
+			search: '?arweave-node=ardrive.net',
+		});
+		expect(arweaveDataFallbackUrls(`/${id}`, ario)).toEqual([
+			`https://ardrive.net/raw/${id}`,
+			`/${id}`,
+			`https://arweave.net/raw/${id}`,
+		]);
+	});
+
+	it('starts with the configured Arweave gateway', async () => {
+		vi.stubEnv('VITE_ARWEAVE_GATEWAY', 'https://mystical.computer');
+		vi.resetModules();
+		const config = await import('./config');
+		const id = 'A'.repeat(43);
+
+		expect(config.arweaveDataFallbackUrls(`https://bazar.arweave.net/${id}`, location())).toEqual([
+			`https://mystical.computer/${id}`,
+			`https://bazar.arweave.net/raw/${id}`,
+			`https://ardrive.net/raw/${id}`,
+			`https://arweave.net/raw/${id}`,
+		]);
 	});
 
 	it('keeps ordinary item fallback on permanent-content gateways, not compute peers', () => {
@@ -326,7 +413,12 @@ describe('Arweave gateway routing', () => {
 					search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
 				})
 			)
-		).toEqual([`https://alpha.example/${id}`, `https://bazar.arweave.net/${id}`]);
+		).toEqual([
+			`https://bazar.arweave.net/raw/${id}`,
+			`https://alpha.example/${id}`,
+			`https://ardrive.net/raw/${id}`,
+			`https://arweave.net/raw/${id}`,
+		]);
 	});
 
 	it('uses the PermawebOS role descriptor instead of deriving every service from peers[0]', async () => {
@@ -364,7 +456,7 @@ describe('Arweave gateway routing', () => {
 		const id = 'A'.repeat(43);
 		expect(arweaveDataFallbackUrls(`https://andee.example/${id}`, selected, scope)).toEqual([
 			`https://content.example/${id}`,
-			`https://bazar.arweave.net/${id}`,
+			`https://bazar.arweave.net/raw/${id}`,
 		]);
 	});
 
@@ -392,6 +484,14 @@ describe('Arweave gateway routing', () => {
 
 		expect(gatewaysFromLocation(selected, scope)).toEqual(['https://andee.example']);
 		expect(observerRelayFromLocation(selected, scope)).toBe('');
+		const id = 'A'.repeat(43);
+		expect(arweaveDataFallbackUrls(`https://content.example/${id}`, selected, scope)).toEqual([
+			`https://content.example/${id}`,
+			`https://bazar.arweave.net/raw/${id}`,
+		]);
+		expect(arweaveDataFallbackUrls(`https://content.example/${id}`, selected, scope).join()).not.toMatch(
+			/ardrive\.net|\/\/arweave\.net/
+		);
 	});
 
 	it('treats an empty process-read role in a valid PermawebOS policy as explicitly disabled', async () => {
