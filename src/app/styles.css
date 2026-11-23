@@ -1941,6 +1941,14 @@ p {
 	position: relative;
 	display: inline-flex;
 }
+.ui-button[aria-busy='true'] {
+	cursor: progress;
+}
+.wallet-menu-notice {
+	margin: 0;
+	font-size: var(--type-small);
+	line-height: 1.35;
+}
 .wallet-dropdown {
 	position: absolute;
 	z-index: 85;

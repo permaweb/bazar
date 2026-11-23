@@ -55,8 +55,25 @@ export type LocalWalletUnlockState =
 export const LOCAL_WALLET_UNLOCK_FAILED_MESSAGE =
 	'Saved browser wallet could not be unlocked. Its keyfile is still saved in this browser. Check your connection and retry.';
 
+/**
+ * Whether Bazar knows the wallet session yet. `restoring` lasts from mount until the first address
+ * commit (a restore, connect, import or generate) or WALLET_RESTORE_GRACE_MS, whichever comes first,
+ * so a returning user is never shown "Connect" while their wallet is still being read.
+ */
+export type WalletConnectionStatus = 'restoring' | 'disconnected' | 'connected';
+
+/** Upper bound on `restoring`, so a locked or slow extension cannot leave the wallet button busy. */
+export const WALLET_RESTORE_GRACE_MS = 4_000;
+
+/** How disconnect ended: the user kept a local keyfile, Bazar disconnected, or Bazar disconnected but the extension failed. */
+export type WalletDisconnectResult = 'kept' | 'disconnected' | 'unconfirmed';
+
+export const WALLET_DISCONNECT_UNCONFIRMED_MESSAGE =
+	'Bazar disconnected; the wallet extension did not confirm — you may also disconnect in the extension.';
+
 type WalletContextValue = {
 	address: string | null;
+	connectionStatus: WalletConnectionStatus;
 	walletKind: WalletKind | null;
 	localWalletUnlock: LocalWalletUnlockState;
 	/** Retries unlocking the saved browser keyfile; resolves true once it is connected. */
@@ -68,8 +85,8 @@ type WalletContextValue = {
 	aoBalanceDenomination: number;
 	aoBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
 	connect(walletId: BrowserWalletId): Promise<void>;
-	/** Resolves false when the user chose to keep a local keyfile wallet. */
-	disconnect(): Promise<boolean>;
+	/** Always ends Bazar's session unless the user chose to keep a local keyfile wallet ('kept'). */
+	disconnect(): Promise<WalletDisconnectResult>;
 	/** Downloads the stored local keyfile. Returns false when no keyfile is stored in this browser. */
 	exportLocalWallet(): boolean;
 	generateLocalWallet(): Promise<GeneratedWallet>;
@@ -89,6 +106,7 @@ let rememberedBrowserWallet: Window['arweaveWallet'];
 
 export function WalletProvider({ children }: React.PropsWithChildren) {
 	const [address, setAddress] = React.useState<string | null>(null);
+	const [restored, setRestored] = React.useState(false);
 	const [walletKind, setWalletKind] = React.useState<WalletKind | null>(null);
 	const [arBalance, setArBalance] = React.useState<bigint | null>(null);
 	const [arBalanceDenomination, setArBalanceDenomination] = React.useState(12);
@@ -104,8 +122,9 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		createLatestAddressCommitter((nextAddress) => {
 			setAoWalletConnection(nextAddress);
 			setAddress(nextAddress);
-			// Every committer installs window.arweaveWallet before it commits, so this reads the
-			// adapter that produced nextAddress.
+			setRestored(true);
+			// A current commit runs its install (window.arweaveWallet) just before this callback, so
+			// this reads the adapter that produced nextAddress.
 			setWalletKind(walletKindOf(nextAddress, window.arweaveWallet));
 		})
 	);
@@ -121,7 +140,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		const unlocking: LocalWalletUnlockState = { status: 'unlocking' };
 		setLocalWalletUnlock(unlocking);
 		const next = await unlockStoredLocalWallet(storedWallet, {
-			activate: activateLocalWallet,
+			activate: prepareLocalWallet,
 			commit: addressRequests.current.begin(),
 			clear: clearLocalWallet,
 		});
@@ -132,6 +151,11 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		}
 		setLocalWalletUnlock(next.state);
 		return next.address !== null;
+	}, []);
+
+	React.useEffect(() => {
+		const restoreGrace = window.setTimeout(() => setRestored(true), WALLET_RESTORE_GRACE_MS);
+		return () => window.clearTimeout(restoreGrace);
 	}, []);
 
 	React.useEffect(() => {
@@ -189,6 +213,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const value = React.useMemo<WalletContextValue>(
 		() => ({
 			address,
+			connectionStatus: walletConnectionState(restored, address),
 			walletKind,
 			localWalletUnlock,
 			retryLocalWalletUnlock: async () => {
@@ -208,40 +233,41 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			connect: async (walletId) => {
 				confirmLocalWalletReplacement();
 				const wallet = browserWallet(walletId);
-				const commit = addressRequests.current.begin();
-				const nextAddress = await connectWallet(
-					wallet,
-					walletId === 'permaweb-os' ? 'PermawebOS' : 'Wander',
-					walletId === 'permaweb-os' ? PERMAWEB_OS_WALLET_PERMISSIONS : BROWSER_WALLET_PERMISSIONS
+				const committed = await connectBrowserWalletFlow(
+					addressRequests.current,
+					() =>
+						connectWallet(
+							wallet,
+							walletId === 'permaweb-os' ? 'PermawebOS' : 'Wander',
+							walletId === 'permaweb-os' ? PERMAWEB_OS_WALLET_PERMISSIONS : BROWSER_WALLET_PERMISSIONS
+						),
+					() => {
+						clearLocalWallet();
+						window.arweaveWallet = wallet;
+						storeBrowserWalletPreference(walletId);
+					}
 				);
-				clearLocalWallet();
-				window.arweaveWallet = wallet;
-				storeBrowserWalletPreference(walletId);
-				if (commit(nextAddress)) setLocalWalletUnlock({ status: 'idle' });
+				if (committed) setLocalWalletUnlock({ status: 'idle' });
 				setBalanceRevision((revision) => revision + 1);
 			},
 			disconnect: async () => {
 				const disconnectedWallet = window.arweaveWallet;
 				const plan = walletDisconnectPlan(isLocalWallet(disconnectedWallet) ? 'local' : 'browser', address);
-				if (plan.confirm && !window.confirm(plan.copy)) return false;
+				if (plan.confirm && !window.confirm(plan.copy)) return 'kept';
 				const commit = addressRequests.current.begin();
-				const permawebOs = resolveBrowserWallet(window, 'permaweb-os');
 				if (plan.clearsKey) {
 					clearLocalWallet();
 					setLocalWalletUnlock({ status: 'idle' });
 					restoreBrowserWallet();
-				} else {
-					await disconnectedWallet?.disconnect?.();
-					restoreBrowserWalletAfterDisconnect(
-						window,
-						disconnectedWallet,
-						permawebOs,
-						rememberedBrowserWallet
-					);
+					clearBrowserWalletPreference();
+					commit(null);
+					return 'disconnected';
 				}
-				clearBrowserWalletPreference();
-				commit(null);
-				return true;
+				return disconnectBrowserWallet(window, {
+					commit,
+					clearPreference: clearBrowserWalletPreference,
+					remembered: () => rememberedBrowserWallet,
+				});
 			},
 			exportLocalWallet: () => {
 				const keyfile = localWalletExportJson(readLocalWallet());
@@ -256,9 +282,9 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				if (!isValidWalletJwk(jwk)) throw new Error('The generated Arweave keyfile was invalid.');
 				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
-				const nextAddress = await activateLocalWallet(jwk);
-				if (commit(nextAddress)) setLocalWalletUnlock({ status: 'idle' });
-				return { address: nextAddress, jwk };
+				const activation = await prepareLocalWallet(jwk);
+				if (commit(activation.address, activation.install)) setLocalWalletUnlock({ status: 'idle' });
+				return { address: activation.address, jwk };
 			},
 			importLocalWallet: async (file: File) => {
 				let jwk: unknown;
@@ -271,7 +297,8 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				confirmLocalWalletReplacement(jwk);
 				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
-				if (commit(await activateLocalWallet(jwk))) setLocalWalletUnlock({ status: 'idle' });
+				const activation = await prepareLocalWallet(jwk);
+				if (commit(activation.address, activation.install)) setLocalWalletUnlock({ status: 'idle' });
 			},
 			openConnectDialog: (trigger) => {
 				connectDialogTrigger.current =
@@ -298,6 +325,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			arBalanceDenomination,
 			arBalanceStatus,
 			localWalletUnlock,
+			restored,
 			unlockLocalWallet,
 			walletKind,
 		]
@@ -704,13 +732,21 @@ export async function connectWallet(
 	return address;
 }
 
+/**
+ * Commits one wallet request's address only while it is still the latest one. `install` carries the
+ * request's side effects (such as assigning window.arweaveWallet) and runs only for a current commit,
+ * right before it, so a request that lost the race changes nothing.
+ */
+export type AddressCommit = (address: string | null, install?: () => void) => boolean;
+
 export function createLatestAddressCommitter(commit: (address: string | null) => void) {
 	let latest = 0;
 	return {
-		begin() {
+		begin(): AddressCommit {
 			const request = ++latest;
-			return (address: string | null) => {
+			return (address, install) => {
 				if (request !== latest) return false;
+				install?.();
 				commit(address);
 				return true;
 			};
@@ -725,15 +761,72 @@ export function createLatestAddressCommitter(commit: (address: string | null) =>
 export async function restoreBrowserWalletAddress(
 	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
 	preferredWalletId: BrowserWalletId | null,
-	commit: (address: string | null) => boolean
+	commit: AddressCommit
 ) {
 	try {
 		const connection = await restoreBrowserWalletConnection(scope, preferredWalletId);
-		if (connection) scope.arweaveWallet = connection.wallet;
-		commit(connection?.address ?? null);
+		commit(
+			connection?.address ?? null,
+			connection
+				? () => {
+						scope.arweaveWallet = connection.wallet;
+				  }
+				: undefined
+		);
 	} catch {
 		commit(null);
 	}
+}
+
+export function walletConnectionState(restored: boolean, address: string | null): WalletConnectionStatus {
+	if (address) return 'connected';
+	return restored ? 'disconnected' : 'restoring';
+}
+
+/**
+ * Runs an explicit browser-wallet connect. The request starts only once the extension approved, so a
+ * cancelled or failed popup leaves any in-flight restore free to commit; a successful connect supersedes
+ * it, and the stale restore then neither commits nor reassigns window.arweaveWallet.
+ */
+export async function connectBrowserWalletFlow(
+	requests: { begin(): AddressCommit },
+	connect: () => Promise<string>,
+	install: () => void
+) {
+	const address = await connect();
+	return requests.begin()(address, install);
+}
+
+/**
+ * Ends Bazar's side of a browser-wallet session. The extension's own disconnect is best effort: when it
+ * rejects (a locked or erroring extension), Bazar still restores the provider, forgets the preference
+ * and commits null, and reports 'unconfirmed' so the user can also disconnect in the extension.
+ */
+export async function disconnectBrowserWallet(
+	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
+	{
+		commit,
+		clearPreference,
+		remembered,
+	}: {
+		commit: AddressCommit;
+		clearPreference(): void;
+		/** Read after the extension call settles, like the provider's remembered browser wallet. */
+		remembered?(): Window['arweaveWallet'];
+	}
+): Promise<Exclude<WalletDisconnectResult, 'kept'>> {
+	const disconnectedWallet = scope.arweaveWallet;
+	const permawebOs = resolveBrowserWallet(scope, 'permaweb-os');
+	let confirmed = true;
+	try {
+		await disconnectedWallet?.disconnect?.();
+	} catch {
+		confirmed = false;
+	}
+	restoreBrowserWalletAfterDisconnect(scope, disconnectedWallet, permawebOs, remembered?.());
+	clearPreference();
+	commit(null);
+	return confirmed ? 'disconnected' : 'unconfirmed';
 }
 
 /** Provider handshakes after which the active wallet address is read again. */
@@ -1003,14 +1096,14 @@ export async function unlockStoredLocalWallet(
 		commit,
 		clear,
 	}: {
-		activate(jwk: WalletJwk): Promise<string>;
-		commit(address: string | null): boolean;
+		activate(jwk: WalletJwk): Promise<LocalWalletActivation>;
+		commit: AddressCommit;
 		clear(): void;
 	}
 ): Promise<{ address: string | null; state: LocalWalletUnlockState } | null> {
-	let address: string;
+	let activation: LocalWalletActivation;
 	try {
-		address = await activate(storedWallet);
+		activation = await activate(storedWallet);
 	} catch (cause) {
 		if (!commit(null)) return null;
 		if (storedLocalWalletFailureAction(cause) === 'clear') {
@@ -1019,16 +1112,18 @@ export async function unlockStoredLocalWallet(
 		}
 		return { address: null, state: { status: 'failed', message: LOCAL_WALLET_UNLOCK_FAILED_MESSAGE } };
 	}
-	return commit(address) ? { address, state: { status: 'idle' } } : null;
+	const { address, install } = activation;
+	return commit(address, install) ? { address, state: { status: 'idle' } } : null;
 }
 
-async function activateLocalWallet(jwk: WalletJwk) {
-	const current = window.arweaveWallet;
-	if (current && !isLocalWallet(current)) rememberedBrowserWallet = current;
+/** A local keyfile's address and the step that makes it the active signer, run only by a current commit. */
+export type LocalWalletActivation = { address: string; install(): void };
+
+async function prepareLocalWallet(jwk: WalletJwk): Promise<LocalWalletActivation> {
 	const signingJwk = localWalletSigningJwk(jwk);
 	const arweave = await createArweaveClient();
 	const address = await arweave.wallets.jwkToAddress(signingJwk as any);
-	window.arweaveWallet = {
+	const adapter = {
 		[LOCAL_WALLET_ADAPTER]: true,
 		connect: async () => undefined,
 		disconnect: async () => undefined,
@@ -1038,7 +1133,14 @@ async function activateLocalWallet(jwk: WalletJwk) {
 			return transaction;
 		},
 	} as Window['arweaveWallet'];
-	return address;
+	return {
+		address,
+		install: () => {
+			const current = window.arweaveWallet;
+			if (current && !isLocalWallet(current)) rememberedBrowserWallet = current;
+			window.arweaveWallet = adapter;
+		},
+	};
 }
 
 export function localWalletSigningJwk(jwk: WalletJwk): WalletJwk {

@@ -5,7 +5,13 @@ import { Check, Copy, Download, LogOut, Monitor, Moon, Sun, SunDim, Trash2, User
 import type { ThemePreference } from 'helpers/theme';
 import { groupDecimalAmount } from 'helpers/token-display';
 import { useTheme } from 'providers/ThemeProvider';
-import { useWallet, walletDisconnectPlan, type WalletKind } from 'providers/WalletProvider';
+import {
+	useWallet,
+	WALLET_DISCONNECT_UNCONFIRMED_MESSAGE,
+	type WalletConnectionStatus,
+	walletDisconnectPlan,
+	type WalletKind,
+} from 'providers/WalletProvider';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
@@ -36,8 +42,10 @@ export function WalletMenu() {
 	const [copied, setCopied] = React.useState(false);
 	const [disconnecting, setDisconnecting] = React.useState(false);
 	const [error, setError] = React.useState('');
+	const [notice, setNotice] = React.useState('');
 	const profile = useAccountProfileSummary(wallet.address ?? '');
-	const walletLabel = walletMenuLabel(wallet.address, profile.displayName);
+	const walletLabel = walletMenuLabel(wallet.address, profile.displayName, wallet.connectionStatus);
+	const restoring = wallet.connectionStatus === 'restoring';
 	const dangerAction = walletMenuDangerAction(wallet.walletKind);
 	const returnFocusToTrigger = React.useCallback(() => {
 		window.requestAnimationFrame(() => trigger.current?.focus());
@@ -65,6 +73,12 @@ export function WalletMenu() {
 		if (!wallet.address) setOpen(false);
 	}, [wallet.address]);
 
+	React.useEffect(() => {
+		if (!notice) return;
+		const timer = window.setTimeout(() => setNotice(''), WALLET_MENU_NOTICE_MS);
+		return () => window.clearTimeout(timer);
+	}, [notice]);
+
 	const copyAddress = async () => {
 		if (!wallet.address) return;
 		setError('');
@@ -80,12 +94,13 @@ export function WalletMenu() {
 		setDisconnecting(true);
 		setError('');
 		try {
-			if (await wallet.disconnect()) {
-				setOpen(false);
-				// The panel (and the focused Disconnect button) unmounts; keep the keyboard user's place on
-				// the trigger, which stays mounted as "Connect wallet".
-				returnFocusToTrigger();
-			}
+			const result = await wallet.disconnect();
+			if (result === 'kept') return;
+			setOpen(false);
+			// The panel (and the focused Disconnect button) unmounts; keep the keyboard user's place on
+			// the trigger, which stays mounted as "Connect wallet".
+			returnFocusToTrigger();
+			if (result === 'unconfirmed') setNotice(WALLET_DISCONNECT_UNCONFIRMED_MESSAGE);
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Wallet could not be disconnected.');
 		} finally {
@@ -105,17 +120,23 @@ export function WalletMenu() {
 		<div className="wallet-menu" ref={root}>
 			{/* The accessible name already holds the tooltip text (the full address), so it is not also
 			    wired up as a description. */}
-			<Tooltip content={wallet.address || 'Connect wallet'} disabled={open}>
+			<Tooltip content={wallet.address || (restoring ? RESTORING_LABEL : 'Connect wallet')} disabled={open}>
 				{() => (
 					<Button
 						{...walletTriggerAria({
 							address: wallet.address,
+							connectionStatus: wallet.connectionStatus,
 							displayName: profile.displayName,
 							open,
 							panelId,
 						})}
+						aria-busy={restoring || undefined}
+						aria-disabled={restoring || undefined}
 						className="wallet"
 						onClick={(event) => {
+							setNotice('');
+							// Restoring is bounded by WALLET_RESTORE_GRACE_MS; until then the session is unknown.
+							if (restoring) return;
 							if (!wallet.address) {
 								wallet.openConnectDialog(event.currentTarget);
 								return;
@@ -168,6 +189,9 @@ export function WalletMenu() {
 					themePreference={theme.preference}
 				/>
 			) : null}
+			<div className="wallet-menu-status" role="status">
+				{notice && !open ? <p className="wallet-dropdown wallet-menu-notice">{notice}</p> : null}
+			</div>
 		</div>
 	);
 }
@@ -296,23 +320,32 @@ export function WalletMenuPanel({
  * The trigger's accessible name starts with its visible text (WCAG 2.5.3, so "click Agent Smith"
  * works for voice control) and then carries the full address the tooltip shows.
  */
-export function walletTriggerName(address?: string | null, displayName?: string | null) {
-	return address ? `${walletMenuLabel(address, displayName)}, wallet ${address}` : 'Connect wallet';
+export function walletTriggerName(
+	address?: string | null,
+	displayName?: string | null,
+	connectionStatus?: WalletConnectionStatus
+) {
+	if (address) return `${walletMenuLabel(address, displayName)}, wallet ${address}`;
+	return connectionStatus === 'restoring'
+		? `${walletMenuLabel(address, displayName, connectionStatus)}, ${RESTORING_LABEL.toLowerCase()}`
+		: 'Connect wallet';
 }
 
 /** Disclosure ARIA for the trigger: aria-controls names the panel only while it is rendered. */
 export function walletTriggerAria({
 	address,
+	connectionStatus,
 	displayName,
 	open,
 	panelId,
 }: {
 	address?: string | null;
+	connectionStatus?: WalletConnectionStatus;
 	displayName?: string | null;
 	open: boolean;
 	panelId: string;
 }) {
-	if (!address) return { 'aria-label': walletTriggerName(address, displayName) };
+	if (!address) return { 'aria-label': walletTriggerName(address, displayName, connectionStatus) };
 	return {
 		'aria-controls': open ? panelId : undefined,
 		'aria-expanded': open,
@@ -320,11 +353,19 @@ export function walletTriggerAria({
 	};
 }
 
+const RESTORING_LABEL = 'Checking wallet connection…';
+const WALLET_MENU_NOTICE_MS = 10_000;
+
 function shortAddress(address: string) {
 	return `${address.slice(0, 6)}…${address.slice(-5)}`;
 }
 
-export function walletMenuLabel(address?: string | null, displayName?: string | null) {
+export function walletMenuLabel(
+	address?: string | null,
+	displayName?: string | null,
+	connectionStatus?: WalletConnectionStatus
+) {
+	if (!address && connectionStatus === 'restoring') return 'Wallet…';
 	return displayName?.trim() || (address ? shortAddress(address) : 'Connect');
 }
 

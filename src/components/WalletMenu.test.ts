@@ -34,6 +34,13 @@ describe('wallet menu identity', () => {
 		expect(walletMenuLabel(address)).toBe(`${'a'.repeat(6)}…12345`);
 		expect(walletMenuLabel()).toBe('Connect');
 	});
+
+	it('does not offer Connect while the saved wallet session is still being restored', () => {
+		const address = `${'a'.repeat(38)}12345`;
+		expect(walletMenuLabel(null, null, 'restoring')).toBe('Wallet…');
+		expect(walletMenuLabel(null, null, 'disconnected')).toBe('Connect');
+		expect(walletMenuLabel(address, 'Agent Smith', 'connected')).toBe('Agent Smith');
+	});
 });
 
 describe('wallet menu danger action', () => {
@@ -121,6 +128,17 @@ describe('wallet menu trigger', () => {
 		expect(walletTriggerName(address, 'Agent Smith')).toBe(`Agent Smith, wallet ${address}`);
 		expect(walletTriggerName(null).startsWith(walletMenuLabel(null))).toBe(true);
 		expect(walletTriggerName(null)).toBe('Connect wallet');
+	});
+
+	it('names a restoring trigger with its visible label and never as Connect wallet', () => {
+		const name = walletTriggerName(null, null, 'restoring');
+		expect(name.startsWith(walletMenuLabel(null, null, 'restoring'))).toBe(true);
+		expect(name).toContain('checking wallet connection');
+		expect(name).not.toContain('Connect');
+		expect(walletTriggerAria({ address: null, connectionStatus: 'restoring', open: false, panelId: 'p' })).toEqual({
+			'aria-label': name,
+		});
+		expect(walletTriggerName(null, null, 'disconnected')).toBe('Connect wallet');
 	});
 
 	it('is a disclosure: aria-expanded always, aria-controls only while the panel is open, never a popup menu', () => {
