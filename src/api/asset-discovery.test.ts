@@ -265,12 +265,53 @@ describe('wallet candidate discovery', () => {
 		const discovery = discoverWalletAssetCandidates(wallet, {
 			fetch: fetcher as typeof fetch,
 			requestTimeoutMs: 50,
+			retryDelaysMs: [],
 		});
 		const rejection = expect(discovery).rejects.toThrow('asset-discovery-graphql-timeout');
 
 		await vi.advanceTimersByTimeAsync(50);
 		await rejection;
 		expect(fetcher).toHaveBeenCalledTimes(1);
+	});
+
+	it('retries a page that timed out once before reporting the index unavailable', async () => {
+		vi.useFakeTimers();
+		const page = {
+			data: {
+				initiallyHeld: {
+					pageInfo: { hasNextPage: false },
+					edges: [
+						{
+							cursor: 'initial-1',
+							node: {
+								id: assetA,
+								tags: [{ name: 'initial-holder', value: wallet }],
+								block: { height: 10, timestamp: 100 },
+							},
+						},
+					],
+				},
+				marketActions: { pageInfo: { hasNextPage: false }, edges: [] },
+				receivedTransfers: { pageInfo: { hasNextPage: false }, edges: [] },
+			},
+		};
+		const fetcher = vi
+			.fn()
+			.mockImplementationOnce(() => new Promise<Response>(() => undefined))
+			.mockImplementationOnce(async () => Response.json(page));
+		const discovery = discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			requestTimeoutMs: 50,
+			retryDelaysMs: [1_000],
+		});
+
+		await vi.advanceTimersByTimeAsync(50 + 1_000);
+		const result = await discovery;
+
+		expect(result.map(({ processId }) => processId)).toEqual([assetA]);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		const [first, second] = fetcher.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+		expect(second).toEqual(first);
 	});
 
 	it('uses one aliased query per page, deduplicates targets, and keeps newest activity first', async () => {
@@ -428,6 +469,7 @@ describe('wallet candidate discovery', () => {
 		const options = {
 			fetch: fetcher as typeof fetch,
 			scan,
+			retryDelaysMs: [],
 			onPage: (page: AssetCandidate[]) => {
 				emitted.push(page.map(({ processId }) => processId));
 			},
@@ -548,6 +590,7 @@ describe('wallet candidate discovery', () => {
 			fetch: fetcher as typeof fetch,
 			scan,
 			catchUp: true,
+			retryDelaysMs: [],
 			onPage: (page: AssetCandidate[]) => {
 				emitted.push(page.map(({ processId }) => processId));
 			},
@@ -652,6 +695,7 @@ describe('wallet candidate discovery', () => {
 		const options = {
 			fetch: fetcher as typeof fetch,
 			scan,
+			retryDelaysMs: [],
 			onPage: (page: AssetCandidate[]) => {
 				for (const candidate of page) {
 					seen.set(candidate.processId, (seen.get(candidate.processId) ?? 0) + 1);

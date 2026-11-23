@@ -13,7 +13,14 @@ import {
 } from './asset-marketplace';
 import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
-import { graphqlEndpointList, graphqlIdBatchSize, graphqlSupportsCount, postGraphql } from './graphql';
+import {
+	GRAPHQL_RETRY_DELAYS_MS,
+	graphqlEndpointList,
+	graphqlIdBatchSize,
+	graphqlSupportsCount,
+	postGraphql,
+	retryTransientGraphql,
+} from './graphql';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -130,6 +137,11 @@ type StoredWalletCandidateScan = {
 type WalletCandidateOptions = CandidateOptions & {
 	scan?: WalletCandidateScan;
 	catchUp?: boolean;
+	/**
+	 * Delays before retrying a page that failed transiently. A cold wallet query can take
+	 * arweave.net longer than the page deadline once; the index then answers it from cache.
+	 */
+	retryDelaysMs?: readonly number[];
 };
 
 type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> & {
@@ -731,36 +743,41 @@ export async function discoverWalletAssetCandidates(
 		cursors: Record<WalletCandidateAlias, string | null>
 	) => {
 		const requestedAliases = [...active];
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
-			fetcher,
-			graphql,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: WALLET_CANDIDATES_QUERY,
-					variables: {
-						initialCursor: cursors.initiallyHeld,
-						marketCursor: cursors.marketActions,
-						transferCursor: cursors.receivedTransfers,
-						includeInitial: active.has('initiallyHeld'),
-						includeMarket: active.has('marketActions'),
-						includeTransfers: active.has('receivedTransfers'),
-						owners: [address],
-						initialTags: [{ name: 'initial-holder', values: [address] }],
-						marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
-						transferTags: [
-							{ name: 'action', values: ['transfer'] },
-							{ name: 'recipient', values: [address] },
-						],
+		const { response, body: payload } = await retryTransientGraphql(
+			() =>
+				fetchJsonWithDeadline<any>(
+					fetcher,
+					graphql,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							query: WALLET_CANDIDATES_QUERY,
+							variables: {
+								initialCursor: cursors.initiallyHeld,
+								marketCursor: cursors.marketActions,
+								transferCursor: cursors.receivedTransfers,
+								includeInitial: active.has('initiallyHeld'),
+								includeMarket: active.has('marketActions'),
+								includeTransfers: active.has('receivedTransfers'),
+								owners: [address],
+								initialTags: [{ name: 'initial-holder', values: [address] }],
+								marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
+								transferTags: [
+									{ name: 'action', values: ['transfer'] },
+									{ name: 'recipient', values: [address] },
+								],
+							},
+						}),
+						signal: options.signal,
 					},
-				}),
-				signal: options.signal,
-			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-discovery-graphql-timeout',
-			}
+					{
+						timeoutMs: options.requestTimeoutMs,
+						timeoutError: 'asset-discovery-graphql-timeout',
+					}
+				),
+			options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS,
+			options.signal
 		);
 		if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-discovery-graphql-empty');
