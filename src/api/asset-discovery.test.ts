@@ -123,6 +123,41 @@ describe('Bazar atomic asset search', () => {
 		expect(request.query).toContain('BazarAtomicAssetById');
 	});
 
+	it('retries a deep-link lookup that every index failed transiently', async () => {
+		const processId = 'P'.repeat(43);
+		const tags = [
+			{ name: 'device', value: 'process@1.0' },
+			{ name: 'execution-device', value: 'token@1.0' },
+			{ name: 'swap-device', value: 'arweave-swap@1.0' },
+			{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+			{ name: 'scheduler-mode', value: 'all' },
+			{ name: 'initial-holder', value: wallet },
+			{ name: 'total-supply', value: '1' },
+			{ name: 'denomination', value: '0' },
+			{ name: 'ticker', value: 'ASSET' },
+			{ name: 'name', value: 'AntiqueWhite' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
+			{ name: 'Content-Type', value: 'image/png' },
+		];
+		const requests: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			// arweave.net times out and ardrive.net is busy; arweave.net answers the retry.
+			if (requests.length === 1) throw new Error('asset-index-graphql-timeout');
+			if (requests.length === 2) return new Response('busy', { status: 503 });
+			return Response.json({ data: { transaction: { id: processId, tags } } });
+		});
+
+		await expect(
+			loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch, retryDelaysMs: [0] })
+		).resolves.toMatchObject({ asset: { id: processId, name: 'AntiqueWhite' } });
+		expect(requests).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+			'https://arweave.net/graphql',
+		]);
+	});
+
 	it('rejects an indexed process ID that does not declare the Atomic Asset contract', async () => {
 		const processId = 'P'.repeat(43);
 		const fetcher = vi.fn(async () =>

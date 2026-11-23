@@ -455,24 +455,29 @@ type AtomicAssetSearchOptions = Pick<CandidateOptions, 'fetch' | 'graphql' | 're
 
 export async function loadBazarAtomicAssetById(
 	processId: string,
-	options: AtomicAssetSearchOptions = {}
+	options: AtomicAssetSearchOptions & IndexRetryOptions = {}
 ): Promise<{ asset: AssetSummary; collection: Collection } | null> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
 	if (!isVisibleAssetId(processId)) return null;
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const { response, body: payload } = await postGraphql<any>(
-		fetcher,
-		graphqlEndpointList(options.graphql),
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ query: BAZAR_ATOMIC_ASSET_BY_ID_QUERY, variables: { id: processId } }),
-			signal: options.signal,
-		},
-		{
-			timeoutMs: options.requestTimeoutMs,
-			timeoutError: 'asset-index-graphql-timeout',
-		}
+	const { response, body: payload } = await retryTransientGraphql(
+		() =>
+			postGraphql<any>(
+				fetcher,
+				graphqlEndpointList(options.graphql),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ query: BAZAR_ATOMIC_ASSET_BY_ID_QUERY, variables: { id: processId } }),
+					signal: options.signal,
+				},
+				{
+					timeoutMs: options.requestTimeoutMs,
+					timeoutError: 'asset-index-graphql-timeout',
+				}
+			),
+		options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS,
+		options.signal
 	);
 	if (!response.ok) throw new Error(`asset-index-graphql-${response.status}`);
 	if (!payload) throw new Error('asset-index-graphql-empty');
