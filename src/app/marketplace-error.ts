@@ -1,4 +1,22 @@
+/** Inline copy for an NFT listing price above MAXIMUM_ASSET_OFFER_PRICE (order-matching). */
+export const ASSET_OFFER_PRICE_CAP_ERROR = 'Enter a price no higher than 66,000,000 AR.';
+/** Inline copy for a fungible lot whose total (quantity x unit price) is above the cap. */
+export const ASSET_OFFER_TOTAL_CAP_ERROR =
+	'The listing total is above the 66,000,000 AR maximum. Lower the quantity or the unit price.';
+
 const FRIENDLY_ERRORS: Record<string, string> = {
+	'asset-offer-asking-too-high':
+		'The listing price is above the 66,000,000 AR maximum. No transaction was submitted. Enter a lower price.',
+	'invalid-asset-offer-asking': 'Enter a listing price of at least 0.000000000001 AR. No transaction was submitted.',
+	'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions. No transaction was submitted.',
+	'wallet-returned-unsigned-transaction':
+		'Your wallet did not return a signed transaction. No transaction was submitted. Approve the request in your wallet, then try again.',
+	'wallet-returned-invalid-signature':
+		'Your wallet returned a signature that does not verify for this transaction. No transaction was submitted. Reconnect your wallet, then try again.',
+	'wallet-modified-transaction-fields':
+		'The signed transaction’s recipient, amount, fee or tags differ from what Bazar asked your wallet to sign, so Bazar did not submit it. Try again, or use a different wallet if this repeats.',
+	'wallet-modified-transaction-data':
+		'The signed transaction carries data Bazar did not ask your wallet to sign, so Bazar did not submit it. Try again, or use a different wallet if this repeats.',
 	'asset-purchase-registration-fee-too-high':
 		'This listing requires a reservation fee above Bazar’s purchase limit. The seller needs to relist the asset with a lower fee.',
 	'asset-purchase-invalid-registration-fee':

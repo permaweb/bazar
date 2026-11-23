@@ -31,7 +31,9 @@ import {
 	waitForAssetState,
 } from './asset-marketplace';
 import { acquireAssetObserverNetwork } from './asset-observers';
-import { filledOrder } from './order-matching';
+import { filledOrder, MAXIMUM_ASSET_OFFER_PRICE } from './order-matching';
+
+export { MAXIMUM_ASSET_OFFER_PRICE };
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
@@ -39,8 +41,6 @@ export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable'
 /** New listings impose no reservation reward floor; Arweave network rewards still apply. */
 export const DEFAULT_REGISTRATION_FEE = 0n;
 export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
-/** No asset offer may exceed the maximum 66 million AR supply. */
-export const MAXIMUM_ASSET_OFFER_PRICE = 66_000_000_000_000_000_000n;
 const DEFAULT_OFFER_DEADLINE = 20;
 const SIGNATURE_WINDOW_BLOCKS = 40;
 const PRICE_REQUEST_CONCURRENCY = 8;

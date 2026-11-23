@@ -115,6 +115,16 @@ describe('atomic asset operation validation', () => {
 		expect(atomicOperationFormError('sell', '0.0000000000001')).toContain('valid AR amount');
 	});
 
+	it('enforces the makeOffer price cap inline, before any network work', () => {
+		expect(atomicOperationFormError('sell', '66000000')).toBe('');
+		expect(atomicOperationFormError('sell', ' 66000000.000000000000 ')).toBe('');
+		expect(atomicOperationFormError('sell', '66000000.000000000001')).toBe(
+			'Enter a price no higher than 66,000,000 AR.'
+		);
+		expect(atomicOperationFormError('sell', '66000001')).toBe('Enter a price no higher than 66,000,000 AR.');
+		expect(atomicOperationFormError('sell', '100000000')).toBe('Enter a price no higher than 66,000,000 AR.');
+	});
+
 	it('requires an exact Arweave recipient before transfer', () => {
 		expect(atomicOperationFormError('transfer', '')).toContain('43-character');
 		expect(atomicOperationFormError('transfer', 'too-short')).toContain('valid');

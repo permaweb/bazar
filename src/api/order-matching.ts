@@ -3,6 +3,10 @@ import { compareOrderUnitPrice, type SwapOrder } from './asset-marketplace';
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const HUMAN_AMOUNT = /^(?:0|[1-9]\d*)(?:\.(\d+))?$/;
 const MAX_MATCH_ORDERS = 10_000;
+/** No asset offer may exceed the maximum 66 million AR supply, in winston.
+ * Defined here (not in the lazily loaded asset-transactions) so the listing
+ * forms can enforce the same cap that makeOffer does. */
+export const MAXIMUM_ASSET_OFFER_PRICE = 66_000_000_000_000_000_000n;
 
 export type OrderFill = {
 	sourceOrder: SwapOrder;

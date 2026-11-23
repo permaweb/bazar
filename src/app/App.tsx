@@ -152,7 +152,7 @@ import {
 	pendingMintProgress,
 	reusableMintProgress,
 } from 'api/minted-assets';
-import { formatTokenAmount } from 'api/order-matching';
+import { formatTokenAmount, MAXIMUM_ASSET_OFFER_PRICE } from 'api/order-matching';
 import { ProfileClient } from 'api/profile';
 
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
@@ -248,6 +248,7 @@ import { createGlobalActivityPager, type GlobalActivityFilter, mergeIndexedActiv
 import { createHomeListingCrawl, type HomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
+	ASSET_OFFER_PRICE_CAP_ERROR,
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceFailureKind,
@@ -12843,11 +12844,15 @@ export function atomicOperationFormError(kind: Operation['kind'], value: string,
 		const price = value.trim();
 		if (!price) return 'Enter the AR price for this asset.';
 		if (/^0(?:\.0*)?$/.test(price)) return 'Enter a price of at least 0.000000000001 AR.';
+		let winston: bigint;
 		try {
-			if (BigInt(arToWinston(price)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+			winston = BigInt(arToWinston(price));
 		} catch {
 			return 'Enter a valid AR amount with no more than 12 decimal places.';
 		}
+		if (winston < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+		// The same winston value and cap makeOffer checks, before any network work.
+		if (winston > MAXIMUM_ASSET_OFFER_PRICE) return ASSET_OFFER_PRICE_CAP_ERROR;
 	}
 	if (kind === 'transfer') {
 		const recipient = value.trim();

@@ -51,6 +51,7 @@ import {
 	formatTokenAmount,
 	matchOrderFills,
 	matchSortedOrderFills,
+	MAXIMUM_ASSET_OFFER_PRICE,
 	type OrderFill,
 	parseTokenAmount,
 } from 'api/order-matching';
@@ -117,6 +118,7 @@ import {
 	purchaseSequenceStepStatus,
 } from './App';
 import {
+	ASSET_OFFER_TOTAL_CAP_ERROR,
 	isTerminalPurchaseFailureCode,
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
@@ -835,7 +837,7 @@ export function FungibleAssetView({
 	const listingUnitPriceError =
 		listingUnitPrice.trim() && !safeArPrice(listingUnitPrice)
 			? 'Enter a positive AR price with no more than 12 decimal places.'
-			: '';
+			: fungibleListingTotalError(listingQuantity, listingUnitPrice, state);
 	const listingQuote =
 		listingAmount !== null && listingAmount <= listingBalance
 			? safeLotQuote(listingQuantity, listingUnitPrice, state)
@@ -2249,6 +2251,13 @@ function FungibleOperationDialog({
 	const currentListed = BigInt(listedBalanceOf(state, owner));
 	const listingQuote = operation.kind === 'sell' ? safeLotQuote(quantity, unitPrice, state) : null;
 	const unitPriceValid = safeArPrice(unitPrice);
+	const unitPriceGuidance = !unitPrice
+		? ''
+		: !unitPriceValid
+		? 'Enter a positive AR price with no more than 12 decimal places.'
+		: operation.kind === 'sell'
+		? fungibleListingTotalError(quantity, unitPrice, state)
+		: '';
 	const transferRecipient =
 		operation.kind === 'transfer' ? (operation.recipient ?? recipient).trim() : recipient.trim();
 	const recipientError =
@@ -3305,10 +3314,8 @@ function FungibleOperationDialog({
 												Price per {tickerDisplay} in <ArCurrencyLabel />
 											</span>
 											<input
-												aria-describedby={
-													unitPrice && !unitPriceValid ? priceGuidanceId : undefined
-												}
-												aria-invalid={Boolean(unitPrice) && !unitPriceValid}
+												aria-describedby={unitPriceGuidance ? priceGuidanceId : undefined}
+												aria-invalid={Boolean(unitPriceGuidance)}
 												inputMode="decimal"
 												value={unitPrice}
 												onChange={(event) => setUnitPrice(event.target.value)}
@@ -3339,11 +3346,9 @@ function FungibleOperationDialog({
 											Enter a quantity up to {tokenLabel(currentLiquid.toString(), state)}.
 										</p>
 									) : null}
-									{unitPrice && !unitPriceValid ? (
+									{unitPriceGuidance ? (
 										<p id={priceGuidanceId} className="trade-guidance" role="alert">
-											<ArCurrencyText>
-												Enter a positive AR price with no more than 12 decimal places.
-											</ArCurrencyText>
+											<ArCurrencyText>{unitPriceGuidance}</ArCurrencyText>
 										</p>
 									) : null}
 									<p className="settlement-disclosure">
@@ -4886,12 +4891,31 @@ function lotAsking(rawQuantity: string, unitPrice: string, denomination: number)
 	return ((price * quantity + scale - 1n) / scale).toString();
 }
 
-function safeLotQuote(quantity: string, price: string, state: AssetState): string | null {
+/** The lot total in winston, exactly as makeOffer will receive it, or null
+ * while the quantity or unit price is not a valid amount. */
+function safeLotAsking(quantity: string, price: string, state: Pick<AssetState, 'denomination'>): bigint | null {
 	try {
-		return formatArAmount(lotAsking(parseTokenAmount(quantity, state.denomination), price, state.denomination));
+		return BigInt(lotAsking(parseTokenAmount(quantity, state.denomination), price, state.denomination));
 	} catch {
 		return null;
 	}
+}
+
+/** The displayed listing total, or null when the lot cannot be listed: invalid
+ * inputs, or a total above the protocol cap makeOffer enforces. */
+export function safeLotQuote(quantity: string, price: string, state: Pick<AssetState, 'denomination'>): string | null {
+	const asking = safeLotAsking(quantity, price, state);
+	return asking === null || asking > MAXIMUM_ASSET_OFFER_PRICE ? null : formatArAmount(asking);
+}
+
+/** Inline copy when a valid lot's total is above MAXIMUM_ASSET_OFFER_PRICE. */
+export function fungibleListingTotalError(
+	quantity: string,
+	price: string,
+	state: Pick<AssetState, 'denomination'>
+): string {
+	const asking = safeLotAsking(quantity, price, state);
+	return asking !== null && asking > MAXIMUM_ASSET_OFFER_PRICE ? ASSET_OFFER_TOTAL_CAP_ERROR : '';
 }
 
 function safeArPrice(value: string): boolean {
