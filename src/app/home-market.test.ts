@@ -2,7 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { CollectionActivityEvent } from 'api/asset-discovery';
+import type { CollectionActivityEvent, ResolvedAsset } from 'api/asset-discovery';
 import {
 	type Collection,
 	HIDDEN_COLLECTION_IDS,
@@ -37,7 +37,9 @@ import {
 	globalActivityCollection,
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
+	HOME_ASSET_PAGE_SIZE,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
+	HOME_DISCOVER_UNIQUE_PREVIEW,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
@@ -47,6 +49,7 @@ import {
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
 	homeListingComputeFailure,
+	homeListingCrawlDemand,
 	homeListingSupportVersion,
 	homeMarketHasPending,
 	homeMarketPriceValue,
@@ -662,7 +665,7 @@ describe('Home market summary retries', () => {
 		expect(assetDetailMembershipVerified('large-collection', new Set(), false)).toBe(false);
 	});
 
-	it('restarts listing support as progressively loaded collections expand', () => {
+	it('changes listing support as progressively loaded collections expand', () => {
 		const first: Collection = {
 			id: 'fungible',
 			name: 'Tokens',
@@ -680,6 +683,32 @@ describe('Home market summary retries', () => {
 		};
 
 		expect(homeListingSupportVersion([first, second])).not.toBe(homeListingSupportVersion([first]));
+	});
+
+	it('bounds the home listing crawl to the visible page plus one page ahead', () => {
+		const view = { assetView: 'listed' as const, assetType: 'atomic' as const, query: '', tokenPage: 1 };
+		const listing = (kind: Collection['kind']) =>
+			({ collection: { id: kind, name: kind, description: '', kind, assets: [] } } as unknown as ResolvedAsset);
+
+		const firstPage = homeListingCrawlDemand({ ...view, assetPage: 1 })!;
+		expect(firstPage.map(({ count }) => count)).toEqual([2 * HOME_ASSET_PAGE_SIZE]);
+		expect(firstPage[0].matches?.(listing('images'))).toBe(true);
+		expect(firstPage[0].matches?.(listing('tokens'))).toBe(false);
+		expect(homeListingCrawlDemand({ ...view, assetPage: 3 })!.map(({ count }) => count)).toEqual([
+			4 * HOME_ASSET_PAGE_SIZE,
+		]);
+
+		const overview = homeListingCrawlDemand({ ...view, assetType: 'all', assetPage: 1, tokenPage: 2 })!;
+		expect(overview.map(({ count }) => count)).toEqual([
+			HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE,
+			3 * HOME_DISCOVER_TOKEN_PAGE_SIZE,
+		]);
+		expect(overview[1].matches?.(listing('tokens'))).toBe(true);
+
+		// Price order and search rank every live listing, so they keep the full crawl.
+		expect(homeListingCrawlDemand({ ...view, assetView: 'price-low', assetPage: 1 })).toBeUndefined();
+		expect(homeListingCrawlDemand({ ...view, assetView: 'price-high', assetPage: 1 })).toBeUndefined();
+		expect(homeListingCrawlDemand({ ...view, query: 'rare', assetPage: 1 })).toBeUndefined();
 	});
 
 	it('keeps malformed or unverified asset shells outside the actionable asset boundary', () => {
