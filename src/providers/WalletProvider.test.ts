@@ -20,14 +20,17 @@ import {
 	localWalletExportJson,
 	localWalletReplacementNeedsConfirm,
 	localWalletSigningJwk,
+	restoreBrowserWalletAddress,
 	restoreBrowserWalletAfterDisconnect,
 	storedLocalWalletFailureAction,
+	subscribeToWalletProviderEvents,
 	unlockStoredLocalWallet,
 	walletDialogClosesForAddress,
 	walletDialogDismissible,
 	walletDialogPhase,
 	walletDisconnectPlan,
 	walletKindOf,
+	walletProviderLoadedAction,
 } from './WalletProvider';
 
 function deferred<T>() {
@@ -473,5 +476,100 @@ describe('saved browser wallet unlock', () => {
 			'keep'
 		);
 		expect(storedLocalWalletFailureAction(new Error('offline'))).toBe('keep');
+	});
+});
+
+describe('wallet provider injected after page load', () => {
+	const address = 'w'.repeat(43);
+	const storedWallet = { kty: 'RSA', n: 'public-key', e: 'AQAB', d: 'private-key' } as any;
+	const wander = () => ({
+		connect: vi.fn(async () => undefined),
+		getActiveAddress: vi.fn(async () => address),
+		sign: vi.fn(async (transaction: unknown) => transaction),
+	});
+	const fakeWindow = () =>
+		Object.assign(new EventTarget(), {
+			arweaveWallet: undefined as Window['arweaveWallet'],
+			permawebConnect: undefined as Window['permawebConnect'],
+		});
+
+	it('connects a returning Wander user when the extension announces itself after the mount refresh', async () => {
+		const scope = fakeWindow();
+		const committed: Array<string | null> = [];
+		const requests = createLatestAddressCommitter((next) => committed.push(next));
+		const refreshes: Promise<void>[] = [];
+		const refreshWallet = vi.fn(() => {
+			refreshes.push(restoreBrowserWalletAddress(scope, 'wander', requests.begin()));
+		});
+		const unsubscribe = subscribeToWalletProviderEvents(scope, {
+			readLocalWallet: () => null,
+			reactivateLocalWallet: vi.fn(),
+			refreshNetworkBalances: vi.fn(),
+			refreshWallet,
+		});
+
+		await restoreBrowserWalletAddress(scope, 'wander', requests.begin());
+		expect(committed).toEqual([null]);
+
+		const injected = wander();
+		scope.arweaveWallet = injected;
+		scope.dispatchEvent(new Event('arweaveWalletLoaded'));
+		await Promise.all(refreshes);
+
+		expect(refreshWallet).toHaveBeenCalledTimes(1);
+		expect(committed).toEqual([null, address]);
+		expect(scope.arweaveWallet).toBe(injected);
+		unsubscribe();
+	});
+
+	it('re-activates a saved keyfile instead of switching to Wander when Wander replaces its adapter', () => {
+		const scope = fakeWindow();
+		const handlers = {
+			readLocalWallet: () => storedWallet,
+			reactivateLocalWallet: vi.fn(),
+			refreshNetworkBalances: vi.fn(),
+			refreshWallet: vi.fn(),
+		};
+		const unsubscribe = subscribeToWalletProviderEvents(scope, handlers);
+
+		scope.arweaveWallet = wander();
+		scope.dispatchEvent(new Event('arweaveWalletLoaded'));
+
+		expect(handlers.refreshWallet).not.toHaveBeenCalled();
+		expect(handlers.reactivateLocalWallet).toHaveBeenCalledWith(storedWallet);
+		unsubscribe();
+	});
+
+	it('only refreshes the browser wallet when no saved keyfile is the session', () => {
+		expect(walletProviderLoadedAction(null, wander())).toBe('refresh');
+		expect(walletProviderLoadedAction(null, undefined)).toBe('refresh');
+		expect(walletProviderLoadedAction(storedWallet, wander())).toBe('reactivate-local');
+		expect(walletProviderLoadedAction(storedWallet, undefined)).toBe('keep-local');
+	});
+
+	it('keeps AO bridge readiness on the balance-only handler and removes every listener on unsubscribe', () => {
+		const scope = fakeWindow();
+		const handlers = {
+			readLocalWallet: () => null,
+			reactivateLocalWallet: vi.fn(),
+			refreshNetworkBalances: vi.fn(),
+			refreshWallet: vi.fn(),
+		};
+		const unsubscribe = subscribeToWalletProviderEvents(scope, handlers);
+
+		scope.dispatchEvent(new Event('aoFetchLoaded'));
+		expect(handlers.refreshNetworkBalances).toHaveBeenCalledTimes(1);
+		expect(handlers.refreshWallet).not.toHaveBeenCalled();
+
+		scope.dispatchEvent(new Event('walletSwitch'));
+		scope.dispatchEvent(new Event('permawebConnectLoaded'));
+		expect(handlers.refreshWallet).toHaveBeenCalledTimes(2);
+
+		unsubscribe();
+		for (const event of ['walletSwitch', 'permawebConnectLoaded', 'arweaveWalletLoaded', 'aoFetchLoaded']) {
+			scope.dispatchEvent(new Event(event));
+		}
+		expect(handlers.refreshWallet).toHaveBeenCalledTimes(2);
+		expect(handlers.refreshNetworkBalances).toHaveBeenCalledTimes(1);
 	});
 });
