@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 
+import type { AssetOperationPhase } from 'components/AssetOperationStatus';
+import type { TransactionDialogPhase } from 'components/TransactionDialogControl';
+
 import {
 	atomicPurchaseRecoveryCanBeDiscarded,
 	backgroundOperationOutcome,
@@ -13,6 +16,7 @@ import {
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
 	fungiblePurchaseRecoveryCanBeDiscarded,
+	initialOperationPhase,
 	loadFungibleOperationActivities,
 	loadOperationActivities,
 	mergeFungibleOperationActivities,
@@ -20,6 +24,7 @@ import {
 	OPERATION_ACTIVITY_STORAGE_KEY,
 	type OperationActivity,
 	operationAfterProvenRejection,
+	type OperationActivityPhase,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	removeFungibleOperationActivity,
@@ -615,5 +620,53 @@ describe('settled-while-hidden activity transition', () => {
 		expect(settledWhileHidden(upload, 'tracking', null)).toBeNull();
 		expect(settledWhileHidden(upload, 'done', 'upload-1')).toBeNull();
 		expect(settledWhileHidden({ id: 'upload-1', phase: 'error' }, 'error', null)).toBeNull();
+	});
+});
+
+type SameUnion<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+describe('initialOperationPhase', () => {
+	it.each([
+		{
+			label: 'saved, no new approvals',
+			kind: 'buy',
+			hasResume: true,
+			recoveryApprovalCount: 0,
+			expected: 'working',
+		},
+		{ label: 'saved, one approval', kind: 'buy', hasResume: true, recoveryApprovalCount: 1, expected: 'approval' },
+		{ label: 'saved, two approvals', kind: 'buy', hasResume: true, recoveryApprovalCount: 2, expected: 'approval' },
+		{ label: 'not saved', kind: 'buy', hasResume: false, recoveryApprovalCount: 0, expected: 'form' },
+	] as const)('opens a buy that is $label in $expected', ({ kind, hasResume, recoveryApprovalCount, expected }) => {
+		expect(initialOperationPhase({ kind, hasResume, hasResumeId: false, recoveryApprovalCount })).toBe(expected);
+	});
+
+	it('ignores a stray resumeId on a buy, which resumes only from its purchase snapshot', () => {
+		expect(
+			initialOperationPhase({ kind: 'buy', hasResume: false, hasResumeId: true, recoveryApprovalCount: 0 })
+		).toBe('form');
+	});
+
+	it.each(['sell', 'transfer', 'cancel'] as const)(
+		'opens a %s in working with a saved signature and at the form without one',
+		(kind) => {
+			expect(initialOperationPhase({ kind, hasResume: false, hasResumeId: true, recoveryApprovalCount: 0 })).toBe(
+				'working'
+			);
+			expect(
+				initialOperationPhase({ kind, hasResume: false, hasResumeId: false, recoveryApprovalCount: 0 })
+			).toBe('form');
+			expect(initialOperationPhase({ kind, hasResume: true, hasResumeId: false, recoveryApprovalCount: 2 })).toBe(
+				'form'
+			);
+		}
+	);
+
+	it('keeps the component phase aliases identical to the shared phase union', () => {
+		const aliasesMatch: [
+			SameUnion<OperationActivityPhase, TransactionDialogPhase>,
+			SameUnion<OperationActivityPhase, AssetOperationPhase>
+		] = [true, true];
+		expect(aliasesMatch).toEqual([true, true]);
 	});
 });

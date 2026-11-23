@@ -259,7 +259,11 @@ import {
 	type FungibleOperationActivityChange,
 	type FungibleOperationActivitySummary,
 	fungiblePurchaseRecoveryCanBeDiscarded,
+	initialOperationPhase,
+	type Operation,
+	type OperationActivity as OperationActivityRecord,
 	operationAfterProvenRejection,
+	type OperationActivityPhase,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
@@ -709,19 +713,7 @@ export function App() {
 	);
 }
 
-type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
-
-type OperationActivity = {
-	id: string;
-	asset: AssetSummary;
-	collectionId: string;
-	owner: string;
-	operation: Operation;
-	phase: OperationActivityPhase;
-	status: string;
-	confirmations: number;
-	confirmationTarget: number;
-	createdAt: number;
+type OperationActivity = OperationActivityRecord & {
 	origin: 'runtime' | 'restored';
 	restoreFallback(): HTMLElement | null;
 };
@@ -1197,14 +1189,15 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				}
 				return;
 			}
-			const phase: OperationActivityPhase =
-				input.operation.kind === 'buy' && input.operation.resume
-					? purchaseRecoveryApprovalCount(input.operation.resume)
-						? 'approval'
-						: 'working'
-					: input.operation.kind !== 'buy' && input.operation.resumeId
-					? 'working'
-					: 'form';
+			const phase = initialOperationPhase({
+				kind: input.operation.kind,
+				hasResume: input.operation.kind === 'buy' && Boolean(input.operation.resume),
+				hasResumeId: input.operation.kind !== 'buy' && Boolean(input.operation.resumeId),
+				recoveryApprovalCount:
+					input.operation.kind === 'buy' && input.operation.resume
+						? purchaseRecoveryApprovalCount(input.operation.resume)
+						: 0,
+			});
 			setActivities((current) => {
 				if (
 					current.some(
@@ -10826,12 +10819,6 @@ function AssetView() {
 	);
 }
 
-type Operation =
-	| { kind: 'sell'; resumeId?: string; value?: string }
-	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
-	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
-	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
-
 export type PurchaseSequenceStepState = 'done' | 'active' | 'next';
 
 const PURCHASE_SEQUENCE_STEP_STATUS: Record<PurchaseSequenceStepState, string> = {
@@ -10945,14 +10932,13 @@ function OperationDialog({
 	const [value, setValue] = React.useState(
 		operation.kind === 'sell' || operation.kind === 'transfer' ? operation.value ?? '' : ''
 	);
-	const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
-		operation.kind === 'buy' && operation.resume
-			? recoveryApprovalCount
-				? 'approval'
-				: 'working'
-			: operation.kind !== 'buy' && operation.resumeId
-			? 'working'
-			: 'form'
+	const [phase, setPhase] = React.useState<OperationActivityPhase>(
+		initialOperationPhase({
+			kind: operation.kind,
+			hasResume: operation.kind === 'buy' && Boolean(operation.resume),
+			hasResumeId: operation.kind !== 'buy' && Boolean(operation.resumeId),
+			recoveryApprovalCount,
+		})
 	);
 	const [message, setMessage] = React.useState('');
 	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
