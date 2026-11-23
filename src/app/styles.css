@@ -8090,6 +8090,11 @@ body input:focus-visible {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
 }
+/* A label dropzone hides its file input; show keyboard focus on the visible drop target. */
+.mint-dropzone:has(> input:focus-visible) {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
 .mint-dropzone > span {
 	display: grid;
 	justify-items: center;
