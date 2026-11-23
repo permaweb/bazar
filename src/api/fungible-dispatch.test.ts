@@ -137,7 +137,9 @@ describe('dispatch plan preflight', () => {
 		const fetcher = async (input: RequestInfo | URL) => {
 			const url = String(input);
 			requests.push(url);
-			if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				return new Response(JSON.stringify({ device: 'trie@1.0' }));
+			}
 			return new Response(null, {
 				headers: {
 					balances: `ao:${balancesLink}`,
@@ -153,6 +155,6 @@ describe('dispatch plan preflight', () => {
 			})
 		).rejects.toThrow('asset-balance-state-unavailable');
 		expect(requests).toHaveLength(2);
-		expect(requests[1]).toContain('/balances/device');
+		expect(requests[1]).toBe(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 	});
 });

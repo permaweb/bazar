@@ -832,7 +832,9 @@ describe('fungible asset transactions', () => {
 						}
 						return new Response(JSON.stringify(assignments));
 					}
-					if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+					if (url.endsWith('~message@1.0/serialize~json@1.0')) {
+						return new Response(JSON.stringify({ device: 'trie@1.0' }));
+					}
 					if (url.includes('compute&slot=10')) {
 						return stateResponse(
 							unavailableAt === 'before' ? withoutMountedBalances(before.raw) : before.raw
@@ -986,7 +988,9 @@ describe('fungible asset transactions', () => {
 						}
 						return new Response(JSON.stringify(assignments));
 					}
-					if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+					if (url.endsWith('~message@1.0/serialize~json@1.0')) {
+						return new Response(JSON.stringify({ device: 'trie@1.0' }));
+					}
 					if (url.includes('compute&slot=11')) {
 						return stateResponse(
 							unavailableAt === 'before' ? withoutMountedBalances(before.raw) : before.raw
@@ -1230,7 +1234,9 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+				if (url.endsWith('~message@1.0/serialize~json@1.0')) {
+					return new Response(JSON.stringify({ device: 'trie@1.0' }));
+				}
 				if (url.includes('compute&slot=12')) return stateResponse(withoutMountedBalances(applied.raw));
 				throw new Error(`unexpected-request:${url}`);
 			},

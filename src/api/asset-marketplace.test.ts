@@ -85,7 +85,6 @@ describe('asset state', () => {
 			const url = String(input);
 			if (url === `/${ordersLink}~message@1.0`) return jsonResponse({ [orderId]: order(orderId) });
 			if (!url.includes('~process@1.0/')) throw new Error('unexpected holder request');
-			if (url.endsWith('/balances/device')) throw new Error('unexpected holder probe');
 			return new Response(null, {
 				headers: {
 					'execution-device': 'token@1.0',
@@ -333,9 +332,8 @@ describe('asset state', () => {
 			fetch: async (input, init) => {
 				const url = String(input);
 				requests.push({ url, headers: new Headers(init?.headers) });
-				if (url.endsWith('/balances/device')) return new Response('message@1.0');
 				if (url.includes(balancesLink)) {
-					return jsonResponse(`{"${owner}":999997000000000001,"status":200}`);
+					return jsonResponse(`{"device":"json@1.0","${owner}":999997000000000001}`);
 				}
 				if (url.includes(ordersLink)) {
 					return jsonResponse({ [orderId]: order(orderId), status: 200 });
@@ -356,11 +354,9 @@ describe('asset state', () => {
 			balances: { [owner]: '999997000000000001' },
 			orders: { [orderId]: order(orderId) },
 		});
-		expect(requests).toHaveLength(4);
+		expect(requests).toHaveLength(3);
 		expect(requests[0].url).toContain('/compute&max-age=60');
-		expect(requests.map(({ url }) => url)).toContain(
-			`/${processId}~process@1.0/compute&max-age=60/balances/device`
-		);
+		expect(requests.some(({ url }) => url.endsWith('/device'))).toBe(false);
 		expect(requests.map(({ url }) => url)).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 		expect(requests.map(({ url }) => url)).toContain(`/${ordersLink}~message@1.0`);
 		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
@@ -379,7 +375,6 @@ describe('asset state', () => {
 			fetch: async (input) => {
 				const url = String(input);
 				requests.push(url);
-				if (url.endsWith('/balances/device')) return new Response('message@1.0');
 				if (url.includes(balancesLink)) return jsonResponse({ device: 'json@1.0', [owner]: '1' });
 				if (url.includes(valueLink)) return jsonResponse({ device: 'json@1.0', target: manifestId });
 				return jsonResponse({
@@ -436,7 +431,6 @@ describe('asset state', () => {
 			const result = await readAssetState(processId, {
 				provider: 'https://compute.example',
 				fetch: async (input) => {
-					if (String(input).endsWith('/balances/device')) return new Response('message@1.0');
 					if (String(input).includes('serialize~json@1.0')) {
 						return jsonResponse({ device: 'json@1.0', [owner]: '1' });
 					}
@@ -457,6 +451,7 @@ describe('asset state', () => {
 
 	it('skips a linked balance trie instead of downloading every message', async () => {
 		const rootId = 'R'.repeat(43);
+		const childLink = 'C'.repeat(43);
 		const requests: Array<{ url: string; init: RequestInit }> = [];
 
 		const result = await readAssetState(processId, {
@@ -464,7 +459,10 @@ describe('asset state', () => {
 			fetch: async (input, init = {}) => {
 				const url = String(input);
 				requests.push({ url, init });
-				if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+				if (url.endsWith(`${rootId}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'trie@1.0', abc: `ao:${childLink}` });
+				}
+				if (url.includes(childLink)) return jsonResponse({ 'node-value': '1000' });
 				return new Response(null, {
 					headers: {
 						'ao-body-key': 'data',
@@ -481,11 +479,11 @@ describe('asset state', () => {
 		expect(result.state.holderBalancesAvailable).toBe(false);
 		expect(requests).toHaveLength(2);
 		expect(requests[0].init.method).toBe('HEAD');
-		expect(requests[1].url).toBe(`/${processId}~process@1.0/compute&max-age=60/balances/device`);
+		expect(requests[1].url).toBe(`/${rootId}~message@1.0/serialize~json@1.0`);
 		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
 	});
 
-	it('follows a direct JSON balance link when the mounted balance device is absent', async () => {
+	it('reads a direct JSON balance link with exactly the state read and one root read', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const requested: string[] = [];
 		const result = await readAssetState(processId, {
@@ -493,7 +491,6 @@ describe('asset state', () => {
 			fetch: async (input) => {
 				const url = String(input);
 				requested.push(url);
-				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 					return jsonResponse({
 						'content-type': 'application/json',
@@ -515,7 +512,9 @@ describe('asset state', () => {
 		expect(result.state.balances).toEqual({ [owner]: '1' });
 		expect(result.state.holderBalancesAvailable).toBe(true);
 		expect(ownerOfAsset(result.state)).toBe(owner);
-		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requested).toHaveLength(2);
+		expect(requested[0]).toContain('~process@1.0/compute&max-age=60');
+		expect(requested[1]).toBe(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 	});
 
 	it('preserves legacy identities in a direct JSON balance table', async () => {
@@ -526,7 +525,6 @@ describe('asset state', () => {
 			provider: 'https://compute.example',
 			fetch: async (input) => {
 				const url = String(input);
-				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 					return jsonResponse({
 						device: 'json@1.0',
@@ -553,6 +551,62 @@ describe('asset state', () => {
 		expect(result.state.holderBalancesAvailable).toBe(true);
 	});
 
+	it('makes no balance device request for a linked or inline holder table', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const linked: string[] = [];
+		await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				linked.push(url);
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+				}
+				return new Response(null, {
+					headers: { 'execution-device': 'token@1.0', 'total-supply': '1', balances: `ao:${balancesLink}` },
+				});
+			},
+		});
+		expect(linked).toHaveLength(2);
+		expect(linked.some((url) => url.endsWith('/device'))).toBe(false);
+
+		const inline: string[] = [];
+		await readAssetState(processId, {
+			fetch: async (input) => {
+				inline.push(String(input));
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+				});
+			},
+		});
+		expect(inline).toEqual([`/${processId}~process@1.0/compute&max-age=60`]);
+	});
+
+	it('keeps core state when a linked holder table cannot be read', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.includes(balancesLink)) return new Response('rate limited', { status: 429 });
+				return new Response(null, {
+					headers: {
+						balances: `ao:${balancesLink}`,
+						'execution-device': 'token@1.0',
+						name: 'Core state survives',
+						'total-supply': '1',
+					},
+				});
+			},
+		});
+
+		expect(result.state.name).toBe('Core state survives');
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+	});
+
 	it('rejects malformed degraded JSON balance roots without following child links or accepting partial data', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const childLink = 'C'.repeat(43);
@@ -570,7 +624,6 @@ describe('asset state', () => {
 				fetch: async (input) => {
 					const url = String(input);
 					requested.push(url);
-					if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 					if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) return jsonResponse(root);
 					if (url.includes(childLink)) return jsonResponse({ 'node-value': '1' });
 					return new Response(null, {
@@ -595,7 +648,6 @@ describe('asset state', () => {
 		const result = await readAssetState(processId, {
 			fetch: async (input) => {
 				const url = String(input);
-				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 					return jsonResponse(
 						`{"device":"json@1.0","deviceAA":7,"deviceBB":7,"${owner}":80135,"${buyer}":20000000000000001}`
@@ -623,43 +675,10 @@ describe('asset state', () => {
 		expect(isBalanceIdentity('deviceAA')).toBe(false);
 	});
 
-	it('recovers a direct JSON balance link when a public-beta style routed probe rejects its 404', async () => {
+	it('does not probe through the allowNotFound helper when the transport provides it', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const requested: string[] = [];
-		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
-			const url = String(input);
-			requested.push(url);
-			if (url.endsWith('/balances/device')) throw new Error('ao-wrangler-response-quorum-not-met');
-			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
-				return jsonResponse({ device: 'json@1.0', [owner]: 1 });
-			}
-			return new Response(null, {
-				headers: {
-					balances: `ao:${balancesLink}`,
-					'execution-device': 'token@1.0',
-					name: 'Legacy routed asset',
-					'total-supply': '1',
-				},
-			});
-		});
-
-		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
-
-		expect(result.state.name).toBe('Legacy routed asset');
-		expect(result.state.balances).toEqual({ [owner]: '1' });
-		expect(result.state.holderBalancesAvailable).toBe(true);
-		expect(ownerOfAsset(result.state)).toBe(owner);
-		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
-	});
-
-	it('uses the allowNotFound helper when the selected transport provides it', async () => {
-		const balancesLink = 'B'.repeat(43);
-		const requested: string[] = [];
-		let probed = '';
-		const allowNotFound = vi.fn(async (input: RequestInfo | URL) => {
-			probed = String(input);
-			return new Response('not_found', { status: 404 });
-		});
+		const allowNotFound = vi.fn(async () => new Response('not_found', { status: 404 }));
 		const fetcher = Object.assign(
 			vi.fn(async (input: RequestInfo | URL) => {
 				const url = String(input);
@@ -682,16 +701,16 @@ describe('asset state', () => {
 
 		expect(result.state.balances).toEqual({ [owner]: '1' });
 		expect(result.state.holderBalancesAvailable).toBe(true);
-		expect(allowNotFound).toHaveBeenCalledOnce();
-		expect(probed).toContain('/balances/device');
-		expect(requested.every((url) => !url.endsWith('/balances/device'))).toBe(true);
+		expect(allowNotFound).not.toHaveBeenCalled();
+		expect(requested).toHaveLength(2);
+		expect(requested.some((url) => url.endsWith('/device'))).toBe(false);
 	});
 
-	it('keeps core state when neither a failed device probe nor its linked root is usable', async () => {
+	it('keeps core state when the linked holder root is unreachable', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
-			if (url.endsWith('/balances/device') || url.includes(balancesLink)) {
+			if (url.includes(balancesLink)) {
 				throw new Error('ao-wrangler-response-quorum-not-met');
 			}
 			return new Response(null, {
@@ -711,12 +730,12 @@ describe('asset state', () => {
 		expect(result.state.holderBalancesAvailable).toBe(false);
 	});
 
-	it('propagates caller cancellation during the optional balance-device probe', async () => {
+	it('propagates caller cancellation when the linked holder root read fails', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const controller = new AbortController();
 		const reason = new DOMException('Route changed', 'AbortError');
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
-			if (String(input).endsWith('/balances/device')) {
+			if (String(input).endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 				controller.abort(reason);
 				throw new Error('ao-wrangler-response-quorum-not-met');
 			}
@@ -743,7 +762,6 @@ describe('asset state', () => {
 		const reason = new DOMException('Asset route changed', 'AbortError');
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
-			if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 				controller.abort(reason);
 				return jsonResponse({ device: 'json@1.0', [owner]: 1 });
@@ -765,7 +783,7 @@ describe('asset state', () => {
 		).rejects.toBe(reason);
 	});
 
-	it('keeps an unmounted non-JSON balance link unavailable', async () => {
+	it('keeps a non-JSON balance link unavailable without following its child links', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const childLink = 'C'.repeat(43);
 		const requested: string[] = [];
@@ -774,7 +792,6 @@ describe('asset state', () => {
 			fetch: async (input) => {
 				const url = String(input);
 				requested.push(url);
-				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
 					return jsonResponse({ device: 'trie@1.0', abc: `ao:${childLink}` });
 				}
@@ -806,7 +823,6 @@ describe('asset state', () => {
 			fetch: async (input) => {
 				const url = String(input);
 				requested.push(url);
-				if (url.endsWith('/balances/device')) return new Response('message@1.0');
 				if (url.endsWith(`${orderLink}~message@1.0/status`)) return new Response('open');
 				if (url.endsWith(`${orderLink}~message@1.0`)) {
 					return new Response(null, {
@@ -822,7 +838,7 @@ describe('asset state', () => {
 					return new Response(null, { headers: { [orderId.toLowerCase()]: `ao:${orderLink}` } });
 				}
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse({ [owner]: '1' });
+					return jsonResponse({ device: 'json@1.0', [owner]: '1' });
 				}
 				return new Response(null, {
 					headers: {
@@ -840,6 +856,76 @@ describe('asset state', () => {
 		expect(requested).toContain(`/${ordersLink}~message@1.0`);
 		expect(requested).toContain(`/${orderLink}~message@1.0/status`);
 		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
+	});
+
+	it('bounds linked order fan-out to a few in-flight reads and keeps order messages header-only', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const orderIds = Array.from({ length: 12 }, (_, index) => `${'Q'.repeat(41)}${String(index).padStart(2, '0')}`);
+		const orderLink = (index: number) => `${'L'.repeat(41)}${String(index).padStart(2, '0')}`;
+		const requests: Array<{ url: string; method: string }> = [];
+		let inFlight = 0;
+		let maximum = 0;
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input, init = {}) => {
+				const url = String(input);
+				requests.push({ url, method: init.method ?? 'GET' });
+				inFlight += 1;
+				maximum = Math.max(maximum, inFlight);
+				await new Promise((resolve) => setTimeout(resolve, 1));
+				inFlight -= 1;
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'json@1.0', [owner]: '12' });
+				}
+				if (url.endsWith(`${ordersLink}~message@1.0`)) {
+					return new Response(null, {
+						headers: Object.fromEntries(
+							orderIds.map((id, index) => [id.toLowerCase(), `ao:${orderLink(index)}`])
+						),
+					});
+				}
+				const index = Array.from({ length: orderIds.length }, (_, held) => held).find((held) =>
+					url.includes(orderLink(held))
+				);
+				if (index !== undefined && url.endsWith('~message@1.0/status')) return new Response('open');
+				if (index !== undefined) {
+					// Half of the orders shadow their status with an HTTP status code,
+					// so the scalar status reads share the same budget.
+					const status = index % 2 ? '200' : 'open';
+					return new Response(null, {
+						headers: Object.fromEntries(
+							Object.entries(order(orderIds[index], { status })).map(([name, value]) => [
+								name,
+								String(value),
+							])
+						),
+					});
+				}
+				return new Response(null, {
+					headers: {
+						balances: `ao:${balancesLink}`,
+						'execution-device': 'token@1.0',
+						orders: `ao:${ordersLink}`,
+						'total-supply': '12',
+					},
+				});
+			},
+		});
+
+		expect(Object.keys(result.state.orders).sort()).toEqual([...orderIds].sort());
+		expect(Object.values(result.state.orders).every((held) => held.status === 'open')).toBe(true);
+		expect(maximum).toBe(4);
+		expect(inFlight).toBe(0);
+		const messageReads = requests.filter(({ url }) => url.endsWith('~message@1.0'));
+		expect(messageReads).toHaveLength(orderIds.length + 1);
+		expect(messageReads.every(({ method }) => method === 'HEAD')).toBe(true);
+		expect(requests.filter(({ url }) => url.endsWith('~message@1.0/status'))).toHaveLength(orderIds.length / 2);
+		expect(
+			requests
+				.filter(({ url }) => /~process@1\.0\/compute[^/]*$/.test(url))
+				.every(({ method }) => method === 'HEAD')
+		).toBe(true);
 	});
 
 	it('routes background observation through PermawebOS despite a legacy provider label', async () => {
