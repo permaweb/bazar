@@ -1880,6 +1880,23 @@ describe('Collection activity windows', () => {
 		);
 	});
 
+	it('keeps the mined row and its sort position when a later batch repeats it undated', () => {
+		const mined = {
+			id: 'offer',
+			processId: 'asset',
+			action: 'make-offer' as const,
+			actor: 'seller',
+			height: 1500,
+			timestamp: 1_700_000_000,
+		};
+		const older = { ...mined, id: 'older', height: 1400, timestamp: 1_699_000_000 };
+		const undated = { ...mined, actor: '', height: 0, timestamp: 0 };
+		expect(newestCollectionActivity([mined, older, undated])).toEqual([mined, older]);
+		const retained = new Map([[mined.id, mined]]);
+		retainNewestCollectionActivity(retained, [undated]);
+		expect(retained.get(mined.id)).toEqual(mined);
+	});
+
 	it('bounds the retained activity map while admitting newer late batches', () => {
 		const activity = new Map<string, CollectionActivityEvent>();
 		const events = Array.from({ length: 150 }, (_, index) => ({
