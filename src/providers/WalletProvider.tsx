@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copy, Download, FileUp, KeyRound, Wallet, X } from 'lucide-react';
+import { Check, Copy, Download, FileUp, KeyRound, Wallet, X } from 'lucide-react';
 
 import type { JWKInterface } from 'arweave/web/lib/wallet';
 
@@ -25,6 +25,13 @@ type GeneratedWallet = {
 	jwk: WalletJwk;
 };
 
+/**
+ * Where the connected wallet's key lives. `local` means Bazar holds the only stored copy of the
+ * private key in this browser's localStorage, so disconnecting it erases the key. `browser` means an
+ * extension (Wander, PermawebOS) holds the key and disconnecting only ends the session.
+ */
+export type WalletKind = 'local' | 'browser';
+
 /** Unlock state of the local keyfile saved in this browser. */
 export type LocalWalletUnlockState =
 	| { status: 'idle' }
@@ -36,6 +43,7 @@ export const LOCAL_WALLET_UNLOCK_FAILED_MESSAGE =
 
 type WalletContextValue = {
 	address: string | null;
+	walletKind: WalletKind | null;
 	localWalletUnlock: LocalWalletUnlockState;
 	/** Retries unlocking the saved browser keyfile; resolves true once it is connected. */
 	retryLocalWalletUnlock(): Promise<boolean>;
@@ -46,7 +54,10 @@ type WalletContextValue = {
 	aoBalanceDenomination: number;
 	aoBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
 	connect(walletId: BrowserWalletId): Promise<void>;
-	disconnect(): Promise<void>;
+	/** Resolves false when the user chose to keep a local keyfile wallet. */
+	disconnect(): Promise<boolean>;
+	/** Downloads the stored local keyfile. Returns false when no keyfile is stored in this browser. */
+	exportLocalWallet(): boolean;
 	generateLocalWallet(): Promise<GeneratedWallet>;
 	importLocalWallet(file: File): Promise<void>;
 	openConnectDialog(trigger?: HTMLElement | null): void;
@@ -64,6 +75,7 @@ let rememberedBrowserWallet: Window['arweaveWallet'];
 
 export function WalletProvider({ children }: React.PropsWithChildren) {
 	const [address, setAddress] = React.useState<string | null>(null);
+	const [walletKind, setWalletKind] = React.useState<WalletKind | null>(null);
 	const [arBalance, setArBalance] = React.useState<bigint | null>(null);
 	const [arBalanceDenomination, setArBalanceDenomination] = React.useState(12);
 	const [arBalanceStatus, setArBalanceStatus] = React.useState<WalletContextValue['arBalanceStatus']>('idle');
@@ -78,6 +90,9 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		createLatestAddressCommitter((nextAddress) => {
 			setAoWalletConnection(nextAddress);
 			setAddress(nextAddress);
+			// Every committer installs window.arweaveWallet before it commits, so this reads the
+			// adapter that produced nextAddress.
+			setWalletKind(walletKindOf(nextAddress, window.arweaveWallet));
 		})
 	);
 	const closeConnectDialog = React.useCallback(() => setConnectDialogOpen(false), []);
@@ -160,6 +175,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const value = React.useMemo<WalletContextValue>(
 		() => ({
 			address,
+			walletKind,
 			localWalletUnlock,
 			retryLocalWalletUnlock: async () => {
 				const storedWallet = readLocalWallet();
@@ -176,6 +192,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			aoBalanceDenomination,
 			aoBalanceStatus,
 			connect: async (walletId) => {
+				confirmLocalWalletReplacement();
 				const wallet = browserWallet(walletId);
 				const commit = addressRequests.current.begin();
 				const nextAddress = await connectWallet(
@@ -190,10 +207,12 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				setBalanceRevision((revision) => revision + 1);
 			},
 			disconnect: async () => {
-				const commit = addressRequests.current.begin();
 				const disconnectedWallet = window.arweaveWallet;
+				const plan = walletDisconnectPlan(isLocalWallet(disconnectedWallet) ? 'local' : 'browser', address);
+				if (plan.confirm && !window.confirm(plan.copy)) return false;
+				const commit = addressRequests.current.begin();
 				const permawebOs = resolveBrowserWallet(window, 'permaweb-os');
-				if (isLocalWallet(disconnectedWallet)) {
+				if (plan.clearsKey) {
 					clearLocalWallet();
 					setLocalWalletUnlock({ status: 'idle' });
 					restoreBrowserWallet();
@@ -208,8 +227,16 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				}
 				clearBrowserWalletPreference();
 				commit(null);
+				return true;
+			},
+			exportLocalWallet: () => {
+				const keyfile = localWalletExportJson(readLocalWallet());
+				if (!keyfile) return false;
+				downloadKeyfile(keyfile, `${address ?? 'arweave-keyfile'}.json`);
+				return true;
 			},
 			generateLocalWallet: async () => {
+				confirmLocalWalletReplacement();
 				const arweave = await createArweaveClient();
 				const jwk = (await arweave.wallets.generate()) as unknown as WalletJwk;
 				if (!isValidWalletJwk(jwk)) throw new Error('The generated Arweave keyfile was invalid.');
@@ -227,6 +254,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 					throw new Error('Choose a valid Arweave JSON keyfile.');
 				}
 				if (!isValidWalletJwk(jwk)) throw new Error('Choose a valid Arweave JSON keyfile.');
+				confirmLocalWalletReplacement(jwk);
 				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
 				if (commit(await activateLocalWallet(jwk))) setLocalWalletUnlock({ status: 'idle' });
@@ -257,6 +285,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			arBalanceStatus,
 			localWalletUnlock,
 			unlockLocalWallet,
+			walletKind,
 		]
 	);
 
@@ -293,6 +322,7 @@ function WalletConnectionDialog({
 	const [error, setError] = React.useState('');
 	const [generatedWallet, setGeneratedWallet] = React.useState<GeneratedWallet | null>(null);
 	const [copied, setCopied] = React.useState(false);
+	const [generatedWalletDownloaded, setGeneratedWalletDownloaded] = React.useState(false);
 	const close = React.useCallback(() => {
 		if (generatedWallet) return;
 		setError('');
@@ -305,6 +335,7 @@ function WalletConnectionDialog({
 		if (!open) {
 			setCopied(false);
 			setGeneratedWallet(null);
+			setGeneratedWalletDownloaded(false);
 		}
 	}, [open]);
 
@@ -359,20 +390,21 @@ function WalletConnectionDialog({
 		}
 	};
 	const unlockFailure = wallet.localWalletUnlock.status === 'failed' ? wallet.localWalletUnlock.message : null;
+	// A browser cannot report whether a download was saved or cancelled, so starting the download
+	// only moves the panel to its "downloaded" step; the user closes it with an explicit confirmation.
 	const downloadGeneratedWallet = () => {
 		if (!generatedWallet) return;
-		const blob = new Blob([JSON.stringify(generatedWallet.jwk, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `${generatedWallet.address}.json`;
-		document.body.appendChild(link);
-		link.click();
-		link.remove();
-		window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+		const keyfile = localWalletExportJson(generatedWallet.jwk);
+		if (!keyfile) return;
+		downloadKeyfile(keyfile, `${generatedWallet.address}.json`);
+		setGeneratedWalletDownloaded(true);
+	};
+	const finishGeneratedWallet = () => {
 		setGeneratedWallet(null);
+		setGeneratedWalletDownloaded(false);
 		onClose();
 	};
+	const backup = generatedKeyfileBackupStep(generatedWalletDownloaded);
 
 	return (
 		<div
@@ -410,7 +442,7 @@ function WalletConnectionDialog({
 							<KeyRound className="ui-icon" aria-hidden="true" />
 							<div>
 								<strong>Keyfile generated</strong>
-								<span>Download this keyfile before closing.</span>
+								<span aria-live="polite">{backup.hint}</span>
 							</div>
 						</div>
 						<div className="generated-wallet-address">
@@ -436,11 +468,24 @@ function WalletConnectionDialog({
 							onClick={downloadGeneratedWallet}
 							type="button"
 							size="custom"
-							variant="primary"
+							variant={backup.canFinish ? undefined : 'primary'}
 						>
 							<Download className="ui-icon ui-icon--sm" aria-hidden="true" />
-							Download keyfile
+							{backup.downloadLabel}
 						</Button>
+						{backup.canFinish ? (
+							<Button
+								className="wide with-icon"
+								data-dialog-initial
+								onClick={finishGeneratedWallet}
+								type="button"
+								size="custom"
+								variant="primary"
+							>
+								<Check className="ui-icon ui-icon--sm" aria-hidden="true" />
+								{backup.finishLabel}
+							</Button>
+						) : null}
 						<p className="wallet-keyfile-warning">
 							<strong>Keep this file safe.</strong> Anyone with it controls the wallet, and it cannot be
 							recovered if lost.
@@ -686,6 +731,57 @@ export function isValidWalletJwk(value: unknown): value is WalletJwk {
 	);
 }
 
+export const LOCAL_WALLET_KEPT_MESSAGE = 'Kept the keyfile wallet stored in this browser.';
+
+export function walletKindOf(address: string | null, wallet: Window['arweaveWallet']): WalletKind | null {
+	if (!address) return null;
+	return isLocalWallet(wallet) ? 'local' : 'browser';
+}
+
+/**
+ * What disconnecting a wallet of this kind does. A local keyfile wallet is removed from this browser,
+ * which erases the only stored copy of its key, so it asks first. A browser wallet only ends the session
+ * and never touches the stored local keyfile.
+ */
+export function walletDisconnectPlan(kind: WalletKind | null, address?: string | null) {
+	return kind === 'local'
+		? { confirm: true, clearsKey: true, copy: localWalletForgetCopy('remove', address) }
+		: { confirm: false, clearsKey: false, copy: '' };
+}
+
+export function localWalletForgetCopy(reason: 'remove' | 'replace', address?: string | null) {
+	const wallet = address ? `the wallet ${address}` : 'that wallet';
+	return reason === 'remove'
+		? `Remove keyfile from this browser?\n\nThe private key for ${wallet} is stored only in this browser. After removal you can only restore it from a downloaded keyfile. Choose Cancel, then Download keyfile, if you have not saved it.`
+		: `Replace the keyfile wallet stored in this browser?\n\nIts private key is stored only in this browser and will be erased. You can only restore ${wallet} from a downloaded keyfile. Choose Cancel to keep it.`;
+}
+
+/** True when storing `incoming` (or connecting a browser wallet, when omitted) would erase a different stored key. */
+export function localWalletReplacementNeedsConfirm(stored: unknown, incoming?: WalletJwk | null) {
+	return isValidWalletJwk(stored) && (!incoming || stored.n !== incoming.n);
+}
+
+/** The keyfile download for a stored local wallet, or null when nothing valid is stored. */
+export function localWalletExportJson(wallet: unknown): string | null {
+	return isValidWalletJwk(wallet) ? JSON.stringify(wallet, null, 2) : null;
+}
+
+export function generatedKeyfileBackupStep(downloaded: boolean) {
+	return downloaded
+		? {
+				hint: 'Check that the keyfile saved, then continue. You can download it again later from the wallet menu.',
+				downloadLabel: 'Download again',
+				finishLabel: 'I saved the keyfile',
+				canFinish: true,
+		  }
+		: {
+				hint: 'Download this keyfile before closing.',
+				downloadLabel: 'Download keyfile',
+				finishLabel: 'I saved the keyfile',
+				canFinish: false,
+		  };
+}
+
 export function browserWalletSelection(
 	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
 	walletId: BrowserWalletId,
@@ -917,6 +1013,23 @@ function storeLocalWallet(wallet: WalletJwk) {
 
 function clearLocalWallet() {
 	localStorage.removeItem(LOCAL_WALLET_KEY);
+}
+
+function confirmLocalWalletReplacement(incoming?: WalletJwk) {
+	if (!localWalletReplacementNeedsConfirm(readLocalWallet(), incoming)) return;
+	if (!window.confirm(localWalletForgetCopy('replace'))) throw new Error(LOCAL_WALLET_KEPT_MESSAGE);
+}
+
+function downloadKeyfile(keyfile: string, filename: string) {
+	const blob = new Blob([keyfile], { type: 'application/json' });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = filename;
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function readBrowserWalletPreference(): BrowserWalletId | null {
