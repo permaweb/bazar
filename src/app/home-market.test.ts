@@ -99,6 +99,7 @@ import {
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
 	HomeMarketTabs,
+	homeRedirectPath,
 	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
@@ -352,6 +353,15 @@ describe('Home market summary retries', () => {
 		expect(homeTabPath('activity')).toBe('/activity');
 		expect(homeRouteSearch('?q=art&tab=discover')).toBe('?q=art');
 		expect(homeRouteSearch('?q=art')).toBe('?q=art');
+	});
+	it('redirects a legacy #/?tab= Home link to the tab it names and keeps its other parameters', () => {
+		expect(homeRedirectPath('?tab=collections')).toBe('/collections');
+		expect(homeRedirectPath('?tab=activity&q=x')).toBe('/activity');
+		expect(homeRouteSearch('?tab=activity&q=x')).toBe('?q=x');
+		expect(homeRedirectPath('?tab=discover')).toBe('/discover');
+		expect(homeRedirectPath('?tab=bogus')).toBe('/discover');
+		expect(homeRedirectPath('?q=art')).toBe('/discover');
+		expect(homeRedirectPath('')).toBe('/discover');
 	});
 
 	it('sorts collections by indexed activity or carrier creation height without computing state', () => {

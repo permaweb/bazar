@@ -197,6 +197,7 @@ import {
 } from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
+import { ProfileSaveError, type ProfileSaveStage, profileUpdateError } from 'components/ProfileIdentity';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { TokenAvatar } from 'components/TokenAvatar';
@@ -3404,6 +3405,11 @@ export function homeRouteSearch(search: string) {
 	return value ? `?${value}` : '';
 }
 
+/** Where the bare Home route `#/` sends the visitor: the tab a legacy `?tab=` link named, or Discover. */
+export function homeRedirectPath(search: string) {
+	return homeTabPath(homeTabFromPathname(new URLSearchParams(search).get('tab') ?? ''));
+}
+
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
 
 export function compareHomeCollections(
@@ -4054,7 +4060,7 @@ export function HomeMarketTabs({ active, onSelect }: { active: HomeTab; onSelect
 
 function HomeRedirect() {
 	const { search } = useLocation();
-	return <Navigate to={{ pathname: homeTabPath('discover'), search: homeRouteSearch(search) }} replace />;
+	return <Navigate to={{ pathname: homeRedirectPath(search), search: homeRouteSearch(search) }} replace />;
 }
 
 function Home() {
@@ -10467,6 +10473,52 @@ function PendingAssetView() {
 	);
 }
 
+export const PROFILE_PICTURE_NOT_OWNED = 'This wallet no longer owns this unique asset.';
+
+export type ProfilePictureOutcome = { ok: true } | { ok: false; error: string };
+
+export type ProfilePictureIo = {
+	readState: (assetId: string) => Promise<{ state: AssetState }>;
+	client: Pick<ProfileClient, 'setAvatar'>;
+};
+
+/**
+ * Check that `owner` still holds this unique asset, then publish it as their profile picture.
+ * A failed ownership read keeps the marketplace copy (nothing was prepared or sent); a failed
+ * profile write uses the profile copy, since nothing is saved in the browser to resume.
+ */
+export async function setProfilePictureFromAsset(
+	{ assetId, image, owner }: { assetId: string; image: string; owner: string },
+	onPhase: (phase: 'signing' | 'uploading') => void,
+	io: ProfilePictureIo = { readState: readCurrentAssetState, client: new ProfileClient() }
+): Promise<ProfilePictureOutcome> {
+	let current: { state: AssetState };
+	try {
+		current = await io.readState(assetId);
+	} catch (cause) {
+		return { ok: false, error: errorMessage(cause) || 'Profile picture could not be updated.' };
+	}
+	if (
+		current.state.totalSupply !== '1' ||
+		current.state.denomination > 0 ||
+		!sameAccount(ownerOfAsset(current.state), owner)
+	) {
+		return { ok: false, error: PROFILE_PICTURE_NOT_OWNED };
+	}
+	let stage: ProfileSaveStage = 'profile-preparing';
+	try {
+		await io.client.setAvatar(owner, image, {
+			onPhase: (phase) => {
+				stage = phase === 'signing' ? 'profile-signing' : 'profile-publishing';
+				onPhase(phase);
+			},
+		});
+	} catch (cause) {
+		return { ok: false, error: profileUpdateError(new ProfileSaveError(stage, false, cause)) };
+	}
+	return { ok: true };
+}
+
 function SetProfilePictureButton({
 	assetId,
 	disabled,
@@ -10483,23 +10535,9 @@ function SetProfilePictureButton({
 	const apply = async () => {
 		setError('');
 		setStatus('checking');
-		try {
-			const current = await readCurrentAssetState(assetId);
-			if (
-				current.state.totalSupply !== '1' ||
-				current.state.denomination > 0 ||
-				!sameAccount(ownerOfAsset(current.state), owner)
-			) {
-				throw new Error('This wallet no longer owns this unique asset.');
-			}
-			await new ProfileClient().setAvatar(owner, image, {
-				onPhase: (phase) => setStatus(phase),
-			});
-			setStatus('done');
-		} catch (cause) {
-			setStatus('idle');
-			setError(errorMessage(cause) || 'Profile picture could not be updated.');
-		}
+		const outcome = await setProfilePictureFromAsset({ assetId, image, owner }, setStatus);
+		setStatus(outcome.ok ? 'done' : 'idle');
+		if (!outcome.ok) setError(outcome.error);
 	};
 	return (
 		<>
@@ -10670,11 +10708,7 @@ function AssetView() {
 		remove: removeOperationActivity,
 	} = useOperationActivity();
 	const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
-	const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
-	const operationFocusFallback = React.useCallback(
-		() => resumeButtonRef.current ?? operationFocusFallbackRef.current,
-		[]
-	);
+	const operationFocusFallback = React.useCallback(() => operationFocusFallbackRef.current, []);
 	const operationActivityEntry = operationActivities.find(
 		(activity) => activity.asset.id === assetId && activity.owner === wallet.address && activity.phase !== 'done'
 	);
@@ -10697,7 +10731,6 @@ function AssetView() {
 		},
 		[collectionId, operationFocusFallback, startOperationActivity, verifiedAsset, wallet.address]
 	);
-	const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
 	const [recoveryNotice, setRecoveryNotice] = React.useState('');
 	const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
 	const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
@@ -10826,7 +10859,6 @@ function AssetView() {
 			if (event.storageArea && event.storageArea !== localStorage) return;
 			const change = walletOperationStorageChange(event.key, event.newValue, claimKey, recoveryKeys);
 			if (change === 'ignore') return;
-			setRecoverySuppressed(false);
 			if (change === 'claim-acquired' || change === 'claim-released') {
 				if (change === 'claim-acquired' && operation && operationActivityEntry) {
 					const recovering =
@@ -11023,16 +11055,12 @@ function AssetView() {
 		setActivityRequested(false);
 	}, [assetId]);
 	React.useEffect(() => {
-		setRecoverySuppressed(false);
 		setRecoveryNotice('');
 		setUnavailableRecovery(null);
 	}, [assetId, wallet.address]);
-	React.useLayoutEffect(() => {
-		if (recoverySuppressed) resumeButtonRef.current?.focus();
-	}, [recoverySuppressed]);
 	React.useEffect(() => {
 		// Recovery may discard signed local work, so it waits for current state.
-		if (!wallet.address || operation || recoverySuppressed || !state || !stateCurrent) return;
+		if (!wallet.address || operation || !state || !stateCurrent) return;
 		if (state.totalSupply !== '1' || state.denomination > 0) return;
 		const walletAddress = wallet.address;
 		const activeClaimKey = operationClaimStorageKey(assetId, walletAddress);
@@ -11198,7 +11226,7 @@ function AssetView() {
 			}
 		);
 		return () => controller.abort();
-	}, [assetId, openOperation, operation, recoverySuppressed, state, stateCurrent, storageVersion, wallet.address]);
+	}, [assetId, openOperation, operation, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
 	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
 	const stateRecoveryAction = recoveryUrl
@@ -11364,7 +11392,7 @@ function AssetView() {
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const mine = Boolean(wallet.address && sameAccount(owner, wallet.address));
 	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
-	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+	const recoveryBlocksActions = Boolean(unavailableRecovery);
 	const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
 	const newOperationBlocksActions = operationBlocksActions || !balanceStateAvailable || loading || Boolean(error);
 	const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
@@ -11412,23 +11440,6 @@ function AssetView() {
 	];
 	return (
 		<section className="asset-page asset-detail-page atomic-asset-page">
-			{recoverySuppressed ? (
-				<div className="pending-operation-notice">
-					<span role="status">
-						Local tracking is paused. Resume here to continue observing signed work or review any wallet
-						approvals still required.
-					</span>
-					<Button
-						ref={resumeButtonRef}
-						className="with-icon"
-						size="custom"
-						type="button"
-						onClick={() => setRecoverySuppressed(false)}
-					>
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
-					</Button>
-				</div>
-			) : null}
 			{recoveryNotice ? (
 				<div className="pending-operation-notice">
 					<span role="status">{recoveryNotice}</span>
