@@ -23,6 +23,7 @@ import {
 	checkpointBatchPreparation,
 	fungibleActivityAmount,
 	fungibleBatchRecoveryStatus,
+	fungibleEmptyBalanceCopy,
 	FungibleHolderChart,
 	fungibleHolderChartSlices,
 	fungibleHolders,
@@ -1612,5 +1613,31 @@ describe('fungible transfer recipient validation', () => {
 		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(
 			`Send 2 $WEAVE to ${recipient}`
 		);
+	});
+});
+
+describe('fungibleEmptyBalanceCopy', () => {
+	const state = { denomination: 3, ticker: 'WEAVE' } as AssetState;
+
+	it('does not mention listings when the wallet holds none of the token', () => {
+		for (const mode of ['sell', 'transfer'] as const) {
+			const copy = fungibleEmptyBalanceCopy(mode, '0', state);
+			expect(copy.title).toBe('No $WEAVE in this wallet');
+			expect(`${copy.title} ${copy.detail}`).not.toMatch(/listed|listing/i);
+		}
+		expect(fungibleEmptyBalanceCopy('sell', '0', state).detail).toBe('This wallet holds no $WEAVE to list.');
+		expect(fungibleEmptyBalanceCopy('transfer', '0', state).detail).toBe(
+			'This wallet holds no $WEAVE to transfer.'
+		);
+	});
+
+	it('names the denominated listed amount and that only open listings can be cancelled', () => {
+		for (const mode of ['sell', 'transfer'] as const) {
+			const copy = fungibleEmptyBalanceCopy(mode, '1234500', state);
+			expect(copy.title).toBe('No liquid $WEAVE');
+			expect(copy.detail).toBe(
+				'1,234.5 $WEAVE is in open or reserved listings; cancel an open listing to free it.'
+			);
+		}
 	});
 });
