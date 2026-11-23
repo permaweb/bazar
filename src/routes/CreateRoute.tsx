@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, Check, InfinityIcon, Info, Upload, X } from 'lucide-react';
 import type { Consensus, ObserverView } from 'weave-wrangler';
 
-import { waitForAssetState } from 'api/asset-marketplace';
 import {
 	AssetMintClient,
 	CollectionMintClient,
@@ -81,6 +80,64 @@ type UdlConfigurationMode = 'configured' | 'custom';
 
 const ARWEAVE_TRANSACTION_ID = /^[A-Za-z0-9_-]{43}$/;
 
+/**
+ * Readiness of a submitted mint has one owner: the App-level mint watcher
+ * (OperationActivityProvider) polls the process state and dispatches this
+ * event with the completed MintActivity as `detail` once it is readable.
+ */
+export const MINT_LIVE_EVENT = 'bazar:mint-live';
+
+export function isMintLiveFor(event: Event, id: string | null | undefined): boolean {
+	if (!id) return false;
+	return (event as CustomEvent<{ asset?: { id?: string } } | null>).detail?.asset?.id === id;
+}
+
+export function subscribeMintLive(target: EventTarget, id: string, onLive: () => void): () => void {
+	const listener = (event: Event) => {
+		if (isMintLiveFor(event, id)) onLive();
+	};
+	target.addEventListener(MINT_LIVE_EVENT, listener);
+	return () => target.removeEventListener(MINT_LIVE_EVENT, listener);
+}
+
+/** True once the mint watcher reports `id` live; a new id starts not live. */
+function useMintLive(id: string | null | undefined): boolean {
+	const [liveId, setLiveId] = React.useState<string | null>(null);
+	React.useEffect(() => {
+		if (!id) return;
+		return subscribeMintLive(window, id, () => setLiveId(id));
+	}, [id]);
+	return Boolean(id) && liveId === id;
+}
+
+/**
+ * Explicit token-mint states: preparing (no process yet), submitted (process
+ * sent, confirming and waiting for the scheduler), confirm-failed (network
+ * confirmation gave up; the Activity watch continues), live, or error.
+ */
+export type FungibleMintStage = 'preparing' | 'submitted' | 'confirm-failed' | 'live' | 'error';
+
+export function fungibleMintStage({
+	confirmFailed,
+	error,
+	ready,
+	result,
+}: {
+	confirmFailed: boolean;
+	error: string | null;
+	ready: boolean;
+	result: FungibleMintResult | null;
+}): FungibleMintStage {
+	if (error) return 'error';
+	if (!result) return 'preparing';
+	if (ready) return 'live';
+	return confirmFailed ? 'confirm-failed' : 'submitted';
+}
+
+function isAbortError(cause: unknown): boolean {
+	return cause instanceof Error && cause.name === 'AbortError';
+}
+
 function WireframeGlobeIcon() {
 	const clipId = React.useId();
 	return (
@@ -151,6 +208,7 @@ function AnimatedCreditBadgeIcon() {
 }
 
 type FungibleMintDialogProps = {
+	confirmFailed?: boolean;
 	error: string | null;
 	logoPreview: string;
 	name: string;
@@ -170,6 +228,7 @@ type FungibleMintDialogProps = {
 };
 
 export function FungibleMintDialog({
+	confirmFailed = false,
 	error,
 	logoPreview,
 	name,
@@ -189,7 +248,8 @@ export function FungibleMintDialog({
 }: FungibleMintDialogProps) {
 	const [hiding, setHiding] = React.useState(false);
 	const hideTimerRef = React.useRef<number | null>(null);
-	const dialogPhase: TransactionDialogPhase = error ? 'error' : ready ? 'done' : 'working';
+	const stage = fungibleMintStage({ confirmFailed, error, ready, result });
+	const dialogPhase: TransactionDialogPhase = stage === 'error' ? 'error' : stage === 'live' ? 'done' : 'working';
 	const closeOrHide = React.useCallback(() => {
 		if (dialogPhase !== 'working') {
 			onVisibleChange(false);
@@ -281,9 +341,19 @@ export function FungibleMintDialog({
 							process state.
 						</p>
 						<p className="scheduler-wait">
-							All {result.wholeSupply} {result.ticker} are minted to your wallet. Bazar is waiting for the
-							scheduler to make the process readable.
+							Token process submitted. Your {result.wholeSupply} {result.ticker} appear in your wallet
+							once the scheduler makes the process readable. You can close this panel; the mint stays in
+							Activity until the token is live.
 						</p>
+						{stage === 'confirm-failed' ? (
+							<div className="inline-error" role="status">
+								<span>
+									Bazar could not confirm the token process transaction on independent Arweave nodes.
+									Check it with the transaction link below; the watch continues in Activity and this
+									panel updates when the token is live.
+								</span>
+							</div>
+						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
@@ -512,7 +582,8 @@ export default function CreateRoute() {
 	const [fungibleEstimate, setFungibleEstimate] = React.useState<FungibleMintEstimate | null>(null);
 	const [fungiblePhase, setFungiblePhase] = React.useState<FungibleMintPhase | null>(null);
 	const [fungibleResult, setFungibleResult] = React.useState<FungibleMintResult | null>(null);
-	const [fungibleResultReady, setFungibleResultReady] = React.useState(false);
+	const fungibleResultReady = useMintLive(fungibleResult?.processId);
+	const [mintConfirmFailed, setMintConfirmFailed] = React.useState(false);
 	const [fungibleSubmitting, setFungibleSubmitting] = React.useState(false);
 	const [fungibleDialogVisible, setFungibleDialogVisible] = React.useState(false);
 	const [fungibleOperationError, setFungibleOperationError] = React.useState<string | null>(null);
@@ -539,7 +610,7 @@ export default function CreateRoute() {
 	const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
 	const [result, setResult] = React.useState<MintedAsset | null>(null);
-	const [resultReady, setResultReady] = React.useState(false);
+	const resultReady = useMintLive(result?.id);
 	const [collectionResult, setCollectionResult] = React.useState<CollectionMintResult | null>(null);
 	const [draft, setDraft] = React.useState<MintDraft | null>(() =>
 		wallet.address ? getMintDraft(wallet.address) : null
@@ -629,51 +700,10 @@ export default function CreateRoute() {
 		return () => urls.forEach((url) => URL.revokeObjectURL(url));
 	}, [collectionFiles]);
 	React.useEffect(() => {
-		setResultReady(false);
-		if (!result) return;
-		const controller = new AbortController();
-		void waitForAssetState(result.id, () => true, {
-			signal: controller.signal,
-			interval: 4000,
-			timeout: 0,
-		}).then(
-			() => {
-				if (!controller.signal.aborted) setResultReady(true);
-			},
-			() => undefined
-		);
-		return () => controller.abort();
-	}, [result]);
-	React.useEffect(() => {
-		if (!result) return;
-		const markLive = (event: Event) => {
-			if ((event as CustomEvent<{ asset?: { id?: string } }>).detail?.asset?.id === result.id) {
-				setResultReady(true);
-			}
-		};
-		window.addEventListener('bazar:mint-live', markLive);
-		return () => window.removeEventListener('bazar:mint-live', markLive);
-	}, [result]);
-	React.useEffect(() => {
-		setFungibleResultReady(false);
-		if (!fungibleResult) return;
-		const controller = new AbortController();
-		void waitForAssetState(fungibleResult.processId, () => true, {
-			signal: controller.signal,
-			interval: 4000,
-			timeout: 0,
-		}).then(
-			() => {
-				if (!controller.signal.aborted) setFungibleResultReady(true);
-			},
-			() => undefined
-		);
-		return () => controller.abort();
-	}, [fungibleResult]);
-	React.useEffect(() => {
 		setMintViews([]);
 		setMintConsensus(null);
 		setMintConfirmations(0);
+		setMintConfirmFailed(false);
 		if (!fungibleResult) return;
 		const controller = new AbortController();
 		void confirmTransactionId(fungibleResult.processId, {
@@ -686,7 +716,10 @@ export default function CreateRoute() {
 			.then(() => {
 				if (!controller.signal.aborted) setMintConfirmations(5);
 			})
-			.catch(() => undefined);
+			.catch((cause: unknown) => {
+				// Unmount / new mint aborts are not failures; the Activity watcher still owns readiness.
+				if (!controller.signal.aborted && !isAbortError(cause)) setMintConfirmFailed(true);
+			});
 		return () => controller.abort();
 	}, [fungibleResult]);
 	React.useEffect(() => {
@@ -2046,6 +2079,7 @@ export default function CreateRoute() {
 			</div>
 			{fungibleSubmitting || fungibleResult || fungibleOperationError || fungibleDialogVisible ? (
 				<FungibleMintDialog
+					confirmFailed={mintConfirmFailed}
 					confirmations={mintConfirmations}
 					consensus={mintConsensus}
 					error={fungibleOperationError}
