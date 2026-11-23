@@ -1,3 +1,5 @@
+import { AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX } from './browser-storage';
+
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
 const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
 
@@ -193,11 +195,34 @@ export function usesPermawebOsAo(
 /** Upstream-neutral compute peers tried after the serving origin when no AO peer is selected or configured. */
 export const DEFAULT_COMPUTE_GATEWAYS: readonly string[] = Object.freeze(['https://arweave.net']);
 
+/** Serving origins known, or known not, to lack process compute in this page load. */
+const servingOriginsWithoutCompute = new Map<string, boolean>();
+
 export type AoPeerPlan = {
 	peers: string[];
 	/** Last-resort peers are a priority order; selected or configured peers share reads by hashpath. */
 	ordered: boolean;
+	/** The serving origin, while it still leads the last-resort peers. */
+	servingOrigin?: string;
 };
+
+function sessionStore(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
+	return globalThis.window?.sessionStorage ?? undefined;
+}
+
+/** A drop is kept in sessionStorage so later page loads in the same tab start without the origin. */
+function servingOriginWithoutCompute(origin: string): boolean {
+	let dropped = servingOriginsWithoutCompute.get(origin);
+	if (dropped === undefined) {
+		try {
+			dropped = sessionStore()?.getItem(`${AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX}${origin}`) === '1';
+		} catch {
+			dropped = false;
+		}
+		servingOriginsWithoutCompute.set(origin, dropped);
+	}
+	return dropped;
+}
 
 export function aoPeerPlanFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
@@ -213,13 +238,36 @@ export function aoPeerPlanFromLocation(
 	}
 
 	if (!location || !['http:', 'https:'].includes(location.protocol)) return { peers: [], ordered: false };
-	return { peers: [...new Set([locationOrigin(location), ...DEFAULT_COMPUTE_GATEWAYS])], ordered: true };
+	const origin = locationOrigin(location);
+	if (servingOriginWithoutCompute(origin)) return { peers: [...DEFAULT_COMPUTE_GATEWAYS], ordered: true };
+	return { peers: [...new Set([origin, ...DEFAULT_COMPUTE_GATEWAYS])], ordered: true, servingOrigin: origin };
+}
+
+/** Bazar's peer plan as it stood before any serving origin was dropped from it. */
+function undroppedAoPeers(location: GatewayLocation | undefined): string[] {
+	const plan = aoPeerPlanFromLocation(location);
+	if (!location || !plan.ordered || plan.servingOrigin) return plan.peers;
+	return [...new Set([locationOrigin(location), ...plan.peers])];
 }
 
 export function fallbackAoPeersFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
 ): string[] {
 	return aoPeerPlanFromLocation(location).peers;
+}
+
+/**
+ * Stop routing last-resort AO reads to a serving origin that cannot compute process
+ * state, for the rest of this tab session where sessionStorage is available and for
+ * this page load otherwise.
+ */
+export function markServingOriginWithoutCompute(origin: string): void {
+	servingOriginsWithoutCompute.set(origin, true);
+	try {
+		sessionStore()?.setItem(`${AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX}${origin}`, '1');
+	} catch {
+		// Kept in memory for this page load.
+	}
 }
 
 /**
@@ -231,8 +279,10 @@ export function aoPeerSelectionQuery(peers: readonly string[], location: Gateway
 	const selected = [...new Set(peers)];
 	const { protocol, hostname, port } = location;
 	const unselected = { protocol, hostname, port, search: '', hash: '' };
-	const defaults = aoPeerPlanFromLocation(unselected).peers;
-	const isDefault = selected.length === defaults.length && selected.every((peer, index) => peer === defaults[index]);
+	const defaults = [aoPeerPlanFromLocation(unselected).peers, undroppedAoPeers(unselected)];
+	const isDefault = defaults.some(
+		(peers) => selected.length === peers.length && selected.every((peer, index) => peer === peers[index])
+	);
 	// A selection carried in the hash query outlives removing ?node=, so it must be overridden explicitly.
 	return isDefault && !queryValue({ search: '', hash: location.hash }, 'node') ? null : selected.join(',');
 }
@@ -324,8 +374,11 @@ export function aoRoutingScopeFromLocation(
 		if (fetcher && strictNetworkPolicyFetchers.has(fetcher)) {
 			return `permawebos-policy-unavailable:${networkPolicyRevisions.get(fetcher) ?? 0}`;
 		}
+		return gatewaysFromLocation(location, scope).join(',');
 	}
-	return gatewaysFromLocation(location, scope).join(',');
+	// Dropping a serving origin that cannot compute changes which peer answers, not
+	// which state is read; keeping it in the scope avoids restarting every keyed read.
+	return undroppedAoPeers(location).join(',');
 }
 
 export function gatewayFromLocation(

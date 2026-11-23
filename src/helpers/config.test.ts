@@ -18,6 +18,7 @@ import {
 	gatewayFromLocation,
 	gatewaysFromLocation,
 	loadPermawebOsNetworkPolicy,
+	markServingOriginWithoutCompute,
 	normalizeComputeGateways,
 	observerRelayFromLocation,
 	permanentContentGatewayFromLocation,
@@ -65,6 +66,7 @@ describe('Arweave gateway routing', () => {
 		expect(aoPeerPlanFromLocation(location())).toEqual({
 			peers: ['https://bazar.arweave.net', 'https://arweave.net'],
 			ordered: true,
+			servingOrigin: 'https://bazar.arweave.net',
 		});
 		expect(fallbackAoPeersFromLocation(location({ hostname: 'arweave.net' }))).toEqual(['https://arweave.net']);
 		expect(fallbackAoPeersFromLocation(location({ protocol: 'file:' }))).toEqual([]);
@@ -117,6 +119,58 @@ describe('Arweave gateway routing', () => {
 		expect(configuredPeers(location({ search: '?node=https://compute.example' }))).toEqual([
 			'https://compute.example',
 		]);
+	});
+
+	it('drops a serving origin without process compute from the default peers only', () => {
+		const served = location({ hostname: 'static-host.example' });
+		const selected = location({ hostname: 'static-host.example', search: '?node=https://static-host.example' });
+		markServingOriginWithoutCompute('https://static-host.example');
+
+		expect(aoPeerPlanFromLocation(served)).toEqual({ peers: ['https://arweave.net'], ordered: true });
+		expect(fallbackAoPeersFromLocation(selected)).toEqual(['https://static-host.example']);
+		expect(fallbackAoPeersFromLocation(location({ hostname: 'other-host.example' }))).toEqual([
+			'https://other-host.example',
+			'https://arweave.net',
+		]);
+	});
+
+	it('keeps the AO routing scope across a serving-origin drop and the next page load', async () => {
+		const items = new Map<string, string>();
+		const sessionStorage = {
+			getItem: (key: string) => items.get(key) ?? null,
+			setItem: (key: string, value: string) => void items.set(key, value),
+		};
+		const served = location({ hostname: 'arns-host.example' });
+		vi.stubGlobal('window', { location: served, sessionStorage });
+		const before = aoRoutingScopeFromLocation(served);
+
+		markServingOriginWithoutCompute('https://arns-host.example');
+		expect(aoPeerPlanFromLocation(served).peers).toEqual(['https://arweave.net']);
+		expect(aoRoutingScopeFromLocation(served)).toBe(before);
+
+		vi.resetModules();
+		const reloaded = await import('./config');
+		expect(reloaded.aoPeerPlanFromLocation(served)).toEqual({ peers: ['https://arweave.net'], ordered: true });
+		expect(reloaded.aoRoutingScopeFromLocation(served)).toBe(before);
+		expect(reloaded.aoPeerSelectionQuery(['https://arweave.net'], served)).toBeNull();
+		expect(reloaded.aoPeerSelectionQuery(['https://arns-host.example', 'https://arweave.net'], served)).toBeNull();
+	});
+
+	it('keeps a serving-origin drop in memory when session storage is unavailable', async () => {
+		const served = location({ hostname: 'private-host.example' });
+		vi.stubGlobal('window', {
+			location: served,
+			get sessionStorage(): Storage {
+				throw new DOMException('blocked', 'SecurityError');
+			},
+		});
+
+		markServingOriginWithoutCompute('https://private-host.example');
+		expect(aoPeerPlanFromLocation(served).peers).toEqual(['https://arweave.net']);
+
+		vi.resetModules();
+		const reloaded = await import('./config');
+		expect(reloaded.aoPeerPlanFromLocation(served).servingOrigin).toBe('https://private-host.example');
 	});
 
 	it('parses comma-separated, whitespace-separated, and JSON peer lists', () => {

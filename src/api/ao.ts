@@ -5,9 +5,12 @@ import {
 	aoPeerPlanFromLocation,
 	gatewaysFromLocation,
 	loadPermawebOsNetworkPolicy,
+	markServingOriginWithoutCompute,
 	refreshPermawebOsNetworkPolicy,
 	usesPermawebOsAo,
 } from 'helpers/config';
+
+import { fetchWithDeadline } from './fetch-with-deadline';
 
 export type { AoCacheMetadata, AoCacheStatus };
 
@@ -26,6 +29,8 @@ type BazarAoPeerFetch = AoPeerFetch & {
 };
 
 let bazarTransport: { peers: string; fetcher: BazarAoPeerFetch } | undefined;
+const servingOriginProbes = new Map<string, Promise<boolean>>();
+const SERVING_ORIGIN_PROBE_TIMEOUT_MS = 10_000;
 
 function nodeList(nodes?: Nodes): string[] {
 	return typeof nodes === 'string' ? [nodes] : [...(nodes ?? [])];
@@ -117,9 +122,57 @@ export async function readyAoFetch(): Promise<readonly string[]> {
 	}
 }
 
-/** Start transport discovery without making otherwise independent application data wait for it. */
-export function warmAoFetch(onNetworkPolicy?: () => void): () => void {
+/**
+ * Ask the serving origin, at most once per page load, for one known process's
+ * cached state. An origin that answers not-found or with an inadmissible state,
+ * such as an ArNS host or a static SPA host, is dropped from the last-resort peers
+ * so reads stop paying for it first. The drop lasts for the tab session, so later
+ * page loads start without the origin and do not probe again. Resolves true when
+ * this call dropped the origin.
+ */
+export function probeServingOriginCompute(
+	processId: string,
+	fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
+	location: Parameters<typeof aoPeerPlanFromLocation>[0] = globalThis.window?.location
+): Promise<boolean> {
+	const origin = aoPeerPlanFromLocation(location).servingOrigin;
+	if (!origin || !/^[A-Za-z0-9_-]{43}$/.test(processId)) return Promise.resolve(false);
+	let probe = servingOriginProbes.get(origin);
+	if (!probe) {
+		probe = fetchWithDeadline(
+			fetcher,
+			`${origin}/${processId}~process@1.0/compute&max-age=86400`,
+			{ method: 'HEAD', credentials: 'omit' },
+			{ timeoutMs: SERVING_ORIGIN_PROBE_TIMEOUT_MS, timeoutError: 'serving-origin-probe-timeout' }
+		).then(
+			(response) => {
+				void response.body?.cancel().catch(() => undefined);
+				if (response.status !== 404 && !inadmissibleProcessState(response)) return false;
+				markServingOriginWithoutCompute(origin);
+				return true;
+			},
+			() => false
+		);
+		servingOriginProbes.set(origin, probe);
+	}
+	return probe;
+}
+
+/**
+ * Start transport discovery without making otherwise independent application data wait for it.
+ * With `probeProcessId`, Bazar's own transport also checks once whether the serving origin computes.
+ */
+export function warmAoFetch(onNetworkPolicy?: () => void, options: { probeProcessId?: string } = {}): () => void {
 	let stopped = false;
+	if (options.probeProcessId && !permawebOsAoFetch()) {
+		void probeServingOriginCompute(options.probeProcessId).then((dropped) => {
+			if (!dropped) return;
+			// The transport without the origin is a new AO.js client; discover its peers now
+			// rather than inside the request budget of the first reads routed to it.
+			void readyAoFetch();
+			if (!stopped) onNetworkPolicy?.();
+		});
+	}
 	const loadPolicy = (refresh: boolean) => {
 		if (!permawebOsAoFetch()) return;
 		const loading = refresh ? refreshPermawebOsNetworkPolicy() : loadPermawebOsNetworkPolicy();
