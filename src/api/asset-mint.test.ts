@@ -44,6 +44,53 @@ function storage() {
 	};
 }
 
+function pngFile(name: string, byte: number) {
+	return new File([new Uint8Array([byte])], name, { type: 'image/png' });
+}
+
+/** A collection client whose wallet signs transactions with the given id prefixes, in order. */
+function signedCollectionClient(store: ReturnType<typeof storage>, prefixes: string[]) {
+	const ids = prefixes.map((prefix) => prefix.repeat(43));
+	const transactions = ids.map(() => {
+		const transaction: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+		transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+		transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+		return transaction;
+	});
+	const pending = [...transactions];
+	let signed = 0;
+	const client = new CollectionMintClient({
+		arweave: {
+			createTransaction: vi.fn(async () => pending.shift()),
+			transactions: {},
+			wallets: { ownerToAddress: vi.fn(async () => owner) },
+		},
+		fetch: vi.fn(async (input: RequestInfo | URL) =>
+			String(input).includes('/wallet/') ? new Response('1000') : new Response('1')
+		) as typeof fetch,
+		storage: store,
+		wallet: {
+			getActiveAddress: vi.fn(async () => owner),
+			sign: vi.fn(async () => ({ id: ids[signed++], owner: 'signed-owner', tags: [], signature: 'signed' })),
+		} as any,
+	});
+	return { client, store, transactions };
+}
+
+function appendTarget() {
+	return {
+		id: 'C'.repeat(43),
+		manifestId: 'O'.repeat(43),
+		owner,
+		createdAt: 1,
+		name: 'Happy agents',
+		description: 'A collection',
+		kind: 'images' as const,
+		assets: [],
+		total: 0,
+	};
+}
+
 describe('asset mint contract', () => {
 	it('deduplicates collection price sizes while retaining every transaction in the total', async () => {
 		const calls: string[] = [];
@@ -585,6 +632,112 @@ describe('asset mint contract', () => {
 		expect(loadMintedCollections(store)[0]).toMatchObject({ id: collection.id, manifestId: ids[2], total: 2 });
 		expect(loadMintedAssets(store)).toEqual([]);
 		expect(loadMintActivities(store)).toEqual([]);
+	});
+
+	it('records the license terms a collection was minted with, and only when it had some', async () => {
+		const credit = udlTermsForPreset('share-with-credit');
+		const licensed = signedCollectionClient(storage(), ['A', 'M', 'C']);
+		const withTerms = await licensed.client.mint(
+			{ name: 'Credit set', description: '', files: [pngFile('one.png', 1)], udl: credit },
+			owner,
+			{ allowHighCost: true }
+		);
+		expect(withTerms.collection.udl).toEqual(credit);
+		expect(loadMintedCollections(licensed.store)[0].udl).toEqual(credit);
+
+		const unlicensed = signedCollectionClient(storage(), ['A', 'M', 'C']);
+		const withoutTerms = await unlicensed.client.mint(
+			{ name: 'Plain set', description: '', files: [pngFile('one.png', 1)] },
+			owner,
+			{ allowHighCost: true }
+		);
+		expect(withoutTerms.collection).not.toHaveProperty('udl');
+		expect(loadMintedCollections(unlicensed.store)[0]).not.toHaveProperty('udl');
+	});
+
+	it('restores stored collection license terms and rejects a non-object udl', () => {
+		const store = storage();
+		const base = {
+			manifestId: 'N'.repeat(43),
+			owner,
+			createdAt: 2,
+			name: 'Signal set',
+			description: 'A collection',
+			kind: 'images' as const,
+			assets: [],
+			total: 0,
+		};
+		const credit = udlTermsForPreset('share-with-credit');
+		store.setItem(
+			'bazar-created-assets:collections',
+			JSON.stringify([
+				{ ...base, id: 'R'.repeat(43), udl: credit },
+				{ ...base, id: 'S'.repeat(43) },
+				{ ...base, id: 'T'.repeat(43), udl: 'share-with-credit' },
+				{ ...base, id: 'V'.repeat(43), udl: [credit] },
+			])
+		);
+
+		expect(loadMintedCollections(store).map((collection) => [collection.id, collection.udl])).toEqual([
+			['R'.repeat(43), credit],
+			['S'.repeat(43), undefined],
+		]);
+	});
+
+	it('adds assets with no license tags when the collection recorded no terms', async () => {
+		const { client, store, transactions } = signedCollectionClient(storage(), ['A', 'B', 'M', 'U']);
+		const result = await client.append(appendTarget(), [pngFile('one.png', 1), pngFile('two.png', 2)], owner, {
+			allowHighCost: true,
+		});
+
+		const assetTransactions = transactions.slice(0, 2);
+		for (const transaction of assetTransactions) {
+			expect(transaction.addTag).toHaveBeenCalledWith('type', 'Process');
+			expect(transaction.addTag).not.toHaveBeenCalledWith('license', expect.anything());
+			expect(transaction.addTag).not.toHaveBeenCalledWith('currency', expect.anything());
+		}
+		for (const asset of result.collection.assets) expect(asset).not.toHaveProperty('udl');
+		expect(loadMintedCollections(store)[0]).not.toHaveProperty('udl');
+	});
+
+	it("adds assets with the collection's recorded license terms", async () => {
+		const credit = udlTermsForPreset('share-with-credit');
+		const expectedTags = udlLicenseTags(credit);
+		const { client, store, transactions } = signedCollectionClient(storage(), ['A', 'B', 'M', 'U']);
+		const result = await client.append(
+			{ ...appendTarget(), udl: credit },
+			[pngFile('one.png', 1), pngFile('two.png', 2)],
+			owner,
+			{ allowHighCost: true }
+		);
+
+		expect(Object.keys(expectedTags)).toEqual(
+			expect.arrayContaining(['license', 'currency', 'derivation', 'commercial-use', 'data-model-training'])
+		);
+		for (const transaction of transactions.slice(0, 2)) {
+			for (const [name, value] of Object.entries(expectedTags)) {
+				expect(transaction.addTag).toHaveBeenCalledWith(name, value);
+			}
+		}
+		const update = transactions[3];
+		expect(update.addTag).toHaveBeenCalledWith('action', 'set');
+		expect(update.addTag).not.toHaveBeenCalledWith('license', expect.anything());
+		expect(result.collection.udl).toEqual(credit);
+		expect(loadMintedCollections(store)[0].udl).toEqual(credit);
+	});
+
+	it('rejects malformed recorded license terms while quoting, before any upload', async () => {
+		const { client, transactions } = signedCollectionClient(storage(), ['A', 'B', 'M', 'U']);
+		const target = {
+			...appendTarget(),
+			udl: { derivation: { grant: 'bogus' } } as unknown as ReturnType<typeof udlTermsForPreset>,
+		};
+
+		await expect(client.estimateAppend(target, [pngFile('one.png', 1)])).rejects.toThrow('mint-udl-grant-invalid');
+		await expect(client.append(target, [pngFile('one.png', 1)], owner, { allowHighCost: true })).rejects.toThrow(
+			'mint-udl-grant-invalid'
+		);
+		expect(transactions.every((transaction) => !transaction.setSignature.mock.calls.length)).toBe(true);
 	});
 
 	it('explains the bytes and transaction count in a single-asset quote', async () => {

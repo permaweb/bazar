@@ -6061,6 +6061,8 @@ function CollectionView() {
 				owner: ownedCollection.owner,
 				createdAt: ownedCollection.createdAt,
 				manifestId: collection.manifestId ?? ownedCollection.manifestId,
+				// License terms come from the local record only, matching the dialog's license copy.
+				udl: ownedCollection.udl,
 			};
 			const result = await new CollectionMintClient().append(source, appendFiles, wallet.address, {
 				allowHighCost: true,
@@ -6964,7 +6966,10 @@ function CollectionView() {
 						</div>
 						<p className="append-collection-copy">
 							Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
-							collection carrier.
+							collection carrier.{' '}
+							{ownedCollection.udl
+								? 'Added assets carry the same license tags as this collection.'
+								: 'Added assets carry no license tags.'}
 						</p>
 						<label className={`mint-dropzone${appendFiles.length ? ' has-file' : ''}`}>
 							<input

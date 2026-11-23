@@ -723,6 +723,7 @@ export class CollectionMintClient {
 			manifestId,
 			owner,
 			createdAt: Date.now(),
+			...(input.udl ? { udl: input.udl } : {}),
 		};
 		storeMintedCollection(collection, this.#storage);
 		removeMintedAssets(
@@ -743,7 +744,12 @@ export class CollectionMintClient {
 		files: File[],
 		signal?: AbortSignal
 	): Promise<CollectionMintEstimate> {
-		validateCollectionMintInput({ name: collection.name, description: collection.description, files });
+		validateCollectionMintInput({
+			name: collection.name,
+			description: collection.description,
+			files,
+			udl: collection.udl,
+		});
 		const placeholder = 'x'.repeat(43);
 		const additions = files.map((file, index) => ({
 			id: placeholder,
@@ -792,7 +798,9 @@ export class CollectionMintClient {
 					name: fileAssetName(file, collection.assets.length + index),
 					description: collection.description,
 					collection: collection.name,
-					udl: {},
+					// The collection's own terms; undefined (no license tags) when none were recorded.
+					// Never `{}`: that would tag a UDL granting nothing.
+					udl: collection.udl,
 				},
 				owner,
 				{
