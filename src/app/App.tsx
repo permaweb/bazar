@@ -3298,6 +3298,37 @@ export function homeMarketHasPending(loading: boolean, keys: string[], summaries
 	return loading || keys.some((key) => !summaries[key]);
 }
 
+/**
+ * Discover is busy only while what its visible pages show can still change:
+ * the market shell is loading with nothing to show yet, a requested retry is
+ * running, the listing crawl is short of a full visible page, or a summary in
+ * the read window is still unknown. Failed summaries are settled (their cards
+ * say Unavailable), and once the visible pages are full the crawl's work for
+ * the page ahead no longer keeps the page busy.
+ */
+export function homeDiscoverPending(state: {
+	marketLoading: boolean;
+	retrying: boolean;
+	crawlLoading: boolean;
+	visiblePagesFull: boolean;
+	visibleCount: number;
+	keys: readonly string[];
+	summaries: Readonly<Record<string, HomeMarketSummary>>;
+}) {
+	if (state.retrying) return true;
+	if (state.marketLoading && state.visibleCount === 0) return true;
+	if (state.crawlLoading && !state.visiblePagesFull) return true;
+	return state.keys.some((key) => !state.summaries[key]);
+}
+
+/** Whether every section the Discover view shows has a full page of cards. */
+export function homeDiscoverPagesFull(
+	sections: ReadonlyArray<{ shown: number; pageSize: number; page: number; pageCount: number }>
+) {
+	// A short last page is full once there is nothing further to show.
+	return sections.every(({ shown, pageSize, page, pageCount }) => shown >= pageSize || page < pageCount);
+}
+
 export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount: number) {
 	return pending && visibleAssetCount === 0;
 }
@@ -4408,11 +4439,39 @@ function Home() {
 		collections.map((collection) => collection.id),
 		collectionFloors
 	);
-	const discoverResultsPending = homeMarketHasPending(
-		market.loading || assetSummariesRetrying || portableHomeListingsLoading || failedAssetIds.length > 0,
-		assets.map(({ asset }) => asset.id),
-		assetPrices
-	);
+	const discoverResultsPending = homeDiscoverPending({
+		marketLoading: market.loading,
+		retrying: assetSummariesRetrying,
+		crawlLoading: portableHomeListingsLoading,
+		visiblePagesFull: homeDiscoverPagesFull(
+			assetType === 'all'
+				? [
+						{
+							shown: discoverTokenPagination.items.length,
+							pageSize: HOME_DISCOVER_TOKEN_PAGE_SIZE,
+							page: discoverTokenPagination.page,
+							pageCount: discoverTokenPagination.pageCount,
+						},
+						{
+							shown: Math.min(discoverCollectibles.length, HOME_DISCOVER_UNIQUE_PREVIEW),
+							pageSize: HOME_DISCOVER_UNIQUE_PREVIEW,
+							page: 1,
+							pageCount: 1,
+						},
+				  ]
+				: [
+						{
+							shown: assetPagination.items.length,
+							pageSize: HOME_ASSET_PAGE_SIZE,
+							page: assetPagination.page,
+							pageCount: assetPagination.pageCount,
+						},
+				  ]
+		),
+		visibleCount: displayedAssets.length,
+		keys: assets.map(({ asset }) => asset.id),
+		summaries: displayAssetPrices,
+	});
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
 	const discoverFailure = market.error
 		? { message: market.error, retry: market.retry }

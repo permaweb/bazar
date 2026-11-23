@@ -51,6 +51,8 @@ import {
 	homeCollectionAssetCountLabel,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
+	homeDiscoverPagesFull,
+	homeDiscoverPending,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
@@ -1238,6 +1240,40 @@ describe('Home market summary retries', () => {
 		expect(homeMarketHasPending(true, ['ready'], summaries)).toBe(true);
 		expect(homeMarketHasPending(false, ['ready', 'pending'], summaries)).toBe(true);
 		expect(homeMarketHasPending(false, ['ready'], summaries)).toBe(false);
+	});
+
+	it('settles Discover once the visible pages are full and their summaries are known', () => {
+		const ready: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const failed: HomeMarketSummary = { status: 'unavailable', source: 'compute', kind: 'rate-limited' };
+		const base = {
+			marketLoading: false,
+			retrying: false,
+			crawlLoading: false,
+			visiblePagesFull: true,
+			visibleCount: 3,
+			keys: ['a', 'b'],
+			summaries: { a: ready, b: ready },
+		};
+		expect(homeDiscoverPending(base)).toBe(false);
+		// A failed summary is a settled card, not a reason to stay busy.
+		expect(homeDiscoverPending({ ...base, summaries: { a: ready, b: failed } })).toBe(false);
+		expect(homeDiscoverPending({ ...base, summaries: { a: ready } })).toBe(true);
+		expect(homeDiscoverPending({ ...base, retrying: true })).toBe(true);
+		// Collections still streaming in do not hold a populated page busy.
+		expect(homeDiscoverPending({ ...base, marketLoading: true })).toBe(false);
+		expect(homeDiscoverPending({ ...base, marketLoading: true, visibleCount: 0 })).toBe(true);
+		// The crawl's look-ahead keeps the page busy only while a visible page is short.
+		expect(homeDiscoverPending({ ...base, crawlLoading: true })).toBe(false);
+		expect(homeDiscoverPending({ ...base, crawlLoading: true, visiblePagesFull: false })).toBe(true);
+
+		expect(homeDiscoverPagesFull([{ shown: 5, pageSize: 5, page: 1, pageCount: 3 }])).toBe(true);
+		expect(homeDiscoverPagesFull([{ shown: 3, pageSize: 5, page: 1, pageCount: 1 }])).toBe(false);
+		expect(
+			homeDiscoverPagesFull([
+				{ shown: 5, pageSize: 5, page: 1, pageCount: 2 },
+				{ shown: 11, pageSize: 12, page: 1, pageCount: 1 },
+			])
+		).toBe(false);
 	});
 
 	it('shows the home loader only while results are pending and no assets are visible', () => {
