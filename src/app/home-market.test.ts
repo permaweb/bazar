@@ -43,6 +43,8 @@ import {
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
 	homeCollectionAssetCountLabel,
+	homeDiscoverBusy,
+	homeDiscoverDisplay,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
@@ -1075,6 +1077,25 @@ describe('Home market summary retries', () => {
 		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
 		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
 		expect(homeMarketShowsInitialLoader(false, 0)).toBe(false);
+	});
+
+	it('renders exactly one Discover state so a failure replaces the loader but keeps visible cards', () => {
+		expect(homeDiscoverDisplay(true, false, 0)).toBe('loading');
+		// A tripped compute circuit or failed discovery is terminal even while summaries remain pending.
+		expect(homeDiscoverDisplay(true, true, 0)).toBe('failed');
+		expect(homeDiscoverDisplay(false, true, 0)).toBe('failed');
+		// Already rendered cards stay on screen; the failure becomes a banner above them.
+		expect(homeDiscoverDisplay(true, true, 3)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 3)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 0)).toBe('empty');
+	});
+
+	it('stops the header refresh spinner and aria-busy once Discover shows a terminal failure', () => {
+		// Hidden failed or summary-less assets keep results pending after a compute-circuit failure.
+		expect(homeDiscoverBusy('failed', true)).toBe(false);
+		expect(homeDiscoverBusy('loading', true)).toBe(true);
+		expect(homeDiscoverBusy('results', true)).toBe(true);
+		expect(homeDiscoverBusy('results', false)).toBe(false);
 	});
 
 	it('keeps collection floor scans isolated to the collections view', () => {

@@ -3139,6 +3139,25 @@ export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount
 	return pending && visibleAssetCount === 0;
 }
 
+export type HomeDiscoverDisplay = 'loading' | 'failed' | 'results' | 'empty';
+
+/**
+ * The Discover panel renders exactly one state. A terminal failure (market
+ * shell error, tripped compute circuit or failed listing discovery) replaces
+ * the initial loader instead of being stacked above it, while cards that are
+ * already visible stay on screen.
+ */
+export function homeDiscoverDisplay(pending: boolean, failed: boolean, visibleAssetCount: number): HomeDiscoverDisplay {
+	if (visibleAssetCount > 0) return 'results';
+	if (failed) return 'failed';
+	return homeMarketShowsInitialLoader(pending, visibleAssetCount) ? 'loading' : 'empty';
+}
+
+/** A terminal Discover failure is not busy: no header spinner or aria-busy beside the error block. */
+export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean) {
+	return display !== 'failed' && pending;
+}
+
 export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
 	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
 }
@@ -4167,9 +4186,25 @@ function Home() {
 		assetPrices
 	);
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
-	const discoverInitialLoading = homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length);
+	const discoverFailure = market.error
+		? { message: market.error, retry: market.retry }
+		: portableHomeListingsFailure
+		? {
+				message: marketplaceRequestFailureMessage(
+					portableHomeListingsFailure.source,
+					portableHomeListingsFailure.kind
+				),
+				retry: () => setPortableHomeRetry((current) => current + 1),
+		  }
+		: undefined;
+	const discoverDisplay = homeDiscoverDisplay(
+		discoverResultsPending,
+		Boolean(discoverFailure),
+		displayedAssets.length
+	);
+	const discoverBusy = homeDiscoverBusy(discoverDisplay, discoverResultsPending);
 	const pageRefreshing =
-		homeTab === 'discover' ? discoverResultsPending : homeTab === 'collections' ? collectionResultsPending : false;
+		homeTab === 'discover' ? discoverBusy : homeTab === 'collections' ? collectionResultsPending : false;
 	React.useEffect(() => {
 		market.setPageRefreshing(pageRefreshing);
 		return () => market.setPageRefreshing(false);
@@ -4308,7 +4343,7 @@ function Home() {
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
-									<div aria-busy={discoverResultsPending} className="home-asset-filters">
+									<div aria-busy={discoverBusy} className="home-asset-filters">
 										<MarketSelect<HomeAssetType>
 											label="Asset type"
 											onChange={setAssetType}
@@ -4346,15 +4381,12 @@ function Home() {
 									</div>
 								) : null}
 							</div>
-							{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
-							{homeTab === 'discover' && portableHomeListingsFailure ? (
-								<ErrorPanel
-									message={marketplaceRequestFailureMessage(
-										portableHomeListingsFailure.source,
-										portableHomeListingsFailure.kind
-									)}
-									onRetry={() => setPortableHomeRetry((current) => current + 1)}
-								/>
+							{homeTab === 'discover' ? (
+								discoverFailure && discoverDisplay === 'results' ? (
+									<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+								) : null
+							) : market.error ? (
+								<ErrorPanel message={market.error} onRetry={market.retry} />
 							) : null}
 							{homeTab === 'discover' && partialTokenCollection ? (
 								<div className="collection-source-notice">
@@ -4508,12 +4540,14 @@ function Home() {
 								<HomeActivityPanel collections={market.collections} marketLoading={market.loading} />
 							) : (
 								<div
-									aria-busy={discoverResultsPending}
+									aria-busy={discoverBusy}
 									aria-labelledby="home-discover-tab"
 									id="home-discover-panel"
 									role="tabpanel"
 								>
-									{discoverInitialLoading ? (
+									{discoverDisplay === 'failed' && discoverFailure ? (
+										<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+									) : discoverDisplay === 'loading' ? (
 										<div className="home-market-loading">
 											<Loading label="Loading marketplace assets…" />
 										</div>
