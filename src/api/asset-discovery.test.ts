@@ -26,6 +26,7 @@ import {
 	searchBazarAtomicAssetsByName,
 	storeCompletedWalletCandidateScan,
 	verifyAssetCandidateSupport,
+	WALLET_SCAN_PREVIEW_AFTER_MS,
 	walletAssetGroup,
 } from './asset-discovery';
 import { parseAssetState } from './asset-marketplace';
@@ -510,6 +511,114 @@ describe('wallet candidate discovery', () => {
 			})
 		).rejects.toThrow('asset-discovery-graphql-503');
 		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([arweaveGraphqlEndpoint()]);
+	});
+
+	it('previews a slow preferred first page from the next index without letting it answer the scan', async () => {
+		vi.useFakeTimers();
+		const held = (ids: string[]) => ({
+			pageInfo: { hasNextPage: false },
+			edges: ids.map((id) => ({
+				cursor: `cursor-${id}`,
+				node: { id, tags: [{ name: 'initial-holder', value: wallet }], block: { height: 10, timestamp: 100 } },
+			})),
+		});
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const answer = (ids: string[]) =>
+			Response.json({ data: { initiallyHeld: held(ids), marketActions: empty, receivedTransfers: empty } });
+		const requests: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			// arweave.net answers the first page after 5 s (and the catch-up at once) with both assets;
+			// ardrive.net answers at once but lacks assetB.
+			if (String(input) !== arweaveGraphqlEndpoint()) return answer([assetA]);
+			if (requests.filter((url) => url === arweaveGraphqlEndpoint()).length === 1)
+				await new Promise((resolve) => setTimeout(resolve, 5_000));
+			return answer([assetB, assetA]);
+		});
+		const pages: string[][] = [];
+		const scan = createWalletCandidateScan(wallet);
+		const discovery = discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			scan,
+			catchUp: true,
+			retryDelaysMs: [],
+			onPage: (candidates) => {
+				pages.push(candidates.map(({ processId }) => processId));
+			},
+		});
+
+		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS - 1);
+		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(requests).toEqual([arweaveGraphqlEndpoint(), 'https://ardrive.net/graphql']);
+		// The preview reaches the caller while the preferred page is still pending, and leaves the scan alone.
+		expect(pages).toEqual([[assetA]]);
+		expect(scan.found.size).toBe(0);
+		expect(scan.answeringIndex).toBeUndefined();
+		expect(scan.heads.initiallyHeld).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(5_000);
+		const result = await discovery;
+		expect(result.map(({ processId }) => processId).sort()).toEqual([assetA, assetB].sort());
+		// Then the preferred first page and its catch-up pass, each with both assets.
+		expect(pages.slice(1).map((page) => [...page].sort())).toEqual([
+			[assetA, assetB].sort(),
+			[assetA, assetB].sort(),
+		]);
+		// Only the preferred index answered the scan, so it is stored and resumed as before.
+		expect(scan.answeringIndex).toBe(arweaveGraphqlEndpoint());
+		expect(scan.heads.initiallyHeld).toBe(assetB);
+		const storage = memoryStorage();
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		expect(
+			requests.filter((url) => url !== arweaveGraphqlEndpoint()),
+			'the catch-up pass is not previewed'
+		).toHaveLength(1);
+	});
+
+	it('does not preview a first page the preferred index answers in time, nor a stored scan catch-up', async () => {
+		vi.useFakeTimers();
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const requests: string[] = [];
+		const slowArweave = (delayMs: number) =>
+			vi.fn(async (input: RequestInfo | URL) => {
+				requests.push(String(input));
+				if (String(input) === arweaveGraphqlEndpoint())
+					await new Promise((resolve) => setTimeout(resolve, delayMs));
+				return Response.json({
+					data: { initiallyHeld: empty, marketActions: empty, receivedTransfers: empty },
+				});
+			});
+		const onPage = vi.fn();
+
+		const fresh = discoverWalletAssetCandidates(wallet, {
+			fetch: slowArweave(WALLET_SCAN_PREVIEW_AFTER_MS - 500) as typeof fetch,
+			retryDelaysMs: [],
+			onPage,
+		});
+		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS * 2);
+		await fresh;
+		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
+
+		// A stored scan already has its index: a slow catch-up there is never previewed elsewhere.
+		const stored = createWalletCandidateScan(wallet);
+		stored.active.clear();
+		stored.caughtUp = true;
+		stored.answeringIndex = arweaveGraphqlEndpoint();
+		stored.heads = { initiallyHeld: null, marketActions: null, receivedTransfers: null };
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, stored);
+		requests.length = 0;
+		const catchUp = discoverWalletAssetCandidates(wallet, {
+			fetch: slowArweave(WALLET_SCAN_PREVIEW_AFTER_MS * 3) as typeof fetch,
+			scan: loadCompletedWalletCandidateScan(storage, wallet)!,
+			catchUp: true,
+			retryDelaysMs: [],
+			onPage,
+		});
+		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS * 4);
+		await catchUp;
+		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
 	});
 
 	it('keeps every page on an explicitly configured index', async () => {

@@ -3655,9 +3655,37 @@ export function homeTokenPriceChangePercent(
 	return Number(scaled) / 100;
 }
 
-export function homeTokenPriceChangeLabel(change: number | null | 'unavailable') {
-	if (change === null || change === 'unavailable' || !Number.isFinite(change)) return '—';
-	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+/**
+ * What a token row's 24h change cell says once it is no longer "Checking…". "—" alone cannot tell
+ * a quiet token from a failed read, so each non-number keeps its meaning: too few listings in the
+ * window, a read that failed (retried while the row stays visible), or one still on its way.
+ */
+export function homeTokenPriceChangeDisplay(change: HomeTokenPriceChange | undefined): {
+	text: string;
+	description?: string;
+} {
+	if (change === 'unavailable')
+		return { text: 'Unavailable', description: 'The 24h change could not be read. It is retried automatically.' };
+	if (change === undefined) return { text: '—', description: 'The 24h change is still loading.' };
+	if (change === null || !Number.isFinite(change)) return { text: '—', description: 'Not enough data in 24h' };
+	return { text: `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%` };
+}
+
+export function homeTokenPriceChangeLabel(change: HomeTokenPriceChange | undefined) {
+	return homeTokenPriceChangeDisplay(change).text;
+}
+
+/** The settled 24h change: "—" reads as its meaning to assistive tech, and every non-number has a tooltip. */
+export function HomeTokenPriceChangeValue({ change }: { change: HomeTokenPriceChange | undefined }) {
+	const { text, description } = homeTokenPriceChangeDisplay(change);
+	if (!description) return <>{text}</>;
+	if (text !== '—') return <span title={description}>{text}</span>;
+	return (
+		<span title={description}>
+			<span aria-hidden="true">{text}</span>
+			<span className="sr-only">{description}</span>
+		</span>
+	);
 }
 
 /** How long a token row may say "Checking…" for its 24h change before it shows "—". */
@@ -5312,7 +5340,7 @@ function Home() {
 							value: homeTokenPriceChangePending(change, overdueTokenPriceChanges.has(asset.id)) ? (
 								<HomePendingMarketValue />
 							) : (
-								homeTokenPriceChangeLabel(change ?? null)
+								<HomeTokenPriceChangeValue change={change} />
 							),
 							tone:
 								typeof change !== 'number'
@@ -5860,10 +5888,30 @@ export function activityLoadingPlacement(busy: boolean, rowCount: number, hasMor
 	return hasMoreControl ? null : ('after-list' as const);
 }
 
-/** True once the market has settled and its membership has been quiet briefly (or the cap passed). Stays true. */
-function useActivityCatalogueRevealed(marketLoading: boolean, collections: readonly Collection[]) {
+/**
+ * Longest claimed rows wait for the market to settle before they paint anyway. A slow index can keep
+ * the catalogue streaming for most of a minute; past this the rows paint with the names they have
+ * and upgrade in place (the title is one ellipsised line), rather than leaving only a spinner.
+ */
+export const ACTIVITY_ROWS_WAIT_CAP_MS = 8_000;
+
+/** How long rows the catalogue already claims may still wait, measured from when they were first claimed. */
+export function activityRowsRevealDelay(claimedAt: number, now: number, capMs = ACTIVITY_ROWS_WAIT_CAP_MS) {
+	return Math.max(0, claimedAt + capMs - now);
+}
+
+/**
+ * True once the market has settled and its membership has been quiet briefly (or the cap passed), or
+ * once claimed rows have waited ACTIVITY_ROWS_WAIT_CAP_MS for that. Stays true.
+ */
+function useActivityCatalogueRevealed(
+	marketLoading: boolean,
+	collections: readonly Collection[],
+	rowsClaimed: boolean
+) {
 	const [revealed, setRevealed] = React.useState(false);
 	const settledAt = React.useRef<number | null>(null);
+	const claimedAt = React.useRef<number | null>(null);
 	const membershipKey = React.useMemo(() => activityCatalogueMembershipKey(collections), [collections]);
 	React.useEffect(() => {
 		if (revealed || marketLoading) return;
@@ -5872,6 +5920,13 @@ function useActivityCatalogueRevealed(marketLoading: boolean, collections: reado
 		const timer = window.setTimeout(() => setRevealed(true), activityCatalogueRevealDelay(settledAt.current, now));
 		return () => window.clearTimeout(timer);
 	}, [marketLoading, membershipKey, revealed]);
+	React.useEffect(() => {
+		if (revealed || !rowsClaimed) return;
+		const now = Date.now();
+		claimedAt.current ??= now;
+		const timer = window.setTimeout(() => setRevealed(true), activityRowsRevealDelay(claimedAt.current, now));
+		return () => window.clearTimeout(timer);
+	}, [revealed, rowsClaimed]);
 	return revealed;
 }
 
@@ -5932,13 +5987,15 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const claimedEvents = filterGlobalActivity(catalogueEvents, activityFilter);
 	// The page is read in parallel with the catalogue, but rows wait for the catalogue to settle so
 	// collections streaming in do not insert rows between ones already painted. Names for the rows
-	// already claimed are asked for meanwhile, so they paint named.
-	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections);
+	// already claimed are asked for meanwhile, so they paint named. A catalogue that is still
+	// streaming ACTIVITY_ROWS_WAIT_CAP_MS after rows were first claimed no longer holds them back.
+	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections, claimedEvents.length > 0);
 	const revealedEvents = catalogueRevealed ? claimedEvents : [];
 	// Rows already painted keep their places: rows a collection streaming in after the reveal brings
-	// (the reveal waits at most ACTIVITY_CATALOGUE_WAIT_CAP_MS) are appended rather than inserted
-	// above them, and the newest-first order is offered instead of applied on its own. A filter change
-	// or the offer re-ranks.
+	// (the reveal waits at most ACTIVITY_CATALOGUE_WAIT_CAP_MS after the market settles, or
+	// ACTIVITY_ROWS_WAIT_CAP_MS once rows are claimed) are appended rather than inserted above them,
+	// and the newest-first order is offered instead of applied on its own. A filter change or the
+	// offer re-ranks.
 	const [activityOrderRevision, setActivityOrderRevision] = React.useState(0);
 	const rankedActivityIds = revealedEvents.map((event) => event.id);
 	const activityOrder = useStableOrder(rankedActivityIds, `${activityFilter}|${activityOrderRevision}`, false);

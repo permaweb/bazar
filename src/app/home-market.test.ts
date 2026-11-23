@@ -19,9 +19,11 @@ import { nextStableOrder, stableOrderDiffers } from 'helpers/stable-order';
 import {
 	ACTIVITY_CATALOGUE_QUIET_MS,
 	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
+	ACTIVITY_ROWS_WAIT_CAP_MS,
 	activityCatalogueMembershipKey,
 	activityCatalogueRevealDelay,
 	activityLoadingPlacement,
+	activityRowsRevealDelay,
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembership,
@@ -109,6 +111,7 @@ import {
 	homeTabPath,
 	homeTokenPlaceholderRows,
 	homeTokenPriceChangeCurrent,
+	homeTokenPriceChangeDisplay,
 	homeTokenPriceChangeDueAt,
 	homeTokenPriceChangeFailed,
 	homeTokenPriceChangeLabel,
@@ -116,6 +119,7 @@ import {
 	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
 	homeTokenPriceChangeRequests,
+	HomeTokenPriceChangeValue,
 	isFungiblePendingMint,
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
@@ -233,6 +237,36 @@ describe('Home market summary retries', () => {
 		expect(homeTokenPriceChangeLabel(-12.5)).toBe('-12.5%');
 		expect(homeTokenPriceChangeLabel(null)).toBe('—');
 		expect(homeTokenPriceChangeLabel(Number.POSITIVE_INFINITY)).toBe('—');
+	});
+
+	it('tells a token with too little 24h data apart from a 24h change that could not be read', () => {
+		expect(homeTokenPriceChangeDisplay(null)).toEqual({ text: '—', description: 'Not enough data in 24h' });
+		expect(homeTokenPriceChangeDisplay('unavailable')).toEqual({
+			text: 'Unavailable',
+			description: 'The 24h change could not be read. It is retried automatically.',
+		});
+		// Past the display deadline with no answer yet: neither "no data" nor a failure.
+		expect(homeTokenPriceChangeDisplay(undefined)).toEqual({
+			text: '—',
+			description: 'The 24h change is still loading.',
+		});
+		expect(homeTokenPriceChangeDisplay(2.5)).toEqual({ text: '+2.5%' });
+		// A stale value lapses to "Unavailable", never to the no-data dash.
+		const stale = { value: 4, readAt: 0, checkedAt: 0 };
+		expect(homeTokenPriceChangeLabel(homeTokenPriceChangeCurrent(stale, HOME_TOKEN_CHANGE_MAX_AGE_MS + 1))).toBe(
+			'Unavailable'
+		);
+
+		const render = (change: number | null | 'unavailable' | undefined) =>
+			renderToStaticMarkup(React.createElement(HomeTokenPriceChangeValue, { change }));
+		// The dash is hidden from assistive tech, which reads its meaning instead; both have a tooltip.
+		expect(render(null)).toBe(
+			'<span title="Not enough data in 24h"><span aria-hidden="true">—</span><span class="sr-only">Not enough data in 24h</span></span>'
+		);
+		expect(render('unavailable')).toBe(
+			'<span title="The 24h change could not be read. It is retried automatically.">Unavailable</span>'
+		);
+		expect(render(-3)).toBe('-3%');
 	});
 
 	it('renders collection descriptions as collapsed, wrappable header copy', () => {
@@ -1779,6 +1813,17 @@ describe('Home market summary retries', () => {
 		// A collection streamed in 2.2 s after settle: only the time left to the cap remains.
 		expect(activityCatalogueRevealDelay(1_000, 3_200)).toBe(ACTIVITY_CATALOGUE_WAIT_CAP_MS - 2_200);
 		expect(activityCatalogueRevealDelay(1_000, 1_000 + ACTIVITY_CATALOGUE_WAIT_CAP_MS + 1)).toBe(0);
+	});
+
+	it('paints claimed activity rows by a bounded deadline while the catalogue is still streaming', () => {
+		// Round 3 under a 20 s index delay: rows were claimed but only a spinner showed until ~50 s.
+		expect(ACTIVITY_ROWS_WAIT_CAP_MS).toBe(8_000);
+		expect(activityRowsRevealDelay(1_000, 1_000)).toBe(ACTIVITY_ROWS_WAIT_CAP_MS);
+		// Collections streaming in meanwhile do not push the deadline back: it runs from the first claim.
+		expect(activityRowsRevealDelay(1_000, 6_000)).toBe(ACTIVITY_ROWS_WAIT_CAP_MS - 5_000);
+		expect(activityRowsRevealDelay(1_000, 1_000 + ACTIVITY_ROWS_WAIT_CAP_MS + 1)).toBe(0);
+		// A market that settles soon after the rows are claimed still paints them on its own quiet time.
+		expect(ACTIVITY_CATALOGUE_QUIET_MS).toBeLessThan(ACTIVITY_ROWS_WAIT_CAP_MS);
 	});
 
 	it('keys activity catalogue membership on collections and member counts, not names', () => {
