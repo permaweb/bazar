@@ -29,6 +29,8 @@ import {
 	fungibleHoldingPercentage,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
+	FungibleNotSentRecovery,
+	fungibleNotSentRecoveryCopy,
 	fungibleOfferedPercentage,
 	type FungibleOperationActivity,
 	fungibleOperationActivityProgress,
@@ -839,6 +841,43 @@ describe('fungible operation error semantics', () => {
 		expect(alert).not.toContain('role="tablist"');
 		expect(alert).not.toContain('<button');
 		expect(alert).toContain('One settlement needs attention.');
+	});
+
+	it('names the signed operation in not-sent recovery copy', () => {
+		expect(fungibleNotSentRecoveryCopy('sell')).toEqual({
+			retry: 'Retry listing',
+			discard: 'Discard listing',
+			changed: 'This saved listing changed in another tab. Close this panel and review the active action.',
+		});
+		expect(fungibleNotSentRecoveryCopy('cancel')).toEqual({
+			retry: 'Retry cancellation',
+			discard: 'Discard cancellation',
+			changed: 'This saved cancellation changed in another tab. Close this panel and review the active action.',
+		});
+		expect(fungibleNotSentRecoveryCopy('transfer')).toEqual({
+			retry: 'Retry transfer',
+			discard: 'Discard transfer',
+			changed: 'This saved transfer changed in another tab. Close this panel and review the active action.',
+		});
+	});
+
+	it('does not call a not-sent listing or cancellation a transfer', () => {
+		const render = (kind: 'sell' | 'cancel' | 'transfer') =>
+			renderToStaticMarkup(
+				React.createElement(FungibleNotSentRecovery, { kind, onDiscard: () => {}, onRetry: () => {} })
+			);
+		const listing = render('sell');
+		expect(listing).toContain('No transaction was submitted. Retry this signature or discard it to start over.');
+		expect(listing).toContain('>Retry listing</button>');
+		expect(listing).toContain('>Discard listing</button>');
+		expect(listing).not.toContain('transfer');
+		const cancellation = render('cancel');
+		expect(cancellation).toContain('>Retry cancellation</button>');
+		expect(cancellation).toContain('>Discard cancellation</button>');
+		expect(cancellation).not.toContain('transfer');
+		const transfer = render('transfer');
+		expect(transfer).toContain('>Retry transfer</button>');
+		expect(transfer).toContain('>Discard transfer</button>');
 	});
 
 	it('puts explanatory settlement recovery content in sequential focus order', () => {
