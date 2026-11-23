@@ -83,16 +83,10 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const closeConnectDialog = React.useCallback(() => setConnectDialogOpen(false), []);
 	const restoreConnectDialogFocus = React.useCallback(() => connectDialogTrigger.current, []);
 
-	const refresh = React.useCallback(async () => {
-		const commit = addressRequests.current.begin();
-		try {
-			const connection = await restoreBrowserWalletConnection(window, readBrowserWalletPreference());
-			if (connection) window.arweaveWallet = connection.wallet;
-			commit(connection?.address ?? null);
-		} catch {
-			commit(null);
-		}
-	}, []);
+	const refresh = React.useCallback(
+		() => restoreBrowserWalletAddress(window, readBrowserWalletPreference(), addressRequests.current.begin()),
+		[]
+	);
 
 	const unlockLocalWallet = React.useCallback(async (storedWallet: WalletJwk) => {
 		const unlocking: LocalWalletUnlockState = { status: 'unlocking' };
@@ -126,15 +120,15 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			setBalanceRevision((revision) => revision + 1);
 			void refresh();
 		};
-		const refreshNetworkBalances = () => setBalanceRevision((revision) => revision + 1);
-		window.addEventListener('walletSwitch', refreshWallet);
-		window.addEventListener('permawebConnectLoaded', refreshWallet);
-		window.addEventListener('aoFetchLoaded', refreshNetworkBalances);
+		const unsubscribe = subscribeToWalletProviderEvents(window, {
+			readLocalWallet,
+			reactivateLocalWallet: (storedWallet) => void unlockLocalWallet(storedWallet),
+			refreshNetworkBalances: () => setBalanceRevision((revision) => revision + 1),
+			refreshWallet,
+		});
 		return () => {
 			cancelled = true;
-			window.removeEventListener('walletSwitch', refreshWallet);
-			window.removeEventListener('permawebConnectLoaded', refreshWallet);
-			window.removeEventListener('aoFetchLoaded', refreshNetworkBalances);
+			unsubscribe();
 			addressRequests.current.invalidate();
 		};
 	}, [refresh, unlockLocalWallet]);
@@ -609,6 +603,72 @@ export function createLatestAddressCommitter(commit: (address: string | null) =>
 		invalidate() {
 			latest += 1;
 		},
+	};
+}
+
+/** Reads the active browser-wallet address and commits it, or null when no provider is connected yet. */
+export async function restoreBrowserWalletAddress(
+	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
+	preferredWalletId: BrowserWalletId | null,
+	commit: (address: string | null) => boolean
+) {
+	try {
+		const connection = await restoreBrowserWalletConnection(scope, preferredWalletId);
+		if (connection) scope.arweaveWallet = connection.wallet;
+		commit(connection?.address ?? null);
+	} catch {
+		commit(null);
+	}
+}
+
+/** Provider handshakes after which the active wallet address is read again. */
+export const WALLET_REFRESH_EVENTS = ['walletSwitch', 'permawebConnectLoaded'] as const;
+/** Fired by Wander/ArConnect once window.arweaveWallet is injected, which may be after page load. */
+export const WALLET_PROVIDER_LOADED_EVENT = 'arweaveWalletLoaded';
+/** Fired when the AO fetch bridge is ready; only balances depend on it. */
+export const NETWORK_BALANCES_LOADED_EVENT = 'aoFetchLoaded';
+
+/**
+ * What a late Wander injection means for the current session:
+ * - refresh: no keyfile is saved, so read the browser wallet's address again.
+ * - reactivate-local: a saved keyfile is the session, but the injection replaced its adapter.
+ * - keep-local: a saved keyfile is the session and nothing replaced it.
+ */
+export type WalletProviderLoadedAction = 'refresh' | 'reactivate-local' | 'keep-local';
+
+export function walletProviderLoadedAction(
+	storedLocalWallet: WalletJwk | null,
+	currentWallet: Window['arweaveWallet']
+): WalletProviderLoadedAction {
+	if (!storedLocalWallet) return 'refresh';
+	return currentWallet && !isLocalWallet(currentWallet) ? 'reactivate-local' : 'keep-local';
+}
+
+/** Subscribes the wallet session to provider events on `scope`; returns the unsubscribe. */
+export function subscribeToWalletProviderEvents(
+	scope: EventTarget & Pick<Window, 'arweaveWallet'>,
+	handlers: {
+		readLocalWallet(): WalletJwk | null;
+		reactivateLocalWallet(storedWallet: WalletJwk): void;
+		refreshNetworkBalances(): void;
+		refreshWallet(): void;
+	}
+) {
+	const refreshWallet = () => handlers.refreshWallet();
+	const refreshNetworkBalances = () => handlers.refreshNetworkBalances();
+	const providerLoaded = () => {
+		const storedWallet = handlers.readLocalWallet();
+		const action = walletProviderLoadedAction(storedWallet, scope.arweaveWallet);
+		if (action === 'refresh') handlers.refreshWallet();
+		else if (action === 'reactivate-local' && storedWallet) handlers.reactivateLocalWallet(storedWallet);
+	};
+	for (const event of WALLET_REFRESH_EVENTS) scope.addEventListener(event, refreshWallet);
+	scope.addEventListener(WALLET_PROVIDER_LOADED_EVENT, providerLoaded);
+	scope.addEventListener(NETWORK_BALANCES_LOADED_EVENT, refreshNetworkBalances);
+	return () => {
+		for (const event of WALLET_REFRESH_EVENTS) scope.removeEventListener(event, refreshWallet);
+		scope.removeEventListener(WALLET_PROVIDER_LOADED_EVENT, providerLoaded);
+		scope.removeEventListener(NETWORK_BALANCES_LOADED_EVENT, refreshNetworkBalances);
 	};
 }
 
