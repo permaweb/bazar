@@ -3,6 +3,7 @@ import { AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX } from './browser-stor
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
 const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
 const configuredGraphqlEndpoints = import.meta.env.VITE_GRAPHQL_ENDPOINTS?.trim();
+const configuredObserverRelay = import.meta.env.VITE_ARWEAVE_OBSERVER_RELAY?.trim();
 
 export type NetworkProviderSummary = {
 	url: string;
@@ -420,6 +421,16 @@ export function observerRelayFromLocation(
 	if (usesPermawebOsAo(location, scope)) {
 		const policy = currentPermawebOsNetworkPolicy(scope);
 		if (policy) return policy.ao.observerRelay?.url ?? '';
+	}
+	// A deployment whose first AO peer is not a relay names one (an AO-Core node
+	// that runs `~relay@1.0`) with `VITE_ARWEAVE_OBSERVER_RELAY`.
+	if (configuredObserverRelay && !prefersPermawebOsAo(location, scope)) {
+		try {
+			const relay = new URL(configuredObserverRelay);
+			if (['http:', 'https:'].includes(relay.protocol) && !relay.username && !relay.password) return relay.origin;
+		} catch {
+			// An unusable value falls back to the first AO peer.
+		}
 	}
 	return gatewaysFromLocation(location, scope)[0] ?? '';
 }

@@ -374,6 +374,36 @@ describe('Arweave gateway routing', () => {
 		expect(config.arweaveGraphqlEndpoint()).toBe('https://arweave.net/graphql');
 	});
 
+	it('relays observers through VITE_ARWEAVE_OBSERVER_RELAY instead of the first AO peer', async () => {
+		vi.stubEnv('VITE_ARWEAVE_OBSERVER_RELAY', 'https://relay.example/some/path');
+		vi.resetModules();
+		const config = await import('./config');
+
+		expect(config.observerRelayFromLocation(location({ search: '?node=https%3A%2F%2Fpeer.example' }), {})).toBe(
+			'https://relay.example'
+		);
+	});
+
+	it('ignores a VITE_ARWEAVE_OBSERVER_RELAY that is not an http(s) origin', async () => {
+		vi.stubEnv('VITE_ARWEAVE_OBSERVER_RELAY', 'ftp://relay.example');
+		vi.resetModules();
+		const config = await import('./config');
+
+		expect(config.observerRelayFromLocation(location({ search: '?node=https%3A%2F%2Fpeer.example' }), {})).toBe(
+			'https://peer.example'
+		);
+	});
+
+	it('relays observers through the first AO peer when no relay is configured', async () => {
+		vi.stubEnv('VITE_ARWEAVE_OBSERVER_RELAY', '');
+		vi.resetModules();
+		const config = await import('./config');
+
+		expect(config.observerRelayFromLocation(location({ search: '?node=https%3A%2F%2Fpeer.example' }), {})).toBe(
+			'https://peer.example'
+		);
+	});
+
 	it('defaults to arweave.net GraphQL only', async () => {
 		vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', '');
 		vi.resetModules();

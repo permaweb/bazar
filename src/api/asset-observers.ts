@@ -26,6 +26,11 @@ type SharedObserverNetwork = {
 export type AssetObserverNetworkLease = {
 	network: ArweaveObserverNetwork;
 	ready: ReturnType<ArweaveObserverNetwork['ready']>;
+	/**
+	 * Whether a watch should report a lasting observer shortfall. Off on a PermawebOS host,
+	 * whose policy relay and background discovery behave as before.
+	 */
+	quorumGuard: boolean;
 	release(): void;
 };
 
@@ -133,6 +138,7 @@ export function acquireAssetObserverNetwork(location: Location = window.location
 	return {
 		network: entry.network,
 		ready: entry.ready,
+		quorumGuard: !prefersPermawebOsAo(location),
 		release() {
 			if (released) return;
 			released = true;

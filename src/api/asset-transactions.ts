@@ -31,7 +31,12 @@ import {
 	waitForAssetState,
 } from './asset-marketplace';
 import { acquireAssetObserverNetwork } from './asset-observers';
-import { ARWEAVE_OBSERVER_QUORUM_GRACE_MS, observerQuorumUnavailable } from './observer-policy';
+import {
+	ARWEAVE_OBSERVER_QUORUM_CHECK_MS,
+	ARWEAVE_OBSERVER_QUORUM_GRACE_MS,
+	ARWEAVE_OBSERVER_QUORUM_MINIMUM,
+	observerQuorumUnavailable,
+} from './observer-policy';
 import { filledOrder, MAXIMUM_ASSET_OFFER_PRICE } from './order-matching';
 
 export { MAXIMUM_ASSET_OFFER_PRICE };
@@ -1673,16 +1678,15 @@ export type ConfirmTransactionOptions = {
 async function withTransactionWatcher<T>(
 	txId: string,
 	options: ConfirmTransactionOptions,
-	run: (context: { watcher: TxWatcher; settlement: Promise<void> }) => Promise<T>
+	run: (context: { watcher: TxWatcher; settlement: Promise<void>; quorum: () => Promise<never> }) => Promise<T>
 ): Promise<T> {
 	const observerLease = acquireAssetObserverNetwork();
 	const network = observerLease.network;
 	try {
 		await observerLease.ready;
-		let quorumCheck: ReturnType<typeof setTimeout> | undefined;
 		const watcher = network.watch(txId, {
 			target: options.target ?? 1,
-			minObservers: 2,
+			minObservers: ARWEAVE_OBSERVER_QUORUM_MINIMUM,
 			propagation: 'all',
 			notFoundTimeout: 180_000,
 		});
@@ -1701,22 +1705,43 @@ async function withTransactionWatcher<T>(
 			});
 			watcher.on('settled', () => resolve());
 			watcher.on('timeout', () => reject(new Error('transaction-propagation-timeout')));
-			// With fewer reachable observers than a quorum needs (for example only
-			// arweave.net, because the AO peer cannot relay to Arweave's own nodes),
-			// the watch could neither settle nor time out once one observer has
-			// seen the transaction. Say so instead of waiting.
-			quorumCheck = setTimeout(() => {
-				if (observerQuorumUnavailable(network.active().length)) {
-					reject(new Error('transaction-observers-unavailable'));
-				}
-			}, ARWEAVE_OBSERVER_QUORUM_GRACE_MS);
 		});
 		void settlement.catch(() => undefined);
-		watcher.start();
+		// Outside PermawebOS, fewer reachable observers than a quorum needs (only the
+		// gateway, when the AO peer cannot relay to Arweave's own nodes) leaves a watch
+		// that can neither settle nor time out once one observer has seen the
+		// transaction. The monitor tracks how long the count has been short for the
+		// whole watch; `quorum()` rejects with transaction-observers-unavailable once a
+		// shortfall that is still current has lasted a whole grace period. Callers ask
+		// only when they are ready to report it (dispatchAndConfirm: after dispatch).
+		let shortSince: number | undefined;
+		const waiting = new Set<(error: Error) => void>();
+		const shortfallLasted = () =>
+			shortSince !== undefined && Date.now() - shortSince >= ARWEAVE_OBSERVER_QUORUM_GRACE_MS;
+		const quorumMonitor = observerLease.quorumGuard
+			? setInterval(() => {
+					if (!observerQuorumUnavailable(network.active().length)) {
+						shortSince = undefined;
+						return;
+					}
+					shortSince ??= Date.now();
+					if (!shortfallLasted()) return;
+					for (const reject of waiting) reject(new Error('transaction-observers-unavailable'));
+					waiting.clear();
+			  }, ARWEAVE_OBSERVER_QUORUM_CHECK_MS)
+			: undefined;
+		const quorum = () =>
+			new Promise<never>((_resolve, reject) => {
+				if (!observerLease.quorumGuard) return;
+				if (shortfallLasted()) reject(new Error('transaction-observers-unavailable'));
+				else waiting.add(reject);
+			});
 		try {
-			return await run({ watcher, settlement });
+			watcher.start();
+			return await run({ watcher, settlement, quorum });
 		} finally {
-			clearTimeout(quorumCheck);
+			clearInterval(quorumMonitor);
+			waiting.clear();
 			watcher.stop();
 		}
 	} finally {
@@ -1732,8 +1757,8 @@ async function withTransactionWatcher<T>(
  * L1 confirmation race the buy/sell flow renders.
  */
 export async function confirmTransactionId(txId: string, options: ConfirmTransactionOptions = {}): Promise<void> {
-	await withTransactionWatcher(txId, options, async ({ settlement }) => {
-		await settlement;
+	await withTransactionWatcher(txId, options, async ({ settlement, quorum }) => {
+		await Promise.race([settlement, quorum()]);
 	});
 }
 
@@ -1741,7 +1766,7 @@ export async function dispatchAndConfirm(
 	transaction: PreparedTransaction,
 	options: ConfirmTransactionOptions = {}
 ): Promise<void> {
-	await withTransactionWatcher(transaction.id, options, async ({ watcher, settlement }) => {
+	await withTransactionWatcher(transaction.id, options, async ({ watcher, settlement, quorum }) => {
 		const dispatchController = new AbortController();
 		const abortDispatch = () => dispatchController.abort(options.signal?.reason);
 		if (options.signal?.aborted) abortDispatch();
@@ -1770,7 +1795,9 @@ export async function dispatchAndConfirm(
 			})();
 			void dispatch.catch(() => undefined);
 			await Promise.race([dispatch, settlement]);
-			await settlement;
+			// A quorum shortfall never cuts a dispatch short: it is consulted only after
+			// dispatch (including its ambiguous-dispatch retry) has finished.
+			await Promise.race([settlement, quorum()]);
 		} finally {
 			if (!dispatchController.signal.aborted) {
 				dispatchController.abort(new DOMException('Transaction observation finished', 'AbortError'));

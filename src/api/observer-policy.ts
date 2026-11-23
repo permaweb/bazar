@@ -49,8 +49,11 @@ export function arweaveObserverNodes(): string[] {
 /** A transaction watch needs at least this many reachable observers to form a quorum. */
 export const ARWEAVE_OBSERVER_QUORUM_MINIMUM = 2;
 
-/** How long a watch waits for enough observers to become reachable before saying it cannot verify. */
+/** How long a quorum shortfall must last before a watch says it cannot verify. */
 export const ARWEAVE_OBSERVER_QUORUM_GRACE_MS = 15_000;
+
+/** How often a watch re-checks the reachable observer count. */
+export const ARWEAVE_OBSERVER_QUORUM_CHECK_MS = 1_000;
 
 /** True when the reachable observers cannot form a quorum for a transaction watch. */
 export function observerQuorumUnavailable(activeObservers: number): boolean {
