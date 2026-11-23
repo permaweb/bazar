@@ -8,7 +8,7 @@ import {
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
 import type { ComputeResult } from 'api/asset-marketplace';
-import { type AssetSummary, type Collection, collectionAsset } from 'api/collections';
+import { type AssetSummary, type Collection, collectionAsset, preferResolvedAssetName } from 'api/collections';
 
 import {
 	type CandidateSupportFailure,
@@ -465,4 +465,43 @@ export function walletCandidatePreviews(
 		if (activity && summary) previews.push({ ...summary, activity, state: failed ? 'unavailable' : 'checking' });
 	}
 	return previews;
+}
+
+/**
+ * A wallet card's asset with the name (and artwork) the market store holds now. Previews and
+ * confirmed cards keep the collection snapshot they were built from, so a short-ID title resolved
+ * later by the batched name lookup would otherwise never reach them. Mirrors the home listing
+ * shells, which take the current collection asset the same way.
+ */
+export function walletEntryWithCurrentName(
+	asset: AssetSummary,
+	collection: Collection,
+	collections: readonly Collection[]
+): AssetSummary {
+	if (collection.kind !== 'images') return asset;
+	const currentCollection = collections.find((candidate) => candidate.id === collection.id);
+	const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+	const named = preferResolvedAssetName(asset, currentAsset);
+	return currentAsset?.image && !named.image ? { ...named, image: currentAsset.image } : named;
+}
+
+/**
+ * What an asset group heading counts: every card it shows, with the ones whose live state has not
+ * confirmed them yet (still being read, or the read failed) named separately so the total is not
+ * mistaken for confirmed holdings.
+ */
+export function walletAssetGroupCount(
+	confirmed: number,
+	previews: ReadonlyArray<Pick<WalletCandidatePreview, 'state'>>
+) {
+	const checking = previews.filter((preview) => preview.state === 'checking').length;
+	const unverified = previews.length - checking;
+	const shown = confirmed + previews.length;
+	const detail = [
+		checking ? `${checking.toLocaleString()} checking` : '',
+		unverified ? `${unverified.toLocaleString()} unverified` : '',
+	]
+		.filter(Boolean)
+		.join(' · ');
+	return { shown, checking, unverified, detail };
 }

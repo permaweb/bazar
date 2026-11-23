@@ -5226,6 +5226,11 @@ input:focus {
 	background: var(--panel);
 	font-size: var(--type-small);
 }
+.asset-group-heading > small {
+	color: var(--muted);
+	font-size: var(--type-small);
+	white-space: nowrap;
+}
 .asset-group-title > .market-select {
 	width: 190px;
 	min-width: 190px;
@@ -7324,6 +7329,10 @@ body input:focus-visible {
 	.asset-group-title > .market-select {
 		width: 160px;
 		min-width: 160px;
+	}
+	.asset-group-heading {
+		flex-wrap: wrap;
+		row-gap: 2px;
 	}
 	.dialog-backdrop {
 		padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
