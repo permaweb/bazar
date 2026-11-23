@@ -579,6 +579,7 @@ export default function MyAssetsRoute({
 		},
 		aggregateFailureMessage
 	);
+	const failureBlock = walletFailureBlock(status, visibleResults.length);
 	return (
 		<section className={pageClassName}>
 			{!embedded ? (
@@ -600,7 +601,7 @@ export default function MyAssetsRoute({
 					</div>
 				</div>
 			) : null}
-			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
+			{failureBlock === 'partial' ? (
 				<div className="my-assets-heading-status retry-notice">
 					<span role="status">
 						{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
@@ -623,7 +624,7 @@ export default function MyAssetsRoute({
 					</div>
 				</div>
 			) : null}
-			{status.error ? (
+			{failureBlock === 'error' ? (
 				<div className="inline-error retry-notice">
 					<span role="status">{status.error}</span>
 					<Button className="with-icon" onClick={retryDiscovery} size="custom">
@@ -653,7 +654,7 @@ export default function MyAssetsRoute({
 					/>
 				</>
 			) : null}
-			{status.phase === 'done' && !visibleResults.length ? (
+			{failureBlock === 'empty' ? (
 				<div className="empty-state">
 					<h3>
 						{status.failures
@@ -679,6 +680,24 @@ export default function MyAssetsRoute({
 			) : null}
 		</section>
 	);
+}
+
+export type WalletFailureBlock = 'none' | 'error' | 'partial' | 'empty';
+
+/**
+ * The wallet assets surface shows at most one failure block: the discovery error
+ * notice, a partial-failure banner above assets that are actually visible, or the
+ * empty state (which carries its own failure copy and Retry). A partial-failure
+ * banner never stacks above an empty state saying the same thing.
+ */
+export function walletFailureBlock(
+	status: Pick<WalletResolutionStatus, 'error' | 'failures' | 'phase'>,
+	visibleCount: number
+): WalletFailureBlock {
+	if (status.error) return 'error';
+	if (status.phase !== 'done') return 'none';
+	if (!visibleCount) return 'empty';
+	return status.failures ? 'partial' : 'none';
 }
 
 export function listedUniquePrice(result: ResolvedAsset, address: string): string | undefined {
