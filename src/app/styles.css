@@ -2038,7 +2038,7 @@ p {
 	padding-bottom: 0;
 	border-top: 1px solid var(--line);
 }
-.wallet-dropdown button[role^='menuitem'] {
+.wallet-dropdown button.wallet-dropdown-item {
 	width: 100%;
 	min-height: 38px;
 	padding: 0 8px;
@@ -2050,11 +2050,11 @@ p {
 	background: var(--transparent);
 	text-align: left;
 }
-.wallet-dropdown button[role^='menuitem']:hover:not(:disabled) {
+.wallet-dropdown button.wallet-dropdown-item:hover:not(:disabled) {
 	border-color: var(--transparent);
 	background: var(--panel);
 }
-.wallet-dropdown button[role='menuitemradio'].is-active {
+.wallet-dropdown button.wallet-dropdown-item.is-active {
 	background: var(--panel);
 }
 .theme-option-check {

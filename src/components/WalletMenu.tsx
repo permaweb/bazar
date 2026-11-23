@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Copy, Download, LogOut, Monitor, Moon, Sun, SunDim, Trash2, UserRound, Wallet } from 'lucide-react';
 
+import type { ThemePreference } from 'helpers/theme';
 import { useTheme } from 'providers/ThemeProvider';
 import { useWallet, walletDisconnectPlan, type WalletKind } from 'providers/WalletProvider';
 
@@ -17,11 +18,17 @@ const THEME_OPTIONS = [
 	{ id: 'dark', label: 'Dark', Icon: Moon },
 ] as const;
 
+/**
+ * The header wallet control is a disclosure (the same pattern as the Transaction activity popover):
+ * a button with aria-expanded/aria-controls that reveals a labelled section of ordinary buttons.
+ * It deliberately carries no ARIA menu roles, because it has no menu keyboard model (arrow keys,
+ * roving focus); Tab moves through the panel and Escape closes it and returns focus to the trigger.
+ */
 export function WalletMenu() {
 	const navigate = useNavigate();
 	const theme = useTheme();
 	const wallet = useWallet();
-	const appearanceLabelId = React.useId();
+	const panelId = React.useId();
 	const root = React.useRef<HTMLDivElement>(null);
 	const trigger = React.useRef<HTMLButtonElement>(null);
 	const [open, setOpen] = React.useState(false);
@@ -31,6 +38,9 @@ export function WalletMenu() {
 	const profile = useAccountProfileSummary(wallet.address ?? '');
 	const walletLabel = walletMenuLabel(wallet.address, profile.displayName);
 	const dangerAction = walletMenuDangerAction(wallet.walletKind);
+	const returnFocusToTrigger = React.useCallback(() => {
+		window.requestAnimationFrame(() => trigger.current?.focus());
+	}, []);
 
 	React.useEffect(() => {
 		if (!open) return;
@@ -40,7 +50,7 @@ export function WalletMenu() {
 		const closeFromKeyboard = (event: KeyboardEvent) => {
 			if (event.key !== 'Escape') return;
 			setOpen(false);
-			window.requestAnimationFrame(() => trigger.current?.focus());
+			returnFocusToTrigger();
 		};
 		document.addEventListener('pointerdown', closeFromOutside);
 		document.addEventListener('keydown', closeFromKeyboard);
@@ -48,7 +58,7 @@ export function WalletMenu() {
 			document.removeEventListener('pointerdown', closeFromOutside);
 			document.removeEventListener('keydown', closeFromKeyboard);
 		};
-	}, [open]);
+	}, [open, returnFocusToTrigger]);
 
 	React.useEffect(() => {
 		if (!wallet.address) setOpen(false);
@@ -69,7 +79,12 @@ export function WalletMenu() {
 		setDisconnecting(true);
 		setError('');
 		try {
-			if (await wallet.disconnect()) setOpen(false);
+			if (await wallet.disconnect()) {
+				setOpen(false);
+				// The panel (and the focused Disconnect button) unmounts; keep the keyboard user's place on
+				// the trigger, which stays mounted as "Connect wallet".
+				returnFocusToTrigger();
+			}
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Wallet could not be disconnected.');
 		} finally {
@@ -87,13 +102,17 @@ export function WalletMenu() {
 
 	return (
 		<div className="wallet-menu" ref={root}>
+			{/* The accessible name already holds the tooltip text (the full address), so it is not also
+			    wired up as a description. */}
 			<Tooltip content={wallet.address || 'Connect wallet'} disabled={open}>
-				{(tooltipId) => (
+				{() => (
 					<Button
-						aria-describedby={tooltipId}
-						aria-expanded={wallet.address ? open : undefined}
-						aria-haspopup={wallet.address ? 'menu' : undefined}
-						aria-label={wallet.address ? `Wallet ${wallet.address}` : 'Connect wallet'}
+						{...walletTriggerAria({
+							address: wallet.address,
+							displayName: profile.displayName,
+							open,
+							panelId,
+						})}
 						className="wallet"
 						onClick={(event) => {
 							if (!wallet.address) {
@@ -113,110 +132,191 @@ export function WalletMenu() {
 				)}
 			</Tooltip>
 			{open && wallet.address ? (
-				<div aria-label="Wallet options" className="wallet-dropdown" role="menu">
-					<div className="wallet-dropdown-header">
-						<Wallet className="ui-icon" aria-hidden="true" />
-						<div>
-							<span>{dangerAction.heading}</span>
-							<strong>{walletLabel}</strong>
-						</div>
-					</div>
-					<div aria-label="Balances" className="wallet-dropdown-balances" role="group">
-						<div className="wallet-dropdown-balance">
-							<span>AR balance</span>
-							<strong aria-live="polite">
-								<ArCurrencyText>
-									{tokenBalanceLabel(
-										wallet.arBalance,
-										wallet.arBalanceStatus,
-										'AR',
-										wallet.arBalanceDenomination
-									)}
-								</ArCurrencyText>
-							</strong>
-						</div>
-						{wallet.aoBalanceStatus !== 'idle' ? (
-							<div className="wallet-dropdown-balance">
-								<span>AO balance</span>
-								<strong aria-live="polite">
-									{tokenBalanceLabel(
-										wallet.aoBalance,
-										wallet.aoBalanceStatus,
-										'AO',
-										wallet.aoBalanceDenomination
-									)}
-								</strong>
-							</div>
-						) : null}
-					</div>
-					<div className="wallet-dropdown-actions">
-						<Button
-							onClick={() => {
-								setOpen(false);
-								navigate(`/profile/${wallet.address}`);
-							}}
-							role="menuitem"
-							size="custom"
-							variant="ghost"
-						>
-							<UserRound className="ui-icon ui-icon--sm" aria-hidden="true" />
-							My profile
-						</Button>
-						<Button onClick={() => void copyAddress()} role="menuitem" size="custom" variant="ghost">
-							<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
-							{copied ? 'Copied' : 'Copy address'}
-						</Button>
-						{dangerAction.showsExport ? (
-							<Button onClick={downloadKeyfile} role="menuitem" size="custom" variant="ghost">
-								<Download className="ui-icon ui-icon--sm" aria-hidden="true" />
-								Download keyfile
-							</Button>
-						) : null}
-					</div>
-					<div aria-labelledby={appearanceLabelId} className="wallet-dropdown-appearance" role="group">
-						<span className="wallet-dropdown-section-label" id={appearanceLabelId}>
-							Appearance
-						</span>
-						{THEME_OPTIONS.map(({ id, label, Icon }) => {
-							const active = theme.preference === id;
-							return (
-								<Button
-									aria-checked={active}
-									className={active ? 'is-active' : undefined}
-									key={id}
-									onClick={() => theme.setPreference(id)}
-									role="menuitemradio"
-									size="custom"
-									variant="ghost"
-								>
-									<Icon className="ui-icon ui-icon--sm" aria-hidden="true" />
-									{label}
-									{active ? <Check className="theme-option-check" aria-hidden="true" /> : null}
-								</Button>
-							);
-						})}
-					</div>
-					<div className="wallet-dropdown-footer">
-						<Button
-							disabled={disconnecting}
-							onClick={() => void disconnect()}
-							role="menuitem"
-							size="custom"
-							variant="danger"
-						>
-							{dangerAction.showsExport ? (
-								<Trash2 className="ui-icon ui-icon--sm" aria-hidden="true" />
-							) : (
-								<LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
-							)}
-							{disconnecting ? dangerAction.busyLabel : dangerAction.label}
-						</Button>
-					</div>
-					{error ? <p role="alert">{error}</p> : null}
-				</div>
+				<WalletMenuPanel
+					aoBalance={
+						wallet.aoBalanceStatus !== 'idle'
+							? tokenBalanceLabel(
+									wallet.aoBalance,
+									wallet.aoBalanceStatus,
+									'AO',
+									wallet.aoBalanceDenomination
+							  )
+							: null
+					}
+					arBalance={tokenBalanceLabel(
+						wallet.arBalance,
+						wallet.arBalanceStatus,
+						'AR',
+						wallet.arBalanceDenomination
+					)}
+					copied={copied}
+					dangerAction={dangerAction}
+					disconnecting={disconnecting}
+					error={error}
+					id={panelId}
+					label={walletLabel}
+					onCopyAddress={() => void copyAddress()}
+					onDisconnect={() => void disconnect()}
+					onDownloadKeyfile={downloadKeyfile}
+					onOpenProfile={() => {
+						// Route changes move focus to the page (RouteFocus), so no trigger focus here.
+						setOpen(false);
+						navigate(`/profile/${wallet.address}`);
+					}}
+					onSelectTheme={theme.setPreference}
+					themePreference={theme.preference}
+				/>
 			) : null}
 		</div>
 	);
+}
+
+export type WalletMenuPanelProps = {
+	aoBalance: string | null;
+	arBalance: string;
+	copied: boolean;
+	dangerAction: ReturnType<typeof walletMenuDangerAction>;
+	disconnecting: boolean;
+	error: string;
+	id: string;
+	label: string;
+	onCopyAddress: () => void;
+	onDisconnect: () => void;
+	onDownloadKeyfile: () => void;
+	onOpenProfile: () => void;
+	onSelectTheme: (preference: ThemePreference) => void;
+	themePreference: ThemePreference;
+};
+
+/** The open wallet disclosure panel: a labelled section of plain buttons, with toggle-button themes. */
+export function WalletMenuPanel({
+	aoBalance,
+	arBalance,
+	copied,
+	dangerAction,
+	disconnecting,
+	error,
+	id,
+	label,
+	onCopyAddress,
+	onDisconnect,
+	onDownloadKeyfile,
+	onOpenProfile,
+	onSelectTheme,
+	themePreference,
+}: WalletMenuPanelProps) {
+	const appearanceLabelId = React.useId();
+	return (
+		<section aria-label="Wallet options" className="wallet-dropdown" id={id}>
+			<div className="wallet-dropdown-header">
+				<Wallet className="ui-icon" aria-hidden="true" />
+				<div>
+					<span>{dangerAction.heading}</span>
+					<strong>{label}</strong>
+				</div>
+			</div>
+			<div aria-label="Balances" className="wallet-dropdown-balances" role="group">
+				<div className="wallet-dropdown-balance">
+					<span>AR balance</span>
+					<strong aria-live="polite">
+						<ArCurrencyText>{arBalance}</ArCurrencyText>
+					</strong>
+				</div>
+				{aoBalance !== null ? (
+					<div className="wallet-dropdown-balance">
+						<span>AO balance</span>
+						<strong aria-live="polite">{aoBalance}</strong>
+					</div>
+				) : null}
+			</div>
+			<div className="wallet-dropdown-actions">
+				<Button className="wallet-dropdown-item" onClick={onOpenProfile} size="custom" variant="ghost">
+					<UserRound className="ui-icon ui-icon--sm" aria-hidden="true" />
+					My profile
+				</Button>
+				<Button className="wallet-dropdown-item" onClick={onCopyAddress} size="custom" variant="ghost">
+					<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
+					{copied ? 'Copied' : 'Copy address'}
+				</Button>
+				{dangerAction.showsExport ? (
+					<Button className="wallet-dropdown-item" onClick={onDownloadKeyfile} size="custom" variant="ghost">
+						<Download className="ui-icon ui-icon--sm" aria-hidden="true" />
+						Download keyfile
+					</Button>
+				) : null}
+			</div>
+			<div aria-labelledby={appearanceLabelId} className="wallet-dropdown-appearance" role="group">
+				<span className="wallet-dropdown-section-label" id={appearanceLabelId}>
+					Appearance
+				</span>
+				{THEME_OPTIONS.map(({ id: optionId, label: optionLabel, Icon }) => {
+					const active = themePreference === optionId;
+					return (
+						<Button
+							aria-pressed={active}
+							className={active ? 'wallet-dropdown-item is-active' : 'wallet-dropdown-item'}
+							key={optionId}
+							onClick={() => onSelectTheme(optionId)}
+							size="custom"
+							variant="ghost"
+						>
+							<Icon className="ui-icon ui-icon--sm" aria-hidden="true" />
+							{optionLabel}
+							{active ? <Check className="theme-option-check" aria-hidden="true" /> : null}
+						</Button>
+					);
+				})}
+			</div>
+			<div className="wallet-dropdown-footer">
+				<Button
+					className="wallet-dropdown-item"
+					disabled={disconnecting}
+					onClick={onDisconnect}
+					size="custom"
+					variant="danger"
+				>
+					{dangerAction.showsExport ? (
+						<Trash2 className="ui-icon ui-icon--sm" aria-hidden="true" />
+					) : (
+						<LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
+					)}
+					{disconnecting ? dangerAction.busyLabel : dangerAction.label}
+				</Button>
+			</div>
+			<span aria-live="polite" className="sr-only" role="status">
+				{copied ? 'Address copied.' : ''}
+			</span>
+			{error ? <p role="alert">{error}</p> : null}
+		</section>
+	);
+}
+
+/**
+ * The trigger's accessible name starts with its visible text (WCAG 2.5.3, so "click Agent Smith"
+ * works for voice control) and then carries the full address the tooltip shows.
+ */
+export function walletTriggerName(address?: string | null, displayName?: string | null) {
+	return address ? `${walletMenuLabel(address, displayName)}, wallet ${address}` : 'Connect wallet';
+}
+
+/** Disclosure ARIA for the trigger: aria-controls names the panel only while it is rendered. */
+export function walletTriggerAria({
+	address,
+	displayName,
+	open,
+	panelId,
+}: {
+	address?: string | null;
+	displayName?: string | null;
+	open: boolean;
+	panelId: string;
+}) {
+	if (!address) return { 'aria-label': walletTriggerName(address, displayName) };
+	return {
+		'aria-controls': open ? panelId : undefined,
+		'aria-expanded': open,
+		'aria-label': walletTriggerName(address, displayName),
+	};
 }
 
 function shortAddress(address: string) {
