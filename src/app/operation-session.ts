@@ -116,6 +116,30 @@ export function latestPurchaseSnapshot(
 	return current ?? resume ?? null;
 }
 
+export type SavedPurchaseContinuation = {
+	/** 'approval' when the saved purchase still needs a wallet approval; 'working' when every signature is saved. */
+	phase: 'approval' | 'working';
+	snapshot: PurchaseSnapshot;
+};
+
+/**
+ * The in-place transition behind "Continue saved purchase". The dialog keeps
+ * its activity open and visible; it never closes to let a page effect re-create
+ * the purchase. The run's newest snapshot wins when it is recoverable; when that
+ * run ended before a replacement signature existed (for example a declined
+ * payment approval), the saved snapshot is continued instead of starting a
+ * fresh purchase. The phase mirrors how a reopened recovery starts. Null means
+ * nothing saved can be continued.
+ */
+export function savedPurchaseContinuation(
+	resume: PurchaseSnapshot | null | undefined,
+	current: PurchaseSnapshot | null | undefined
+): SavedPurchaseContinuation | null {
+	const snapshot = hasRecoverablePurchase(current) ? current! : hasRecoverablePurchase(resume) ? resume! : null;
+	if (!snapshot) return null;
+	return { phase: purchaseRecoveryApprovalCount(snapshot) ? 'approval' : 'working', snapshot };
+}
+
 export function repairRejectedPurchase(
 	snapshot: PurchaseSnapshot,
 	code: string | undefined
