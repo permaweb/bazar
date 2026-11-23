@@ -42,15 +42,22 @@ import {
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
 	HOME_ASSET_PAGE_SIZE,
+	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	HOME_DISCOVER_UNIQUE_PREVIEW,
+	HOME_SUMMARY_AUTO_RETRY_LIMIT,
+	HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
 	homeCollectionAssetCountLabel,
+	homeCollectionFloorsPending,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
+	homeDiscoverOverdueFailure,
+	homeDiscoverPagesFull,
+	homeDiscoverPending,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
@@ -66,11 +73,16 @@ import {
 	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
+	homeSummaryAutoRetryDue,
+	homeSummaryFailuresPresent,
 	homeSummaryRequestKeys,
+	homeSummaryWindow,
 	homeTabFromPathname,
 	homeTabPath,
 	homeTokenPriceChangeLabel,
+	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
+	homeTokenPriceChangeRequests,
 	isFungiblePendingMint,
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
@@ -717,10 +729,89 @@ describe('Home market summary retries', () => {
 		]);
 		expect(overview[1].matches?.(listing('tokens'))).toBe(true);
 
+		// Without a collection lookup every candidate stays admissible.
+		expect(overview[1].admits).toBeUndefined();
+		const tokens = listing('tokens').collection;
+		const images = listing('images').collection;
+		const known = new Map([
+			['T'.repeat(43), tokens],
+			['I'.repeat(43), images],
+		]);
+		const [uniques, tokenRows] = homeListingCrawlDemand(
+			{ ...view, assetType: 'all', assetPage: 1, tokenPage: 1 },
+			(processId) => known.get(processId)
+		)!;
+		const candidate = (processId: string) => ({ processId, height: 1, timestamp: 1, sources: [] });
+		expect(uniques.admits?.(candidate('T'.repeat(43)))).toBe(false);
+		expect(uniques.admits?.(candidate('I'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('T'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('I'.repeat(43)))).toBe(false);
+		// A process no loaded collection claims yet may be either kind.
+		expect(uniques.admits?.(candidate('U'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('U'.repeat(43)))).toBe(true);
+
 		// Price order and search rank every live listing, so they keep the full crawl.
 		expect(homeListingCrawlDemand({ ...view, assetView: 'price-low', assetPage: 1 })).toBeUndefined();
 		expect(homeListingCrawlDemand({ ...view, assetView: 'price-high', assetPage: 1 })).toBeUndefined();
 		expect(homeListingCrawlDemand({ ...view, query: 'rare', assetPage: 1 })).toBeUndefined();
+	});
+
+	it('reads card summaries only for the listings the visible pages plus one ahead need', () => {
+		const collection = (kind: Collection['kind']): Collection => ({
+			id: kind,
+			name: kind,
+			description: '',
+			kind,
+			assets: [],
+		});
+		const tokens = collection('tokens');
+		const images = collection('images');
+		const card = (id: string, owner: Collection) => ({ asset: { id: id.repeat(43) }, collection: owner });
+		const listed: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const unlisted: HomeMarketSummary = { status: 'resolved', value: null };
+		const view = { assetView: 'listed' as const, query: '', assetPage: 1, tokenPage: 1 };
+		const [uniqueDemand] = homeListingCrawlDemand({ ...view, assetType: 'atomic' })!;
+		const demand = [{ ...uniqueDemand, count: 3 }];
+		const ids = (cards: Array<{ asset: { id: string } }>) => cards.map(({ asset }) => asset.id[0]).join('');
+		const candidates = ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => card(id, images));
+
+		// Nothing known yet: only the first three unknown candidates are read.
+		expect(ids(homeSummaryWindow(candidates, demand, {}))).toBe('ABC');
+		// Known listings fill the demand without a read; an unlisted one frees its slot.
+		expect(
+			ids(
+				homeSummaryWindow(candidates, demand, {
+					['A'.repeat(43)]: listed,
+					['B'.repeat(43)]: unlisted,
+				})
+			)
+		).toBe('ABCD');
+		// Crawl listings lead the candidates with known prices, so they leave no
+		// speculative reads; later known summaries are kept but never re-read.
+		expect(
+			ids(
+				homeSummaryWindow(candidates, demand, {
+					['A'.repeat(43)]: listed,
+					['B'.repeat(43)]: listed,
+					['C'.repeat(43)]: listed,
+					['F'.repeat(43)]: unlisted,
+				})
+			)
+		).toBe('ABCF');
+
+		// Each demand counts only its own type, so token rows do not use up Unique slots.
+		const overview = homeListingCrawlDemand({ ...view, assetType: 'all' })!.map((entry, index) => ({
+			...entry,
+			count: index === 0 ? 1 : 2,
+		}));
+		const mixed = [card('T', tokens), card('A', images), card('U', tokens), card('B', images), card('V', tokens)];
+		expect(ids(homeSummaryWindow(mixed, overview, {}))).toBe('TAU');
+
+		// While the crawl works, only candidates with known summaries stay in the window.
+		expect(ids(homeSummaryWindow(candidates, demand, { ['B'.repeat(43)]: listed }, false))).toBe('B');
+
+		// Price order and search rank every candidate.
+		expect(ids(homeSummaryWindow(candidates, undefined, {}))).toBe('ABCDEF');
 	});
 
 	it('keeps malformed or unverified asset shells outside the actionable asset boundary', () => {
@@ -1164,6 +1255,107 @@ describe('Home market summary retries', () => {
 		expect(homeMarketHasPending(false, ['ready'], summaries)).toBe(false);
 	});
 
+	it('settles Discover once the visible pages are full and their summaries are known', () => {
+		const ready: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const failed: HomeMarketSummary = { status: 'unavailable', source: 'compute', kind: 'rate-limited' };
+		const base = {
+			marketLoading: false,
+			retrying: false,
+			crawlLoading: false,
+			visiblePagesFull: true,
+			visibleCount: 3,
+			keys: ['a', 'b'],
+			summaries: { a: ready, b: ready },
+		};
+		expect(homeDiscoverPending(base)).toBe(false);
+		// A failed summary is a settled card, not a reason to stay busy.
+		expect(homeDiscoverPending({ ...base, summaries: { a: ready, b: failed } })).toBe(false);
+		expect(homeDiscoverPending({ ...base, summaries: { a: ready } })).toBe(true);
+		expect(homeDiscoverPending({ ...base, retrying: true })).toBe(true);
+		// Collections still streaming in do not hold a populated page busy.
+		expect(homeDiscoverPending({ ...base, marketLoading: true })).toBe(false);
+		expect(homeDiscoverPending({ ...base, marketLoading: true, visibleCount: 0 })).toBe(true);
+		// The crawl's look-ahead keeps the page busy only while a visible page is short.
+		expect(homeDiscoverPending({ ...base, crawlLoading: true })).toBe(false);
+		expect(homeDiscoverPending({ ...base, crawlLoading: true, visiblePagesFull: false })).toBe(true);
+
+		expect(homeDiscoverPagesFull([{ shown: 5, pageSize: 5, page: 1, pageCount: 3 }])).toBe(true);
+		expect(homeDiscoverPagesFull([{ shown: 3, pageSize: 5, page: 1, pageCount: 1 }])).toBe(false);
+		expect(
+			homeDiscoverPagesFull([
+				{ shown: 5, pageSize: 5, page: 1, pageCount: 2 },
+				{ shown: 11, pageSize: 12, page: 1, pageCount: 1 },
+			])
+		).toBe(false);
+	});
+
+	it('retries failed card summaries in the background only a bounded number of times', () => {
+		expect(homeSummaryFailuresPresent('|')).toBe(false);
+		expect(homeSummaryFailuresPresent('a|')).toBe(true);
+		expect(homeSummaryFailuresPresent('|c')).toBe(true);
+		const due = { failureKey: 'a|', rounds: 0, retrying: false, computeCircuitOpen: false };
+		expect(homeSummaryAutoRetryDue(due)).toBe(true);
+		expect(homeSummaryAutoRetryDue({ ...due, rounds: HOME_SUMMARY_AUTO_RETRY_LIMIT - 1 })).toBe(true);
+		expect(homeSummaryAutoRetryDue({ ...due, rounds: HOME_SUMMARY_AUTO_RETRY_LIMIT })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, failureKey: '|' })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, retrying: true })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, computeCircuitOpen: true })).toBe(false);
+	});
+
+	it('reads each token row 24h change once and ends its spinner at the display deadline', () => {
+		expect(HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS).toBe(8_000);
+		// Rows that reorder or page back in keep the value already read.
+		expect(homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: 1.5, c: 'unavailable' })).toEqual(['b']);
+		expect(homeTokenPriceChangeRequests(['a'], { a: null })).toEqual([]);
+		expect(homeTokenPriceChangePending(undefined, false)).toBe(true);
+		expect(homeTokenPriceChangePending(undefined, true)).toBe(false);
+		expect(homeTokenPriceChangeLabel(null)).toBe('—');
+		expect(homeTokenPriceChangePending(2, true)).toBe(false);
+		// Per-row deadlines from the shared helper: a row revealed later gets its own start.
+		const deadlines = createCollectionPriceDeadlines();
+		expect(
+			observeCollectionPriceDeadlines(deadlines, 'scope', ['a'], 0, HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS)
+		).toEqual({ overdue: [], nextDeadline: 8_000 });
+		expect(
+			observeCollectionPriceDeadlines(
+				deadlines,
+				'scope',
+				['a', 'b'],
+				8_000,
+				HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
+			)
+		).toEqual({ overdue: ['a'], nextDeadline: 16_000 });
+	});
+
+	it('settles the Collections tab when floors arrive, fail or pass their display deadline', () => {
+		const ready: HomeMarketSummary = { status: 'resolved', value: null };
+		const failed: HomeMarketSummary = { status: 'unavailable', source: 'index', kind: 'rate-limited' };
+		const base = {
+			shellLoading: false,
+			retrying: false,
+			collectionIds: ['a', 'b', 'c'],
+			floors: { a: ready, b: failed } as Record<string, HomeMarketSummary>,
+			overdue: new Set<string>(),
+		};
+		expect(homeCollectionFloorsPending(base)).toBe(true);
+		expect(homeCollectionFloorsPending({ ...base, overdue: new Set(['c']) })).toBe(false);
+		expect(homeCollectionFloorsPending({ ...base, floors: { ...base.floors, c: ready } })).toBe(false);
+		expect(homeCollectionFloorsPending({ ...base, overdue: new Set(['c']), retrying: true })).toBe(true);
+		expect(homeCollectionFloorsPending({ ...base, collectionIds: [], floors: {}, shellLoading: true })).toBe(true);
+		// The overdue floor and the failed floor are offered for retry together.
+		expect(
+			collectionPriceRetryNotice({
+				activityError: false,
+				activityLoading: false,
+				cardPricesFailed: false,
+				cardPricesLoading: false,
+				listedOnly: false,
+				overdue: 1,
+				unavailable: 1,
+			})
+		).toEqual({ visible: true, unavailable: 2 });
+	});
+
 	it('shows the home loader only while results are pending and no assets are visible', () => {
 		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
 		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
@@ -1279,6 +1471,23 @@ describe('Home market summary retries', () => {
 		expect(homeDiscoverDisplay(true, true, 3)).toBe('results');
 		expect(homeDiscoverDisplay(false, false, 3)).toBe('results');
 		expect(homeDiscoverDisplay(false, false, 0)).toBe('empty');
+	});
+
+	it('turns a loader that outlives its deadline with nothing to show into one failure with Retry', () => {
+		expect(HOME_DISCOVER_LOADING_DEADLINE_MS).toBe(15_000);
+		expect(homeDiscoverDisplay(true, false, 0, true)).toBe('failed');
+		expect(homeDiscoverBusy(homeDiscoverDisplay(true, false, 0, true), true)).toBe(false);
+		// Cards that arrive late replace the failure; a settled empty view stays empty.
+		expect(homeDiscoverDisplay(true, false, 2, true)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 0, true)).toBe('empty');
+
+		expect(homeDiscoverOverdueFailure(true, [])).toEqual({ source: 'compute', kind: 'unavailable' });
+		expect(homeDiscoverOverdueFailure(true, ['unavailable', 'rate-limited'])).toEqual({
+			source: 'compute',
+			kind: 'rate-limited',
+		});
+		// Without a market shell the collection index is what has not answered.
+		expect(homeDiscoverOverdueFailure(false, [])).toEqual({ source: 'index', kind: 'unavailable' });
 	});
 
 	it('stops the header refresh spinner and aria-busy once Discover shows a terminal failure', () => {

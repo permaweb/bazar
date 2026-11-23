@@ -16,7 +16,13 @@ type ListingCallback = (result: ResolvedAsset | null, candidate: AssetCandidate,
 /** How many live listings matching `matches` the visible pages (plus one page ahead) need. */
 export type HomeListingDemand = {
 	count: number;
-	matches?: (result: ResolvedAsset) => boolean;
+	matches?: (result: Pick<ResolvedAsset, 'collection'>) => boolean;
+	/**
+	 * Whether a discovered candidate could still turn into a listing `matches`
+	 * accepts. Only admitted candidates are read for this demand; leave it out
+	 * when the candidate's kind is unknown before its state is read.
+	 */
+	admits?: (candidate: AssetCandidate) => boolean;
 };
 
 export type HomeListingCrawlOptions = {
@@ -32,6 +38,12 @@ export type HomeListingCrawlOptions = {
 		options: { signal: AbortSignal; onVerified: (candidates: AssetCandidate[]) => void }
 	) => Promise<AssetCandidateSupportResult>;
 	concurrency?: number;
+	/**
+	 * How long an in-flight read counts as an optimistic listing. A read that is
+	 * still pending after this (a peer that hangs or computes slowly) stops
+	 * holding back the next candidate. Defaults to HOME_LISTING_SLOW_READ_MS.
+	 */
+	slowReadMs?: number;
 	onSettled?: ListingCallback;
 	onRevalidated?: ListingCallback;
 	/** A live listing whose collection or display metadata changed after collections grew. */
@@ -39,13 +51,17 @@ export type HomeListingCrawlOptions = {
 	onDiscoveryFailure?: (cause: unknown) => void;
 	onIndexFailure?: (cause: unknown) => void;
 	/**
-	 * Read before each further activity page. Discovery pauses once every demand is
-	 * met by live listings plus reads still in flight; `undefined` pages everything.
+	 * Read before each further activity page and before each state read. Candidates
+	 * are read only while some demand is short of live listings plus reads in
+	 * flight, and discovery pauses once every demand is met; `undefined` reads and
+	 * pages everything.
 	 */
 	demand?: () => readonly HomeListingDemand[] | undefined;
 	/** True while discovery is paused on demand with no reads or support checks in flight. */
 	onIdle?: (idle: boolean) => void;
 };
+
+export const HOME_LISTING_SLOW_READ_MS = 5_000;
 
 export type HomeListingCrawl = {
 	/** Settles once discovery, support verification and the initial resolver drain. */
@@ -69,6 +85,11 @@ function sameListingPresentation(left: ResolvedAsset, right: ResolvedAsset) {
 	);
 }
 
+/** Newest activity first, matching the listed view's recency order. */
+function byRecency(left: AssetCandidate, right: AssetCandidate) {
+	return right.height - left.height || right.timestamp - left.timestamp;
+}
+
 export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeListingCrawl {
 	const { signal } = options;
 	const verify = options.verify ?? verifyAssetCandidateSupport;
@@ -79,12 +100,17 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 	const checkedIds = new Set<string>();
 	const enqueued = new Set<string>();
 	const live = new Map<string, ResolvedAsset>();
-	const unsettled = new Set<string>();
+	// Supported candidates waiting for demand, in discovery order, and the reads in flight.
+	const backlog: AssetCandidate[] = [];
+	const unsettled = new Map<string, { candidate: AssetCandidate; startedAt: number }>();
+	const slowReadMs = options.slowReadMs ?? HOME_LISTING_SLOW_READ_MS;
+	let slowReadTimer: ReturnType<typeof setTimeout> | undefined;
 	let supportTail = Promise.resolve();
 	let sealed = false;
 	let idle = false;
 	let wake: (() => void) | undefined;
 	const notify = () => {
+		pump();
 		const resume = wake;
 		wake = undefined;
 		resume?.();
@@ -123,17 +149,38 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 		if (!fresh.length || signal.aborted) return;
 		for (const candidate of fresh) {
 			enqueued.add(candidate.processId);
-			unsettled.add(candidate.processId);
 			held.delete(candidate.processId);
+			backlog.push(candidate);
 		}
+		// Support can arrive late for newer activity, so the newest waiting candidate is tried first.
+		backlog.sort(byRecency);
+		pump();
+	};
+	// Start reads from the backlog only while a demand still needs them, so a
+	// discovered page is read as far as the visible pages require, not in full.
+	const pump = () => {
+		if (signal.aborted || !backlog.length) return;
+		const ready: AssetCandidate[] = [];
+		for (let index = 0; index < backlog.length; ) {
+			const candidate = backlog[index];
+			if (!readNeeded(candidate)) {
+				index += 1;
+				continue;
+			}
+			backlog.splice(index, 1);
+			unsettled.set(candidate.processId, { candidate, startedAt: Date.now() });
+			ready.push(candidate);
+		}
+		if (!ready.length) return;
+		scheduleSlowReadCheck();
 		if (!sealed) {
-			resolver.enqueue(fresh);
+			resolver.enqueue(ready);
 			return;
 		}
-		// Support that arrives after the crawl drained still resolves, through a
-		// resolver nobody awaits, so the finished crawl stays finished.
+		// Support or demand that arrives after the crawl drained still resolves,
+		// through a resolver nobody awaits, so the finished crawl stays finished.
 		lateResolver ??= createAssetCandidateResolver(options.collections, resolverOptions);
-		lateResolver.enqueue(fresh);
+		lateResolver.enqueue(ready);
 	};
 
 	const route = (candidates: AssetCandidate[]) => {
@@ -215,18 +262,58 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 	};
 
 	const inFlight = () => unsettled.size + verifying.size;
+	// Reads still in flight count as optimistic listings for every demand that
+	// admits them; if they settle short of the demand, more are read.
+	const coverage = (demand: HomeListingDemand) => {
+		const covered: AssetCandidate[] = [];
+		for (const result of live.values()) {
+			if (!demand.matches || demand.matches(result)) covered.push(result.activity);
+		}
+		const now = Date.now();
+		for (const { candidate, startedAt } of unsettled.values()) {
+			if (now - startedAt >= slowReadMs) continue;
+			if (!demand.admits || demand.admits(candidate)) covered.push(candidate);
+		}
+		return covered;
+	};
+	// Re-evaluate demand when the oldest counted read turns slow.
+	const scheduleSlowReadCheck = () => {
+		if (slowReadTimer !== undefined || signal.aborted) return;
+		let due = Number.POSITIVE_INFINITY;
+		const now = Date.now();
+		for (const { startedAt } of unsettled.values()) {
+			if (now - startedAt < slowReadMs) due = Math.min(due, startedAt + slowReadMs);
+		}
+		if (!Number.isFinite(due)) return;
+		slowReadTimer = setTimeout(() => {
+			slowReadTimer = undefined;
+			if (signal.aborted) return;
+			notify();
+			scheduleSlowReadCheck();
+		}, Math.max(0, due - now));
+	};
+	signal.addEventListener('abort', () => clearTimeout(slowReadTimer), { once: true });
+	const shortfall = (demand: HomeListingDemand, extraPending = 0) =>
+		!Number.isFinite(demand.count) || coverage(demand).length + extraPending < demand.count;
+	const readNeeded = (candidate: AssetCandidate) => {
+		const demands = options.demand?.();
+		if (!demands) return true;
+		return demands.some((demand) => {
+			if (demand.admits && !demand.admits(candidate)) return false;
+			if (!Number.isFinite(demand.count)) return true;
+			const covered = coverage(demand);
+			if (covered.length < demand.count) return true;
+			// The visible pages show the newest listings, so a candidate newer than
+			// the last one they need may displace it and is read as well.
+			return byRecency(candidate, covered.sort(byRecency)[demand.count - 1]) < 0;
+		});
+	};
 	const needsMoreListings = () => {
 		const demands = options.demand?.();
 		if (!demands) return true;
-		// Reads still in flight count as optimistic listings so the next page waits
-		// for them; if they settle short of the demand, discovery resumes.
-		const pending = inFlight();
-		return demands.some(({ count, matches }) => {
-			if (!Number.isFinite(count)) return true;
-			let matched = 0;
-			for (const result of live.values()) if (!matches || matches(result)) matched += 1;
-			return matched + pending < count;
-		});
+		// Support checks still running may yet feed the backlog, so the next page
+		// waits for them as well.
+		return demands.some((demand) => shortfall(demand, verifying.size));
 	};
 	const setIdle = (next: boolean) => {
 		if (idle === next) return;
@@ -247,6 +334,7 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 			};
 		});
 	const waitForDemand = async () => {
+		pump();
 		while (!needsMoreListings()) {
 			setIdle(inFlight() === 0);
 			await nextWake();

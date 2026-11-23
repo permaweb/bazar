@@ -3178,25 +3178,74 @@ export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = H
 /**
  * Live listings the home crawl must find for the visible page plus one page
  * ahead. Price order and search need every listing, so they stay unbounded.
+ * `collectionOf` names the loaded collection of a discovered process, so a
+ * demand only reads candidates that can still be of its type; candidates no
+ * loaded collection claims are admitted by every demand.
  */
-export function homeListingCrawlDemand(view: {
-	assetView: HomeAssetView;
-	assetType: HomeAssetType;
-	query: string;
-	assetPage: number;
-	tokenPage: number;
-}): HomeListingDemand[] | undefined {
+export function homeListingCrawlDemand(
+	view: {
+		assetView: HomeAssetView;
+		assetType: HomeAssetType;
+		query: string;
+		assetPage: number;
+		tokenPage: number;
+	},
+	collectionOf?: (processId: string) => Collection | undefined
+): HomeListingDemand[] | undefined {
 	if (view.query || view.assetView === 'price-low' || view.assetView === 'price-high') return undefined;
-	const matching = (assetType: HomeAssetType) => (result: ResolvedAsset) =>
-		homeAssetTypeMatches(result.collection, assetType);
+	const demand = (count: number, assetType: HomeAssetType): HomeListingDemand => ({
+		count,
+		matches: (result) => homeAssetTypeMatches(result.collection, assetType),
+		...(collectionOf
+			? {
+					admits: (candidate: AssetCandidate) => {
+						const collection = collectionOf(candidate.processId);
+						return !collection || homeAssetTypeMatches(collection, assetType);
+					},
+			  }
+			: {}),
+	});
 	const page = (requested: number) => Math.max(1, Math.floor(requested) || 1);
 	if (view.assetType === 'all') {
 		return [
-			{ count: HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE, matches: matching('atomic') },
-			{ count: (page(view.tokenPage) + 1) * HOME_DISCOVER_TOKEN_PAGE_SIZE, matches: matching('tokens') },
+			demand(HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE, 'atomic'),
+			demand((page(view.tokenPage) + 1) * HOME_DISCOVER_TOKEN_PAGE_SIZE, 'tokens'),
 		];
 	}
-	return [{ count: (page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, matches: matching(view.assetType) }];
+	return [demand((page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, view.assetType)];
+}
+
+/**
+ * The candidates whose card summary home may read for a bounded view: every
+ * candidate whose summary is already known, plus unknown candidates in order
+ * while a demand they match is still short of known listings and earlier
+ * unknown reads. A candidate that turns out unlisted frees its slot, so the
+ * next one is read. An unbounded demand (price order, search) keeps them all.
+ * While the listing crawl is still working, `speculate` is false: the crawl's
+ * listings carry their price, so unknown candidates wait instead of competing
+ * with it for the same peers.
+ */
+export function homeSummaryWindow<T extends { asset: Pick<AssetSummary, 'id'>; collection: Collection }>(
+	candidates: readonly T[],
+	demands: readonly HomeListingDemand[] | undefined,
+	summaries: Readonly<Record<string, HomeMarketSummary>>,
+	speculate = true
+): T[] {
+	if (!demands || demands.some(({ count }) => !Number.isFinite(count))) return [...candidates];
+	const covered = demands.map(() => 0);
+	return candidates.filter((candidate) => {
+		const matching = demands.flatMap((demand, index) =>
+			!demand.matches || demand.matches(candidate) ? [index] : []
+		);
+		const summary = summaries[candidate.asset.id];
+		if (summary) {
+			if (homeMarketSummaryListed(summary)) for (const index of matching) covered[index] += 1;
+			return true;
+		}
+		if (!speculate || !matching.some((index) => covered[index] < demands[index].count)) return false;
+		for (const index of matching) covered[index] += 1;
+		return true;
+	});
 }
 
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
@@ -3273,6 +3322,56 @@ export function homeTokenPriceChangeLabel(change: number | null | 'unavailable')
 	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 }
 
+/** How long a token row may say "Checking…" for its 24h change before it shows "—". */
+export const HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS = 8_000;
+
+/** Visible token rows whose 24h change has not been read yet. */
+export function homeTokenPriceChangeRequests(
+	tokenIds: readonly string[],
+	known: Readonly<Record<string, number | null | 'unavailable'>>
+) {
+	return [...new Set(tokenIds)].filter((tokenId) => tokenId && known[tokenId] === undefined);
+}
+
+/** A late value still replaces "—"; the deadline only ends the spinner. */
+export function homeTokenPriceChangePending(change: number | null | 'unavailable' | undefined, overdue: boolean) {
+	return change === undefined && !overdue;
+}
+
+/**
+ * Display-only deadlines for home values that may never arrive, tracked per
+ * key with the collection page's deadline helper. They never cancel a read,
+ * and only a scope change re-arms them.
+ */
+function useHomeDisplayDeadlines(scope: string, pendingIds: readonly string[], deadlineMs: number) {
+	const deadlines = React.useRef(createCollectionPriceDeadlines());
+	const [overdue, setOverdue] = React.useState<ReadonlySet<string>>(() => new Set());
+	const pendingKey = pendingIds.join(',');
+	React.useEffect(() => {
+		let timer: number | undefined;
+		const update = () => {
+			const observed = observeCollectionPriceDeadlines(
+				deadlines.current,
+				scope,
+				pendingKey ? pendingKey.split(',') : [],
+				Date.now(),
+				deadlineMs
+			);
+			setOverdue((current) =>
+				current.size === observed.overdue.length && observed.overdue.every((id) => current.has(id))
+					? current
+					: new Set(observed.overdue)
+			);
+			if (observed.nextDeadline !== null) {
+				timer = window.setTimeout(update, Math.max(0, observed.nextDeadline - Date.now()));
+			}
+		};
+		update();
+		return () => window.clearTimeout(timer);
+	}, [deadlineMs, pendingKey, scope]);
+	return overdue;
+}
+
 export function homeMarketSummariesReady(
 	loading: boolean,
 	keys: string[],
@@ -3283,6 +3382,56 @@ export function homeMarketSummariesReady(
 
 export function homeMarketHasPending(loading: boolean, keys: string[], summaries: Record<string, HomeMarketSummary>) {
 	return loading || keys.some((key) => !summaries[key]);
+}
+
+/**
+ * Discover is busy only while what its visible pages show can still change:
+ * the market shell is loading with nothing to show yet, a requested retry is
+ * running, the listing crawl is short of a full visible page, or a summary in
+ * the read window is still unknown. Failed summaries are settled (their cards
+ * say Unavailable), and once the visible pages are full the crawl's work for
+ * the page ahead no longer keeps the page busy.
+ */
+export function homeDiscoverPending(state: {
+	marketLoading: boolean;
+	retrying: boolean;
+	crawlLoading: boolean;
+	visiblePagesFull: boolean;
+	visibleCount: number;
+	keys: readonly string[];
+	summaries: Readonly<Record<string, HomeMarketSummary>>;
+}) {
+	if (state.retrying) return true;
+	if (state.marketLoading && state.visibleCount === 0) return true;
+	if (state.crawlLoading && !state.visiblePagesFull) return true;
+	return state.keys.some((key) => !state.summaries[key]);
+}
+
+/** Whether every section the Discover view shows has a full page of cards. */
+export function homeDiscoverPagesFull(
+	sections: ReadonlyArray<{ shown: number; pageSize: number; page: number; pageCount: number }>
+) {
+	// A short last page is full once there is nothing further to show.
+	return sections.every(({ shown, pageSize, page, pageCount }) => shown >= pageSize || page < pageCount);
+}
+
+/**
+ * The Collections tab is busy while the shell has no collections yet, a retry
+ * runs, or a floor is still inside its display deadline. Failed and overdue
+ * floors are settled cards ("Unavailable" / "Price unavailable").
+ */
+export function homeCollectionFloorsPending(state: {
+	shellLoading: boolean;
+	retrying: boolean;
+	collectionIds: readonly string[];
+	floors: Readonly<Record<string, HomeMarketSummary>>;
+	overdue: ReadonlySet<string>;
+}) {
+	return homeMarketHasPending(
+		state.shellLoading || state.retrying,
+		state.collectionIds.filter((collectionId) => !state.overdue.has(collectionId)),
+		state.floors
+	);
 }
 
 export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount: number) {
@@ -3297,15 +3446,69 @@ export type HomeDiscoverDisplay = 'loading' | 'failed' | 'results' | 'empty';
  * the initial loader instead of being stacked above it, while cards that are
  * already visible stay on screen.
  */
-export function homeDiscoverDisplay(pending: boolean, failed: boolean, visibleAssetCount: number): HomeDiscoverDisplay {
+export function homeDiscoverDisplay(
+	pending: boolean,
+	failed: boolean,
+	visibleAssetCount: number,
+	loadingOverdue = false
+): HomeDiscoverDisplay {
 	if (visibleAssetCount > 0) return 'results';
 	if (failed) return 'failed';
-	return homeMarketShowsInitialLoader(pending, visibleAssetCount) ? 'loading' : 'empty';
+	if (!homeMarketShowsInitialLoader(pending, visibleAssetCount)) return 'empty';
+	// A loader with nothing to show past its deadline becomes the failure state.
+	return loadingOverdue ? 'failed' : 'loading';
+}
+
+/** How long Discover may show only "Loading marketplace assets…" before it offers Retry. */
+export const HOME_DISCOVER_LOADING_DEADLINE_MS = 15_000;
+
+/**
+ * The failure Discover reports when its loader passes the deadline without a
+ * terminal error: reads that hang on a rate-limited or unreachable peer fail
+ * too slowly to trip the compute circuit, so the deadline names the likely
+ * cause from what has failed so far.
+ */
+export function homeDiscoverOverdueFailure(
+	shellReady: boolean,
+	failureKinds: Iterable<MarketplaceFailureKind>
+): { source: 'compute' | 'index'; kind: MarketplaceFailureKind } {
+	return {
+		source: shellReady ? 'compute' : 'index',
+		kind: [...failureKinds].includes('rate-limited') ? 'rate-limited' : 'unavailable',
+	};
 }
 
 /** A terminal Discover failure is not busy: no header spinner or aria-busy beside the error block. */
 export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean) {
 	return display !== 'failed' && pending;
+}
+
+export const HOME_SUMMARY_AUTO_RETRY_DELAY_MS = 15_000;
+/** Background retries of failed card summaries before only a manual Retry restarts them. */
+export const HOME_SUMMARY_AUTO_RETRY_LIMIT = 2;
+
+/** Whether a `failedAssetIds|failedCollectionIds` key names any failed summary. */
+export function homeSummaryFailuresPresent(failureKey: string) {
+	return failureKey.replace('|', '').length > 0;
+}
+
+/**
+ * Failed card summaries are retried in the background a bounded number of
+ * times, so a peer that keeps failing settles on Unavailable instead of
+ * re-entering a busy retry every 15 s.
+ */
+export function homeSummaryAutoRetryDue(state: {
+	failureKey: string;
+	rounds: number;
+	retrying: boolean;
+	computeCircuitOpen: boolean;
+}) {
+	return (
+		homeSummaryFailuresPresent(state.failureKey) &&
+		!state.retrying &&
+		!state.computeCircuitOpen &&
+		state.rounds < HOME_SUMMARY_AUTO_RETRY_LIMIT
+	);
 }
 
 export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
@@ -3518,13 +3721,18 @@ function Home() {
 	const homeListingCrawlRef = React.useRef<HomeListingCrawl>();
 	const homeListingDemand = React.useMemo(
 		() =>
-			homeListingCrawlDemand({
-				assetView,
-				assetType,
-				query: normalizedQuery,
-				assetPage,
-				tokenPage: discoverTokenPage,
-			}),
+			homeListingCrawlDemand(
+				{
+					assetView,
+					assetType,
+					query: normalizedQuery,
+					assetPage,
+					tokenPage: discoverTokenPage,
+				},
+				// Read through the ref so streaming collections sharpen admission without
+				// changing the demand identity.
+				(processId) => globalActivityCollection(marketCollectionsRef.current, processId)
+			),
 		[assetPage, assetType, assetView, discoverTokenPage, normalizedQuery]
 	);
 	const homeListingDemandRef = React.useRef(homeListingDemand);
@@ -3637,9 +3845,21 @@ function Home() {
 			? assetPagination.items.filter(({ collection }) => collection.kind === 'tokens')
 			: [];
 	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
-	const [tokenPriceChanges, setTokenPriceChanges] = React.useState<Record<string, number | null | 'unavailable'>>({});
+	const [tokenPriceChangeState, setTokenPriceChangeState] = React.useState<{
+		scope: string;
+		values: Record<string, number | null | 'unavailable'>;
+	}>({ scope: homeListingSnapshotScope, values: {} });
+	// Values read for another index or AO routing scope are dropped, not shown.
+	const tokenPriceChanges =
+		tokenPriceChangeState.scope === homeListingSnapshotScope ? tokenPriceChangeState.values : {};
+	// Listed views learn which candidates are listed from these summaries, so they
+	// read only as many unknown candidates as the visible pages plus one ahead need.
+	const summaryWindow = React.useMemo(
+		() => homeSummaryWindow(assetCandidates, homeListingDemand, displayAssetPrices, !portableHomeListingsLoading),
+		[assetCandidates, displayAssetPrices, homeListingDemand, portableHomeListingsLoading]
+	);
 	const assets =
-		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
+		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : summaryWindow;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
 	const summaryPriorityKey = [
 		...new Set(
@@ -3708,15 +3928,21 @@ function Home() {
 		},
 		[assetSummaryQueue]
 	);
+	const tokenPriceChangesRef = React.useRef(tokenPriceChanges);
+	tokenPriceChangesRef.current = tokenPriceChanges;
 	React.useEffect(() => {
-		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) {
-			setTokenPriceChanges({});
-			return;
-		}
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) return;
+		// Rows that move or page in and out keep the change already read for them.
+		const tokenIds = homeTokenPriceChangeRequests(visibleDiscoverTokenKey.split(','), tokenPriceChangesRef.current);
+		if (!tokenIds.length) return;
+		const scope = homeListingSnapshotScope;
+		const publish = (values: Record<string, number | null | 'unavailable'>) =>
+			setTokenPriceChangeState((current) => ({
+				scope,
+				values: { ...(current.scope === scope ? current.values : {}), ...values },
+			}));
 		const controller = new AbortController();
-		const tokenIds = visibleDiscoverTokenKey.split(',');
 		const eventLimit = 200;
-		setTokenPriceChanges({});
 		void discoverCollectionActivity({
 			actions: ['make-offer'],
 			limit: eventLimit,
@@ -3727,7 +3953,7 @@ function Home() {
 				if (controller.signal.aborted) return;
 				const now = Date.now();
 				const windowComplete = events.length < eventLimit;
-				setTokenPriceChanges(
+				publish(
 					Object.fromEntries(
 						tokenIds.map((tokenId) => [
 							tokenId,
@@ -3742,12 +3968,17 @@ function Home() {
 			},
 			() => {
 				if (!controller.signal.aborted) {
-					setTokenPriceChanges(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable'])));
+					publish(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable' as const])));
 				}
 			}
 		);
 		return () => controller.abort();
 	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
+	const overdueTokenPriceChanges = useHomeDisplayDeadlines(
+		homeListingSnapshotScope,
+		visibleDiscoverTokens.map(({ asset }) => asset.id).filter((id) => tokenPriceChanges[id] === undefined),
+		HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
+	);
 	React.useEffect(() => {
 		if (!marketShellReady || !shouldLoadAssetSummaries) {
 			setPortableHomeListingsLoading(false);
@@ -4339,16 +4570,17 @@ function Home() {
 		.map((collection) => collection.id)
 		.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable');
 	const summaryFailureKey = `${failedAssetIds.join(',')}|${failedCollectionIds.join(',')}`;
-	const retryMarketSummaries = () => {
+	const retryMarketSummaries = (overdueCollectionIds: Iterable<string> = []) => {
 		if (summaryRetrying) return;
 		retryAssetSummaries.current = new Set(
 			assets.map(({ asset }) => asset.id).filter((assetId) => assetPrices[assetId]?.status === 'unavailable')
 		);
-		retryCollectionSummaries.current = new Set(
-			collections
+		retryCollectionSummaries.current = new Set([
+			...collections
 				.map((collection) => collection.id)
-				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable')
-		);
+				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable'),
+			...overdueCollectionIds,
+		]);
 		const retryGroups = new Set<'assets' | 'collections'>();
 		if (retryAssetSummaries.current.size) retryGroups.add('assets');
 		if (retryCollectionSummaries.current.size) retryGroups.add('collections');
@@ -4360,15 +4592,22 @@ function Home() {
 		setSummaryRetrying(true);
 		setSummaryRetry((current) => current + 1);
 	};
+	const summaryAutoRetryRounds = React.useRef(0);
+	if (!homeSummaryFailuresPresent(summaryFailureKey)) summaryAutoRetryRounds.current = 0;
 	React.useEffect(() => {
 		if (
-			!summaryFailureKey ||
-			summaryFailureKey === '|' ||
-			summaryRetrying ||
-			portableHomeListingsFailure?.source === 'compute'
+			!homeSummaryAutoRetryDue({
+				failureKey: summaryFailureKey,
+				rounds: summaryAutoRetryRounds.current,
+				retrying: summaryRetrying,
+				computeCircuitOpen: portableHomeListingsFailure?.source === 'compute',
+			})
 		)
 			return;
-		const timer = window.setTimeout(retryMarketSummaries, 15_000);
+		const timer = window.setTimeout(() => {
+			summaryAutoRetryRounds.current += 1;
+			retryMarketSummaries();
+		}, HOME_SUMMARY_AUTO_RETRY_DELAY_MS);
 		return () => window.clearTimeout(timer);
 	}, [portableHomeListingsFailure, summaryFailureKey, summaryRetrying]);
 	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
@@ -4388,18 +4627,75 @@ function Home() {
 	);
 	const assetSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('assets');
 	const collectionSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('collections');
-	const collectionResultsPending = homeMarketHasPending(
-		market.loading || collectionSummariesRetrying || failedCollectionIds.length > 0,
-		collections.map((collection) => collection.id),
-		collectionFloors
+	// A floor that has not arrived by the display deadline says "Price unavailable";
+	// a retry re-arms the deadline for the floors it restarts.
+	const [collectionFloorDeadlineRun, setCollectionFloorDeadlineRun] = React.useState(0);
+	const overdueCollectionFloors = useHomeDisplayDeadlines(
+		`${aoRoutingScope}|${collectionFloorDeadlineRun}`,
+		shouldLoadCollectionSummaries
+			? collections.map((collection) => collection.id).filter((collectionId) => !collectionFloors[collectionId])
+			: [],
+		COLLECTION_PRICE_DISPLAY_DEADLINE_MS
 	);
-	const discoverResultsPending = homeMarketHasPending(
-		market.loading || assetSummariesRetrying || portableHomeListingsLoading || failedAssetIds.length > 0,
-		assets.map(({ asset }) => asset.id),
-		assetPrices
-	);
+	const overdueCollectionFloorIds = collections
+		.map((collection) => collection.id)
+		.filter((collectionId) => !collectionFloors[collectionId] && overdueCollectionFloors.has(collectionId));
+	const collectionResultsPending = homeCollectionFloorsPending({
+		shellLoading: marketShellLoading,
+		retrying: collectionSummariesRetrying,
+		collectionIds: collections.map((collection) => collection.id),
+		floors: collectionFloors,
+		overdue: overdueCollectionFloors,
+	});
+	const collectionFloorRetryNotice = collectionPriceRetryNotice({
+		activityError: false,
+		activityLoading: false,
+		cardPricesFailed: false,
+		cardPricesLoading: collectionSummariesRetrying,
+		listedOnly: false,
+		overdue: collectionSummariesRetrying ? 0 : overdueCollectionFloorIds.length,
+		unavailable: failedCollectionIds.length,
+	});
+	const retryCollectionFloors = () => {
+		summaryAutoRetryRounds.current = 0;
+		setCollectionFloorDeadlineRun((run) => run + 1);
+		retryMarketSummaries(overdueCollectionFloorIds);
+	};
+	const discoverResultsPending = homeDiscoverPending({
+		marketLoading: market.loading,
+		retrying: assetSummariesRetrying,
+		crawlLoading: portableHomeListingsLoading,
+		visiblePagesFull: homeDiscoverPagesFull(
+			assetType === 'all'
+				? [
+						{
+							shown: discoverTokenPagination.items.length,
+							pageSize: HOME_DISCOVER_TOKEN_PAGE_SIZE,
+							page: discoverTokenPagination.page,
+							pageCount: discoverTokenPagination.pageCount,
+						},
+						{
+							shown: Math.min(discoverCollectibles.length, HOME_DISCOVER_UNIQUE_PREVIEW),
+							pageSize: HOME_DISCOVER_UNIQUE_PREVIEW,
+							page: 1,
+							pageCount: 1,
+						},
+				  ]
+				: [
+						{
+							shown: assetPagination.items.length,
+							pageSize: HOME_ASSET_PAGE_SIZE,
+							page: assetPagination.page,
+							pageCount: assetPagination.pageCount,
+						},
+				  ]
+		),
+		visibleCount: displayedAssets.length,
+		keys: assets.map(({ asset }) => asset.id),
+		summaries: displayAssetPrices,
+	});
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
-	const discoverFailure = market.error
+	const reportedDiscoverFailure = market.error
 		? { message: market.error, retry: market.retry }
 		: portableHomeListingsFailure
 		? {
@@ -4410,10 +4706,42 @@ function Home() {
 				retry: () => setPortableHomeRetry((current) => current + 1),
 		  }
 		: undefined;
+	const [discoverDeadlineRun, setDiscoverDeadlineRun] = React.useState(0);
+	const discoverLoadingOverdue = useHomeDisplayDeadlines(
+		[aoRoutingScope, portableHomeRetry, discoverDeadlineRun, assetType, assetView, normalizedQuery].join('|'),
+		homeTab === 'discover' &&
+			!reportedDiscoverFailure &&
+			homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length)
+			? ['discover']
+			: [],
+		HOME_DISCOVER_LOADING_DEADLINE_MS
+	).has('discover');
+	const overdueDiscoverFailure = discoverLoadingOverdue
+		? homeDiscoverOverdueFailure(
+				marketShellReady,
+				summaryFailures.map((failure) => failure.kind)
+		  )
+		: undefined;
+	const discoverFailure =
+		reportedDiscoverFailure ??
+		(overdueDiscoverFailure
+			? {
+					message: marketplaceRequestFailureMessage(
+						overdueDiscoverFailure.source,
+						overdueDiscoverFailure.kind
+					),
+					retry: () => {
+						setDiscoverDeadlineRun((run) => run + 1);
+						if (marketShellReady) setPortableHomeRetry((current) => current + 1);
+						else market.retry();
+					},
+			  }
+			: undefined);
 	const discoverDisplay = homeDiscoverDisplay(
 		discoverResultsPending,
 		Boolean(discoverFailure),
-		displayedAssets.length
+		displayedAssets.length,
+		discoverLoadingOverdue
 	);
 	const discoverBusy = homeDiscoverBusy(discoverDisplay, discoverResultsPending);
 	const pageRefreshing =
@@ -4448,8 +4776,11 @@ function Home() {
 						}}
 						secondaryMetric={{
 							label: '24h change',
-							value:
-								change === undefined ? <HomePendingMarketValue /> : homeTokenPriceChangeLabel(change),
+							value: homeTokenPriceChangePending(change, overdueTokenPriceChanges.has(asset.id)) ? (
+								<HomePendingMarketValue />
+							) : (
+								homeTokenPriceChangeLabel(change ?? null)
+							),
 							tone:
 								typeof change !== 'number'
 									? 'muted'
@@ -4628,6 +4959,26 @@ function Home() {
 									id="home-collections-panel"
 									role="tabpanel"
 								>
+									{collectionFloorRetryNotice.visible && !market.error ? (
+										<div className="inline-error retry-notice">
+											<span role="status">
+												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
+												{collectionFloorRetryNotice.unavailable === 1
+													? 'floor remains'
+													: 'floors remain'}{' '}
+												unavailable. The collections stay browsable.
+											</span>
+											<Button
+												className="with-icon"
+												disabled={summaryRetrying}
+												onClick={retryCollectionFloors}
+												size="custom"
+												type="button"
+											>
+												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+											</Button>
+										</div>
+									) : null}
 									{collections.length || collectionResultsPending ? (
 										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
@@ -4636,9 +4987,11 @@ function Home() {
 													collection.assets.find((asset) => asset.image) ??
 													collection.assets[0];
 												const floor = collectionFloors[collection.id];
+												const floorOverdue =
+													!floor && overdueCollectionFloors.has(collection.id);
 												const floorPending =
-													!floor ||
-													(collectionSummariesRetrying && floor.status === 'unavailable');
+													(!floor && !floorOverdue) ||
+													(collectionSummariesRetrying && floor?.status === 'unavailable');
 												return (
 													<Link
 														className={`home-feature-card feature-${index}`}
@@ -4723,6 +5076,8 @@ function Home() {
 																				'N/A'
 																			)}
 																		</ArCurrencyText>
+																	) : floorOverdue ? (
+																		collectionCardPriceLabel(undefined, false, true)
 																	) : (
 																		<HomePendingMarketValue />
 																	)}
