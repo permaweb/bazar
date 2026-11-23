@@ -19,6 +19,7 @@ import {
 	graphqlSupportsCount,
 	postGraphql,
 	retryTransientGraphql,
+	usableGraphqlPayload,
 } from './graphql';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
@@ -27,6 +28,11 @@ const GRAPHQL_PAGE_SIZE = 100;
 const GRAPHQL_ID_BATCH_SIZE = 100;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
+/**
+ * A fresh wallet scan whose preferred index is still silent after this long also asks the next index
+ * for the same first page, as a preview only (see discoverWalletAssetCandidates).
+ */
+export const WALLET_SCAN_PREVIEW_AFTER_MS = 3_000;
 const WALLET_SCAN_CACHE_VERSION = 1;
 const ASSET_SUPPORT_CONCURRENCY = 2;
 export const ASSET_RESOLUTION_CONCURRENCY = 8;
@@ -155,6 +161,8 @@ type WalletCandidateOptions = CandidateOptions &
 	IndexRetryOptions & {
 		scan?: WalletCandidateScan;
 		catchUp?: boolean;
+		/** When a fresh scan's first page asks the next index for a preview; WALLET_SCAN_PREVIEW_AFTER_MS by default. */
+		previewAfterMs?: number;
 	};
 
 type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> &
@@ -786,59 +794,111 @@ export async function discoverWalletAssetCandidates(
 		// 2026-11-23 ardrive.net answered it in 0.4 s with the same 12 + 21 + 2 transactions for a
 		// 35-transaction wallet that arweave.net took 30.5 s to return.
 		const endpoints = scan.answeringIndex ? [scan.answeringIndex] : [graphql, ...fallbackEndpoints];
-		const {
-			response,
-			body: payload,
-			endpoint,
-		} = await retryTransientGraphql(
-			() =>
-				postGraphql<any>(
-					fetcher,
-					endpoints,
-					{
-						method: 'POST',
-						headers: { 'content-type': 'application/json' },
-						body: JSON.stringify({
-							query: WALLET_CANDIDATES_QUERY,
-							variables: {
-								initialCursor: cursors.initiallyHeld,
-								marketCursor: cursors.marketActions,
-								transferCursor: cursors.receivedTransfers,
-								includeInitial: active.has('initiallyHeld'),
-								includeMarket: active.has('marketActions'),
-								includeTransfers: active.has('receivedTransfers'),
-								owners: [address],
-								initialTags: [{ name: 'initial-holder', values: [address] }],
-								marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
-								transferTags: [
-									{ name: 'action', values: ['transfer'] },
-									{ name: 'recipient', values: [address] },
-								],
-							},
-						}),
-						signal: options.signal,
-					},
-					{
-						timeoutMs: options.requestTimeoutMs,
-						timeoutError: 'asset-discovery-graphql-timeout',
-					}
-				),
-			options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS,
-			options.signal
-		);
-		if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
-		if (!payload) throw new Error('asset-discovery-graphql-empty');
-		if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
-		return {
-			requestedAliases,
-			endpoint,
-			connections: new Map(
+		const body = JSON.stringify({
+			query: WALLET_CANDIDATES_QUERY,
+			variables: {
+				initialCursor: cursors.initiallyHeld,
+				marketCursor: cursors.marketActions,
+				transferCursor: cursors.receivedTransfers,
+				includeInitial: active.has('initiallyHeld'),
+				includeMarket: active.has('marketActions'),
+				includeTransfers: active.has('receivedTransfers'),
+				owners: [address],
+				initialTags: [{ name: 'initial-holder', values: [address] }],
+				marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
+				transferTags: [
+					{ name: 'action', values: ['transfer'] },
+					{ name: 'recipient', values: [address] },
+				],
+			},
+		});
+		const connectionsOf = (payload: any) =>
+			new Map(
 				requestedAliases.map((alias) => [
 					alias,
 					decodeGraphqlConnection(payload, alias, 'asset-discovery-graphql-schema'),
 				])
-			),
+			);
+		const stopPreview = scan.answeringIndex ? undefined : previewFirstPage(body, requestedAliases, connectionsOf);
+		try {
+			const {
+				response,
+				body: payload,
+				endpoint,
+			} = await retryTransientGraphql(
+				() =>
+					postGraphql<any>(
+						fetcher,
+						endpoints,
+						{
+							method: 'POST',
+							headers: { 'content-type': 'application/json' },
+							body,
+							signal: options.signal,
+						},
+						{
+							timeoutMs: options.requestTimeoutMs,
+							timeoutError: 'asset-discovery-graphql-timeout',
+						}
+					),
+				options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS,
+				options.signal
+			);
+			if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
+			if (!payload) throw new Error('asset-discovery-graphql-empty');
+			if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
+			return { requestedAliases, endpoint, connections: connectionsOf(payload) };
+		} finally {
+			stopPreview?.();
+		}
+	};
+	/**
+	 * While a fresh scan's first page waits on a slow preferred index (arweave.net took 9-15 s and more
+	 * for a profile's first page in round 3 and in the 2026-11-23 A/B, against 0.3 s on ardrive.net),
+	 * ask the next index for the same page once and hand its candidates to `onPage` as a preview. It
+	 * changes nothing in the scan: the preferred request keeps its deadline, retry and fallback, and
+	 * its answer alone sets the cursors, heads, `found` and answeringIndex, so a scan stays resumable
+	 * and storable exactly as before. Preview candidates are only checked and shown this session, the
+	 * way a fallback-answered scan is; a candidate seen twice is screened once by the caller.
+	 */
+	const previewFirstPage = (
+		body: string,
+		aliases: WalletCandidateAlias[],
+		connectionsOf: (payload: any) => Map<WalletCandidateAlias, GraphqlConnection>
+	) => {
+		const previewIndex = fallbackEndpoints.find((endpoint) => endpoint !== graphql);
+		if (!previewIndex || !options.onPage) return undefined;
+		const controller = new AbortController();
+		const stop = () => {
+			clearTimeout(timer);
+			controller.abort();
+			options.signal?.removeEventListener('abort', stop);
 		};
+		options.signal?.addEventListener('abort', stop, { once: true });
+		const timer = setTimeout(async () => {
+			try {
+				const result = await postGraphql<any>(
+					fetcher,
+					[previewIndex],
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body,
+						signal: controller.signal,
+					},
+					{ timeoutMs: options.requestTimeoutMs, timeoutError: 'asset-discovery-graphql-timeout' }
+				);
+				if (controller.signal.aborted || !usableGraphqlPayload(result)) return;
+				const page = pageUpdates(aliases, connectionsOf(result.body));
+				if (controller.signal.aborted || !page.processIds.size) return;
+				await options.onPage?.(
+					sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
+				);
+			} catch {
+				// Best effort: the preferred page still decides the scan.
+			}
+		}, options.previewAfterMs ?? WALLET_SCAN_PREVIEW_AFTER_MS);
+		return stop;
 	};
 	const pageUpdates = (
 		requestedAliases: WalletCandidateAlias[],
