@@ -19,6 +19,19 @@ const observed = {
 	changedAt: 2,
 } as ObserverView;
 
+function progressbar(markup: string) {
+	const tag = markup.match(/<div[^>]*role="progressbar"[^>]*>/)?.[0];
+	if (!tag) throw new Error('no progressbar in markup');
+	const attr = (name: string) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1];
+	return {
+		label: attr('aria-label'),
+		min: attr('aria-valuemin'),
+		max: attr('aria-valuemax'),
+		now: attr('aria-valuenow'),
+		text: attr('aria-valuetext'),
+	};
+}
+
 function renderLoader(answering: number, eligible: number, views: ObserverView[] = [observed]) {
 	const steps: ArweaveSyncStep[] = [
 		{
@@ -76,7 +89,14 @@ describe('observer verification delay', () => {
 			</ThemeProvider>
 		);
 
-		expect(markup).toContain('aria-label="1 of 5"');
+		expect(progressbar(markup)).toEqual({
+			label: 'List for sale',
+			min: '0',
+			max: '5',
+			now: '1',
+			text: 'List for sale: 1 of 5 confirmations.',
+		});
+		expect(markup).not.toContain('aria-label="1 of 5"');
 		expect(markup).toContain('>1</strong><span> / 5</span>');
 	});
 
@@ -102,7 +122,15 @@ describe('observer verification delay', () => {
 			</ThemeProvider>
 		);
 
-		expect(markup).toContain('aria-label="7 confirmations"');
+		const bar = progressbar(markup);
+		expect(bar).toEqual({
+			label: 'Pay seller',
+			min: '0',
+			max: '7',
+			now: '7',
+			text: 'Pay seller: 7 confirmations.',
+		});
+		expect(Number(bar.now)).toBeLessThanOrEqual(Number(bar.max));
 		expect(markup).toContain('>7</strong><span> confirmations</span>');
 		expect(markup).not.toContain(' / 1');
 		expect(markup).toContain('Checking receipt');
@@ -130,9 +158,45 @@ describe('observer verification delay', () => {
 			</ThemeProvider>
 		);
 
-		expect(markup).toContain('aria-label="1 of 1"');
+		expect(progressbar(markup)).toEqual({
+			label: 'Pay seller',
+			min: '0',
+			max: '1',
+			now: '1',
+			text: 'Pay seller: 1 of 1 confirmations complete.',
+		});
 		expect(markup).toContain('>1</strong><span> / 1</span>');
 		expect(markup).toContain('Checking receipt');
+	});
+
+	it('names the settlement phase on a confirmed non-terminal step', () => {
+		const markup = renderToStaticMarkup(
+			<ThemeProvider theme={theme}>
+				<LanguageProvider>
+					<ArweaveTransactionSync
+						subject="Asset"
+						pendingAfterConfirmation="Settling live state"
+						steps={[
+							{
+								key: 'register',
+								label: 'Reserve listing',
+								target: 2,
+								confirmations: 2,
+								transaction: { id: 'R'.repeat(43), views: [] },
+							},
+						]}
+					/>
+				</LanguageProvider>
+			</ThemeProvider>
+		);
+
+		expect(progressbar(markup)).toEqual({
+			label: 'Reserve listing',
+			min: '0',
+			max: '2',
+			now: '2',
+			text: 'Settling live state',
+		});
 	});
 
 	it('replaces a misleading zero count when no observer quorum is available', () => {
@@ -141,18 +205,32 @@ describe('observer verification delay', () => {
 		expect(markup).toContain(
 			'Observers are currently delayed. Your transaction may still be progressing. Come back soon to see progress.'
 		);
-		expect(markup).not.toContain('aria-label="0 of 5"');
+		expect(progressbar(markup)).toEqual({
+			label: 'Reserve listing',
+			min: '0',
+			max: '5',
+			now: undefined,
+			text: 'Observers delayed',
+		});
 	});
 
 	it('keeps the real zero count while healthy observers are checking', () => {
 		const markup = renderLoader(2, 5);
-		expect(markup).toContain('aria-label="0 of 5"');
+		expect(progressbar(markup)).toMatchObject({
+			now: '0',
+			max: '5',
+			text: 'Reserve listing: 0 of 5 confirmations.',
+		});
 		expect(markup).not.toContain('Observers delayed');
 	});
 
 	it('does not call an untouched transaction delayed before observer responses arrive', () => {
 		const markup = renderLoader(0, 0, []);
-		expect(markup).toContain('aria-label="0 of 5"');
+		expect(progressbar(markup)).toMatchObject({
+			now: '0',
+			max: '5',
+			text: 'Reserve listing: 0 of 5 confirmations.',
+		});
 		expect(markup).not.toContain('Observers delayed');
 	});
 });

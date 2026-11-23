@@ -21,7 +21,7 @@ import {
 	timelineLayout,
 	transitionKey,
 } from './raceTimeline';
-import { confirmationLifecycleState, sequencePhaseBounds } from './sequence';
+import { confirmationLifecycleState, confirmationProgressValue, sequencePhaseBounds } from './sequence';
 import * as S from './styles';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
 import { TransactionRendererFallback, TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
@@ -137,6 +137,20 @@ export function ArweaveTransactionSync({
 	);
 	const displayedConfirmationDepth = active?.terminal ? confirmationDepth : lifecycle.depth;
 	const terminalDepthBeyondTarget = Boolean(active?.terminal && target > 0 && confirmationDepth > target);
+	const progressValue = confirmationProgressValue({
+		label: active?.label ?? '',
+		confirmations: confirmationDepth,
+		target,
+		terminal: Boolean(active?.terminal),
+		pendingLabel: lifecycle.pending ? pendingAfterConfirmation : undefined,
+		delayedLabel: language.transactionSyncVerificationDelayed,
+		verificationDelayed,
+		copy: {
+			progress: language.transactionSyncConfirmationProgress,
+			complete: language.transactionSyncConfirmationProgressComplete,
+			beyondTarget: language.transactionSyncConfirmationProgressBeyondTarget,
+		},
+	});
 	const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
 	const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
 	const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
@@ -268,24 +282,11 @@ export function ArweaveTransactionSync({
 							<span>{language.transaction}</span>
 							<TxAddress address={transaction.id} wrap={false} tooltipPosition={'right'} />
 						</div>
-						<S.Depth
-							aria-label={
-								terminalDepthBeyondTarget
-									? `${displayedConfirmationDepth} confirmation${
-											displayedConfirmationDepth === 1 ? '' : 's'
-									  }`
-									: lifecycle.pending && !active.terminal
-									? pendingAfterConfirmation
-									: verificationDelayed
-									? language.transactionSyncVerificationDelayed
-									: `${displayedConfirmationDepth} of ${target}`
-							}
-							$success={lifecycle.complete}
-						>
+						<S.Depth $success={lifecycle.complete}>
 							{terminalDepthBeyondTarget ? (
 								<>
 									<strong>{displayedConfirmationDepth}</strong>
-									<span> confirmations</span>
+									<span>{` ${language.transactionSyncConfirmations}`}</span>
 								</>
 							) : lifecycle.pending && !active.terminal ? (
 								<strong>{pendingAfterConfirmation}</strong>
@@ -300,6 +301,12 @@ export function ArweaveTransactionSync({
 						</S.Depth>
 					</S.TransactionHeader>
 					<S.ProgressTrack
+						role="progressbar"
+						aria-label={active.label}
+						aria-valuemin={progressValue.min}
+						aria-valuemax={progressValue.max}
+						aria-valuenow={progressValue.now}
+						aria-valuetext={progressValue.text}
 						$active={progressActive}
 						$state={transactionState}
 						$confirmations={confirmationDepth}
