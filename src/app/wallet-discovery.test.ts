@@ -276,6 +276,34 @@ describe('wallet discovery run', () => {
 		expect(test.status()).toMatchObject({ phase: 'done', total: 1, resolved: 1 });
 	});
 
+	it('runs the index scan before any collection loads and reads no state until one does', async () => {
+		// The profile starts the scan with the collection reads, not after them (round 2: 9.4 s later).
+		let loaded = false;
+		const pages: string[][] = [];
+		const test = harness([], async (_scan, onPage) => {
+			pages.push([assetA, assetB]);
+			onPage([candidate(assetA, 30), candidate(assetB, 20)]);
+			return [candidate(assetA, 30), candidate(assetB, 20)];
+		});
+		test.options.collectionsLoaded = () => loaded;
+		const discovery = runWalletDiscovery(test.options);
+
+		await vi.waitFor(() => expect(pages).toEqual([[assetA, assetB]]));
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(test.reads).toEqual([]);
+		expect(walletCandidatePreviews(test.session, [], new Map())).toEqual([]);
+		expect(test.verify).not.toHaveBeenCalled();
+
+		test.setCollections([images([assetA, assetB])]);
+		loaded = true;
+		discovery.supportChanged();
+		await discovery.finished;
+
+		expect(pages).toHaveLength(1);
+		expect(test.reads).toEqual([assetA, assetB]);
+		expect(test.status()).toMatchObject({ phase: 'done', total: 2, resolved: 2 });
+	});
+
 	it('does not wait on streaming collections when no candidate depends on them', async () => {
 		const test = harness([images([assetA])], async (_scan, onPage) => {
 			onPage([candidate(assetA, 30)]);

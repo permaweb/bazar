@@ -35,6 +35,14 @@ import {
 	withIndexedAssetNames,
 } from './collections';
 
+// Catalogue reads retry transient index failures after GRAPHQL_RETRY_DELAYS_MS (1 s, 3 s). Most tests
+// answer unrelated requests with a 503, so retries stay off unless a test sets zero-delay retries.
+const graphqlRetry = vi.hoisted(() => ({ delays: [] as number[] }));
+vi.mock('./graphql', async (importOriginal) => ({
+	...(await importOriginal<typeof import('./graphql')>()),
+	GRAPHQL_RETRY_DELAYS_MS: graphqlRetry.delays,
+}));
+
 const emptyHiddenCollectionAssetIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
 
 const encodeTag = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
@@ -48,6 +56,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 	replaceHiddenCollectionAssetIndex({});
+	graphqlRetry.delays.length = 0;
 });
 
 describe('direct collection links', () => {
@@ -230,6 +239,61 @@ describe('direct collection links', () => {
 			vi.fn(async () => new Response('unavailable', { status: 503 }))
 		);
 		await expect(loadBazarCollectionById(collectionId)).rejects.toThrow('collection-lookup-503');
+	});
+
+	it('retries a lookup that every index failed transiently before reporting it unavailable', async () => {
+		graphqlRetry.delays.push(0);
+		const lookups: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollectionById')) {
+				lookups.push(String(input));
+				// Both indexes are busy on the first attempt; the retry is answered.
+				return lookups.length <= 2 ? new Response('busy', { status: 503 }) : indexResponse([]);
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(loadBazarCollectionById(collectionId)).resolves.toBeNull();
+		expect(lookups).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+			'https://arweave.net/graphql',
+		]);
+	});
+
+	it('retries a discovery page and keeps later pages on the index that answered', async () => {
+		graphqlRetry.delays.push(0);
+		const pages: Array<{ url: string; after: unknown }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const body = init?.body ? JSON.parse(String(init.body)) : {};
+			if (!String(body.query).includes('BazarCollections')) throw new Error(`unexpected-request: ${input}`);
+			pages.push({ url: String(input), after: body.variables.after });
+			if (pages.length === 1) return new Response('busy', { status: 503 });
+			if (body.variables.after === null) {
+				return Response.json({
+					data: {
+						transactions: {
+							pageInfo: { hasNextPage: true },
+							edges: [{ cursor: 'page-1', node: { id: 'X'.repeat(43), tags: [] } }],
+						},
+					},
+				});
+			}
+			if (pages.length === 3) return new Response('busy', { status: 503 });
+			return indexResponse([]);
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(discoverBazarCollections()).resolves.toEqual([]);
+		expect(pages).toEqual([
+			{ url: 'https://arweave.net/graphql', after: null },
+			{ url: 'https://ardrive.net/graphql', after: null },
+			// The cursor belongs to ardrive.net, so its transient failure is retried there, not on arweave.net.
+			{ url: 'https://ardrive.net/graphql', after: 'page-1' },
+			{ url: 'https://ardrive.net/graphql', after: 'page-1' },
+		]);
 	});
 });
 
@@ -1539,6 +1603,67 @@ describe('collection index loading', () => {
 				([, init]) => typeof init?.body === 'string' && init.body.includes('FungibleTokens')
 			)
 		).toHaveLength(2);
+	});
+
+	it('retries a transiently failed token page on the counting index instead of falling back', async () => {
+		graphqlRetry.delays.push(0, 0);
+		const tokenId = 'T'.repeat(43);
+		const requests: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+				if (!body.query?.includes('FungibleTokens')) throw new Error(`unexpected-request: ${input}`);
+				requests.push(String(input));
+				if (requests.length === 1) return new Response('busy', { status: 503 });
+				if (requests.length === 2) return new Response('slow down', { status: 429 });
+				return Response.json({
+					data: {
+						transactions: {
+							count: 1,
+							pageInfo: { hasNextPage: false },
+							edges: [
+								{
+									cursor: 'token-0',
+									node: { id: tokenId, bundledIn: null, tags: [{ name: 'Name', value: 'Retried' }] },
+								},
+							],
+						},
+					},
+				});
+			})
+		);
+
+		const tokens = await loadMoreFungibleTokens({
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [],
+			hasMore: true,
+		});
+
+		expect(tokens.assets.map(({ name }) => name)).toEqual(['Retried']);
+		// `count` is answered only by arweave.net, so every attempt stays there.
+		expect(requests).toEqual(Array(3).fill('https://arweave.net/graphql'));
+	});
+
+	it('reports the token index unavailable once its retries are spent', async () => {
+		graphqlRetry.delays.push(0);
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(
+			loadMoreFungibleTokens({
+				id: 'fungible-tokens',
+				name: 'Tokens',
+				description: '',
+				kind: 'tokens',
+				assets: [],
+				hasMore: true,
+			})
+		).rejects.toThrow('fungible-index-503');
+		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 
 	it.each([null, { id: '' }])(

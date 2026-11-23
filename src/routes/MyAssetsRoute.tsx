@@ -124,7 +124,10 @@ export default function MyAssetsRoute({
 		setRetry((value) => value + 1);
 	};
 	React.useEffect(() => {
-		if (!walletAddress || !collectionsReady || market.error) return;
+		// The GraphQL scan starts at once, in parallel with the collection reads: candidates no loaded
+		// collection can classify yet are held, and supportChanged() releases them as collections stream
+		// in, so nothing is read or shown before hidden-collection visibility has settled.
+		if (!walletAddress || market.error) return;
 		const controller = new AbortController();
 		const scope = requestedSessionScope;
 		const previousSession = discoverySession.current;
@@ -209,7 +212,7 @@ export default function MyAssetsRoute({
 			cancelScanStore?.();
 			if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
 		};
-	}, [collectionsReady, discoveryRetry, discoveryScope, market.error, retry]);
+	}, [discoveryRetry, discoveryScope, market.error, retry]);
 	React.useEffect(() => {
 		walletDiscovery.current?.supportChanged();
 	}, [market.loading, walletSupportVersion]);

@@ -479,10 +479,7 @@ export async function loadCollections(
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
-			fallback: () => ({
-				...fungibleTokenCollection(isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) ? [] : [defaultFungibleToken()]),
-				indexSource: 'compiled-fallback',
-			}),
+			fallback: compiledFungibleTokenCollection,
 		},
 		...IMAGE_COLLECTIONS.map(({ reference, manifest }, index) => ({
 			label: `Permanent artwork collection ${index + 1}`,
@@ -602,14 +599,17 @@ export async function discoverBazarCollections(
 	const visited = new Set<string>();
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		throwIfAborted(signal);
-		const request = await postGraphql<BazarCollectionPayload>(
-			fetch,
-			endpoints,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: `query BazarCollections($after: String) {
+		const pageEndpoints = endpoints;
+		const request = await retryTransientGraphql(
+			() =>
+				postGraphql<BazarCollectionPayload>(
+					fetch,
+					pageEndpoints,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							query: `query BazarCollections($after: String) {
 					transactions(
 						after: $after
 						first: 100
@@ -625,11 +625,14 @@ export async function discoverBazarCollections(
 						edges { cursor node { id tags { name value } block { height timestamp } } }
 					}
 				}`,
-					variables: { after: cursor },
-				}),
-				signal,
-			},
-			{ timeoutError: 'collection-discovery-timeout' }
+							variables: { after: cursor },
+						}),
+						signal,
+					},
+					{ timeoutError: 'collection-discovery-timeout' }
+				),
+			GRAPHQL_RETRY_DELAYS_MS,
+			signal
 		);
 		const { response, body: payload } = request;
 		// Later pages carry this index's cursor.
@@ -682,24 +685,29 @@ export async function discoverBazarCollections(
 /** Resolve a shared collection link even when tag-based discovery omits it. */
 export async function loadBazarCollectionById(id: string, signal?: AbortSignal): Promise<Collection | null> {
 	if (!ARWEAVE_ID.test(id) || !isVisibleCollectionId(id)) return null;
-	const { response, body: payload } = await postGraphql<BazarCollectionPayload>(
-		fetch,
-		graphqlEndpointList(),
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				query: `query BazarCollectionById($ids: [ID!]!) {
+	const { response, body: payload } = await retryTransientGraphql(
+		() =>
+			postGraphql<BazarCollectionPayload>(
+				fetch,
+				graphqlEndpointList(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query BazarCollectionById($ids: [ID!]!) {
 					transactions(ids: $ids, first: 1) {
 						pageInfo { hasNextPage }
 						edges { cursor node { id tags { name value } block { height timestamp } } }
 					}
 				}`,
-				variables: { ids: [id] },
-			}),
-			signal,
-		},
-		{ timeoutError: 'collection-lookup-timeout' }
+						variables: { ids: [id] },
+					}),
+					signal,
+				},
+				{ timeoutError: 'collection-lookup-timeout' }
+			),
+		GRAPHQL_RETRY_DELAYS_MS,
+		signal
 	);
 	if (!response.ok) throw new Error(`collection-lookup-${response.status}`);
 	if (!payload || payload.errors?.length) throw new Error('collection-lookup-query');
@@ -1187,15 +1195,22 @@ function countingGraphqlEndpoint(): string {
 	return endpoints.find(graphqlSupportsCount) ?? endpoints[0];
 }
 
+/**
+ * The token list stays on the counting index (AR.IO GraphQL such as ardrive.net rejects `count`, and
+ * on 2026-11-23 its fungible index lacked 3 of arweave.net's 41 hint-ui-style tokens), so a slow
+ * arweave.net moment is retried there instead of falling back to an index that would drop tokens.
+ */
 async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Promise<FungibleTokenPage> {
-	const result = await fetchJsonWithDeadline<any>(
-		fetch,
-		countingGraphqlEndpoint(),
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				query: `query FungibleTokens($after: String) {
+	const result = await retryTransientGraphql(
+		() =>
+			fetchJsonWithDeadline<any>(
+				fetch,
+				countingGraphqlEndpoint(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query FungibleTokens($after: String) {
 					transactions(
 					after: $after
 					first: 100
@@ -1246,13 +1261,16 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 						edges { cursor node { id bundledIn { id } tags { name value } } }
 					}
 				}`,
-				variables: { after: after ?? null },
-			}),
-			signal,
-		},
-		{
-			timeoutError: 'fungible-index-timeout',
-		}
+						variables: { after: after ?? null },
+					}),
+					signal,
+				},
+				{
+					timeoutError: 'fungible-index-timeout',
+				}
+			),
+		GRAPHQL_RETRY_DELAYS_MS,
+		signal
 	);
 	const response = result.response;
 	const payload: any = result.body;
@@ -1371,6 +1389,14 @@ function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection 
 	};
 }
 
+/** The token collection without its index: only the configured token, marked as a compiled fallback. */
+export function compiledFungibleTokenCollection(): Collection {
+	return {
+		...fungibleTokenCollection(isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) ? [] : [defaultFungibleToken()]),
+		indexSource: 'compiled-fallback',
+	};
+}
+
 function defaultFungibleToken(): AssetSummary {
 	return {
 		id: FUNGIBLE_TOKEN_ID,
@@ -1447,15 +1473,17 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal, cursorIndex
 		response,
 		body: payload,
 		endpoint,
-	} = await postGraphql<any>(
-		fetch,
-		// A cursor belongs to the index that issued it; only the first page may fall back.
-		after ? [cursorIndex ?? endpoints[0]] : endpoints,
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				query: `query CarrierAssets($after: String) {
+	} = await retryTransientGraphql(
+		() =>
+			postGraphql<any>(
+				fetch,
+				// A cursor belongs to the index that issued it; only the first page may fall back.
+				after ? [cursorIndex ?? endpoints[0]] : endpoints,
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query CarrierAssets($after: String) {
 				transactions(
 					first: 100
 					after: $after
@@ -1469,13 +1497,16 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal, cursorIndex
 					}
 				}
 			}`,
-				variables: { after: after ?? null },
-			}),
-			signal,
-		},
-		{
-			timeoutError: 'carrier-index-timeout',
-		}
+						variables: { after: after ?? null },
+					}),
+					signal,
+				},
+				{
+					timeoutError: 'carrier-index-timeout',
+				}
+			),
+		GRAPHQL_RETRY_DELAYS_MS,
+		signal
 	);
 	if (!response.ok) throw new Error(`carrier-index-${response.status}`);
 	if (!payload) throw new Error('carrier-index-empty');

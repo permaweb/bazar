@@ -260,6 +260,50 @@ describe('retryTransientGraphql', () => {
 		expect(unavailable).toHaveBeenCalledTimes(1);
 	});
 
+	it("waits for a fallback index's Retry-After when the preferred index failed without one", async () => {
+		vi.useFakeTimers();
+		let round = 0;
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input) === primary) {
+				round += 1;
+				if (round === 1) throw new Error('graphql-timeout');
+				if (round === 2) return new Response('busy', { status: 503 });
+				return Response.json(data('answered'));
+			}
+			return new Response('slow down', { status: 429, headers: { 'retry-after': round === 1 ? '5' : '3' } });
+		});
+		const pending = retryTransientGraphql(
+			() => postGraphql(fetcher as typeof fetch, [primary, secondary], request, options),
+			[1_000, 1_000]
+		);
+
+		// Round 1: arweave.net timed out (thrown), ardrive.net said 429 Retry-After 5.
+		await vi.advanceTimersByTimeAsync(4_999);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(1);
+		// Round 2: arweave.net answered 503 without Retry-After, ardrive.net 429 Retry-After 3.
+		expect(fetcher).toHaveBeenCalledTimes(4);
+		await vi.advanceTimersByTimeAsync(2_999);
+		expect(fetcher).toHaveBeenCalledTimes(4);
+		await vi.advanceTimersByTimeAsync(1);
+		await expect(pending).resolves.toMatchObject({ endpoint: primary, response: { status: 200 } });
+		expect(fetcher).toHaveBeenCalledTimes(5);
+	});
+
+	it('reports the longest Retry-After on a preferred outcome that no endpoint improved', async () => {
+		const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+			String(input) === primary
+				? new Response('busy', { status: 503, headers: { 'retry-after': '2' } })
+				: new Response('slow down', { status: 429, headers: { 'retry-after': '60' } })
+		);
+
+		const result = await postGraphql(fetcher as typeof fetch, [primary, secondary], request, options);
+
+		expect(result.response.status).toBe(503);
+		// Capped at 10 s like any Retry-After.
+		expect(result.retryAfterMs).toBe(10_000);
+	});
+
 	it('stops waiting for a retry when the caller aborts', async () => {
 		vi.useFakeTimers();
 		const controller = new AbortController();

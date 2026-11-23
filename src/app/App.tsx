@@ -103,9 +103,11 @@ import {
 	type Collection,
 	collectionAsset,
 	collectionCoverImage,
+	compiledFungibleTokenCollection,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
 	FUNGIBLE_TOKEN_ID,
+	fungibleAssetFromState,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
 	type IndexedAssetName,
@@ -121,6 +123,7 @@ import {
 	withIndexedAssetNames,
 	withVisibleCollectionAssets,
 } from 'api/collections';
+import { GRAPHQL_RETRY_DELAYS_MS } from 'api/graphql';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -3444,6 +3447,19 @@ export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean)
 	return display !== 'failed' && pending;
 }
 
+/**
+ * Where a Discover failure is reported: beside cards that already rendered it is a compact inline
+ * notice that keeps them in view; with nothing to show it is the full error block in their place.
+ */
+export function homeDiscoverFailureNotice(display: HomeDiscoverDisplay): 'inline' | 'panel' | 'none' {
+	return display === 'results' ? 'inline' : display === 'failed' ? 'panel' : 'none';
+}
+
+/** The inline notice says what is missing (more listings), not that the shown cards failed. */
+export function homeDiscoverPartialFailureMessage(message: string) {
+	return `More listings could not be loaded. ${message}`;
+}
+
 export const HOME_SUMMARY_AUTO_RETRY_DELAY_MS = 15_000;
 /** Background retries of failed card summaries before only a manual Retry restarts them. */
 export const HOME_SUMMARY_AUTO_RETRY_LIMIT = 2;
@@ -4006,6 +4022,8 @@ function Home() {
 					discoverMarketActivity({
 						listingsOnly: true,
 						signal,
+						// The crawl has no background retry of its own, so its pages retry transient index failures.
+						retryDelaysMs: GRAPHQL_RETRY_DELAYS_MS,
 						onPage: (candidates, graphql) => {
 							if (graphql !== arweaveGraphqlEndpoint()) homeListingsFromFallbackIndex.current = true;
 							return onPage(candidates);
@@ -4914,8 +4932,15 @@ function Home() {
 								) : null}
 							</div>
 							{homeTab === 'discover' ? (
-								discoverFailure && discoverDisplay === 'results' ? (
-									<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+								discoverFailure && homeDiscoverFailureNotice(discoverDisplay) === 'inline' ? (
+									<div className="collection-source-notice home-discover-partial-notice retry-notice">
+										<span role="status">
+											{homeDiscoverPartialFailureMessage(discoverFailure.message)}
+										</span>
+										<Button onClick={discoverFailure.retry} size="small">
+											Retry
+										</Button>
+									</div>
 								) : null
 							) : market.error ? (
 								<ErrorPanel message={market.error} onRetry={market.retry} />
@@ -5105,7 +5130,7 @@ function Home() {
 									id="home-discover-panel"
 									role="tabpanel"
 								>
-									{discoverDisplay === 'failed' && discoverFailure ? (
+									{homeDiscoverFailureNotice(discoverDisplay) === 'panel' && discoverFailure ? (
 										<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
 									) : discoverDisplay === 'loading' ? (
 										<div className="home-market-loading">
@@ -8078,6 +8103,50 @@ function CollectionResultStatus({ message }: { message: string }) {
 	);
 }
 
+/** Copy for a token page shown from live state while the Bazar token index is unread or unreadable. */
+export function tokenListingNoticeCopy(checking: boolean) {
+	return checking
+		? {
+				message: 'Checking the Bazar listing. Balances and orders below are read from live state.',
+				compact: 'Checking the Bazar listing…',
+		  }
+		: {
+				message:
+					'Bazar listing could not be verified right now. Balances and orders below are read from live state.',
+				compact: 'Bazar listing could not be verified right now.',
+		  };
+}
+
+function TokenListingNotice({ checking, onRetry }: { checking: boolean; onRetry(): void }) {
+	const { message, compact } = tokenListingNoticeCopy(checking);
+	return (
+		<div className="collection-source-notice collection-index-notice retry-notice">
+			<span role="status">
+				<span aria-hidden="true" className="collection-index-message-full">
+					{message}
+				</span>
+				<span aria-hidden="true" className="collection-index-message-compact">
+					{compact}
+				</span>
+				<span className="sr-only">{message}</span>
+			</span>
+			<Button
+				aria-disabled={checking}
+				aria-label="Retry"
+				className="with-icon"
+				size="custom"
+				type="button"
+				onClick={() => {
+					if (!checking) onRetry();
+				}}
+			>
+				<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+				<span aria-hidden="true">Retry</span>
+			</Button>
+		</div>
+	);
+}
+
 function CollectionIndexNotice({
 	collection,
 	checking,
@@ -8969,6 +9038,30 @@ export function assetDetailMembershipVerified(
 	return directAtomicAsset || Boolean(collectionId && verifiedCollectionIds.has(collectionId));
 }
 
+/**
+ * How an asset page knows the asset belongs to the collection it is shown under.
+ *
+ * `verified`: the collection's current index was read (or the asset is a live/indexed Atomic Asset).
+ * `live`: the token index could not be read, but membership of the token collection is the live
+ * fungible contract itself (`fungibleAssetFromState`: process@1.0, token@1.0, a fungible UI style,
+ * arweave-swap@1.0, arweave-scheduler@1.0, scheduler-mode all), and this token's live state meets it.
+ * A token past the loaded index pages is shown and traded on exactly this check when the index is
+ * healthy, so trading stays enabled; only the Bazar listing itself is unconfirmed.
+ * `unverified`: anything else, such as an image collection still on its compiled fallback, whose
+ * membership only its index can confirm.
+ */
+export type AssetDetailMembership = 'verified' | 'live' | 'unverified';
+
+export function assetDetailMembership(
+	collection: Pick<Collection, 'id' | 'kind'> | undefined,
+	verifiedCollectionIds: ReadonlySet<string>,
+	directAtomicAsset: boolean,
+	liveFungibleAsset: boolean
+): AssetDetailMembership {
+	if (assetDetailMembershipVerified(collection?.id, verifiedCollectionIds, directAtomicAsset)) return 'verified';
+	return collection?.kind === 'tokens' && liveFungibleAsset ? 'live' : 'unverified';
+}
+
 export function uniquePriceHistory(events: CollectionActivityEvent[]): TokenPricePoint[] {
 	const ordered = [...events].sort(
 		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
@@ -9596,6 +9689,8 @@ function AssetView() {
 	React.useEffect(() => {
 		if (indexedAtomic) market.rememberSearchAssets([indexedAtomic]);
 	}, [indexedAtomic, market.rememberSearchAssets]);
+	const directFungibleRoute =
+		collectionId === FUNGIBLE_TOKEN_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -9603,29 +9698,37 @@ function AssetView() {
 		indexedMetadata: indexedAtomic?.asset,
 		indexedCollection,
 		directAtomicRoute,
-		directFungibleRoute:
-			collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId),
+		directFungibleRoute,
 	});
 	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
+	const liveFungibleAsset = directFungibleRoute && state ? fungibleAssetFromState(assetId, state) : undefined;
+	// A token route whose live state meets the fungible contract does not wait for the token index.
+	const liveFungibleRoute = Boolean(liveFungibleAsset);
+	const catalogueCollection = React.useMemo(
+		() => indexedCollection ?? (liveFungibleRoute ? compiledFungibleTokenCollection() : undefined),
+		[indexedCollection, liveFungibleRoute]
+	);
 	const indexedMetadata = indexedAtomic?.asset;
 	const shellAsset = mergeAssetDetailMetadata(indexedAsset ?? cachedAsset, indexedMetadata);
 	const collection =
-		indexedCollection ??
+		catalogueCollection ??
 		directAtomicAsset?.collection ??
 		(directAtomicRoute ? indexedAtomic?.collection : undefined);
 	const resolvedAsset =
 		directAtomicAsset?.asset ??
 		mergeAssetDetailMetadata(
-			indexedCollection && state
-				? collectionAsset(indexedCollection, assetId, state)
+			catalogueCollection && state
+				? collectionAsset(catalogueCollection, assetId, state)
 				: indexedAsset ?? cachedAsset,
 			indexedMetadata
 		);
-	const membershipVerified = assetDetailMembershipVerified(
-		indexedCollection?.id,
+	const membership = assetDetailMembership(
+		catalogueCollection,
 		market.verifiedCollectionIds,
-		Boolean(directAtomicAsset || (directAtomicRoute && indexedAtomic))
+		Boolean(directAtomicAsset || (directAtomicRoute && indexedAtomic)),
+		liveFungibleRoute
 	);
+	const membershipVerified = membership !== 'unverified';
 	const verifiedAsset = membershipVerified
 		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
 		: undefined;
@@ -10287,12 +10390,16 @@ function AssetView() {
 					asset={asset}
 					collection={collection}
 					collectionIndexNotice={
-						<CollectionIndexNotice
-							collection={collection}
-							checking={market.loading}
-							directlyVerified={!indexedAsset}
-							onRetry={market.retry}
-						/>
+						membership === 'live' ? (
+							<TokenListingNotice checking={market.loading} onRetry={market.retry} />
+						) : (
+							<CollectionIndexNotice
+								collection={collection}
+								checking={market.loading}
+								directlyVerified={!indexedAsset}
+								onRetry={market.retry}
+							/>
+						)
 					}
 					state={state}
 					activity={assetActivity}
