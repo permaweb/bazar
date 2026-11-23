@@ -375,6 +375,40 @@ describe('collection index loading', () => {
 		expect(fetcher.mock.calls.some(([input]) => String(input).includes('/compute'))).toBe(false);
 	});
 
+	it('reads every hidden manifest at once so visibility waits for one gateway round, not two', async () => {
+		replaceHiddenCollectionAssetIndex({});
+		const manifests = HIDDEN_COLLECTION_IDS.map((_, index) => `${index}`.repeat(43));
+		const pendingTransactions = new Set<string>();
+		const releases: Array<() => void> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			for (const [index, collectionId] of HIDDEN_COLLECTION_IDS.entries()) {
+				if (url.endsWith(`/tx/${collectionId}`)) {
+					pendingTransactions.add(collectionId);
+					// Hold every transaction read until all of them have been requested.
+					await new Promise<void>((resolve) => releases.push(resolve));
+					return Response.json({
+						tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifests[index]) }],
+					});
+				}
+				if (url.includes(`/raw/${manifests[index]}`)) {
+					return new Response(JSON.stringify({ name: `Hidden ${index}`, assets: [] }));
+				}
+			}
+			return new Response('unavailable', { status: 503 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const visibilityReady = vi.fn();
+
+		const loading = loadCollections(undefined, undefined, visibilityReady).catch(() => undefined);
+		await vi.waitFor(() => expect(pendingTransactions.size).toBe(HIDDEN_COLLECTION_IDS.length));
+		releases.forEach((release) => release());
+		await loading;
+
+		expect(visibilityReady).toHaveBeenCalledOnce();
+		expect(hiddenCollectionAssetIndexComplete()).toBe(true);
+	});
+
 	it('loads the catalogue while hidden manifests load and degrades one unavailable manifest to no hiding', async () => {
 		replaceHiddenCollectionAssetIndex({});
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);

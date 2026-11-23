@@ -429,9 +429,13 @@ async function loadHiddenCollectionAssets(collectionId: string, signal?: AbortSi
 	]);
 }
 
-/** Read hidden-collection membership; a manifest that cannot be read degrades to not hiding its members. */
+/**
+ * Read hidden-collection membership; a manifest that cannot be read degrades to not hiding its members.
+ * Every manifest is read at once: asset visibility (and with it every asset page's first state read)
+ * waits for the slowest one, so a queued fifth manifest would add a whole gateway deadline.
+ */
 async function loadHiddenCollectionMembership(collectionIds: readonly string[], signal?: AbortSignal): Promise<void> {
-	await mapConcurrent(collectionIds, 4, async (collectionId) => {
+	await mapConcurrent(collectionIds, collectionIds.length, async (collectionId) => {
 		try {
 			await loadHiddenCollectionAssets(collectionId, signal);
 		} catch (cause) {
