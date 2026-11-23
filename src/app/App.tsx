@@ -1,5 +1,16 @@
 import React from 'react';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+	HashRouter,
+	Link,
+	Navigate,
+	type NavigationType,
+	Route,
+	Routes,
+	useLocation,
+	useNavigate,
+	useNavigationType,
+	useParams,
+} from 'react-router-dom';
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -150,7 +161,7 @@ import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
-import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
+import { type AssetDetailTab, assetDetailTabIndex, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { BazarMark } from 'components/BazarMark';
@@ -1876,15 +1887,51 @@ function UploadActivityPanel({
 	);
 }
 
+/**
+ * Route intent a navigate() call can attach as `location.state`. `preserveFocus` marks an in-view URL
+ * update (for example a Home tab switch): the view stays mounted, so focus and window scroll stay put.
+ */
+export type RouteFocusState = { preserveFocus?: boolean };
+export const PRESERVE_ROUTE_FOCUS: { state: RouteFocusState } = { state: { preserveFocus: true } };
+
+export function routeFocusPreserved(state: unknown): boolean {
+	return Boolean(state && typeof state === 'object' && (state as RouteFocusState).preserveFocus === true);
+}
+
+/**
+ * What RouteFocus does when the route key settles:
+ * - 'initial': first render (or an unchanged key): scroll to top and set the title, keep focus.
+ * - 'in-view': the caller asked to preserve focus on a forward navigation: set the title only.
+ * - 'new-view': a different view: scroll to top, set the title and move focus to <main>.
+ * History entries keep their state, so a POP onto a preserveFocus entry is still a new view.
+ */
+export type RouteFocusAction = 'initial' | 'in-view' | 'new-view';
+
+export function routeFocusAction(
+	previousKey: string | null,
+	nextKey: string,
+	{ preserveFocus = false, navigationType }: { preserveFocus?: boolean; navigationType?: `${NavigationType}` } = {}
+): RouteFocusAction {
+	if (previousKey === null || previousKey === nextKey) return 'initial';
+	if (preserveFocus && navigationType !== 'POP') return 'in-view';
+	return 'new-view';
+}
+
 function RouteFocus() {
-	const { pathname, search } = useLocation();
+	const { pathname, search, state } = useLocation();
+	const navigationType = useNavigationType();
 	const routeKey = `${pathname}${search}`;
 	const previousRoute = React.useRef<string | null>(null);
 	React.useEffect(() => {
-		window.scrollTo({ top: 0, left: 0 });
+		// Reads this render's state and navigation type; only a route key change re-runs the policy.
+		const action = routeFocusAction(previousRoute.current, routeKey, {
+			preserveFocus: routeFocusPreserved(state),
+			navigationType,
+		});
+		if (action !== 'in-view') window.scrollTo({ top: 0, left: 0 });
 		const main = document.getElementById('main-content');
 		if (!main) return;
-		const shouldMoveFocus = previousRoute.current !== null && previousRoute.current !== routeKey;
+		const shouldMoveFocus = action === 'new-view';
 		previousRoute.current = routeKey;
 		let title = 'Bazar — Arweave-native assets';
 		let observer: MutationObserver | null = null;
@@ -3508,6 +3555,47 @@ export function homeScrollIndicatorMetrics(
 	return { visible: true, size, offset: offsetRange * progress };
 }
 
+const HOME_MARKET_TABS: { value: HomeTab; label: string; icon: React.ReactNode }[] = [
+	{ value: 'discover', label: 'Discover', icon: <Compass className="ui-icon" aria-hidden="true" /> },
+	{ value: 'collections', label: 'Collections', icon: <LayoutGrid className="ui-icon" aria-hidden="true" /> },
+	{ value: 'activity', label: 'Activity', icon: <History className="ui-icon" aria-hidden="true" /> },
+];
+
+/** Home view tablist: roving tabindex, with Arrow/Home/End selecting and focusing the next tab. */
+export function HomeMarketTabs({ active, onSelect }: { active: HomeTab; onSelect(tab: HomeTab): void }) {
+	return (
+		<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
+			{HOME_MARKET_TABS.map((tab, index) => {
+				const selected = active === tab.value;
+				return (
+					<Button
+						aria-controls={`home-${tab.value}-panel`}
+						aria-selected={selected}
+						className="home-market-tab"
+						id={`home-${tab.value}-tab`}
+						key={tab.value}
+						onClick={() => onSelect(tab.value)}
+						onKeyDown={(event) => {
+							const nextIndex = assetDetailTabIndex(event.key, index, HOME_MARKET_TABS.length);
+							if (nextIndex === null) return;
+							event.preventDefault();
+							const next = HOME_MARKET_TABS[nextIndex].value;
+							onSelect(next);
+							window.requestAnimationFrame(() => document.getElementById(`home-${next}-tab`)?.focus());
+						}}
+						role="tab"
+						size="small"
+						tabIndex={selected ? 0 : -1}
+					>
+						{tab.icon}
+						{tab.label}
+					</Button>
+				);
+			})}
+		</div>
+	);
+}
+
 function HomeRedirect() {
 	const { search } = useLocation();
 	return <Navigate to={{ pathname: homeTabPath('discover'), search: homeRouteSearch(search) }} replace />;
@@ -4554,7 +4642,7 @@ function Home() {
 		return () => market.setPageRefreshing(false);
 	}, [market.setPageRefreshing, pageRefreshing]);
 	const selectHomeTab = (tab: HomeTab) => {
-		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) });
+		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) }, PRESERVE_ROUTE_FOCUS);
 		if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
 	};
 	const selectAssetPage = (page: number) => {
@@ -4638,44 +4726,7 @@ function Home() {
 							<h1 className="sr-only">Marketplace</h1>
 							<div className="home-section-heading">
 								<div>
-									<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
-										<Button
-											aria-controls="home-discover-panel"
-											aria-selected={homeTab === 'discover'}
-											className="home-market-tab"
-											id="home-discover-tab"
-											onClick={() => selectHomeTab('discover')}
-											role="tab"
-											size="small"
-										>
-											<Compass className="ui-icon" aria-hidden="true" />
-											Discover
-										</Button>
-										<Button
-											aria-controls="home-collections-panel"
-											aria-selected={homeTab === 'collections'}
-											className="home-market-tab"
-											id="home-collections-tab"
-											onClick={() => selectHomeTab('collections')}
-											role="tab"
-											size="small"
-										>
-											<LayoutGrid className="ui-icon" aria-hidden="true" />
-											Collections
-										</Button>
-										<Button
-											aria-controls="home-activity-panel"
-											aria-selected={homeTab === 'activity'}
-											className="home-market-tab"
-											id="home-activity-tab"
-											onClick={() => selectHomeTab('activity')}
-											role="tab"
-											size="small"
-										>
-											<History className="ui-icon" aria-hidden="true" />
-											Activity
-										</Button>
-									</div>
+									<HomeMarketTabs active={homeTab} onSelect={selectHomeTab} />
 									<p>
 										{homeTab === 'discover'
 											? normalizedQuery
