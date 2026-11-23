@@ -136,6 +136,7 @@ import {
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
 	tokenListingNoticeCopy,
+	tokenListingStatus,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
 	visibleActivityAssets,
@@ -929,10 +930,22 @@ describe('Home market summary retries', () => {
 		expect(assetDetailMembership(undefined, new Set(), true, false)).toBe('verified');
 	});
 
-	it('words the token listing notice as a pending check, then as an unverified listing', () => {
-		expect(tokenListingNoticeCopy(true).compact).toBe('Checking the Bazar listing…');
-		expect(tokenListingNoticeCopy(false).compact).toBe('Bazar listing could not be verified right now.');
-		expect(tokenListingNoticeCopy(false).message).toContain('read from live state');
+	it('words the token listing notice as a pending check, then as an unverified or checked listing', () => {
+		expect(tokenListingNoticeCopy('checking').compact).toBe('Checking the Bazar listing…');
+		expect(tokenListingNoticeCopy('unverified').compact).toBe('Bazar listing could not be verified right now.');
+		expect(tokenListingNoticeCopy('unverified').message).toContain('read from live state');
+		expect(tokenListingNoticeCopy('checked').compact).toBe('Bazar listing checked.');
+		expect(tokenListingNoticeCopy('checked').message).toContain('read from live state');
+	});
+
+	it('keeps a painted token listing line as checked instead of removing it', () => {
+		expect(tokenListingStatus('live', true, false)).toBe('checking');
+		expect(tokenListingStatus('live', false, true)).toBe('unverified');
+		// The line was painted while the index was unread: it stays, so the panels below hold still.
+		expect(tokenListingStatus('verified', false, true)).toBe('checked');
+		// Verified from the first paint: no line at all.
+		expect(tokenListingStatus('verified', false, false)).toBeNull();
+		expect(tokenListingStatus('unverified', true, true)).toBeNull();
 	});
 
 	it('keeps collection members out of the standalone created-assets collection', () => {

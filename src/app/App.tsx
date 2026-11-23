@@ -8833,12 +8833,35 @@ function CollectionResultStatus({ message }: { message: string }) {
 	);
 }
 
+export type TokenListingStatus = 'checking' | 'unverified' | 'checked';
+
+/**
+ * The token page's listing line. While membership is `live` (shown from live state, token index
+ * unread) it says the check is running or could not finish. Once that line has been painted, a later
+ * `verified` keeps it as "checked" instead of removing it, so the panels below do not jump up by its
+ * height (round 3: a 102 px shift at ~5.8 s). A page that was verified from its first paint never
+ * shows it.
+ */
+export function tokenListingStatus(
+	membership: AssetDetailMembership,
+	marketLoading: boolean,
+	shown: boolean
+): TokenListingStatus | null {
+	if (membership === 'live') return marketLoading ? 'checking' : 'unverified';
+	return membership === 'verified' && shown ? 'checked' : null;
+}
+
 /** Copy for a token page shown from live state while the Bazar token index is unread or unreadable. */
-export function tokenListingNoticeCopy(checking: boolean) {
-	return checking
+export function tokenListingNoticeCopy(status: TokenListingStatus) {
+	return status === 'checking'
 		? {
 				message: 'Checking the Bazar listing. Balances and orders below are read from live state.',
 				compact: 'Checking the Bazar listing…',
+		  }
+		: status === 'checked'
+		? {
+				message: 'Bazar listing checked. Balances and orders below are read from live state.',
+				compact: 'Bazar listing checked.',
 		  }
 		: {
 				message:
@@ -8847,8 +8870,9 @@ export function tokenListingNoticeCopy(checking: boolean) {
 		  };
 }
 
-function TokenListingNotice({ checking, onRetry }: { checking: boolean; onRetry(): void }) {
-	const { message, compact } = tokenListingNoticeCopy(checking);
+function TokenListingNotice({ status, onRetry }: { status: TokenListingStatus; onRetry(): void }) {
+	const { message, compact } = tokenListingNoticeCopy(status);
+	const checking = status === 'checking';
 	return (
 		<div className="collection-source-notice collection-index-notice retry-notice">
 			<span role="status">
@@ -8860,14 +8884,15 @@ function TokenListingNotice({ checking, onRetry }: { checking: boolean; onRetry(
 				</span>
 				<span className="sr-only">{message}</span>
 			</span>
+			{/* Once checked there is nothing to retry; the button keeps its box so the line keeps its height. */}
 			<Button
 				aria-disabled={checking}
 				aria-label="Retry"
-				className="with-icon"
+				className={`with-icon${status === 'checked' ? ' retry-notice-placeholder' : ''}`}
 				size="custom"
 				type="button"
 				onClick={() => {
-					if (!checking) onRetry();
+					if (status === 'unverified') onRetry();
 				}}
 			>
 				<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
@@ -10468,6 +10493,12 @@ function AssetView() {
 		liveFungibleRoute
 	);
 	const membershipVerified = membership !== 'unverified';
+	// Once the listing line has been painted for this route it stays (as "checked") until the route changes.
+	const listingNoticeRoute = `${collectionId}/${assetId}`;
+	const [listingNoticeShownFor, setListingNoticeShownFor] = React.useState<string | null>(null);
+	if (membership === 'live' && listingNoticeShownFor !== listingNoticeRoute)
+		setListingNoticeShownFor(listingNoticeRoute);
+	const listingStatus = tokenListingStatus(membership, market.loading, listingNoticeShownFor === listingNoticeRoute);
 	const verifiedAsset = membershipVerified
 		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
 		: undefined;
@@ -11138,8 +11169,8 @@ function AssetView() {
 					asset={asset}
 					collection={collection}
 					collectionIndexNotice={
-						membership === 'live' ? (
-							<TokenListingNotice checking={market.loading} onRetry={market.retry} />
+						listingStatus ? (
+							<TokenListingNotice status={listingStatus} onRetry={market.retry} />
 						) : (
 							<CollectionIndexNotice
 								collection={collection}

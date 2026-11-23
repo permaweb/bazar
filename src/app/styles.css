@@ -5021,6 +5021,9 @@ input:focus {
 	padding: var(--space-3) var(--space-4);
 	border-radius: 10px;
 }
+.retry-notice .retry-notice-placeholder {
+	visibility: hidden;
+}
 .retry-notice .with-icon > .ui-icon,
 .retry-notice-action > .ui-icon {
 	color: var(--retry-icon);
