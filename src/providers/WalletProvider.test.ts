@@ -5,12 +5,15 @@ import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
 import {
 	browserWalletSelection,
 	completePrivateJwk,
+	connectBrowserWalletFlow,
 	connectWallet,
 	createLatestAddressCommitter,
+	disconnectBrowserWallet,
 	generatedKeyfileBackupStep,
 	InvalidLocalWalletError,
 	isValidWalletJwk,
 	LOCAL_WALLET_UNLOCK_FAILED_MESSAGE,
+	type LocalWalletActivation,
 	localWalletExportJson,
 	localWalletReplacementNeedsConfirm,
 	localWalletSigningJwk,
@@ -19,6 +22,7 @@ import {
 	storedLocalWalletFailureAction,
 	subscribeToWalletProviderEvents,
 	unlockStoredLocalWallet,
+	walletConnectionState,
 	walletDisconnectPlan,
 	walletKindOf,
 	walletProviderLoadedAction,
@@ -230,10 +234,11 @@ describe('saved browser wallet unlock', () => {
 
 	it('connects the saved keyfile on retry after a transient failure', async () => {
 		const { clear, committed, requests } = harness();
+		const install = vi.fn();
 		const activate = vi
-			.fn<(jwk: unknown) => Promise<string>>()
+			.fn<(jwk: unknown) => Promise<LocalWalletActivation>>()
 			.mockRejectedValueOnce(new DOMException('crypto.subtle is unavailable', 'NotSupportedError'))
-			.mockResolvedValueOnce(address);
+			.mockResolvedValueOnce({ address, install });
 
 		const failed = await unlockStoredLocalWallet(storedWallet, { activate, commit: requests.begin(), clear });
 		const retried = await unlockStoredLocalWallet(storedWallet, { activate, commit: requests.begin(), clear });
@@ -241,7 +246,25 @@ describe('saved browser wallet unlock', () => {
 		expect(failed?.state.status).toBe('failed');
 		expect(retried).toEqual({ address, state: { status: 'idle' } });
 		expect(committed).toEqual([null, address]);
+		expect(install).toHaveBeenCalledTimes(1);
 		expect(clear).not.toHaveBeenCalled();
+	});
+
+	it('does not install the keyfile signer when a newer wallet action superseded a successful unlock', async () => {
+		const { clear, committed, requests } = harness();
+		const install = vi.fn();
+		const activation = deferred<LocalWalletActivation>();
+		const unlock = unlockStoredLocalWallet(storedWallet, {
+			activate: () => activation.promise,
+			commit: requests.begin(),
+			clear,
+		});
+		requests.begin()('b'.repeat(43));
+		activation.resolve({ address, install });
+
+		await expect(unlock).resolves.toBeNull();
+		expect(install).not.toHaveBeenCalled();
+		expect(committed).toEqual(['b'.repeat(43)]);
 	});
 
 	it('removes only a keyfile that is itself invalid', async () => {
@@ -445,5 +468,115 @@ describe('local keyfile forget semantics', () => {
 		expect(afterDownload.downloadLabel).toBe('Download again');
 		expect(afterDownload.finishLabel).toBe('I saved the keyfile');
 		expect(afterDownload.hint).toContain('wallet menu');
+	});
+});
+
+describe('wallet connection status', () => {
+	const address = 'a'.repeat(43);
+	const wallet = (activeAddress: () => Promise<string>) => ({
+		connect: vi.fn(async () => undefined),
+		disconnect: vi.fn(async () => undefined),
+		getActiveAddress: vi.fn(activeAddress),
+		sign: vi.fn(async (transaction: unknown) => transaction),
+	});
+	const harness = () => {
+		const committed: Array<string | null> = [];
+		const requests = createLatestAddressCommitter((next) => committed.push(next));
+		return { committed, requests };
+	};
+
+	it('reads restoring until the first commit or the grace period, then connected or disconnected', () => {
+		expect(walletConnectionState(false, null)).toBe('restoring');
+		expect(walletConnectionState(true, null)).toBe('disconnected');
+		expect(walletConnectionState(true, address)).toBe('connected');
+		expect(walletConnectionState(false, address)).toBe('connected');
+	});
+
+	it('still commits an in-flight restore when an explicit connect is cancelled', async () => {
+		const { committed, requests } = harness();
+		const read = deferred<string>();
+		const wander = wallet(() => read.promise);
+		const scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'> = { arweaveWallet: wander };
+		const install = vi.fn();
+
+		const restore = restoreBrowserWalletAddress(scope, 'wander', requests.begin());
+		await expect(
+			connectBrowserWalletFlow(
+				requests,
+				async () => {
+					throw new Error('User cancelled the connection.');
+				},
+				install
+			)
+		).rejects.toThrow('User cancelled');
+		read.resolve(address);
+		await restore;
+
+		expect(committed).toEqual([address]);
+		expect(install).not.toHaveBeenCalled();
+		expect(scope.arweaveWallet).toBe(wander);
+	});
+
+	it('neither commits nor reinstalls a restore that resolves after a successful connect', async () => {
+		const { committed, requests } = harness();
+		const read = deferred<string>();
+		const restoring = wallet(() => read.promise);
+		const chosen = wallet(async () => 'c'.repeat(43));
+		const scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'> = { arweaveWallet: restoring };
+
+		const restore = restoreBrowserWalletAddress(scope, 'wander', requests.begin());
+		await expect(
+			connectBrowserWalletFlow(
+				requests,
+				async () => 'c'.repeat(43),
+				() => {
+					scope.arweaveWallet = chosen;
+				}
+			)
+		).resolves.toBe(true);
+		read.resolve(address);
+		await restore;
+
+		expect(committed).toEqual(['c'.repeat(43)]);
+		expect(scope.arweaveWallet).toBe(chosen);
+	});
+
+	it('forgets the browser wallet even when the extension rejects disconnect', async () => {
+		const { committed, requests } = harness();
+		const locked = wallet(async () => address);
+		locked.disconnect.mockRejectedValueOnce(new Error('Wallet is locked'));
+		const scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'> = { arweaveWallet: locked };
+		const clearPreference = vi.fn();
+
+		await expect(disconnectBrowserWallet(scope, { commit: requests.begin(), clearPreference })).resolves.toBe(
+			'unconfirmed'
+		);
+
+		expect(locked.disconnect).toHaveBeenCalledTimes(1);
+		expect(clearPreference).toHaveBeenCalledTimes(1);
+		expect(committed).toEqual([null]);
+	});
+
+	it('hands back the remembered Wander after a rejected PermawebOS disconnect, and confirms a clean one', async () => {
+		const { committed, requests } = harness();
+		const wander = wallet(async () => address);
+		const permawebOs = wallet(async () => 'p'.repeat(43));
+		permawebOs.disconnect.mockRejectedValueOnce(new Error('bridge offline'));
+		const scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'> = {
+			arweaveWallet: permawebOs,
+			permawebConnect: permawebOs,
+		};
+		const clearPreference = vi.fn();
+
+		await expect(
+			disconnectBrowserWallet(scope, { commit: requests.begin(), clearPreference, remembered: () => wander })
+		).resolves.toBe('unconfirmed');
+		expect(scope.arweaveWallet).toBe(wander);
+
+		await expect(disconnectBrowserWallet(scope, { commit: requests.begin(), clearPreference })).resolves.toBe(
+			'disconnected'
+		);
+		expect(clearPreference).toHaveBeenCalledTimes(2);
+		expect(committed).toEqual([null, null]);
 	});
 });

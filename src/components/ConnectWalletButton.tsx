@@ -6,16 +6,22 @@ import { Button } from './Button';
 
 export function ConnectWalletButton({ className }: { className?: string }) {
 	const wallet = useWallet();
+	const restoring = wallet.connectionStatus === 'restoring';
 
 	return (
 		<Button
-			aria-label="Connect wallet"
+			aria-busy={restoring || undefined}
+			aria-disabled={restoring || undefined}
+			aria-label={restoring ? 'Checking wallet connection' : 'Connect wallet'}
 			className={className}
-			onClick={(event) => wallet.openConnectDialog(event.currentTarget)}
+			onClick={(event) => {
+				// The restore is bounded by WALLET_RESTORE_GRACE_MS; do not offer Connect before it settles.
+				if (!restoring) wallet.openConnectDialog(event.currentTarget);
+			}}
 			variant="primary"
 		>
 			<Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-			Connect wallet
+			{restoring ? 'Checking wallet…' : 'Connect wallet'}
 		</Button>
 	);
 }

@@ -9,6 +9,13 @@ describe('wallet menu identity', () => {
 		expect(walletMenuLabel(address)).toBe(`${'a'.repeat(6)}…12345`);
 		expect(walletMenuLabel()).toBe('Connect');
 	});
+
+	it('does not offer Connect while the saved wallet session is still being restored', () => {
+		const address = `${'a'.repeat(38)}12345`;
+		expect(walletMenuLabel(null, null, 'restoring')).toBe('Wallet…');
+		expect(walletMenuLabel(null, null, 'disconnected')).toBe('Connect');
+		expect(walletMenuLabel(address, 'Agent Smith', 'connected')).toBe('Agent Smith');
+	});
 });
 
 describe('wallet menu danger action', () => {

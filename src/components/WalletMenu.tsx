@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Check, Copy, Download, LogOut, Monitor, Moon, Sun, SunDim, Trash2, UserRound, Wallet } from 'lucide-react';
 
 import { useTheme } from 'providers/ThemeProvider';
-import { useWallet, walletDisconnectPlan, type WalletKind } from 'providers/WalletProvider';
+import {
+	useWallet,
+	WALLET_DISCONNECT_UNCONFIRMED_MESSAGE,
+	type WalletConnectionStatus,
+	walletDisconnectPlan,
+	type WalletKind,
+} from 'providers/WalletProvider';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
@@ -28,8 +34,10 @@ export function WalletMenu() {
 	const [copied, setCopied] = React.useState(false);
 	const [disconnecting, setDisconnecting] = React.useState(false);
 	const [error, setError] = React.useState('');
+	const [notice, setNotice] = React.useState('');
 	const profile = useAccountProfileSummary(wallet.address ?? '');
-	const walletLabel = walletMenuLabel(wallet.address, profile.displayName);
+	const walletLabel = walletMenuLabel(wallet.address, profile.displayName, wallet.connectionStatus);
+	const restoring = wallet.connectionStatus === 'restoring';
 	const dangerAction = walletMenuDangerAction(wallet.walletKind);
 
 	React.useEffect(() => {
@@ -54,6 +62,12 @@ export function WalletMenu() {
 		if (!wallet.address) setOpen(false);
 	}, [wallet.address]);
 
+	React.useEffect(() => {
+		if (!notice) return;
+		const timer = window.setTimeout(() => setNotice(''), WALLET_MENU_NOTICE_MS);
+		return () => window.clearTimeout(timer);
+	}, [notice]);
+
 	const copyAddress = async () => {
 		if (!wallet.address) return;
 		setError('');
@@ -69,7 +83,10 @@ export function WalletMenu() {
 		setDisconnecting(true);
 		setError('');
 		try {
-			if (await wallet.disconnect()) setOpen(false);
+			const result = await wallet.disconnect();
+			if (result === 'kept') return;
+			setOpen(false);
+			if (result === 'unconfirmed') setNotice(WALLET_DISCONNECT_UNCONFIRMED_MESSAGE);
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Wallet could not be disconnected.');
 		} finally {
@@ -87,15 +104,22 @@ export function WalletMenu() {
 
 	return (
 		<div className="wallet-menu" ref={root}>
-			<Tooltip content={wallet.address || 'Connect wallet'} disabled={open}>
+			<Tooltip content={wallet.address || (restoring ? RESTORING_LABEL : 'Connect wallet')} disabled={open}>
 				{(tooltipId) => (
 					<Button
+						aria-busy={restoring || undefined}
 						aria-describedby={tooltipId}
+						aria-disabled={restoring || undefined}
 						aria-expanded={wallet.address ? open : undefined}
 						aria-haspopup={wallet.address ? 'menu' : undefined}
-						aria-label={wallet.address ? `Wallet ${wallet.address}` : 'Connect wallet'}
+						aria-label={
+							wallet.address ? `Wallet ${wallet.address}` : restoring ? RESTORING_LABEL : 'Connect wallet'
+						}
 						className="wallet"
 						onClick={(event) => {
+							setNotice('');
+							// Restoring is bounded by WALLET_RESTORE_GRACE_MS; until then the session is unknown.
+							if (restoring) return;
 							if (!wallet.address) {
 								wallet.openConnectDialog(event.currentTarget);
 								return;
@@ -215,15 +239,26 @@ export function WalletMenu() {
 					{error ? <p role="alert">{error}</p> : null}
 				</div>
 			) : null}
+			<div className="wallet-menu-status" role="status">
+				{notice && !open ? <p className="wallet-dropdown wallet-menu-notice">{notice}</p> : null}
+			</div>
 		</div>
 	);
 }
+
+const RESTORING_LABEL = 'Checking wallet connection…';
+const WALLET_MENU_NOTICE_MS = 10_000;
 
 function shortAddress(address: string) {
 	return `${address.slice(0, 6)}…${address.slice(-5)}`;
 }
 
-export function walletMenuLabel(address?: string | null, displayName?: string | null) {
+export function walletMenuLabel(
+	address?: string | null,
+	displayName?: string | null,
+	connectionStatus?: WalletConnectionStatus
+) {
+	if (!address && connectionStatus === 'restoring') return 'Wallet…';
 	return displayName?.trim() || (address ? shortAddress(address) : 'Connect');
 }
 
