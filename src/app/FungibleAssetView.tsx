@@ -37,7 +37,7 @@ import {
 	type SwapOrder,
 } from 'api/asset-marketplace';
 import { acquireAssetObserverNetwork, type AssetObserverNetworkLease } from 'api/asset-observers';
-import { readAssetStateWithDeadline } from 'api/asset-state-store';
+import { readCurrentAssetState } from 'api/asset-state-store';
 import {
 	AssetTransactionClient,
 	dispatchAndConfirm,
@@ -175,6 +175,8 @@ type Props = {
 	onAskLoadMore(): void;
 	onAskRetry(): void;
 	loading: boolean;
+	/** False while the page shows bounded compute state before current state. */
+	stateCurrent?: boolean;
 	error: string | null;
 	provider: string;
 	verifiedAt: number | null;
@@ -632,6 +634,7 @@ export function FungibleAssetView({
 	onAskLoadMore,
 	onAskRetry,
 	loading,
+	stateCurrent = true,
 	error,
 	onRefresh,
 	stateRecoveryAction,
@@ -944,7 +947,8 @@ export function FungibleAssetView({
 		if (recoverySuppressed) resumeButtonRef.current?.focus();
 	}, [recoverySuppressed]);
 	React.useEffect(() => {
-		if (!wallet.address || hasWalletActivities || recoverySuppressed) return;
+		// Recovery may discard signed local work, so it waits for current state.
+		if (!wallet.address || hasWalletActivities || recoverySuppressed || !stateCurrent) return;
 		const activeClaimKeys = [
 			operationClaimStorageKey(asset.id, wallet.address, 'purchase'),
 			operationClaimStorageKey(asset.id, wallet.address, 'asset'),
@@ -1102,6 +1106,7 @@ export function FungibleAssetView({
 		purchaseKey,
 		recoverySuppressed,
 		state,
+		stateCurrent,
 		storageVersion,
 		wallet.address,
 	]);
@@ -2308,7 +2313,7 @@ function FungibleOperationDialog({
 				}
 			);
 			if (freshOperation) {
-				({ state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 }));
+				({ state: freshState } = await readCurrentAssetState(asset.id, { signal }));
 				const expectedOrders =
 					operation.kind === 'buy'
 						? matchedFills.map((fill) => fill.sourceOrder)

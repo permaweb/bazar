@@ -19,8 +19,10 @@ import {
 	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
+	readAssetDetailState,
 	readAssetStateCached,
 	readAssetStateWithDeadline,
+	readCurrentAssetState,
 } from './asset-state-store';
 
 const processId = 'P'.repeat(43);
@@ -449,5 +451,93 @@ describe('asset state store', () => {
 
 		expect(cachedAssetState(processIds[0])).toBeUndefined();
 		expect(cachedAssetState(processIds.at(-1)!)).toBe(result);
+	});
+});
+
+describe('asset detail state reads', () => {
+	beforeEach(() => {
+		clearAssetStateCache();
+		mocks.readAssetState.mockReset();
+	});
+
+	it('paints from bounded max-age compute state, then replaces it with current state', async () => {
+		const display = { ...result, verifiedAt: 1, maxAge: 30 };
+		const current = { ...result, verifiedAt: 2, maxAge: 0 };
+		mocks.readAssetState.mockImplementation(async (_id, options) => (options.maxAge === 0 ? current : display));
+		const updates: unknown[] = [];
+
+		await readAssetDetailState(processId, { onUpdate: (update) => updates.push(update) });
+
+		expect(mocks.readAssetState).toHaveBeenNthCalledWith(
+			1,
+			processId,
+			expect.objectContaining({ maxAge: 30, staleWhileRevalidate: 86_400 })
+		);
+		expect(mocks.readAssetState).toHaveBeenNthCalledWith(
+			2,
+			processId,
+			expect.objectContaining({ maxAge: 0, staleWhileRevalidate: undefined })
+		);
+		expect(updates).toEqual([
+			{ result: display, current: false, refreshing: true },
+			{ result: current, current: true, refreshing: false },
+		]);
+	});
+
+	it('shares the display read with the prefetch started when the asset opens', async () => {
+		mocks.readAssetState.mockResolvedValue(result);
+		const prefetch = prioritizeAssetStatePrefetch(processId);
+
+		await readAssetDetailState(processId, { onUpdate: () => undefined });
+		await prefetch;
+
+		expect(mocks.readAssetState.mock.calls.map(([, options]) => options.maxAge)).toEqual([30, 0]);
+	});
+
+	it('goes straight to current state after an action', async () => {
+		mocks.readAssetState.mockResolvedValue(result);
+		const updates: unknown[] = [];
+
+		await readAssetDetailState(processId, { current: true, onUpdate: (update) => updates.push(update) });
+
+		expect(mocks.readAssetState).toHaveBeenCalledOnce();
+		expect(mocks.readAssetState).toHaveBeenCalledWith(processId, expect.objectContaining({ maxAge: 0 }));
+		expect(updates).toEqual([{ result, current: true, refreshing: false }]);
+	});
+
+	it('keeps the display state when the current-state refresh fails', async () => {
+		mocks.readAssetState.mockImplementation(async (_id, options) => {
+			if (options.maxAge === 0) throw new Error('HTTP 429');
+			return result;
+		});
+		const updates: unknown[] = [];
+
+		await expect(readAssetDetailState(processId, { onUpdate: (update) => updates.push(update) })).rejects.toThrow(
+			'HTTP 429'
+		);
+
+		expect(updates).toEqual([{ result, current: false, refreshing: true }]);
+	});
+
+	it('does not request current state from peers that failed the display read', async () => {
+		mocks.readAssetState.mockRejectedValue(new Error('HTTP 404'));
+		const onUpdate = vi.fn();
+
+		await expect(readAssetDetailState(processId, { onUpdate })).rejects.toThrow('HTTP 404');
+
+		expect(mocks.readAssetState).toHaveBeenCalledOnce();
+		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it('forces current state for commerce preflight even when display state is cached', async () => {
+		mocks.readAssetState.mockResolvedValue(result);
+		await readAssetStateCached(processId, { maxAge: 30, staleWhileRevalidate: 86_400 });
+		const controller = new AbortController();
+
+		await readCurrentAssetState(processId, { signal: controller.signal });
+
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		expect(mocks.readAssetState).toHaveBeenLastCalledWith(processId, expect.objectContaining({ maxAge: 0 }));
+		expect(mocks.readAssetState.mock.lastCall?.[1].staleWhileRevalidate).toBeUndefined();
 	});
 });

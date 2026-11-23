@@ -95,8 +95,9 @@ import {
 	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
+	readAssetDetailState,
 	readAssetStateCached,
-	readAssetStateWithDeadline,
+	readCurrentAssetState,
 } from 'api/asset-state-store';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
 import {
@@ -8572,7 +8573,7 @@ function SetProfilePictureButton({
 		setError('');
 		setStatus('checking');
 		try {
-			const current = await readAssetStateWithDeadline(assetId, { maxAge: 0 });
+			const current = await readCurrentAssetState(assetId);
 			if (
 				current.state.totalSupply !== '1' ||
 				current.state.denomination > 0 ||
@@ -8643,6 +8644,8 @@ function AssetView() {
 		key: string;
 		state: AssetState | null;
 		loading: boolean;
+		refreshing: boolean;
+		current: boolean;
 		error: string | null;
 		provider: string;
 		verifiedAt: number | null;
@@ -8650,6 +8653,8 @@ function AssetView() {
 		key: liveResultKey,
 		state: prefetchedState?.state ?? null,
 		loading: true,
+		refreshing: true,
+		current: false,
 		error: null,
 		provider: prefetchedState?.provider ?? '',
 		verifiedAt: prefetchedState?.verifiedAt ?? null,
@@ -8659,6 +8664,8 @@ function AssetView() {
 	const state = liveResultIsCurrent ? liveResult.state : prefetchedState?.state ?? null;
 	const error = liveResultIsCurrent ? liveResult.error : null;
 	const loading = !liveResultIsCurrent || liveResult.loading;
+	const refreshing = !liveResultIsCurrent || liveResult.refreshing;
+	const stateCurrent = liveResultIsCurrent && liveResult.current;
 	const provider = liveResultIsCurrent ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResultIsCurrent ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute =
@@ -8791,13 +8798,15 @@ function AssetView() {
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
 	const readLiveState = React.useCallback(
-		async (_force: boolean) => {
+		async (current: boolean) => {
 			requestRef.current?.abort();
 			if (!canResolveAsset) {
 				setLiveResult({
 					key: liveResultKey,
 					state: null,
 					loading: false,
+					refreshing: false,
+					current: false,
 					error: null,
 					provider: '',
 					verifiedAt: null,
@@ -8807,58 +8816,53 @@ function AssetView() {
 			const controller = new AbortController();
 			requestRef.current = controller;
 			const cached = cachedAssetState(assetId);
-			setLiveResult((current) => {
-				const isCurrent = current.key === liveResultKey;
+			setLiveResult((previous) => {
+				const isCurrent = previous.key === liveResultKey;
+				const state = isCurrent ? previous.state : cached?.state ?? null;
 				return {
 					key: liveResultKey,
-					state: isCurrent ? current.state : cached?.state ?? null,
-					loading: true,
+					state,
+					// Known state stays interactive while current state is requested;
+					// commerce actions read /now themselves before signing.
+					loading: !state || current,
+					refreshing: true,
+					current: false,
 					error: null,
-					provider: isCurrent ? current.provider : cached?.provider ?? '',
-					verifiedAt: isCurrent ? current.verifiedAt : cached?.verifiedAt ?? null,
+					provider: isCurrent ? previous.provider : cached?.provider ?? '',
+					verifiedAt: isCurrent ? previous.verifiedAt : cached?.verifiedAt ?? null,
 				};
 			});
 			try {
-				const result = await readAssetStateCached(assetId, {
-					maxAge: 0,
-					cacheTtlMs: 20_000,
-					force: true,
+				await readAssetDetailState(assetId, {
+					current,
 					signal: controller.signal,
-				});
-				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult({
-						key: liveResultKey,
-						state: result.state,
-						loading: Boolean(result.revalidation),
-						error: null,
-						provider: result.provider,
-						verifiedAt: result.verifiedAt ?? Date.now(),
-					});
-				}
-				if (result.revalidation) {
-					const fresh = await result.revalidation;
-					if (requestRef.current === controller && !controller.signal.aborted) {
+					onUpdate: (update) => {
+						if (requestRef.current !== controller || controller.signal.aborted) return;
 						setLiveResult({
 							key: liveResultKey,
-							state: fresh.state,
+							state: update.result.state,
 							loading: false,
+							refreshing: update.refreshing,
+							current: update.current,
 							error: null,
-							provider: fresh.provider,
-							verifiedAt: fresh.verifiedAt ?? Date.now(),
+							provider: update.result.provider,
+							verifiedAt: update.result.verifiedAt ?? Date.now(),
 						});
-					}
-				}
+					},
+				});
 			} catch (cause) {
 				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult((current) => {
-						const isCurrent = current.key === liveResultKey;
+					setLiveResult((previous) => {
+						const isCurrent = previous.key === liveResultKey;
 						return {
 							key: liveResultKey,
-							state: isCurrent ? current.state : null,
+							state: isCurrent ? previous.state : null,
 							loading: false,
+							refreshing: false,
+							current: false,
 							error: assetStateErrorMessage(cause),
-							provider: isCurrent ? current.provider : '',
-							verifiedAt: isCurrent ? current.verifiedAt : null,
+							provider: isCurrent ? previous.provider : '',
+							verifiedAt: isCurrent ? previous.verifiedAt : null,
 						};
 					});
 				}
@@ -8870,6 +8874,7 @@ function AssetView() {
 	const refreshAsset = React.useCallback(async () => {
 		invalidateAssetState(assetId);
 		setActivityRetry((value) => value + 1);
+		// After an action, only current state may replace what the page shows.
 		await readLiveState(true);
 	}, [assetId, readLiveState]);
 	React.useEffect(() => {
@@ -9090,7 +9095,8 @@ function AssetView() {
 		if (recoverySuppressed) resumeButtonRef.current?.focus();
 	}, [recoverySuppressed]);
 	React.useEffect(() => {
-		if (!wallet.address || operation || recoverySuppressed || !state) return;
+		// Recovery may discard signed local work, so it waits for current state.
+		if (!wallet.address || operation || recoverySuppressed || !state || !stateCurrent) return;
 		if (state.totalSupply !== '1' || state.denomination > 0) return;
 		const walletAddress = wallet.address;
 		const activeClaimKey = operationClaimStorageKey(assetId, walletAddress);
@@ -9247,7 +9253,7 @@ function AssetView() {
 			}
 		})().catch(() => undefined);
 		return () => controller.abort();
-	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
+	}, [assetId, openOperation, operation, recoverySuppressed, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
 	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
 	const stateRecoveryAction = recoveryUrl
@@ -9372,6 +9378,7 @@ function AssetView() {
 					onAskLoadMore={() => void loadOlderAssetAsks()}
 					onAskRetry={() => setAskRetry((value) => value + 1)}
 					loading={loading}
+					stateCurrent={stateCurrent}
 					error={error}
 					provider={provider}
 					verifiedAt={verifiedAt}
@@ -9499,7 +9506,7 @@ function AssetView() {
 							{asset.name}
 						</h1>
 						<div className="asset-owner-line">
-							<span>{loading || error ? 'Last known owner' : 'Owned by'}</span>
+							<span>{loading || refreshing || error ? 'Last known owner' : 'Owned by'}</span>
 							{owner ? (
 								<WalletAddress address={owner} label="owner" />
 							) : (
@@ -9933,7 +9940,7 @@ function AssetView() {
 							<StateVerification
 								provider={provider}
 								verifiedAt={verifiedAt}
-								refreshing={loading}
+								refreshing={loading || refreshing}
 								failed={Boolean(error)}
 							/>
 							<dl className="asset-blockchain-details">
@@ -10276,7 +10283,7 @@ function OperationDialog({
 			);
 			claimRef.current = operationClaim;
 			if (freshOperation) {
-				const { state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 });
+				const { state: freshState } = await readCurrentAssetState(asset.id, { signal });
 				const stateError = atomicOperationStateError(
 					operation.kind,
 					freshState,
