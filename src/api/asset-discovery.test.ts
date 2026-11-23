@@ -296,7 +296,7 @@ describe('Bazar atomic asset search', () => {
 describe('wallet candidate discovery', () => {
 	it('ends a stalled GraphQL page with a stable timeout', async () => {
 		vi.useFakeTimers();
-		const fetcher = vi.fn(() => new Promise<Response>(() => undefined));
+		const fetcher = vi.fn((_input: RequestInfo | URL) => new Promise<Response>(() => undefined));
 		const discovery = discoverWalletAssetCandidates(wallet, {
 			fetch: fetcher as typeof fetch,
 			requestTimeoutMs: 50,
@@ -304,9 +304,13 @@ describe('wallet candidate discovery', () => {
 		});
 		const rejection = expect(discovery).rejects.toThrow('asset-discovery-graphql-timeout');
 
-		await vi.advanceTimersByTimeAsync(50);
+		// The first page tries arweave.net, then ardrive.net, each with its own deadline.
+		await vi.advanceTimersByTimeAsync(100);
 		await rejection;
-		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+		]);
 	});
 
 	it('retries a page that timed out once before reporting the index unavailable', async () => {
@@ -336,6 +340,8 @@ describe('wallet candidate discovery', () => {
 			.mockImplementationOnce(async () => Response.json(page));
 		const discovery = discoverWalletAssetCandidates(wallet, {
 			fetch: fetcher as typeof fetch,
+			// One index: this covers the retry, not the endpoint fallback.
+			graphql: arweaveGraphqlEndpoint(),
 			requestTimeoutMs: 50,
 			retryDelaysMs: [1_000],
 		});
@@ -347,6 +353,176 @@ describe('wallet candidate discovery', () => {
 		expect(fetcher).toHaveBeenCalledTimes(2);
 		const [first, second] = fetcher.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
 		expect(second).toEqual(first);
+	});
+
+	it('falls back to the next index for a page without a cursor and keeps its cursor pages there', async () => {
+		const held = (id: string, cursor: string, hasNextPage: boolean) => ({
+			pageInfo: { hasNextPage },
+			edges: [
+				{
+					cursor,
+					node: {
+						id,
+						tags: [{ name: 'initial-holder', value: wallet }],
+						block: { height: 10, timestamp: 100 },
+					},
+				},
+			],
+		});
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const requests: Array<{ url: string; initialCursor: unknown }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const { variables } = JSON.parse(String(init?.body));
+			requests.push({ url: String(input), initialCursor: variables.initialCursor });
+			if (String(input) === arweaveGraphqlEndpoint()) return new Response('busy', { status: 503 });
+			if (requests.length === 2) {
+				return Response.json({
+					data: {
+						initiallyHeld: held(assetA, 'ardrive-1', true),
+						marketActions: empty,
+						receivedTransfers: empty,
+					},
+				});
+			}
+			if (variables.initialCursor === 'ardrive-1') {
+				return Response.json({ data: { initiallyHeld: held(assetB, 'ardrive-2', false) } });
+			}
+			// The catch-up pass finds the same head it recorded, on the index that recorded it.
+			return Response.json({
+				data: {
+					initiallyHeld: held(assetA, 'ardrive-1', true),
+					marketActions: empty,
+					receivedTransfers: empty,
+				},
+			});
+		});
+		const scan = createWalletCandidateScan(wallet);
+
+		const result = await discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			scan,
+			catchUp: true,
+			retryDelaysMs: [],
+		});
+
+		expect(result.map(({ processId }) => processId).sort()).toEqual([assetA, assetB].sort());
+		expect(requests).toEqual([
+			{ url: 'https://arweave.net/graphql', initialCursor: null },
+			{ url: 'https://ardrive.net/graphql', initialCursor: null },
+			// ardrive.net issued the cursor, so the next page never goes back to arweave.net.
+			{ url: 'https://ardrive.net/graphql', initialCursor: 'ardrive-1' },
+			{ url: 'https://ardrive.net/graphql', initialCursor: null },
+		]);
+		expect(scan.caughtUp).toBe(true);
+		// The scan keeps its preferred-index scope; the catch-up page went to the index that recorded the heads.
+		expect(scan.graphql).toBe(arweaveGraphqlEndpoint());
+		expect(scan.answeringIndex).toBe('https://ardrive.net/graphql');
+	});
+
+	it('never stores or resumes a scan a fallback index answered, so the next visit rescans the preferred index', async () => {
+		const held = (id: string) => ({
+			pageInfo: { hasNextPage: false },
+			edges: [
+				{
+					cursor: `cursor-${id}`,
+					node: {
+						id,
+						tags: [{ name: 'initial-holder', value: wallet }],
+						block: { height: 10, timestamp: 100 },
+					},
+				},
+			],
+		});
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const storage = memoryStorage();
+		// An older visit stored a scan the preferred index answered.
+		const older = createWalletCandidateScan(wallet);
+		older.active.clear();
+		older.caughtUp = true;
+		older.answeringIndex = arweaveGraphqlEndpoint();
+		older.heads = { initiallyHeld: assetC, marketActions: null, receivedTransfers: null };
+		older.found.set(assetC, { processId: assetC, height: 1, timestamp: 1, sources: ['initial-holder'] });
+		expect(storeCompletedWalletCandidateScan(storage, older)).toBe(true);
+
+		// Visit 1: arweave.net is down and ardrive.net answers with head H (assetA).
+		const visit1 = vi.fn(async (input: RequestInfo | URL) =>
+			String(input) === arweaveGraphqlEndpoint()
+				? new Response('busy', { status: 503 })
+				: Response.json({
+						data: { initiallyHeld: held(assetA), marketActions: empty, receivedTransfers: empty },
+				  })
+		);
+		const scan = createWalletCandidateScan(wallet);
+		await discoverWalletAssetCandidates(wallet, {
+			fetch: visit1 as typeof fetch,
+			scan,
+			catchUp: true,
+			retryDelaysMs: [],
+		});
+		expect(scan.caughtUp).toBe(true);
+		expect(scan.answeringIndex).toBe('https://ardrive.net/graphql');
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(false);
+		expect(storage.values.size).toBe(0);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)).toBeUndefined();
+		expect(resumeCompletedWalletCandidateScan(scan, wallet)).toBeUndefined();
+
+		// Visit 2: arweave.net answers without H. A fresh scan reads it in full instead of comparing
+		// ardrive.net's heads there (which used to fail with asset-discovery-head-watermark-missing).
+		const visit2 = vi.fn(async (input: RequestInfo | URL) => {
+			expect(String(input)).toBe(arweaveGraphqlEndpoint());
+			return Response.json({
+				data: { initiallyHeld: held(assetB), marketActions: empty, receivedTransfers: empty },
+			});
+		});
+		const fresh = createWalletCandidateScan(wallet);
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: visit2 as typeof fetch,
+				scan: fresh,
+				catchUp: true,
+				retryDelaysMs: [],
+			})
+		).resolves.toMatchObject([{ processId: assetB }]);
+		expect(fresh.answeringIndex).toBe(arweaveGraphqlEndpoint());
+		expect(storeCompletedWalletCandidateScan(storage, fresh)).toBe(true);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)?.heads.initiallyHeld).toBe(assetB);
+	});
+
+	it('catches a stored preferred-index scan up on that index only, never on a fallback', async () => {
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
+		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
+		scan.found.set(assetA, { processId: assetA, height: 1, timestamp: 1, sources: ['initial-holder'] });
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, scan);
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
+		expect(restored.answeringIndex).toBe(arweaveGraphqlEndpoint());
+		const fetcher = vi.fn(async (_input: RequestInfo | URL) => new Response('busy', { status: 503 }));
+
+		// arweave.net's heads are never compared on ardrive.net, so the catch-up fails on arweave.net.
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: fetcher as typeof fetch,
+				scan: restored,
+				catchUp: true,
+				retryDelaysMs: [],
+			})
+		).rejects.toThrow('asset-discovery-graphql-503');
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([arweaveGraphqlEndpoint()]);
+	});
+
+	it('keeps every page on an explicitly configured index', async () => {
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: fetcher as typeof fetch,
+				graphql: arweaveGraphqlEndpoint(),
+				retryDelaysMs: [],
+			})
+		).rejects.toThrow('asset-discovery-graphql-503');
+		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 
 	it('uses one aliased query per page, deduplicates targets, and keeps newest activity first', async () => {
@@ -761,6 +937,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: processAt(0), marketActions: null, receivedTransfers: null };
 		for (let index = 0; index < 16_000; index += 1) {
 			const processId = processAt(index);
@@ -821,6 +998,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
 		scan.found.set(assetA, {
 			processId: assetA,
@@ -872,6 +1050,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
 		scan.found.set(assetA, {
 			processId: assetA,
@@ -934,6 +1113,7 @@ describe('wallet candidate discovery', () => {
 		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(false);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
 		scan.found.set(assetA, {
 			processId: assetA,
@@ -967,6 +1147,7 @@ describe('wallet candidate discovery', () => {
 					setItem: () => {
 						throw new Error('quota');
 					},
+					removeItem: () => undefined,
 				},
 				scan
 			)
@@ -978,6 +1159,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: nameAsset, marketActions: null, receivedTransfers: null };
 		const candidate: AssetCandidate = {
 			processId: nameAsset,

@@ -12,7 +12,6 @@ import {
 	readAssetState,
 } from './asset-marketplace';
 import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
-import { fetchJsonWithDeadline } from './fetch-with-deadline';
 import {
 	GRAPHQL_RETRY_DELAYS_MS,
 	graphqlEndpointList,
@@ -117,7 +116,16 @@ export type WalletCandidateAlias = 'initiallyHeld' | 'marketActions' | 'received
 
 export type WalletCandidateScan = {
 	address: string;
+	/** The preferred index; it scopes the scan and its stored copy. */
 	graphql: string;
+	/**
+	 * The index that answered the scan's first page: `graphql`, or a fallback when the preferred index
+	 * failed. Cursors and head watermarks only mean something on the index that issued them, so once set
+	 * every later page and catch-up pass goes to it alone. Only a scan the preferred index answered is
+	 * resumed or stored; a fallback may lack transactions the preferred index has, so the next session
+	 * scans the preferred index again. Unset until the first page answers.
+	 */
+	answeringIndex?: string;
 	active: Set<WalletCandidateAlias>;
 	cursors: Record<WalletCandidateAlias, string | null>;
 	visited: Record<WalletCandidateAlias, Set<string>>;
@@ -558,7 +566,8 @@ export function resumeCompletedWalletCandidateScan(
 		scan.graphql !== graphql ||
 		scan.active.size ||
 		scan.catchUp ||
-		!scan.caughtUp
+		!scan.caughtUp ||
+		scan.answeringIndex !== graphql
 	)
 		return undefined;
 	return restoredWalletCandidateScan(address, graphql, scan.heads, scan.found);
@@ -606,10 +615,18 @@ export function loadCompletedWalletCandidateScan(
 }
 
 export function storeCompletedWalletCandidateScan(
-	storage: Pick<Storage, 'setItem'>,
+	storage: Pick<Storage, 'setItem' | 'removeItem'>,
 	scan: WalletCandidateScan
 ): boolean {
 	if (scan.active.size || scan.catchUp || !scan.caughtUp) return false;
+	if (scan.answeringIndex !== scan.graphql) {
+		// A fallback index answered: its heads cannot bound a catch-up on the preferred index, and it may
+		// lack transactions the preferred one has. Drop the older stored copy too, so the next visit scans
+		// the preferred index again instead of keeping the omission (Home keeps fallback-index listings out
+		// of its snapshot the same way).
+		clearCompletedWalletCandidateScan(storage, scan.address, scan.graphql);
+		return false;
+	}
 	const stored: StoredWalletCandidateScan = {
 		v: WALLET_SCAN_CACHE_VERSION,
 		a: scan.address,
@@ -651,6 +668,7 @@ function restoredWalletCandidateScan(
 ): WalletCandidateScan {
 	const scan = createWalletCandidateScan(address, graphql);
 	scan.active.clear();
+	scan.answeringIndex = graphql;
 	scan.found = new Map(found);
 	scan.heads = { ...heads };
 	return scan;
@@ -743,22 +761,32 @@ export async function discoverWalletAssetCandidates(
 ): Promise<AssetCandidate[]> {
 	if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	// The persisted scan stores index-specific cursors, so it stays on one endpoint.
+	// The preferred index scopes the scan; an explicit `graphql` pins every page to it.
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const scan = options.scan ?? createWalletCandidateScan(address, graphql);
 	if (scan.address !== address || scan.graphql !== graphql) {
 		throw new TypeError('wallet-candidate-scan-scope-mismatch');
 	}
+	const fallbackEndpoints = options.graphql ? [] : graphqlEndpointList();
 	const requestPage = async (
 		active: Set<WalletCandidateAlias>,
 		cursors: Record<WalletCandidateAlias, string | null>
 	) => {
 		const requestedAliases = [...active];
-		const { response, body: payload } = await retryTransientGraphql(
+		// Only a scan's first page may fall back; its cursors and heads belong to the index that answered
+		// it, so every later page and catch-up pass goes there alone. The query has no `count`, and on
+		// 2026-11-23 ardrive.net answered it in 0.4 s with the same 12 + 21 + 2 transactions for a
+		// 35-transaction wallet that arweave.net took 30.5 s to return.
+		const endpoints = scan.answeringIndex ? [scan.answeringIndex] : [graphql, ...fallbackEndpoints];
+		const {
+			response,
+			body: payload,
+			endpoint,
+		} = await retryTransientGraphql(
 			() =>
-				fetchJsonWithDeadline<any>(
+				postGraphql<any>(
 					fetcher,
-					graphql,
+					endpoints,
 					{
 						method: 'POST',
 						headers: { 'content-type': 'application/json' },
@@ -795,6 +823,7 @@ export async function discoverWalletAssetCandidates(
 		if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
 		return {
 			requestedAliases,
+			endpoint,
 			connections: new Map(
 				requestedAliases.map((alias) => [
 					alias,
@@ -831,7 +860,7 @@ export async function discoverWalletAssetCandidates(
 
 	while (scan.active.size) {
 		options.signal?.throwIfAborted();
-		const { requestedAliases, connections } = await requestPage(scan.active, scan.cursors);
+		const { requestedAliases, connections, endpoint } = await requestPage(scan.active, scan.cursors);
 		const nextActive = new Set(scan.active);
 		const nextCursors = { ...scan.cursors };
 		const nextVisited = {
@@ -863,10 +892,13 @@ export async function discoverWalletAssetCandidates(
 		}
 		scan.active = nextActive;
 		scan.cursors = nextCursors;
+		scan.answeringIndex ??= endpoint;
 		scan.visited = nextVisited;
 	}
 
 	if (options.catchUp && !scan.caughtUp) {
+		// A scan with heads always has its answering index; a hand-built one is read on the preferred index.
+		scan.answeringIndex ??= graphql;
 		let pagesThisPass = 0;
 		while (!scan.caughtUp) {
 			if (!scan.catchUp) {
