@@ -313,6 +313,7 @@ import {
 	purchaseObservationRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
+import { trackRouteDocumentTitle } from './route-title';
 import {
 	loadArweaveTransactionSync,
 	loadAssetObserverRuntime,
@@ -1934,26 +1935,27 @@ function RouteFocus() {
 		if (!main) return;
 		const shouldMoveFocus = action === 'new-view';
 		previousRoute.current = routeKey;
-		let title = 'Bazar — Arweave-native assets';
-		let observer: MutationObserver | null = null;
-		const updateRouteContext = () => {
-			const heading = main.querySelector('h1');
-			const headingText = heading?.textContent?.trim();
-			if (headingText) {
-				title = `${headingText} — Bazar`;
-				observer?.disconnect();
-			}
-			document.title = title;
-		};
+		const titleTracker = trackRouteDocumentTitle({
+			main,
+			getTitle: () => document.title,
+			setTitle: (title) => {
+				document.title = title;
+			},
+			observe: (target, options, onMutation) => {
+				const observer = new MutationObserver(onMutation);
+				observer.observe(target, options);
+				return () => observer.disconnect();
+			},
+			requestFrame: (callback) => window.requestAnimationFrame(callback),
+			cancelFrame: (frame) => window.cancelAnimationFrame(frame),
+		});
 		const focusFrame = window.requestAnimationFrame(() => {
-			updateRouteContext();
+			titleTracker.sync();
 			if (shouldMoveFocus) main.focus({ preventScroll: true });
 		});
-		observer = new MutationObserver(updateRouteContext);
-		observer.observe(main, { characterData: true, childList: true, subtree: true });
 		return () => {
 			window.cancelAnimationFrame(focusFrame);
-			observer?.disconnect();
+			titleTracker.stop();
 		};
 	}, [routeKey]);
 	return null;
@@ -3230,6 +3232,17 @@ export function homeTabFromPathname(pathname: string): HomeTab {
 
 export function homeTabPath(tab: HomeTab) {
 	return `/${tab}`;
+}
+
+const HOME_TAB_HEADINGS: Record<HomeTab, string> = {
+	discover: 'Discover',
+	collections: 'Collections',
+	activity: 'Activity',
+};
+
+/** The Home route's page heading, which also names the document title for each tab. */
+export function homeTabHeading(tab: HomeTab) {
+	return HOME_TAB_HEADINGS[tab];
 }
 
 export function homeRouteSearch(search: string) {
@@ -4750,7 +4763,7 @@ function Home() {
 				<div className="home-content">
 					<div className="home-market-layout" ref={marketPaneRef}>
 						<section className="home-section home-assets" id="market">
-							<h1 className="sr-only">Marketplace</h1>
+							<h1 className="sr-only">{homeTabHeading(homeTab)}</h1>
 							<div className="home-section-heading">
 								<div>
 									<HomeMarketTabs active={homeTab} onSelect={selectHomeTab} />
