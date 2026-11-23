@@ -665,6 +665,10 @@ describe('fungible operation error semantics', () => {
 		expect(receipt).toContain(purchaseStates[orders[511].orderId].registration?.id);
 		expect(receipt).toContain(purchaseStates[orders[511].orderId].payment?.id);
 		expect(receipt).not.toContain(orders[0].creator);
+		const orderAnchor =
+			receipt.match(/<dt>Order<\/dt><dd>(?:(?!<\/dd>).)*?<span[^>]*aria-describedby="[^"]+"[^>]*>/)?.[0] ?? '';
+		expect(orderAnchor).toContain('tabindex="0"');
+		expect(receipt).toContain(orders[511].orderId);
 		const nextButton = receipt.match(/<button[^>]*>Next receipt<\/button>/)?.[0] ?? '';
 		expect(nextButton).toContain('aria-disabled="true"');
 		expect(nextButton).not.toMatch(/\sdisabled(?:=|\s|>)/);

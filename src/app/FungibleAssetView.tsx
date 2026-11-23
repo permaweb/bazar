@@ -3734,7 +3734,7 @@ function FungibleOperationDialog({
 											<span>Order</span>
 											<Tooltip content={activeOrder.orderId} placement="top">
 												{(tooltipId) => (
-													<strong aria-describedby={tooltipId}>
+													<strong aria-describedby={tooltipId} tabIndex={0}>
 														{short(activeOrder.orderId)}
 													</strong>
 												)}
@@ -4245,7 +4245,11 @@ export function FungiblePurchaseReceiptNavigator({
 						<dt>Order</dt>
 						<dd>
 							<Tooltip content={order.orderId} placement="top">
-								{(tooltipId) => <span aria-describedby={tooltipId}>{short(order.orderId)}</span>}
+								{(tooltipId) => (
+									<span aria-describedby={tooltipId} tabIndex={0}>
+										{short(order.orderId)}
+									</span>
+								)}
 							</Tooltip>
 						</dd>
 					</div>

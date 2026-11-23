@@ -31,7 +31,7 @@ import { Button } from 'components/Button';
 import { type HolderDraftRow, HolderListField } from 'components/HolderListField';
 import { Loading } from 'components/Loading';
 import { TokenArtwork } from 'components/TokenArtwork';
-import { Tooltip } from 'components/Tooltip';
+import { WalletAddress } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -48,6 +48,16 @@ function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'tick
 	const [whole, fraction] = formatTokenAmount(raw, state.denomination).split('.');
 	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || 'tokens'}`;
+}
+
+/**
+ * A recipient in a dispatch review table. The full address is rendered as text
+ * (no profile lookup per row) with a copy button whose accessible name carries
+ * the address, so keyboard and screen-reader users can check every recipient
+ * before signing or resuming a dispatch.
+ */
+export function DispatchRecipientCell({ address }: { address: string }) {
+	return <WalletAddress address={address} full label="recipient" tooltipEscapesOverflow />;
 }
 
 export function dispatchErrorMessage(cause: unknown): string {
@@ -394,13 +404,7 @@ export default function DispatchRoute() {
 								{plan.rows.map((row) => (
 									<tr key={row.address} className={`dispatch-row-${row.status}`}>
 										<td>
-											<Tooltip content={row.address} placement="top">
-												{(tooltipId) => (
-													<code aria-describedby={tooltipId}>
-														{shortAddress(row.address)}
-													</code>
-												)}
-											</Tooltip>
+											<DispatchRecipientCell address={row.address} />
 										</td>
 										<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 										<td>
@@ -483,13 +487,7 @@ export default function DispatchRoute() {
 											{parsed.rows.map((row) => (
 												<tr key={row.address}>
 													<td>
-														<Tooltip content={row.address} placement="top">
-															{(tooltipId) => (
-																<code aria-describedby={tooltipId}>
-																	{shortAddress(row.address)}
-																</code>
-															)}
-														</Tooltip>
+														<DispatchRecipientCell address={row.address} />
 													</td>
 													<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 												</tr>
