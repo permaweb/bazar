@@ -101,6 +101,8 @@ import {
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceOperationFailure,
 	marketplaceOperationFailure,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 } from './marketplace-error';
 import {
 	announceFungibleOperationActivityChange,
@@ -3906,19 +3908,8 @@ function FungibleOperationDialog({
 /** Operations that sign one prepared transaction; purchases recover through their own batch flow. */
 export type FungibleSignedOperationKind = Exclude<FungibleOperation['kind'], 'buy'>;
 
-const FUNGIBLE_SIGNED_OPERATION_NOUN: Record<FungibleSignedOperationKind, string> = {
-	sell: 'listing',
-	cancel: 'cancellation',
-	transfer: 'transfer',
-};
-
 export function fungibleNotSentRecoveryCopy(kind: FungibleSignedOperationKind) {
-	const noun = FUNGIBLE_SIGNED_OPERATION_NOUN[kind];
-	return {
-		retry: `Retry ${noun}`,
-		discard: `Discard ${noun}`,
-		changed: `This saved ${noun} changed in another tab. Close this panel and review the active action.`,
-	};
+	return notSentRecoveryCopy(kind);
 }
 
 export function FungibleNotSentRecovery({
@@ -3933,7 +3924,7 @@ export function FungibleNotSentRecovery({
 	const copy = fungibleNotSentRecoveryCopy(kind);
 	return (
 		<>
-			<p>No transaction was submitted. Retry this signature or discard it to start over.</p>
+			<p>{NOT_SENT_RECOVERY_NOTE}</p>
 			<div className="dialog-actions">
 				<Button data-dialog-initial onClick={onRetry} size="custom">
 					{copy.retry}

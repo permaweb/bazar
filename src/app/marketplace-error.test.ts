@@ -7,6 +7,8 @@ import {
 	marketplaceFailureKind,
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 	purchaseQuoteFailure,
 } from './marketplace-error';
 
@@ -155,5 +157,20 @@ describe('isRejectedTransactionDispatch', () => {
 		expect(isRejectedTransactionDispatch('transaction dispatch 500')).toBe(false);
 		expect(isRejectedTransactionDispatch('transaction propagation timeout')).toBe(false);
 		expect(isRejectedTransactionDispatch('payment not found')).toBe(false);
+	});
+});
+
+describe('not-sent recovery copy', () => {
+	it('names the signed operation instead of calling every signature a transfer', () => {
+		expect(notSentRecoveryCopy('sell')).toEqual({
+			retry: 'Retry listing',
+			discard: 'Discard listing',
+			changed: 'This saved listing changed in another tab. Close this panel and review the active action.',
+		});
+		expect(notSentRecoveryCopy('cancel').discard).toBe('Discard cancellation');
+		expect(notSentRecoveryCopy('transfer').retry).toBe('Retry transfer');
+		expect(NOT_SENT_RECOVERY_NOTE).toBe(
+			'No transaction was submitted. Retry this signature or discard it to start over.'
+		);
 	});
 });

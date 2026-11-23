@@ -7,6 +7,7 @@ import { liveOrderOfAsset, parseAssetState } from 'api/asset-marketplace';
 import {
 	AtomicOperationErrorAlert,
 	atomicOperationFormError,
+	atomicOperationRecovery,
 	atomicOperationStateError,
 	atomicOperationValue,
 	atomicOrderCanBeBought,
@@ -16,10 +17,12 @@ import {
 	atomicPurchaseRecoveryStatus,
 	AtomicPurchaseSequence,
 	atomicPurchaseSequence,
+	discardUnsentAtomicSignature,
 	externalReservationTransaction,
 	pendingListingMessage,
 	purchaseStatusMessage,
 } from './App';
+import { operationStorageKey } from './operation-session';
 import { purchaseObservationResumeState } from './purchase-observation-retry';
 
 describe('atomic operation error semantics', () => {
@@ -326,5 +329,147 @@ describe('atomic purchase failure trace', () => {
 		expect(atomicPurchaseFailureCode(expired)).toBe('asset-order-reservation-expired');
 		expect(atomicPurchaseHasTerminalReservationFailure(expired)).toBe(true);
 		expect(atomicPurchaseHasTerminalReservationFailure(paymentRejected)).toBe(false);
+	});
+});
+
+describe('atomic operation error recovery', () => {
+	const base = {
+		failureKind: 'other' as const,
+		hasTransaction: false,
+		purchaseFailureCode: null,
+		recoverable: false,
+	};
+	const actions = (recovery: ReturnType<typeof atomicOperationRecovery>) => [
+		recovery.primary.action,
+		recovery.secondary?.action,
+	];
+
+	it('sends a changed market to the updated asset before any other recovery', () => {
+		for (const kind of ['sell', 'buy', 'cancel', 'transfer'] as const) {
+			const recovery = atomicOperationRecovery({
+				...base,
+				kind,
+				failureKind: 'market-state-changed',
+				hasTransaction: true,
+				purchaseFailureCode: 'payment-dispatch-rejected',
+				recoverable: true,
+			});
+			expect(recovery).toEqual({
+				primary: { action: 'view-updated-asset', label: 'View updated asset' },
+				purchaseReceipt: false,
+			});
+		}
+	});
+
+	it('offers retry and discard for a signed listing, cancellation or transfer that was never sent', () => {
+		for (const [kind, noun] of [
+			['sell', 'listing'],
+			['cancel', 'cancellation'],
+			['transfer', 'transfer'],
+		] as const) {
+			const recovery = atomicOperationRecovery({
+				...base,
+				kind,
+				failureKind: 'transaction-not-sent',
+				hasTransaction: true,
+				recoverable: true,
+			});
+			expect(recovery).toEqual({
+				primary: { action: 'retry-not-sent', label: `Retry ${noun}` },
+				secondary: { action: 'discard-not-sent', label: `Discard ${noun}`, danger: true },
+				note: 'No transaction was submitted. Retry this signature or discard it to start over.',
+				purchaseReceipt: false,
+			});
+		}
+		expect(
+			actions(atomicOperationRecovery({ ...base, kind: 'sell', failureKind: 'transaction-not-sent' }))
+		).toEqual(['return-to-form', undefined]);
+	});
+
+	it('keeps rejected, saved and unsigned failures on their existing actions', () => {
+		expect(
+			atomicOperationRecovery({
+				...base,
+				kind: 'cancel',
+				failureKind: 'transaction-rejected',
+				hasTransaction: true,
+			}).primary
+		).toEqual({
+			action: 'discard-rejected-signature',
+			label: 'Discard rejected signature and sign again',
+			danger: true,
+		});
+		expect(atomicOperationRecovery({ ...base, kind: 'sell', hasTransaction: true }).primary).toEqual({
+			action: 'resume-signed-transaction',
+			label: 'Resume the signed transaction',
+		});
+		expect(
+			atomicOperationRecovery({ ...base, kind: 'transfer', failureKind: 'transaction-rejected' }).primary
+		).toEqual({ action: 'return-to-form', label: 'Try again' });
+		expect(atomicOperationRecovery({ ...base, kind: 'transfer', failureKind: null }).primary.action).toBe(
+			'return-to-form'
+		);
+	});
+
+	it('routes purchase failures classified as rejected to the purchase recovery for their code', () => {
+		const buy = (purchaseFailureCode: string | null, recoverable = false) =>
+			atomicOperationRecovery({
+				...base,
+				kind: 'buy',
+				failureKind: 'transaction-rejected',
+				hasTransaction: true,
+				purchaseFailureCode,
+				recoverable,
+			});
+		expect(buy('registration-dispatch-rejected')).toEqual({
+			primary: { action: 'view-current-listing', label: 'View current listing' },
+			purchaseReceipt: true,
+		});
+		expect(buy('asset-order-reservation-rejected').primary.action).toBe('start-fresh-purchase');
+		expect(buy('asset-order-reservation-expired').primary).toEqual({
+			action: 'start-fresh-purchase',
+			label: 'Start a new purchase',
+		});
+		expect(buy('payment-dispatch-rejected').primary).toEqual({
+			action: 'resign-seller-payment',
+			label: 'Sign a replacement seller payment',
+		});
+		expect(buy('asset-purchase-rejected', true).primary).toEqual({
+			action: 'restart-purchase',
+			label: 'Continue saved purchase',
+		});
+		expect(buy(null).primary).toEqual({ action: 'restart-purchase', label: 'Try again' });
+		expect(
+			atomicOperationRecovery({ ...base, kind: 'buy', failureKind: 'transaction-not-sent', hasTransaction: true })
+				.primary.action
+		).toBe('restart-purchase');
+	});
+
+	it('discards an unsent NFT signature unless another tab changed the saved record', () => {
+		const owner = 'W'.repeat(43);
+		const txId = 'T'.repeat(43);
+		const key = operationStorageKey('asset', owner);
+		const signatureKey = `bazar-signed-transaction:${txId}`;
+		const seed = (recordTxId: string) =>
+			new Map<string, string>([
+				[key, JSON.stringify({ kind: 'sell', txId: recordTxId })],
+				[signatureKey, JSON.stringify({ expectedSigner: owner, transaction: { id: txId } })],
+			]);
+		const storageOf = (values: Map<string, string>) => ({
+			getItem: (candidate: string) => values.get(candidate) ?? null,
+			removeItem: (candidate: string) => void values.delete(candidate),
+		});
+
+		const values = seed(txId);
+		expect(discardUnsentAtomicSignature(storageOf(values), 'asset', owner, 'sell', txId)).toBeNull();
+		expect(values.has(key)).toBe(false);
+		expect(values.has(signatureKey)).toBe(false);
+
+		const changed = seed('N'.repeat(43));
+		expect(discardUnsentAtomicSignature(storageOf(changed), 'asset', owner, 'sell', txId)).toBe(
+			'This saved listing changed in another tab. Close this panel and review the active action.'
+		);
+		expect(changed.has(key)).toBe(true);
+		expect(changed.has(signatureKey)).toBe(true);
 	});
 });
