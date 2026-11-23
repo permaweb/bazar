@@ -18,6 +18,7 @@ import {
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,
 	collectionActivityWindowDelta,
+	collectionAssetOrderKey,
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
 	collectionCardPriceLabel,
@@ -55,6 +56,8 @@ import {
 	homeCollectionFloorsPending,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
+	homeDiscoverOrderId,
+	homeDiscoverOrderSettled,
 	homeDiscoverOverdueFailure,
 	homeDiscoverPagesFull,
 	homeDiscoverPending,
@@ -79,6 +82,7 @@ import {
 	homeSummaryWindow,
 	homeTabFromPathname,
 	homeTabPath,
+	homeTokenPlaceholderRows,
 	homeTokenPriceChangeLabel,
 	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
@@ -87,7 +91,6 @@ import {
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
-	nextHomeCollectionOrder,
 	nextListingAnnouncementProgress,
 	observeCollectionPriceDeadlines,
 	pendingCollectionPriceAssets,
@@ -126,6 +129,17 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('re-ranks the collection grid at once only for viewer choices, not for streamed data', () => {
+		const recent = collectionAssetOrderKey('recent', 'all', '', false);
+		expect(collectionAssetOrderKey('recent', 'all', '  ', false)).toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'all', ' Dum ', false)).toBe(
+			collectionAssetOrderKey('recent', 'all', 'dum', false)
+		);
+		expect(collectionAssetOrderKey('price-low', 'all', '', false)).not.toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'D', '', false)).not.toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'all', '', true)).not.toBe(recent);
+	});
+
 	it('calculates cumulative order-book depth from ascending offer quantities', () => {
 		expect(cumulativeCollectionDepth([1, 1, 3, 5])).toEqual([10, 20, 50, 100]);
 		const fallback = cumulativeCollectionDepth([0, Number.NaN, -1]);
@@ -294,57 +308,6 @@ describe('Home market summary retries', () => {
 		expect([beta, unknown, newest, alpha].sort((a, b) => compareHomeCollections(a, b, 'oldest', activity))).toEqual(
 			[alpha, beta, newest, unknown]
 		);
-	});
-
-	it('keeps the collections grid order stable until loading settles or the viewer re-sorts', () => {
-		const loading = nextHomeCollectionOrder(undefined, ['b', 'a'], 'recent', false);
-		expect(loading.ids).toEqual(['b', 'a']);
-
-		// Activity and late collections arrive: existing cards keep their slots, newcomers are appended.
-		const streamed = nextHomeCollectionOrder(loading, ['c', 'a', 'b'], 'recent', false);
-		expect(streamed.ids).toEqual(['b', 'a', 'c']);
-		expect(nextHomeCollectionOrder(streamed, ['a', 'c', 'b'], 'recent', false)).toBe(streamed);
-
-		// A collection that no longer matches drops out without moving the others.
-		expect(nextHomeCollectionOrder(streamed, ['c', 'b'], 'recent', false).ids).toEqual(['b', 'c']);
-
-		const settled = nextHomeCollectionOrder(streamed, ['c', 'a', 'b'], 'recent', true);
-		expect(settled.ids).toEqual(['c', 'a', 'b']);
-		expect(nextHomeCollectionOrder(settled, ['a', 'b', 'c'], 'recent', true)).toBe(settled);
-
-		// A later refresh streams in place again and re-ranks once it settles.
-		const refreshing = nextHomeCollectionOrder(settled, ['d', 'a', 'b', 'c'], 'recent', false);
-		expect(refreshing.ids).toEqual(['c', 'a', 'b', 'd']);
-		expect(nextHomeCollectionOrder(refreshing, ['d', 'a', 'b', 'c'], 'recent', true).ids).toEqual([
-			'd',
-			'a',
-			'b',
-			'c',
-		]);
-
-		// Discovery keeps streaming after loading settles: a late collection takes its ranked place instead of
-		// landing last, and the settled cards keep their relative order.
-		const newest = nextHomeCollectionOrder(undefined, ['a', 'b'], 'newest', true);
-		const late = nextHomeCollectionOrder(newest, ['c', 'a', 'b'], 'newest', true);
-		expect(late.ids).toEqual(['c', 'a', 'b']);
-		expect(nextHomeCollectionOrder(late, ['c', 'a', 'b'], 'newest', true)).toBe(late);
-		expect(nextHomeCollectionOrder(late, ['c', 'a', 'e', 'b', 'f'], 'newest', true).ids).toEqual([
-			'c',
-			'a',
-			'e',
-			'b',
-			'f',
-		]);
-		// A stats update that would reorder settled cards still waits for the next settle or sort change.
-		expect(nextHomeCollectionOrder(late, ['d', 'b', 'a', 'c'], 'newest', true).ids).toEqual(['d', 'c', 'a', 'b']);
-
-		// An explicit sort change re-ranks immediately, even while loading.
-		expect(nextHomeCollectionOrder(refreshing, ['b', 'c', 'a', 'd'], 'oldest', false).ids).toEqual([
-			'b',
-			'c',
-			'a',
-			'd',
-		]);
 	});
 
 	it('reports compute failure only when every listing refresh failed', () => {
@@ -1360,6 +1323,32 @@ describe('Home market summary retries', () => {
 		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
 		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
 		expect(homeMarketShowsInitialLoader(false, 0)).toBe(false);
+	});
+
+	it('holds the Discover order until the shell, the listing crawl and ranked prices are settled', () => {
+		const summaries: Record<string, HomeMarketSummary> = {
+			listed: { status: 'resolved', value: '1 AR' },
+			failed: { status: 'unavailable', source: 'compute', kind: 'unavailable' },
+		};
+		expect(homeDiscoverOrderSettled('listed', true, ['listed'], summaries)).toBe(false);
+		expect(homeDiscoverOrderSettled('listed', false, ['listed', 'pending'], summaries)).toBe(false);
+		expect(homeDiscoverOrderSettled('price-low', false, ['listed', 'failed'], summaries)).toBe(true);
+		// The unranked "all" view does not wait on prices.
+		expect(homeDiscoverOrderSettled('all', false, ['pending'], summaries)).toBe(true);
+		expect(homeDiscoverOrderSettled('all', true, [], summaries)).toBe(false);
+	});
+
+	it('keys Discover rows by collection and asset', () => {
+		expect(homeDiscoverOrderId({ asset: { id: 'asset' }, collection: { id: 'collection' } })).toBe(
+			'collection:asset'
+		);
+	});
+
+	it('reserves the token overview page height only while rows may still arrive', () => {
+		expect(homeTokenPlaceholderRows(false, 0)).toBe(5);
+		expect(homeTokenPlaceholderRows(false, 3)).toBe(2);
+		expect(homeTokenPlaceholderRows(false, 5)).toBe(0);
+		expect(homeTokenPlaceholderRows(true, 2)).toBe(0);
 	});
 
 	it('turns a stuck card price into an explicit unavailable label after the display deadline', () => {

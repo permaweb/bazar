@@ -9776,6 +9776,10 @@ body input:focus-visible {
 		padding: 0;
 	}
 	.home-market-layout {
+		/* The document scrolls here, so 100vw would include its scrollbar and overflow by half of it;
+		   undo the wrapper gutter instead (the wrapper spans the viewport below --max-view-width). */
+		width: auto;
+		margin-inline: calc(-1 * var(--page-gutter));
 		display: block;
 		overflow-y: visible;
 		overscroll-behavior: auto;
@@ -10974,6 +10978,17 @@ body input:focus-visible {
 	grid-column: 7;
 	color: var(--muted);
 }
+.token-market-row--placeholder,
+.token-market-row--placeholder:hover {
+	background: var(--paper);
+}
+.token-market-placeholder-line {
+	width: min(16ch, 100%);
+	height: 0.9em;
+}
+.token-market-placeholder-line.short {
+	width: 6ch;
+}
 .token-market-list.compact .token-market-row {
 	min-height: 66px;
 	padding: 8px 10px;
@@ -11422,6 +11437,31 @@ body input:focus-visible {
 .collection-tabs button.active {
 	color: var(--ink);
 	box-shadow: inset 0 -2px 0 var(--ink);
+}
+.collection-order-notice {
+	height: 0;
+}
+.ui-button.collection-order-notice-button {
+	position: fixed;
+	bottom: 24px;
+	left: 50%;
+	z-index: 40;
+	transform: translateX(-50%);
+	min-height: 36px;
+	padding: 0 14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	border: 1px solid var(--line-dark);
+	border-radius: 999px;
+	color: var(--paper);
+	background: var(--ink);
+	box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 22%, var(--transparent));
+	font-size: var(--type-small);
+}
+.ui-button.collection-order-notice-button:hover:not(:disabled) {
+	color: var(--paper);
+	background: var(--ink);
 }
 .collection-market-tools {
 	grid-template-columns: auto minmax(180px, 1fr) auto;

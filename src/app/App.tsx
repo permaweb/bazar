@@ -212,9 +212,11 @@ import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
+import { applyStableOrder, stableOrderDiffers } from 'helpers/stable-order';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
+import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
 import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
@@ -3064,87 +3066,6 @@ export function compareHomeCollections(
 	return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
 }
 
-export type HomeCollectionOrder = {
-	sort: HomeCollectionSort;
-	settled: boolean;
-	ids: readonly string[];
-};
-
-/**
- * Keep the collections grid in a stable order while it loads. The first ranked order is kept; arrivals
- * while loading are appended and refreshed collections update in place. The grid re-ranks only when the
- * viewer picks another sort or once loading settles. A collection that arrives after the order settled
- * (Bazar discovery keeps streaming after the catalogue loads) is merged into its ranked place, so a
- * late newest collection still leads under Newest, and only the cards after it move.
- */
-export function nextHomeCollectionOrder(
-	previous: HomeCollectionOrder | undefined,
-	rankedIds: readonly string[],
-	sort: HomeCollectionSort,
-	settled: boolean
-): HomeCollectionOrder {
-	if (!previous || previous.sort !== sort || (settled && !previous.settled)) {
-		return { sort, settled, ids: [...rankedIds] };
-	}
-	const present = new Set(rankedIds);
-	const retained = previous.ids.filter((id) => present.has(id));
-	const known = new Set(retained);
-	let ids: string[];
-	if (settled && previous.settled) {
-		// Place each newcomer right after the retained collection that precedes it in the ranking.
-		const leading: string[] = [];
-		const following = new Map<string, string[]>();
-		let anchor: string | undefined;
-		for (const id of rankedIds) {
-			if (known.has(id)) anchor = id;
-			else if (anchor === undefined) leading.push(id);
-			else following.set(anchor, [...(following.get(anchor) ?? []), id]);
-		}
-		ids = [...leading, ...retained.flatMap((id) => [id, ...(following.get(id) ?? [])])];
-	} else {
-		ids = [...retained, ...rankedIds.filter((id) => !known.has(id))];
-	}
-	if (
-		previous.settled === settled &&
-		ids.length === previous.ids.length &&
-		ids.every((id, index) => id === previous.ids[index])
-	)
-		return previous;
-	return { sort, settled, ids };
-}
-
-/** Glide grid cards from their previous slots when the order changes, instead of jumping. */
-function useGridReorderMotion(grid: React.RefObject<HTMLElement | null>, order: readonly string[]) {
-	const slots = React.useRef(new Map<string, { left: number; top: number }>());
-	const host = React.useRef<HTMLElement | null>(null);
-	React.useLayoutEffect(() => {
-		const container = grid.current;
-		if (!container) return;
-		// Slots recorded in an earlier grid (another tab visit) do not describe this one.
-		if (host.current !== container) slots.current = new Map();
-		host.current = container;
-		const origin = container.getBoundingClientRect();
-		const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-		const next = new Map<string, { left: number; top: number }>();
-		for (const card of container.querySelectorAll<HTMLElement>(':scope > [data-order-id]')) {
-			const rect = card.getBoundingClientRect();
-			const slot = { left: rect.left - origin.left, top: rect.top - origin.top };
-			const id = card.dataset.orderId ?? '';
-			next.set(id, slot);
-			const previous = slots.current.get(id);
-			if (!previous || reduceMotion || typeof card.animate !== 'function') continue;
-			const dx = previous.left - slot.left;
-			const dy = previous.top - slot.top;
-			if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-			card.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
-				duration: 260,
-				easing: 'cubic-bezier(0.2, 0, 0, 1)',
-			});
-		}
-		slots.current = next;
-	}, [grid, order]);
-}
-
 export function compareHomeListingRecency(
 	leftAssetId: string,
 	rightAssetId: string,
@@ -3248,6 +3169,34 @@ export function homeSummaryWindow<T extends { asset: Pick<AssetSummary, 'id'>; c
 	});
 }
 
+export function homeDiscoverOrderId({ asset, collection }: { asset: { id: string }; collection: { id: string } }) {
+	return `${collection.id}:${asset.id}`;
+}
+
+/**
+ * The Discover lists hold their painted order until nothing that can add or move a card is loading: the
+ * market shell and listing crawl are idle and, for views that filter or rank by price, every candidate
+ * has a price summary (resolved or unavailable). The unfiltered "all" view is not ranked by price.
+ */
+export function homeDiscoverOrderSettled(
+	view: HomeAssetView,
+	loading: boolean,
+	candidateIds: readonly string[],
+	summaries: Record<string, HomeMarketSummary>
+) {
+	if (loading) return false;
+	return view === 'all' || candidateIds.every((id) => Boolean(summaries[id]));
+}
+
+/** Placeholder rows that keep the token overview at its page height while its rows are still arriving. */
+export function homeTokenPlaceholderRows(
+	settled: boolean,
+	shownRows: number,
+	pageSize = HOME_DISCOVER_TOKEN_PAGE_SIZE
+) {
+	return settled ? 0 : Math.max(0, pageSize - shownRows);
+}
+
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
 	return view === 'all' || homeMarketSummaryListed(summary);
 }
@@ -3258,6 +3207,18 @@ function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
 			<LoaderCircle aria-hidden="true" />
 			<span>{label}</span>
 		</span>
+	);
+}
+
+function HomeTokenPlaceholderRow() {
+	return (
+		<div aria-hidden="true" className="token-market-row token-market-row--placeholder">
+			<span className="token-market-logo layout-placeholder" />
+			<span className="token-market-identity">
+				<span className="layout-placeholder token-market-placeholder-line" />
+				<span className="layout-placeholder token-market-placeholder-line short" />
+			</span>
+		</div>
 	);
 }
 
@@ -3644,22 +3605,16 @@ function Home() {
 			compareHomeCollections(left, right, collectionSort, activity)
 		);
 	}, [collectionActivity, collectionSort, matchingCollections]);
-	const [storedCollectionOrder, setStoredCollectionOrder] = React.useState<HomeCollectionOrder>();
-	const collectionOrder = nextHomeCollectionOrder(
-		storedCollectionOrder,
+	const collectionOrder = useStableOrder(
 		rankedCollections.map((collection) => collection.id),
 		collectionSort,
 		collectionOrderSettled
 	);
-	// Derived from the previous order, so it is stored with a render-phase update (React discards it along
-	// with an abandoned render) rather than a ref mutation. nextHomeCollectionOrder returns its input when
-	// nothing changed, so this settles after one extra render.
-	if (collectionOrder !== storedCollectionOrder) setStoredCollectionOrder(collectionOrder);
-	const collections = React.useMemo(() => {
-		const byId = new Map(rankedCollections.map((collection) => [collection.id, collection]));
-		return collectionOrder.ids.flatMap((id) => byId.get(id) ?? []);
-	}, [collectionOrder, rankedCollections]);
-	useGridReorderMotion(collectionGrid, collectionOrder.ids);
+	const collections = React.useMemo(
+		() => applyStableOrder(rankedCollections, collectionOrder, (collection) => collection.id),
+		[collectionOrder, rankedCollections]
+	);
+	useGridReorderMotion(collectionGrid, collectionOrder);
 	const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
 	const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
 		Record<string, HomeListingActivity>
@@ -3797,7 +3752,7 @@ function Home() {
 		}
 		return indexed;
 	}, [displayHomeListings, verifiedHomeListingActivity]);
-	const displayedAssets = React.useMemo(
+	const rankedDisplayedAssets = React.useMemo(
 		() =>
 			[...assetCandidates]
 				.filter(({ asset }) => homeAssetVisibleForView(displayAssetPrices[asset.id], assetView))
@@ -3822,6 +3777,27 @@ function Home() {
 				}),
 		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
+	// Rows and cards already on screen keep their slots while listings and prices stream in; the lists
+	// re-rank when the viewer changes the view or once nothing that could move a card is still loading.
+	const displayedAssetOrderSettled = homeDiscoverOrderSettled(
+		assetView,
+		market.loading || portableHomeListingsLoading,
+		assetCandidates.map(({ asset }) => asset.id),
+		displayAssetPrices
+	);
+	const displayedAssetOrder = useStableOrder(
+		rankedDisplayedAssets.map(homeDiscoverOrderId),
+		`${assetView}|${assetType}|${normalizedQuery}`,
+		displayedAssetOrderSettled
+	);
+	const displayedAssets = React.useMemo(
+		() => applyStableOrder(rankedDisplayedAssets, displayedAssetOrder, homeDiscoverOrderId),
+		[displayedAssetOrder, rankedDisplayedAssets]
+	);
+	const discoverTokenList = React.useRef<HTMLDivElement>(null);
+	const discoverUniqueGrid = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(discoverTokenList, displayedAssetOrder);
+	useGridReorderMotion(discoverUniqueGrid, displayedAssetOrder);
 	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
 	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
 	const discoverTokenPagination = homeAssetPage(discoverTokens, discoverTokenPage, HOME_DISCOVER_TOKEN_PAGE_SIZE);
@@ -4758,8 +4734,12 @@ function Home() {
 		setAssetPage(page);
 		marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	};
-	const renderTokenList = (items: typeof displayedAssets) => (
-		<div className="token-market-list" role="list">
+	const renderTokenList = (
+		items: typeof displayedAssets,
+		placeholderRows = 0,
+		listRef?: React.RefObject<HTMLDivElement>
+	) => (
+		<div className="token-market-list" ref={listRef} role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
 				const change = tokenPriceChanges[asset.id];
@@ -4791,19 +4771,25 @@ function Home() {
 									: 'muted',
 						}}
 						onWarm={() => prefetchAssetPage(asset.id, true)}
+						orderId={homeDiscoverOrderId({ asset, collection })}
 						priority={index < 2}
 					/>
 				);
 			})}
+			{Array.from({ length: placeholderRows }, (_, index) => (
+				// Keyed by slot, so the remaining placeholders stay put as rows fill the slots above them.
+				<HomeTokenPlaceholderRow key={`placeholder-${items.length + index}`} />
+			))}
 		</div>
 	);
-	const renderCollectibleGrid = (items: typeof displayedAssets) => (
-		<div className="home-asset-grid">
+	const renderCollectibleGrid = (items: typeof displayedAssets, gridRef?: React.RefObject<HTMLDivElement>) => (
+		<div className="home-asset-grid" ref={gridRef}>
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
 				const pricePending = !price;
 				return (
 					<Link
+						data-order-id={homeDiscoverOrderId({ asset, collection })}
 						key={`${collection.id}-${asset.id}`}
 						to={`/asset/${collection.id}/${asset.id}`}
 						onFocus={() => prefetchAssetPage(asset.id, false)}
@@ -5140,16 +5126,32 @@ function Home() {
 															/>
 														</Button>
 													</div>
-													{discoverTokens.length ? (
+													{discoverTokens.length || !displayedAssetOrderSettled ? (
 														<>
-															{renderTokenList(discoverTokenPagination.items)}
-															<Pagination
-																ariaLabel="Token overview pages"
-																className="discover-token-pagination"
-																onPageChange={setDiscoverTokenPage}
-																page={discoverTokenPagination.page}
-																pageCount={discoverTokenPagination.pageCount}
-															/>
+															{renderTokenList(
+																discoverTokenPagination.items,
+																homeTokenPlaceholderRows(
+																	displayedAssetOrderSettled,
+																	discoverTokenPagination.items.length
+																),
+																discoverTokenList
+															)}
+															{discoverTokenPagination.pageCount > 1 ||
+															displayedAssetOrderSettled ? (
+																<Pagination
+																	ariaLabel="Token overview pages"
+																	className="discover-token-pagination"
+																	onPageChange={setDiscoverTokenPage}
+																	page={discoverTokenPagination.page}
+																	pageCount={discoverTokenPagination.pageCount}
+																/>
+															) : (
+																// Hold the pager's height while more tokens may still arrive.
+																<div
+																	aria-hidden="true"
+																	className="pagination discover-token-pagination"
+																/>
+															)}
 														</>
 													) : (
 														<p className="discover-section-empty">
@@ -5160,7 +5162,7 @@ function Home() {
 												<section className="discover-market-section collectible-section">
 													<div className="discover-market-heading">
 														<div>
-															<p className="eyebrow">1/1 assets</p>
+															<p className="eyebrow">One-of-one assets</p>
 															<h2>Uniques</h2>
 														</div>
 														<Button size="custom" onClick={() => setAssetType('atomic')}>
@@ -5173,7 +5175,8 @@ function Home() {
 													</div>
 													{discoverCollectibles.length ? (
 														renderCollectibleGrid(
-															discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW)
+															discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
+															discoverUniqueGrid
 														)
 													) : (
 														<p className="discover-section-empty">
@@ -5937,6 +5940,11 @@ export function collectionPriceRetryNotice({
 }
 
 type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
+
+/** The collection grid re-ranks at once when any of these viewer choices changes. */
+export function collectionAssetOrderKey(sort: CollectionSort, initial: string, query: string, listedOnly: boolean) {
+	return [sort, initial, query.trim().toLowerCase(), listedOnly ? 'listed' : 'all'].join('|');
+}
 type CollectionViewMode = 'comfortable' | 'compact' | 'list';
 type CollectionLiveListingRow = {
 	asset: AssetSummary;
@@ -6203,6 +6211,9 @@ function useCollectionLookup(collectionId: string) {
 	};
 }
 
+// Same guard as Tooltip: static (server) rendering has no layout to measure.
+const useBrowserLayoutEffect = typeof document === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
 export function CollectionDescription({ description }: { description: string }) {
 	const text = formatTokenDescription(description);
 	const contentId = React.useId();
@@ -6210,7 +6221,9 @@ export function CollectionDescription({ description }: { description: string }) 
 	const [expanded, setExpanded] = React.useState(false);
 	const [overflowing, setOverflowing] = React.useState(false);
 
-	React.useEffect(() => {
+	// Measured before paint, so a "Show more" toggle is part of the first frame instead of pushing the
+	// collection header (and the grid below it) down a frame later.
+	useBrowserLayoutEffect(() => {
 		const paragraph = paragraphRef.current;
 		if (!paragraph) return;
 		let disposed = false;
@@ -6594,7 +6607,7 @@ function CollectionView() {
 				: collection?.assets ?? [],
 		[collection, deferredQuery, listed, listedOnly]
 	);
-	const filtered = React.useMemo(
+	const rankedAssets = React.useMemo(
 		() =>
 			visibleAssets
 				.filter(
@@ -6631,6 +6644,27 @@ function CollectionView() {
 				}),
 		[activityByAsset, cardPrices, collection?.kind, defaultIndex, deferredQuery, initial, sort, visibleAssets]
 	);
+	// Cards already painted keep their slots while listing activity and prices stream in; the grid re-ranks
+	// when the viewer changes the sort or filters, asks for the newer order, or once the listing scan has
+	// settled. A large collection's scan can run for minutes, so the newer order is offered meanwhile.
+	const [assetOrderRevision, setAssetOrderRevision] = React.useState(0);
+	const rankedAssetIds = rankedAssets.map((asset) => asset.id);
+	const assetOrder = useStableOrder(
+		rankedAssetIds,
+		`${collectionAssetOrderKey(sort, initial, deferredQuery, listedOnly)}|${assetOrderRevision}`,
+		!activityState.loading && !cardPricesLoading
+	);
+	const newerAssetOrder = stableOrderDiffers(assetOrder, rankedAssetIds, limit);
+	const applyNewerAssetOrder = () => {
+		setAssetOrderRevision((current) => current + 1);
+		window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
+	};
+	const filtered = React.useMemo(
+		() => applyStableOrder(rankedAssets, assetOrder, (asset) => asset.id),
+		[assetOrder, rankedAssets]
+	);
+	const collectionGridRef = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(collectionGridRef, assetOrder);
 	const liveListingRows = React.useMemo(() => {
 		const rows = listed
 			.flatMap((result) =>
@@ -7688,6 +7722,7 @@ function CollectionView() {
 					aria-label={`${collection.name} tokens`}
 					className="token-market-list collection-token-list"
 					id={assetGridId}
+					ref={collectionGridRef}
 					role="list"
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
@@ -7711,6 +7746,7 @@ function CollectionView() {
 									tone: price?.status === 'resolved' && price.label ? 'positive' : 'default',
 								}}
 								onWarm={() => prefetchAssetPage(asset.id, true)}
+								orderId={asset.id}
 								priority={index < 2}
 							/>
 						);
@@ -7724,6 +7760,7 @@ function CollectionView() {
 						collection.kind === 'names' ? ' names-collection-grid' : ''
 					}`}
 					id={assetGridId}
+					ref={collectionGridRef}
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
 						const price = cardPrices[asset.id];
@@ -7732,6 +7769,7 @@ function CollectionView() {
 								key={asset.id}
 								collection={collection}
 								asset={asset}
+								orderId={asset.id}
 								priority={index < 2}
 								collectionContext
 								badge={listedOnly ? 'For sale' : undefined}
@@ -7746,6 +7784,20 @@ function CollectionView() {
 					})}
 				</div>
 			)}
+			{/* Zero-height, with the offer fixed to the bottom of the viewport, so it never moves the grid. */}
+			<div className="collection-order-notice" aria-live="polite">
+				{newerAssetOrder ? (
+					<Button
+						aria-controls={assetGridId}
+						className="collection-order-notice-button with-icon"
+						onClick={applyNewerAssetOrder}
+						size="custom"
+						type="button"
+					>
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Show newer order
+					</Button>
+				) : null}
+			</div>
 			<p
 				className={
 					filtered.length > pageSize && limit >= filtered.length
@@ -8513,6 +8565,7 @@ export const AssetCard = React.memo(function AssetCard({
 	price,
 	priceListed = false,
 	collectionContext = false,
+	orderId,
 	priority = false,
 }: {
 	collection: Collection;
@@ -8521,6 +8574,8 @@ export const AssetCard = React.memo(function AssetCard({
 	price?: string;
 	priceListed?: boolean;
 	collectionContext?: boolean;
+	/** Identifies the card to useGridReorderMotion. */
+	orderId?: string;
 	priority?: boolean;
 }) {
 	return (
@@ -8528,6 +8583,7 @@ export const AssetCard = React.memo(function AssetCard({
 			className={`asset-card${collection.kind === 'tokens' ? ' token-asset-card' : ''}${
 				collectionContext ? ' collection-context' : ''
 			}`}
+			data-order-id={orderId}
 			onFocus={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			onMouseEnter={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
