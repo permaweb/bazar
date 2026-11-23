@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Check, Copy, Download, LogOut, Monitor, Moon, Sun, SunDim, Trash2, UserRound, Wallet } from 'lucide-react';
 
 import type { ThemePreference } from 'helpers/theme';
+import { groupDecimalAmount } from 'helpers/token-display';
 import { useTheme } from 'providers/ThemeProvider';
 import { useWallet, walletDisconnectPlan, type WalletKind } from 'providers/WalletProvider';
 
@@ -366,5 +367,5 @@ export function tokenBalanceLabel(
 	const fixedBalance = (balance * 10_000n + atomicScale / 2n) / atomicScale;
 	const whole = fixedBalance / 10_000n;
 	const fraction = (fixedBalance % 10_000n).toString().padStart(4, '0');
-	return `${whole.toLocaleString()}.${fraction} ${symbol}`;
+	return `${groupDecimalAmount(`${whole}.${fraction}`)} ${symbol}`;
 }

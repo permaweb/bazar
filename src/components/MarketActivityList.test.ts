@@ -15,6 +15,23 @@ import {
 } from './MarketActivityList';
 
 describe('market activity labels', () => {
+	it('shows a listing total exactly with fixed AR grouping', () => {
+		const listing = { action: 'make-offer', asking: '12345678901234567890' } as any;
+		expect(marketActivityDetail(listing)).toBe('12,345,678.90123456789 AR total');
+		const original = Number.prototype.toLocaleString;
+		Number.prototype.toLocaleString = function (this: number) {
+			return original.call(this, 'de-DE', { maximumFractionDigits: 12 });
+		};
+		try {
+			expect(marketActivityDetail({ action: 'make-offer', asking: '1234500000000000' } as any)).toBe(
+				'1,234.5 AR total'
+			);
+		} finally {
+			Number.prototype.toLocaleString = original;
+		}
+		expect(marketActivityDetail({ action: 'make-offer', asking: 'not-winston' } as any)).toBe('');
+	});
+
 	it('presents a purchase reservation as a submitted purchase', () => {
 		expect(marketActivityLabel('register-interest')).toBe('Purchase submitted');
 		expect(marketActivityLabel('register-interest', true)).toBe('Purchase confirmed');
