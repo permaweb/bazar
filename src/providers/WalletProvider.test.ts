@@ -5,10 +5,13 @@ import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
 import { dialogRestoreTarget } from '../app/useDialogFocus';
 
 import {
+	addressCopyFeedback,
+	browserWalletConnectLabel,
 	browserWalletSelection,
 	completePrivateJwk,
 	connectDialogRestoreFallback,
 	connectWallet,
+	copyText,
 	createLatestAddressCommitter,
 	generatedKeyfileBackupStep,
 	isValidWalletJwk,
@@ -257,6 +260,62 @@ describe('local keyfile forget semantics', () => {
 		expect(afterDownload.downloadLabel).toBe('Download again');
 		expect(afterDownload.finishLabel).toBe('I saved the keyfile');
 		expect(afterDownload.hint).toContain('wallet menu');
+	});
+
+	it('focuses Download keyfile when the generated panel opens, then I saved the keyfile once downloaded', () => {
+		expect(generatedKeyfileBackupStep(false).initialFocus).toBe('download');
+		expect(generatedKeyfileBackupStep(true).initialFocus).toBe('finish');
+	});
+});
+
+describe('generated address copy', () => {
+	const address = 'a'.repeat(43);
+
+	it('reports copied when the clipboard accepts the address', async () => {
+		const writeText = vi.fn(async () => undefined);
+		await expect(copyText(address, writeText)).resolves.toBe('copied');
+		expect(writeText).toHaveBeenCalledWith(address);
+	});
+
+	it('reports failed instead of rejecting when the clipboard denies or throws', async () => {
+		await expect(copyText(address, async () => Promise.reject(new Error('denied')))).resolves.toBe('failed');
+		await expect(
+			copyText(address, () => {
+				throw new TypeError('no clipboard');
+			})
+		).resolves.toBe('failed');
+	});
+
+	it('reports failed when the browser exposes no clipboard, as in an insecure context', async () => {
+		vi.stubGlobal('navigator', {});
+		try {
+			await expect(copyText(address)).resolves.toBe('failed');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('shows Copy failed and announces how to recover, and announces nothing while idle', () => {
+		expect(addressCopyFeedback('idle')).toEqual({ label: 'Copy', status: '' });
+		expect(addressCopyFeedback('copied')).toEqual({ label: 'Copied', status: 'Address copied.' });
+		const failed = addressCopyFeedback('failed');
+		expect(failed.label).toBe('Copy failed');
+		expect(failed.status).toContain('could not be copied');
+	});
+});
+
+describe('browser wallet connect buttons', () => {
+	it('gives each Connect button a wallet-specific name while keeping the short visible text', () => {
+		expect(browserWalletConnectLabel('permaweb-os', null)).toEqual({ text: 'Connect', name: 'Connect PermawebOS' });
+		expect(browserWalletConnectLabel('wander', null)).toEqual({ text: 'Connect', name: 'Connect Wander' });
+	});
+
+	it('names only the pending wallet as connecting', () => {
+		expect(browserWalletConnectLabel('wander', 'wander')).toEqual({
+			text: 'Connecting…',
+			name: 'Connecting Wander…',
+		});
+		expect(browserWalletConnectLabel('permaweb-os', 'wander').name).toBe('Connect PermawebOS');
 	});
 });
 
