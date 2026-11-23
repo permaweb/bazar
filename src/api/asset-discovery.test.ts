@@ -1271,6 +1271,66 @@ describe('wallet candidate discovery', () => {
 		expect(fetcher).toHaveBeenCalledTimes(3);
 	});
 
+	it('retries a listing page every index failed before reporting the index unavailable', async () => {
+		const requests: Array<{ url: string; cursor: unknown }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const { cursor } = JSON.parse(String(init?.body)).variables;
+			requests.push({ url: String(input), cursor });
+			// The first page: both indexes busy, then answered by arweave.net on the retry.
+			if (requests.length <= 2) return new Response('busy', { status: 503 });
+			if (cursor === null) {
+				return Response.json({
+					data: {
+						transactions: { pageInfo: { hasNextPage: true }, edges: [activityEdge('page-1', assetA, 10)] },
+					},
+				});
+			}
+			// The cursor page times out once on its issuing index and is retried there.
+			if (requests.length === 4) throw new Error('asset-activity-graphql-timeout');
+			return Response.json({
+				data: {
+					transactions: { pageInfo: { hasNextPage: false }, edges: [activityEdge('page-2', assetB, 9)] },
+				},
+			});
+		});
+
+		const candidates = await discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			listingsOnly: true,
+			retryDelaysMs: [0, 0],
+		});
+
+		expect(candidates.map(({ processId }) => processId)).toEqual([assetA, assetB]);
+		expect(requests).toEqual([
+			{ url: 'https://arweave.net/graphql', cursor: null },
+			{ url: 'https://ardrive.net/graphql', cursor: null },
+			{ url: 'https://arweave.net/graphql', cursor: null },
+			{ url: 'https://arweave.net/graphql', cursor: 'page-1' },
+			{ url: 'https://arweave.net/graphql', cursor: 'page-1' },
+		]);
+	});
+
+	it('keeps batched summary reads single-shot so they do not stack with the caller retry', async () => {
+		// Home card summaries and collection pages call this without retryDelaysMs; they retry
+		// failed batches themselves (HOME_SUMMARY_AUTO_RETRY_LIMIT), so each batch tries every index once.
+		const fetcher = vi.fn(async (_input: RequestInfo | URL) => new Response('busy', { status: 503 }));
+
+		await expect(
+			discoverMarketActivityBatched({
+				fetch: fetcher as typeof fetch,
+				listingsOnly: true,
+				recipients: [assetA, assetB],
+				batchSize: 1,
+			})
+		).rejects.toThrow('asset-activity-batch-failed');
+		expect(fetcher.mock.calls.map(([input]) => String(input)).sort()).toEqual([
+			'https://ardrive.net/graphql',
+			'https://ardrive.net/graphql',
+			'https://arweave.net/graphql',
+			'https://arweave.net/graphql',
+		]);
+	});
+
 	it('scopes collection activity by recipients and can query listings only', async () => {
 		const fetcher = vi.fn(
 			async () =>
@@ -1368,8 +1428,9 @@ describe('wallet candidate discovery', () => {
 				batchSize: 2,
 				concurrency: 1,
 				fetch: fetcher as typeof fetch,
-				// One index: this covers batch isolation, not endpoint fallback.
+				// One index, no retries: this covers batch isolation, not endpoint fallback or retry.
 				graphql: 'https://arweave.net/graphql',
+				retryDelaysMs: [],
 				recipients,
 				onBatch: (_candidates, batch) => {
 					completed.push(batch);
@@ -1396,6 +1457,7 @@ describe('wallet candidate discovery', () => {
 					concurrency: 2,
 					fetch: fetcher as typeof fetch,
 					graphql: 'https://arweave.net/graphql',
+					retryDelaysMs: [],
 					recipients,
 				});
 				throw new Error('expected activity failure');
@@ -2542,6 +2604,67 @@ describe('live candidate resolution', () => {
 		).resolves.toEqual({ supported: [candidate], unavailable: [] });
 	});
 
+	it('retries a support batch that every index failed transiently', async () => {
+		const processId = 'Q'.repeat(43);
+		const candidate: AssetCandidate = { processId, height: 10, timestamp: 0, sources: ['transfer'] };
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		let request = 0;
+		const fetcher = vi.fn(async () => {
+			request += 1;
+			if (request === 1) throw new Error('asset-support-graphql-timeout');
+			if (request === 2) return new Response('busy', { status: 503 });
+			return Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [{ cursor: 'f', node: { id: processId } }] },
+					atomic: { pageInfo: { hasNextPage: false }, edges: [] },
+				},
+			});
+		});
+
+		await expect(
+			verifyAssetCandidateSupport([candidate], [tokenCollection], {
+				fetch: fetcher as typeof fetch,
+				retryDelaysMs: [0],
+			})
+		).resolves.toEqual({ supported: [candidate], unavailable: [] });
+		expect(fetcher).toHaveBeenCalledTimes(3);
+	});
+
+	it('shares one retry budget across support batches so an outage is reported in bounded time', async () => {
+		// 36 unindexed candidates make four 9-ID batches, two in flight at a time.
+		const candidates: AssetCandidate[] = Array.from({ length: 36 }, (_, index) => ({
+			processId: index.toString(36).padStart(43, 'Q'),
+			height: 10,
+			timestamp: 0,
+			sources: ['transfer'],
+		}));
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+
+		const result = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
+			fetch: fetcher as typeof fetch,
+			graphql: 'https://arweave.net/graphql',
+			retryDelaysMs: [0, 0],
+		});
+
+		expect(result.supported).toEqual([]);
+		expect(result.unavailable).toHaveLength(36);
+		// The two first batches spend their retries (3 attempts each); the next two are tried once.
+		expect(fetcher).toHaveBeenCalledTimes(8);
+	});
+
 	it('verifies and reconstructs Bazar audio assets with artwork without origin-local storage', async () => {
 		const processId = 'U'.repeat(43);
 		const mediaId = 'M'.repeat(43);
@@ -2786,6 +2909,7 @@ describe('live candidate resolution', () => {
 		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
 			graphql: 'https://arweave.net/graphql',
+			retryDelaysMs: [],
 			onVerified: (batch) => {
 				verifiedBatches.push(batch.map((candidate) => candidate.processId));
 			},

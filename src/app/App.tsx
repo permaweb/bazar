@@ -123,6 +123,7 @@ import {
 	withIndexedAssetNames,
 	withVisibleCollectionAssets,
 } from 'api/collections';
+import { GRAPHQL_RETRY_DELAYS_MS } from 'api/graphql';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -4008,6 +4009,8 @@ function Home() {
 					discoverMarketActivity({
 						listingsOnly: true,
 						signal,
+						// The crawl has no background retry of its own, so its pages retry transient index failures.
+						retryDelaysMs: GRAPHQL_RETRY_DELAYS_MS,
 						onPage: (candidates, graphql) => {
 							if (graphql !== arweaveGraphqlEndpoint()) homeListingsFromFallbackIndex.current = true;
 							return onPage(candidates);

@@ -104,6 +104,15 @@ type CandidateOptions = {
 	onPage?: (candidates: AssetCandidate[]) => void | Promise<void>;
 };
 
+type IndexRetryOptions = {
+	/**
+	 * Delays before retrying a request whose every index failed transiently. A cold query can take
+	 * arweave.net longer than the deadline once; it then answers from cache. Each read states its
+	 * default: callers that already retry a failed read themselves keep it single-shot.
+	 */
+	retryDelaysMs?: readonly number[];
+};
+
 export type WalletCandidateAlias = 'initiallyHeld' | 'marketActions' | 'receivedTransfers';
 
 export type WalletCandidateScan = {
@@ -134,24 +143,21 @@ type StoredWalletCandidateScan = {
 	c: StoredWalletCandidate[];
 };
 
-type WalletCandidateOptions = CandidateOptions & {
-	scan?: WalletCandidateScan;
-	catchUp?: boolean;
-	/**
-	 * Delays before retrying a page that failed transiently. A cold wallet query can take
-	 * arweave.net longer than the page deadline once; the index then answers it from cache.
-	 */
-	retryDelaysMs?: readonly number[];
-};
+type WalletCandidateOptions = CandidateOptions &
+	IndexRetryOptions & {
+		scan?: WalletCandidateScan;
+		catchUp?: boolean;
+	};
 
-type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> & {
-	/** `graphql` is the index that answered the page. */
-	onPage?: (candidates: AssetCandidate[], graphql: string) => void | Promise<void>;
-	recipients?: string[];
-	listingsOnly?: boolean;
-	acceptProcessId?: (processId: string) => boolean;
-	maxPages?: number;
-};
+type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> &
+	IndexRetryOptions & {
+		/** `graphql` is the index that answered the page. */
+		onPage?: (candidates: AssetCandidate[], graphql: string) => void | Promise<void>;
+		recipients?: string[];
+		listingsOnly?: boolean;
+		acceptProcessId?: (processId: string) => boolean;
+		maxPages?: number;
+	};
 
 type BatchedMarketActivityOptions = Omit<MarketActivityOptions, 'onPage' | 'recipients'> & {
 	recipients: string[];
@@ -940,40 +946,51 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 	let pages = 0;
 	const visited = new Set<string>();
 	const maxPages = Math.max(1, Math.floor(options.maxPages ?? MAX_GRAPHQL_PAGES));
+	// Single-shot unless the caller opts in. Home card summaries already retry a failed collection
+	// read in the background (HOME_SUMMARY_AUTO_RETRY_LIMIT rounds, 15 s apart), and collection pages
+	// offer Retry, so a default retry here would stack with theirs: 3 x 3 attempts per batch in an
+	// index outage, and cards left on "Checking…" about three times longer before they say so.
+	const retryDelaysMs = options.retryDelaysMs ?? [];
 
 	while (true) {
 		options.signal?.throwIfAborted();
+		const pageEndpoints = endpoints;
 		const {
 			response,
 			body: payload,
 			endpoint,
-		} = await postGraphql<any>(
-			fetcher,
-			endpoints,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: MARKET_ACTIVITY_QUERY,
-					variables: {
-						cursor,
-						recipients: recipients.length ? recipients : null,
-						tags: [
-							{
-								name: 'action',
-								values: options.listingsOnly
-									? ['make-offer']
-									: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+		} = await retryTransientGraphql(
+			() =>
+				postGraphql<any>(
+					fetcher,
+					pageEndpoints,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							query: MARKET_ACTIVITY_QUERY,
+							variables: {
+								cursor,
+								recipients: recipients.length ? recipients : null,
+								tags: [
+									{
+										name: 'action',
+										values: options.listingsOnly
+											? ['make-offer']
+											: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+									},
+								],
 							},
-						],
+						}),
+						signal: options.signal,
 					},
-				}),
-				signal: options.signal,
-			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-activity-graphql-timeout',
-			}
+					{
+						timeoutMs: options.requestTimeoutMs,
+						timeoutError: 'asset-activity-graphql-timeout',
+					}
+				),
+			retryDelaysMs,
+			options.signal
 		);
 		if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-activity-graphql-empty');
@@ -1673,9 +1690,10 @@ export function restrictAssetCandidates(candidates: AssetCandidate[], collection
 export async function verifyAssetCandidateSupport(
 	candidates: AssetCandidate[],
 	collections: Collection[],
-	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & {
-		onVerified?: (candidates: AssetCandidate[]) => void | Promise<void>;
-	} = {}
+	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> &
+		IndexRetryOptions & {
+			onVerified?: (candidates: AssetCandidate[]) => void | Promise<void>;
+		} = {}
 ): Promise<AssetCandidateSupportResult> {
 	const { supported, unverified: unindexed } = partitionAssetCandidateSupport(candidates, collections);
 	if (!unindexed.length) return { supported, unavailable: [] };
@@ -1689,24 +1707,38 @@ export async function verifyAssetCandidateSupport(
 		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	let nextChunk = 0;
+	const retryDelaysMs = options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS;
+	// One retry budget per call: once a chunk has spent its retries on transient failures, later chunks
+	// are tried once each until an index answers again. A full outage is then reported after about one
+	// retry cycle plus one attempt per chunk, not a full retry cycle (~94 s) for every 9-ID chunk.
+	let indexDown = false;
 	const verifyChunk = async (chunk: string[]) => {
 		const requested = new Set(chunk);
 		const verifiedChunk = new Set<string>();
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await postGraphql<any>(
-			fetcher,
-			endpoints,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ query: VERIFY_ASSET_PROCESSES_QUERY, variables: { ids: chunk } }),
-				signal: options.signal,
-			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-support-graphql-timeout',
-			}
-		);
+		const { response, body: payload } = await retryTransientGraphql(
+			() =>
+				postGraphql<any>(
+					fetcher,
+					endpoints,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ query: VERIFY_ASSET_PROCESSES_QUERY, variables: { ids: chunk } }),
+						signal: options.signal,
+					},
+					{
+						timeoutMs: options.requestTimeoutMs,
+						timeoutError: 'asset-support-graphql-timeout',
+					}
+				),
+			indexDown ? [] : retryDelaysMs,
+			options.signal
+		).catch((error: unknown) => {
+			if (!options.signal?.aborted) indexDown = true;
+			throw error;
+		});
+		indexDown = response.status === 429 || response.status >= 500;
 		if (!response.ok) throw new Error(`asset-support-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-support-graphql-empty');
 		if (payload.errors?.length) throw new Error('asset-support-graphql-error');
