@@ -31,7 +31,6 @@ import {
 	requiresCostConfirmation,
 	runDispatch,
 } from 'api/fungible-dispatch';
-import { formatTokenAmount } from 'api/order-matching';
 
 import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
 import { Button } from 'components/Button';
@@ -40,6 +39,7 @@ import { Loading } from 'components/Loading';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { WalletAddress } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation } from 'helpers/config';
+import { formatTokenQuantity } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
 import { assetStateErrorMessage, RouteState, winstonToAr } from '../app/App';
@@ -51,10 +51,8 @@ function shortAddress(address: string): string {
 	return `${address.slice(0, 6)}…${address.slice(-6)}`;
 }
 
-function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'ticker'>): string {
-	const [whole, fraction] = formatTokenAmount(raw, state.denomination).split('.');
-	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || 'tokens'}`;
+export function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'ticker'>): string {
+	return formatTokenQuantity(raw, state, 'tokens');
 }
 
 /** Gateway answers that say "try again later", not "this transaction is invalid". */

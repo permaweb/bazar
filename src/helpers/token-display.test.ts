@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	AR_AMOUNT_ERROR,
 	formatArAmount,
+	formatGroupedTokenAmount,
 	formatTickerLabel,
 	formatTokenDescription,
+	formatTokenQuantity,
 	groupDecimalAmount,
 	parseArAmount,
 } from './token-display';
@@ -48,6 +50,20 @@ describe('formatTickerLabel', () => {
 	it('uses a prefixed fallback for missing tickers', () => {
 		expect(formatTickerLabel('')).toBe('$Token');
 		expect(formatTickerLabel(undefined, 'tokens')).toBe('$tokens');
+	});
+});
+
+describe('token quantities', () => {
+	it('groups the exact amount and adds the $ ticker', () => {
+		expect(formatGroupedTokenAmount('1234567890', 3)).toBe('1,234,567.89');
+		expect(formatTokenQuantity('1000000', { denomination: 3, ticker: 'PIXL' }, 'tokens')).toBe('1,000 $PIXL');
+		expect(formatTokenQuantity('1500', { denomination: 3, ticker: '$PIXL' }, 'tokens')).toBe('1.5 $PIXL');
+	});
+
+	it('uses the caller fallback as a plain noun when the ticker is missing', () => {
+		expect(formatTokenQuantity('1000', { denomination: 0, ticker: '' }, 'tokens')).toBe('1,000 tokens');
+		expect(formatTokenQuantity('1', { denomination: 0, ticker: '  ' }, 'asset')).toBe('1 asset');
+		expect(formatTokenQuantity('7', { denomination: 0 }, 'tokens')).toBe('7 tokens');
 	});
 });
 

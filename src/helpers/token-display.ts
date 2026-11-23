@@ -22,6 +22,23 @@ export function groupDecimalAmount(value: string) {
 	return fraction === undefined ? grouped : `${grouped}.${fraction}`;
 }
 
+/** Format a raw (atomic) token quantity as an exact, comma-grouped amount. */
+export function formatGroupedTokenAmount(raw: string, denomination: number) {
+	return groupDecimalAmount(formatTokenAmount(raw, denomination));
+}
+
+/** The one token quantity label used on every screen: the exact grouped amount
+ * plus the $ ticker ('1,000 $PIXL'). With no ticker the caller's fallback is a
+ * plain noun ('tokens', 'asset'), not a ticker, so it is never $-prefixed. */
+export function formatTokenQuantity(
+	raw: string,
+	state: { denomination: number; ticker?: string | null },
+	fallback: string
+) {
+	const ticker = state.ticker?.trim();
+	return `${formatGroupedTokenAmount(raw, state.denomination)} ${ticker ? formatTickerLabel(ticker) : fallback}`;
+}
+
 /** Format winston as an exact, comma-grouped AR amount ('1,234.5'). */
 export function formatArAmount(winston: string | bigint) {
 	return groupDecimalAmount(formatTokenAmount(BigInt(winston).toString(), AR_DENOMINATION));

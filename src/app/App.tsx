@@ -236,7 +236,7 @@ import {
 	formatArAmount,
 	formatTickerLabel,
 	formatTokenDescription,
-	groupDecimalAmount,
+	formatTokenQuantity,
 	parseArAmount,
 } from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
@@ -12889,10 +12889,7 @@ function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
 	};
 }
 export function tokenBalanceLabel(value: string, state: AssetState) {
-	return `${groupDecimalAmount(formatTokenAmount(value, state.denomination))} ${formatTickerLabel(
-		state.ticker,
-		state.totalSupply === '1' ? 'asset' : 'tokens'
-	)}`;
+	return formatTokenQuantity(value, state, state.totalSupply === '1' ? 'asset' : 'tokens');
 }
 function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;

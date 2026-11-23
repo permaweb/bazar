@@ -34,6 +34,7 @@ import DispatchRoute, {
 	rejectedSignatureConfirmation,
 	rejectedSignatureOutcomeMessage,
 	startDispatchOnce,
+	tokenAmount,
 	transferRewardErrorMessage,
 } from './DispatchRoute';
 
@@ -243,6 +244,17 @@ describe('invalid dispatch id', () => {
 		expect(markup).toContain('not a 43-character Arweave process ID');
 		expect(markup).toContain('href="/discover"');
 		expect(markup).toContain('Discover');
+	});
+});
+
+describe('dispatch token amounts', () => {
+	it('shows the same $ ticker form as the token page', () => {
+		expect(tokenAmount('1000000', { denomination: 3, ticker: 'PIXL' })).toBe('1,000 $PIXL');
+		expect(tokenAmount('1234567', { denomination: 2, ticker: 'PIXL' })).toBe('12,345.67 $PIXL');
+	});
+
+	it('keeps the plain tokens noun when the ticker is missing', () => {
+		expect(tokenAmount('1000', { denomination: 0, ticker: '' })).toBe('1,000 tokens');
 	});
 });
 
