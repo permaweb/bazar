@@ -21,6 +21,7 @@ import {
 	CREATED_COLLECTION_ID,
 	CREATED_COLLECTION_NAME,
 	type MintedAsset,
+	type MintedByIndex,
 	type MintedCollection,
 	removeMintedAssets,
 	type StorageLike,
@@ -42,7 +43,14 @@ export {
 	type AtomicAssetUploadRequest,
 	normalizeUploadTags,
 } from './asset-uploader';
-export type { MintedAsset, MintedCollection, StorageLike } from './minted-assets';
+export type {
+	MintedAsset,
+	MintedByIndex,
+	MintedCollection,
+	MintProgress,
+	PendingMintProgress,
+	StorageLike,
+} from './minted-assets';
 export {
 	assetFromMintState,
 	CREATED_COLLECTION_ID,
@@ -50,7 +58,10 @@ export {
 	createdCollection,
 	loadMintedAssets,
 	loadMintedCollections,
+	mintProgressKey,
+	pendingMintProgress,
 	removeMintedAssets,
+	reusableMintProgress,
 	storeMintedAsset,
 	storeMintedCollection,
 } from './minted-assets';
@@ -116,6 +127,11 @@ export type MintInput = {
 	description: string;
 	file: File;
 	artwork?: File;
+	/**
+	 * Artwork transaction an earlier, failed run already signed and paid for.
+	 * When set, mint reuses it instead of uploading `artwork` again.
+	 */
+	artworkId?: string;
 	artist?: string;
 	album?: string;
 	duration?: number;
@@ -305,17 +321,18 @@ export class AssetMintClient {
 
 	async estimate(input: MintInput, signal?: AbortSignal): Promise<MintEstimate> {
 		validateMintInput(input);
+		const artwork = input.artworkId ? undefined : input.artwork;
 		const [assetReward, artworkReward] = await Promise.all([
 			this.#uploader.price(input.file.size, signal),
-			input.artwork ? this.#uploader.price(input.artwork.size, signal) : 0n,
+			artwork ? this.#uploader.price(artwork.size, signal) : 0n,
 		]);
 		return {
 			assetReward,
 			artworkReward,
 			total: assetReward + artworkReward,
 			assetBytes: input.file.size,
-			artworkBytes: input.artwork?.size ?? 0,
-			transactionCount: input.artwork ? 2 : 1,
+			artworkBytes: artwork?.size ?? 0,
+			transactionCount: artwork ? 2 : 1,
 		};
 	}
 
@@ -325,6 +342,8 @@ export class AssetMintClient {
 		options: {
 			allowHighCost?: boolean;
 			signal?: AbortSignal;
+			/** Reports the artwork transaction as soon as it is paid, so a retry can pass it back as `input.artworkId`. */
+			onArtworkUploaded?: (transactionId: string) => void;
 			onPhase?: (phase: MintPhase) => void;
 			onTransaction?: (transaction: MintUploadTransaction) => void;
 		} = {}
@@ -338,8 +357,8 @@ export class AssetMintClient {
 		await this.#uploader.assertBalance(owner, estimate.total, options.signal);
 		const contentType = requiredFileContentType(input.file);
 
-		let artworkId: string | undefined;
-		if (input.artwork) {
+		let artworkId = input.artworkId;
+		if (!artworkId && input.artwork) {
 			artworkId = await this.#uploader.upload(
 				{
 					data: new Uint8Array(await input.artwork.arrayBuffer()),
@@ -358,6 +377,7 @@ export class AssetMintClient {
 					onTransaction: (id) => options.onTransaction?.({ id, label: 'Artwork transaction' }),
 				}
 			);
+			options.onArtworkUploaded?.(artworkId);
 		}
 
 		const createdAt = Date.now();
@@ -610,6 +630,20 @@ export class AssetMintClient {
 	async priceData(bytes: number, signal?: AbortSignal, target?: string): Promise<bigint> {
 		return this.#uploader.price(bytes, signal, target);
 	}
+
+	/** Reject before any signature when `owner` is not the connected wallet account. */
+	async assertOwner(owner: string): Promise<void> {
+		return this.#uploader.assertOwner(owner);
+	}
+
+	/**
+	 * Reject before any signature when `owner` cannot pay `required` winston.
+	 * Multi-transaction runs check their whole estimate here first, as `mint`
+	 * does for its asset and artwork pair.
+	 */
+	async assertBalance(owner: string, required: bigint, signal?: AbortSignal): Promise<void> {
+		return this.#uploader.assertBalance(owner, required, signal);
+	}
 }
 
 export class CollectionMintClient {
@@ -623,19 +657,29 @@ export class CollectionMintClient {
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
 	}
 
-	async estimate(input: CollectionMintInput, signal?: AbortSignal): Promise<CollectionMintEstimate> {
+	/** Price the run; files `minted` already covers cost nothing but keep their real ids in the manifest. */
+	async estimate(
+		input: CollectionMintInput,
+		signal?: AbortSignal,
+		minted?: MintedByIndex
+	): Promise<CollectionMintEstimate> {
 		validateCollectionMintInput(input);
+		const covered = coveredAssets(input.files.length, minted);
 		const placeholder = 'x'.repeat(43);
-		const assets = input.files.map((file, index) => ({
-			id: placeholder,
-			name: fileAssetName(file, index),
-			contentType: requiredFileContentType(file),
-			image: arweaveDataUrl(placeholder, this.#gateway),
-			mediaId: placeholder,
-		}));
+		const assets = input.files.map(
+			(file, index) =>
+				covered[index] ?? {
+					id: placeholder,
+					name: fileAssetName(file, index),
+					contentType: requiredFileContentType(file),
+					image: arweaveDataUrl(placeholder, this.#gateway),
+					mediaId: placeholder,
+				}
+		);
 		const manifest = collectionManifest(input, assets);
+		const remaining = input.files.filter((_, index) => !covered[index]);
 		const sizes = [
-			...input.files.map((file) => file.size),
+			...remaining.map((file) => file.size),
 			byteLength(JSON.stringify(manifest)),
 			byteLength('Bazar collection process'),
 		];
@@ -645,7 +689,7 @@ export class CollectionMintClient {
 		return {
 			assetCount: input.files.length,
 			total: sizes.reduce((total, size) => total + rewards.get(size)!, 0n),
-			transactionCount: input.files.length + 2,
+			transactionCount: remaining.length + 2,
 		};
 	}
 
@@ -655,17 +699,31 @@ export class CollectionMintClient {
 		options: {
 			allowHighCost?: boolean;
 			signal?: AbortSignal;
+			/** Assets an earlier, failed run already minted, by file index: they are reused, not minted again. */
+			minted?: MintedByIndex;
+			/** Reports each asset as soon as it is paid, so a retry can pass it back through `minted`. */
+			onAssetMinted?: (index: number, asset: MintedAsset) => void;
 			onPhase?: (phase: CollectionMintPhase) => void;
 			onTransaction?: (transaction: MintUploadTransaction) => void;
 		} = {}
 	): Promise<CollectionMintResult> {
 		validateCollectionMintInput(input);
-		const estimate = await this.estimate(input, options.signal);
+		const covered = coveredAssets(input.files.length, options.minted, owner);
+		await this.#assetClient.assertOwner(owner);
+		const estimate = await this.estimate(input, options.signal, options.minted);
 		if (isHighMintCost(estimate.total) && !options.allowHighCost) {
 			throw new Error('mint-high-cost-confirmation-required');
 		}
+		// Check the whole run before the first prompt: per-asset checks alone let
+		// a short wallet pay for assets that never join the collection.
+		await this.#assetClient.assertBalance(owner, estimate.total, options.signal);
 		const assets: MintedAsset[] = [];
 		for (const [index, file] of input.files.entries()) {
+			const reused = covered[index];
+			if (reused) {
+				assets.push(reused);
+				continue;
+			}
 			const result = await this.#assetClient.mint(
 				{
 					file,
@@ -686,6 +744,7 @@ export class CollectionMintClient {
 						}),
 				}
 			);
+			options.onAssetMinted?.(index, result.asset);
 			assets.push(result.asset);
 		}
 		const manifestData = JSON.stringify(collectionManifest(input, assets));
@@ -741,17 +800,23 @@ export class CollectionMintClient {
 	async estimateAppend(
 		collection: MintedCollection,
 		files: File[],
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		minted?: MintedByIndex
 	): Promise<CollectionMintEstimate> {
 		validateCollectionMintInput({ name: collection.name, description: collection.description, files });
+		const covered = coveredAssets(files.length, minted);
 		const placeholder = 'x'.repeat(43);
-		const additions = files.map((file, index) => ({
-			id: placeholder,
-			name: fileAssetName(file, collection.assets.length + index),
-			contentType: requiredFileContentType(file),
-		}));
+		const additions = files.map(
+			(file, index) =>
+				covered[index] ?? {
+					id: placeholder,
+					name: fileAssetName(file, collection.assets.length + index),
+					contentType: requiredFileContentType(file),
+				}
+		);
+		const remaining = files.filter((_, index) => !covered[index]);
 		const sizes = [
-			...files.map((file) => file.size),
+			...remaining.map((file) => file.size),
 			byteLength(JSON.stringify(collectionManifest(collection, [...collection.assets, ...additions]))),
 		];
 		const uniqueSizes = [...new Set(sizes)];
@@ -763,7 +828,7 @@ export class CollectionMintClient {
 		return {
 			assetCount: files.length,
 			total: sizes.reduce((total, size) => total + rewards.get(size)!, updateReward),
-			transactionCount: files.length + 2,
+			transactionCount: remaining.length + 2,
 		};
 	}
 
@@ -774,18 +839,30 @@ export class CollectionMintClient {
 		options: {
 			allowHighCost?: boolean;
 			signal?: AbortSignal;
+			/** Assets an earlier, failed run already minted, by file index: they are reused, not minted again. */
+			minted?: MintedByIndex;
+			/** Reports each asset as soon as it is paid, so a retry can pass it back through `minted`. */
+			onAssetMinted?: (index: number, asset: MintedAsset) => void;
 			onPhase?: (phase: CollectionMintPhase) => void;
 			onTransaction?: (transaction: MintUploadTransaction) => void;
 		} = {}
 	): Promise<CollectionAppendResult> {
 		assertAddress(collection.id, 'invalid-collection-process-id');
 		if (collection.owner !== owner) throw new Error('collection-owner-mismatch');
-		const estimate = await this.estimateAppend(collection, files, options.signal);
+		const covered = coveredAssets(files.length, options.minted, owner);
+		await this.#assetClient.assertOwner(owner);
+		const estimate = await this.estimateAppend(collection, files, options.signal, options.minted);
 		if (isHighMintCost(estimate.total) && !options.allowHighCost) {
 			throw new Error('mint-high-cost-confirmation-required');
 		}
+		await this.#assetClient.assertBalance(owner, estimate.total, options.signal);
 		const additions: MintedAsset[] = [];
 		for (const [index, file] of files.entries()) {
+			const reused = covered[index];
+			if (reused) {
+				additions.push(reused);
+				continue;
+			}
 			const result = await this.#assetClient.mint(
 				{
 					file,
@@ -803,6 +880,7 @@ export class CollectionMintClient {
 						options.onTransaction?.({ ...transaction, label: `Asset ${index + 1} of ${files.length}` }),
 				}
 			);
+			options.onAssetMinted?.(index, result.asset);
 			additions.push(result.asset);
 		}
 		const assets = [...collection.assets, ...additions];
@@ -861,6 +939,12 @@ export function validateMintInput(input: MintInput): void {
 	if (input.album !== undefined && input.album.trim().length > 160) throw new TypeError('mint-album-invalid');
 	if (input.duration !== undefined && (!Number.isFinite(input.duration) || input.duration <= 0)) {
 		throw new TypeError('mint-duration-invalid');
+	}
+	if (input.artworkId !== undefined) {
+		assertAddress(input.artworkId, 'mint-artwork-id-invalid');
+		if (!isAudioContentType(normalizeAssetContentType(input.file.type, input.file.name) ?? undefined)) {
+			throw new TypeError('mint-artwork-audio-only');
+		}
 	}
 	if (input.artwork !== undefined) {
 		if (
@@ -1234,6 +1318,25 @@ export function collectionManifest(
 		assetCount: assets.length,
 		assets: assets.map((asset) => asset.id),
 	};
+}
+
+/**
+ * Line up kept progress with the files of this run. Only entries for a file
+ * index the run has are used; with `owner`, an entry minted by another wallet
+ * is refused rather than placed in this wallet's collection.
+ */
+function coveredAssets(
+	count: number,
+	minted: MintedByIndex | undefined,
+	owner?: string
+): Array<MintedAsset | undefined> {
+	return Array.from({ length: count }, (_, index) => {
+		const asset = minted?.[index];
+		if (!asset) return undefined;
+		assertAddress(asset.id, 'invalid-mint-progress');
+		if (owner !== undefined && asset.owner !== owner) throw new Error('mint-progress-owner-mismatch');
+		return asset;
+	});
 }
 
 function fileAssetName(file: File, index: number): string {

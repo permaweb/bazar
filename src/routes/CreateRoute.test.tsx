@@ -4,7 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
 
-import { FungibleMintDialog } from './CreateRoute';
+import {
+	FungibleMintDialog,
+	MintRecoveryActions,
+	MintSubmitButton,
+	quoteClearsError,
+	type QuoteErrorReset,
+	runSingleFlight,
+} from './CreateRoute';
 
 describe('fungible mint presentation', () => {
 	it('uses the marketplace operation side drawer for a completed token mint', () => {
@@ -44,5 +51,129 @@ describe('fungible mint presentation', () => {
 		expect(markup).toContain('Token live on Bazar');
 		expect(markup).toContain('Token logo transaction');
 		expect(markup).not.toContain('mint-success');
+	});
+});
+
+describe('mint submit single flight', () => {
+	it('runs a second submit only after the first settles', async () => {
+		const guard = { current: false };
+		let settle: () => void = () => undefined;
+		const run = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					settle = resolve;
+				})
+		);
+
+		const first = runSingleFlight(guard, run);
+		expect(guard.current).toBe(true);
+		await expect(runSingleFlight(guard, run)).resolves.toBe(false);
+		expect(run).toHaveBeenCalledTimes(1);
+
+		settle();
+		await expect(first).resolves.toBe(true);
+		expect(guard.current).toBe(false);
+		const next = runSingleFlight(guard, run);
+		expect(run).toHaveBeenCalledTimes(2);
+		settle();
+		await expect(next).resolves.toBe(true);
+	});
+
+	it('releases the guard when the run fails', async () => {
+		const guard = { current: false };
+		await expect(
+			runSingleFlight(guard, () => Promise.reject(new Error('mint-insufficient-balance')))
+		).rejects.toThrow('mint-insufficient-balance');
+		expect(guard.current).toBe(false);
+		const run = vi.fn(() => Promise.resolve());
+		await expect(runSingleFlight(guard, run)).resolves.toBe(true);
+		expect(run).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('quote refresh keeps a failed run visible', () => {
+	it('clears the error for changed inputs but not for a refresh caused by kept paid progress', () => {
+		const file = new File([new Uint8Array(1)], 'one.png', { type: 'image/png' });
+		const reset: QuoteErrorReset = { inputs: null, clearError: false };
+
+		quoteClearsError(reset, ['Set', file]);
+		expect(reset.clearError).toBe(true);
+		reset.clearError = false;
+
+		// The run paid for an asset, so the quote refreshes with the same inputs.
+		quoteClearsError(reset, ['Set', file]);
+		expect(reset.clearError).toBe(false);
+
+		quoteClearsError(reset, ['Renamed', file]);
+		expect(reset.clearError).toBe(true);
+		// A quote superseded before its timer fired still owes the clear.
+		quoteClearsError(reset, ['Renamed', file]);
+		expect(reset.clearError).toBe(true);
+	});
+});
+
+describe('mint submit controls', () => {
+	const submitButton = (props: Partial<React.ComponentProps<typeof MintSubmitButton>>) =>
+		renderToStaticMarkup(
+			React.createElement(MintSubmitButton, {
+				blocked: false,
+				connected: true,
+				mode: 'asset',
+				phaseLabel: '',
+				submission: null,
+				working: false,
+				...props,
+			})
+		);
+	const recoveryActions = (props: Partial<React.ComponentProps<typeof MintRecoveryActions>>) =>
+		renderToStaticMarkup(
+			React.createElement(MintRecoveryActions, {
+				onDismiss: () => undefined,
+				onResume: () => undefined,
+				phaseLabel: '',
+				submission: null,
+				working: false,
+				...props,
+			})
+		);
+
+	it('offers the mint while idle', () => {
+		const markup = submitButton({});
+		expect(markup).toContain('Upload and mint');
+		expect(markup).not.toContain('disabled');
+	});
+
+	it('stays disabled with a preflight label before the first wallet phase', () => {
+		const markup = submitButton({ submission: 'mint', working: true });
+		expect(markup).toContain('disabled');
+		expect(markup).toContain('Checking wallet and balance…');
+		expect(markup).not.toContain('Upload and mint');
+		expect(submitButton({ mode: 'collection', submission: 'mint', working: true })).toContain(
+			'Checking wallet and balance…'
+		);
+	});
+
+	it('shows the wallet phase once the uploader reports one', () => {
+		const markup = submitButton({
+			phaseLabel: 'Approve the atomic asset in your wallet…',
+			submission: 'mint',
+			working: true,
+		});
+		expect(markup).toContain('disabled');
+		expect(markup).toContain('Approve the atomic asset in your wallet…');
+	});
+
+	it('disables Finish mint and Dismiss while a recovery is preparing', () => {
+		const markup = recoveryActions({ submission: 'resume', working: true });
+		expect(markup.match(/disabled=""/g)).toHaveLength(2);
+		expect(markup).toContain('Recovering the saved upload…');
+		expect(markup).not.toContain('Finish mint');
+	});
+
+	it('disables the recovery actions while a new mint is running', () => {
+		const markup = recoveryActions({ submission: 'mint', working: true });
+		expect(markup.match(/disabled=""/g)).toHaveLength(2);
+		expect(markup).toContain('Finish mint');
+		expect(recoveryActions({})).not.toContain('disabled');
 	});
 });

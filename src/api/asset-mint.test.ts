@@ -16,9 +16,16 @@ import {
 	loadMintedAssets,
 	loadMintedCollections,
 	MAX_FUNGIBLE_WHOLE_SUPPLY,
+	type MintedAsset,
+	type MintedByIndex,
 	mintMetadata,
 	mintProcessTags,
+	type MintProgress,
+	mintProgressKey,
 	normalizeUploadTags,
+	type PendingMintProgress,
+	pendingMintProgress,
+	reusableMintProgress,
 	storeMintedAsset,
 	storeMintedCollection,
 	UDL_LICENSE_ID,
@@ -585,6 +592,439 @@ describe('asset mint contract', () => {
 		expect(loadMintedCollections(store)[0]).toMatchObject({ id: collection.id, manifestId: ids[2], total: 2 });
 		expect(loadMintedAssets(store)).toEqual([]);
 		expect(loadMintActivities(store)).toEqual([]);
+	});
+
+	describe('collection runs check the wallet before the first signature', () => {
+		// Every transaction prices at 100 and the wallet holds 250, so each
+		// per-transaction check passes on its own while the run as a whole
+		// (3 assets + manifest + carrier/update = 500) is unaffordable.
+		function shortWalletHarness(options: { balance?: string; activeAddress?: string } = {}) {
+			const store = storage();
+			const urls: string[] = [];
+			const posts: string[] = [];
+			const createTransaction = vi.fn(async () => {
+				const transaction: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+				transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+				transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+				return transaction;
+			});
+			let signed = 0;
+			const sign = vi.fn(async () => ({
+				id: String.fromCharCode(65 + signed++).repeat(43),
+				owner: 'signed-owner',
+				tags: [],
+				signature: 'signed',
+			}));
+			const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				urls.push(url);
+				if (init?.method === 'POST') {
+					posts.push(url);
+					return new Response('', { status: 200 });
+				}
+				return url.includes('/wallet/') ? new Response(options.balance ?? '250') : new Response('100');
+			}) as typeof fetch;
+			const client = new CollectionMintClient({
+				arweave: {
+					createTransaction,
+					transactions: {},
+					wallets: { ownerToAddress: vi.fn(async () => owner) },
+				},
+				fetch: fetchMock,
+				storage: store,
+				wallet: {
+					getActiveAddress: vi.fn(async () => options.activeAddress ?? owner),
+					sign,
+				} as any,
+			});
+			const files = [1, 2, 3].map(
+				(size) => new File([new Uint8Array(size)], `asset-${size}.png`, { type: 'image/png' })
+			);
+			return { client, createTransaction, files, posts, sign, store, urls };
+		}
+
+		const collection = {
+			id: 'C'.repeat(43),
+			manifestId: 'O'.repeat(43),
+			owner,
+			createdAt: 1,
+			name: 'Happy agents',
+			description: 'A collection',
+			kind: 'images' as const,
+			assets: [],
+			total: 0,
+		};
+
+		it('rejects a collection mint the wallet cannot pay for in full', async () => {
+			const harness = shortWalletHarness();
+			const estimate = await harness.client.estimate({ name: 'Short', description: '', files: harness.files });
+			expect(estimate.total).toBe(500n);
+
+			await expect(
+				harness.client.mint({ name: 'Short', description: '', files: harness.files }, owner, {
+					allowHighCost: true,
+				})
+			).rejects.toThrow('mint-insufficient-balance');
+
+			expect(harness.sign).not.toHaveBeenCalled();
+			expect(harness.createTransaction).not.toHaveBeenCalled();
+			expect(harness.posts).toEqual([]);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintedCollections(harness.store)).toEqual([]);
+		});
+
+		it('rejects an append the wallet cannot pay for once the target-priced update is included', async () => {
+			// 3 assets + manifest = 400 would fit a 450 balance; the carrier update
+			// priced against the collection target makes it 500.
+			const harness = shortWalletHarness({ balance: '450' });
+			const estimate = await harness.client.estimateAppend(collection, harness.files);
+			expect(estimate.total).toBe(500n);
+
+			await expect(
+				harness.client.append(collection, harness.files, owner, { allowHighCost: true })
+			).rejects.toThrow('mint-insufficient-balance');
+
+			expect(harness.urls).toContain(`https://arweave.net/price/0/${collection.id}`);
+			expect(harness.sign).not.toHaveBeenCalled();
+			expect(harness.createTransaction).not.toHaveBeenCalled();
+			expect(harness.posts).toEqual([]);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+		});
+
+		it('still runs a collection mint whose balance covers the whole estimate exactly', async () => {
+			const harness = shortWalletHarness({ balance: '500' });
+
+			await harness.client.mint({ name: 'Exact', description: '', files: harness.files }, owner, {
+				allowHighCost: true,
+			});
+
+			expect(harness.sign).toHaveBeenCalledTimes(5);
+			expect(harness.posts).toHaveLength(5);
+			expect(loadMintedCollections(harness.store)).toHaveLength(1);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+		});
+
+		it.each(['mint', 'append'] as const)(
+			'rejects %s for a switched wallet account before pricing anything',
+			async (run) => {
+				const harness = shortWalletHarness({ balance: '1000', activeAddress: 'X'.repeat(43) });
+
+				await expect(
+					run === 'mint'
+						? harness.client.mint({ name: 'Switched', description: '', files: harness.files }, owner, {
+								allowHighCost: true,
+						  })
+						: harness.client.append(collection, harness.files, owner, { allowHighCost: true })
+				).rejects.toThrow('wallet-account-changed');
+
+				expect(harness.urls).toEqual([]);
+				expect(harness.sign).not.toHaveBeenCalled();
+			}
+		);
+	});
+
+	describe('a retry reuses transactions an earlier failed run already paid for', () => {
+		// Every price is 1 winston and the wallet holds plenty. Sign call N returns
+		// the id made of the Nth capital letter, so 'A'.repeat(43) is the first
+		// signature; the calls listed in `rejectAt` are refused by the wallet.
+		function retryHarness(rejectAt: number[]) {
+			const store = storage();
+			const created: any[] = [];
+			const createTransaction = vi.fn(async (attributes: Record<string, unknown>) => {
+				const transaction: any = { id: '', owner: '', attributes, chunks: { chunks: [{}] }, addTag: vi.fn() };
+				transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+				transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+				created.push(transaction);
+				return transaction;
+			});
+			let signed = 0;
+			const sign = vi.fn(async () => {
+				signed += 1;
+				if (rejectAt.includes(signed)) throw new Error('User rejected the signature');
+				return {
+					id: String.fromCharCode(64 + signed).repeat(43),
+					owner: 'signed-owner',
+					tags: [],
+					signature: 's',
+				};
+			});
+			const urls: string[] = [];
+			const options = {
+				arweave: {
+					createTransaction,
+					transactions: {},
+					wallets: { ownerToAddress: vi.fn(async () => owner) },
+				},
+				fetch: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+					const url = String(input);
+					urls.push(url);
+					if (init?.method === 'POST') return new Response('', { status: 200 });
+					return url.includes('/wallet/') ? new Response('1000') : new Response('1');
+				}) as typeof fetch,
+				storage: store,
+				wallet: { getActiveAddress: vi.fn(async () => owner), sign } as any,
+			};
+			const typed = (type: string) =>
+				created.filter((transaction) =>
+					transaction.addTag.mock.calls.some((call: string[]) => call[0] === 'type' && call[1] === type)
+				);
+			const manifestAssets = () =>
+				JSON.parse(String(typed('Collection-Manifest').at(-1)?.attributes.data)).assets as string[];
+			const files = (count: number) =>
+				Array.from(
+					{ length: count },
+					(_, index) => new File([new Uint8Array(index + 1)], `asset-${index + 1}.png`, { type: 'image/png' })
+				);
+			return { createTransaction, created, files, manifestAssets, options, sign, store, typed, urls };
+		}
+		const id = (letter: string) => letter.repeat(43);
+
+		it('signs only the asset when the album artwork already landed', async () => {
+			const harness = retryHarness([2]);
+			const client = new AssetMintClient(harness.options);
+			const input = {
+				name: 'Permanent signal',
+				description: '',
+				file: new File([new Uint8Array(4)], 'signal.mp3', { type: 'audio/mpeg' }),
+				artwork: new File([new Uint8Array(2)], 'cover.png', { type: 'image/png' }),
+			};
+			const onArtworkUploaded = vi.fn();
+
+			await expect(client.mint(input, owner, { onArtworkUploaded })).rejects.toThrow();
+			expect(onArtworkUploaded.mock.calls).toEqual([[id('A')]]);
+			expect(await client.estimate({ ...input, artworkId: id('A') })).toEqual({
+				assetReward: 1n,
+				artworkReward: 0n,
+				total: 1n,
+				assetBytes: 4,
+				artworkBytes: 0,
+				transactionCount: 1,
+			});
+
+			const retry = await client.mint({ ...input, artworkId: id('A') }, owner, { onArtworkUploaded });
+
+			expect(harness.sign).toHaveBeenCalledTimes(3);
+			expect(harness.createTransaction).toHaveBeenCalledTimes(3);
+			expect(harness.typed('Asset-Artwork')).toHaveLength(1);
+			expect(harness.created.at(-1).addTag).toHaveBeenCalledWith('asset-artwork', id('A'));
+			expect(onArtworkUploaded).toHaveBeenCalledOnce();
+			expect(retry.asset).toMatchObject({ id: id('C'), artworkId: id('A') });
+			expect(loadMintActivities(harness.store, owner)).toMatchObject([{ transactionIds: [id('A'), id('C')] }]);
+		});
+
+		it('rejects a reused artwork id on media that cannot carry artwork', () => {
+			const file = new File([new Uint8Array(1)], 'still.png', { type: 'image/png' });
+			expect(() => validateMintInput({ name: 'Still', description: '', file, artworkId: id('A') })).toThrow(
+				'mint-artwork-audio-only'
+			);
+			const audio = new File([new Uint8Array(1)], 'signal.mp3', { type: 'audio/mpeg' });
+			expect(() =>
+				validateMintInput({ name: 'Signal', description: '', file: audio, artworkId: 'short' })
+			).toThrow('mint-artwork-id-invalid');
+		});
+
+		it('mints only the remaining collection assets after asset 3 of 4 is rejected', async () => {
+			const harness = retryHarness([3]);
+			const client = new CollectionMintClient(harness.options);
+			const input = { name: 'Signal set', description: '', files: harness.files(4) };
+			const minted: Record<number, MintedAsset> = {};
+			const onAssetMinted = (index: number, asset: MintedAsset) => void (minted[index] = asset);
+
+			await expect(client.mint(input, owner, { allowHighCost: true, onAssetMinted })).rejects.toThrow();
+			expect(Object.keys(minted)).toEqual(['0', '1']);
+			expect(loadMintedAssets(harness.store).map((asset) => asset.id)).toEqual(
+				expect.arrayContaining([id('A'), id('B')])
+			);
+			expect(await client.estimate(input, undefined, minted)).toMatchObject({
+				assetCount: 4,
+				transactionCount: 4,
+				total: 4n,
+			});
+
+			const result = await client.mint(input, owner, { allowHighCost: true, minted, onAssetMinted });
+
+			// Attempt one signed A, B and refused the third; the retry signs assets 3-4, the manifest and the process.
+			expect(harness.sign).toHaveBeenCalledTimes(7);
+			expect(harness.typed('Collection-Manifest')).toHaveLength(1);
+			expect(harness.manifestAssets()).toEqual([id('A'), id('B'), id('D'), id('E')]);
+			expect(result.collection.assets.map((asset) => asset.id)).toEqual([id('A'), id('B'), id('D'), id('E')]);
+			expect(Object.keys(minted)).toEqual(['0', '1', '2', '3']);
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintActivities(harness.store)).toEqual([]);
+		});
+
+		it('goes straight to the manifest when every asset landed before the manifest failed', async () => {
+			const harness = retryHarness([4]);
+			const client = new CollectionMintClient(harness.options);
+			const input = { name: 'Signal set', description: '', files: harness.files(3) };
+			const minted: Record<number, MintedAsset> = {};
+			const onAssetMinted = (index: number, asset: MintedAsset) => void (minted[index] = asset);
+
+			await expect(client.mint(input, owner, { allowHighCost: true, onAssetMinted })).rejects.toThrow();
+			const createdBeforeRetry = harness.createTransaction.mock.calls.length;
+			await client.mint(input, owner, { allowHighCost: true, minted, onAssetMinted });
+
+			expect(harness.createTransaction.mock.calls.length - createdBeforeRetry).toBe(2);
+			expect(harness.sign).toHaveBeenCalledTimes(6);
+			expect(harness.manifestAssets()).toEqual([id('A'), id('B'), id('C')]);
+			expect(loadMintedCollections(harness.store)[0]).toMatchObject({
+				id: id('F'),
+				manifestId: id('E'),
+				total: 3,
+			});
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+		});
+
+		it('holds paid progress outside caller state until the run fails', async () => {
+			const harness = retryHarness([3, 5]);
+			const client = new CollectionMintClient(harness.options);
+			const input = { name: 'Signal set', description: '', files: harness.files(4) };
+			const key = mintProgressKey(owner, { files: input.files });
+			// Stands in for setCollectionProgress: the quote, signature count and
+			// notice read this state, so a run must not write it while it is going.
+			let state: MintProgress<MintedByIndex> | null = null;
+			const commits: Array<MintProgress<MintedByIndex> | null> = [];
+			const kept = (): MintedByIndex | undefined => reusableMintProgress(state, key);
+			const commit = (paid: PendingMintProgress<MintedByIndex>) => {
+				if (paid.progress) commits.push((state = paid.progress));
+			};
+			const run = async (rejected: boolean) => {
+				const reused = kept();
+				const paid = pendingMintProgress(key, reused);
+				const stateDuringRun: unknown[] = [];
+				const attempt = client.mint(input, owner, {
+					allowHighCost: true,
+					minted: reused,
+					onAssetMinted: (index, asset) => {
+						paid.record((value) => ({ ...value, [index]: asset }));
+						stateDuringRun.push(state);
+					},
+				});
+				if (rejected) await expect(attempt).rejects.toThrow();
+				else await attempt;
+				return { paid, stateDuringRun };
+			};
+
+			// First attempt: assets 1-2 land, asset 3 is refused. Nothing is committed while it runs.
+			const first = await run(true);
+			expect(first.stateDuringRun).toEqual([null, null]);
+			expect(commits).toEqual([]);
+			commit(first.paid);
+			expect(Object.keys(kept() ?? {})).toEqual(['0', '1']);
+
+			// Second attempt reuses 1-2, lands asset 3 and is refused at asset 4. The state it
+			// started from stays put during the run, then gains asset 3 once it fails.
+			const second = await run(true);
+			expect(second.stateDuringRun).toEqual([commits[0]]);
+			commit(second.paid);
+			expect(Object.keys(kept() ?? {})).toEqual(['0', '1', '2']);
+			expect(kept()?.[0]).toMatchObject({ id: id('A') });
+
+			// Nothing new paid for: there is nothing to commit.
+			const idle = pendingMintProgress(key, kept());
+			expect(idle.progress).toBeNull();
+			// Without a key (no wallet or files) progress is never recorded.
+			const keyless = pendingMintProgress<MintedByIndex>('', undefined);
+			keyless.record((value) => ({ ...value, ...kept() }));
+			expect(keyless.progress).toBeNull();
+
+			const last = await run(false);
+			expect(last.stateDuringRun).toEqual([commits[1]]);
+			expect(last.paid.progress?.value).toMatchObject({ 3: { id: id('F') } });
+			expect(harness.manifestAssets()).toEqual([id('A'), id('B'), id('D'), id('F')]);
+			expect(commits).toHaveLength(2);
+		});
+
+		it('appends only the files a failed append did not mint', async () => {
+			const harness = retryHarness([2]);
+			const client = new CollectionMintClient(harness.options);
+			const collection = {
+				id: 'C'.repeat(43),
+				manifestId: 'O'.repeat(43),
+				owner,
+				createdAt: 1,
+				name: 'Happy agents',
+				description: 'A collection',
+				kind: 'images' as const,
+				assets: [],
+				total: 0,
+			};
+			const files = harness.files(2);
+			const minted: Record<number, MintedAsset> = {};
+			const onAssetMinted = (index: number, asset: MintedAsset) => void (minted[index] = asset);
+
+			await expect(
+				client.append(collection, files, owner, { allowHighCost: true, onAssetMinted })
+			).rejects.toThrow();
+			expect(await client.estimateAppend(collection, files, undefined, minted)).toMatchObject({
+				assetCount: 2,
+				transactionCount: 3,
+				total: 3n,
+			});
+			const result = await client.append(collection, files, owner, {
+				allowHighCost: true,
+				minted,
+				onAssetMinted,
+			});
+
+			expect(harness.sign).toHaveBeenCalledTimes(5);
+			expect(harness.manifestAssets()).toEqual([id('A'), id('C')]);
+			expect(result).toMatchObject({ manifestId: id('D'), updateId: id('E'), collection: { total: 2 } });
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintActivities(harness.store)).toEqual([]);
+		});
+
+		it('refuses kept assets another wallet minted before pricing anything', async () => {
+			const harness = retryHarness([]);
+			const client = new CollectionMintClient(harness.options);
+			const stranger: MintedAsset = {
+				id: id('Z'),
+				name: 'Elsewhere',
+				description: '',
+				contentType: 'image/png',
+				mediaId: id('Z'),
+				owner: 'X'.repeat(43),
+				createdAt: 1,
+			};
+
+			await expect(
+				client.mint({ name: 'Signal set', description: '', files: harness.files(2) }, owner, {
+					allowHighCost: true,
+					minted: { 0: stranger },
+				})
+			).rejects.toThrow('mint-progress-owner-mismatch');
+			expect(harness.urls).toEqual([]);
+			expect(harness.sign).not.toHaveBeenCalled();
+		});
+
+		it('keys kept progress to the wallet, file identity, order and tagged fields', () => {
+			const one = new File([new Uint8Array(1)], 'one.png', { type: 'image/png', lastModified: 1 });
+			const two = new File([new Uint8Array(2)], 'two.png', { type: 'image/png', lastModified: 2 });
+			const key = mintProgressKey(owner, { name: 'Set', files: [one, two] });
+			const progress = { key, value: 'kept' };
+
+			expect(
+				mintProgressKey(owner, {
+					name: 'Set',
+					files: [new File([new Uint8Array(1)], 'one.png', { type: 'image/png', lastModified: 1 }), two],
+				})
+			).toBe(key);
+			expect(reusableMintProgress(progress, key)).toBe('kept');
+			for (const changed of [
+				mintProgressKey('X'.repeat(43), { name: 'Set', files: [one, two] }),
+				mintProgressKey(owner, { name: 'Set', files: [two, one] }),
+				mintProgressKey(owner, { name: 'Renamed', files: [one, two] }),
+				mintProgressKey(owner, {
+					name: 'Set',
+					files: [new File([new Uint8Array(1)], 'one.png', { type: 'image/png', lastModified: 9 }), two],
+				}),
+			]) {
+				expect(changed).not.toBe(key);
+				expect(reusableMintProgress(progress, changed)).toBeUndefined();
+			}
+			expect(reusableMintProgress(progress, '')).toBeUndefined();
+			expect(reusableMintProgress(null, key)).toBeUndefined();
+		});
 	});
 
 	it('explains the bytes and transaction count in a single-asset quote', async () => {

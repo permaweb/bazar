@@ -23,8 +23,13 @@ import {
 	MAX_FUNGIBLE_WHOLE_SUPPLY,
 	type MintDraft,
 	type MintedAsset,
+	type MintedByIndex,
 	type MintEstimate,
 	type MintPhase,
+	type MintProgress,
+	mintProgressKey,
+	pendingMintProgress,
+	reusableMintProgress,
 	UDL_LICENSE_ID,
 	type UdlPreset,
 	type UdlTerms,
@@ -147,6 +152,108 @@ function AnimatedCreditBadgeIcon() {
 				<circle className="udl-credit-icon__particle" cx="20" cy="18" r="1" />
 			</g>
 		</svg>
+	);
+}
+
+/** A paid create run that has been submitted but may not have reported a wallet phase yet. */
+export type MintSubmission = 'mint' | 'resume';
+
+/** Shown while a run checks the owner, price and balance, before the first wallet prompt. */
+export const MINT_PREFLIGHT_LABEL: Record<MintSubmission, string> = {
+	mint: 'Checking wallet and balance…',
+	resume: 'Recovering the saved upload…',
+};
+
+/**
+ * Runs `run` only when no other run holds `guard`. The guard is taken synchronously, before
+ * the first await, so a second click during the preflight checks cannot start a duplicate paid
+ * mint. Resolves true when `run` ran, false when it was skipped; the guard is released either way.
+ */
+export async function runSingleFlight(guard: { current: boolean }, run: () => Promise<void>): Promise<boolean> {
+	if (guard.current) return false;
+	guard.current = true;
+	try {
+		await run();
+		return true;
+	} finally {
+		guard.current = false;
+	}
+}
+
+/**
+ * A refreshed quote clears the inline error only when the creator changed what is priced.
+ * A refresh caused only by paid progress from a failed run (artwork or collection assets
+ * already on Arweave) keeps that run's failure on screen. A clear still owed by a quote that
+ * was superseded before it started carries over to the next one.
+ */
+export type QuoteErrorReset = { inputs: readonly unknown[] | null; clearError: boolean };
+
+export function quoteClearsError(reset: QuoteErrorReset, inputs: readonly unknown[]): void {
+	const previous = reset.inputs;
+	if (
+		!previous ||
+		previous.length !== inputs.length ||
+		inputs.some((value, index) => !Object.is(value, previous[index]))
+	)
+		reset.clearError = true;
+	reset.inputs = inputs;
+}
+
+type CreateMode = 'asset' | 'collection' | 'fungible';
+
+export function MintSubmitButton({
+	blocked,
+	connected,
+	mode,
+	phaseLabel,
+	submission,
+	working,
+}: {
+	blocked: boolean;
+	connected: boolean;
+	mode: CreateMode;
+	phaseLabel: string;
+	submission: MintSubmission | null;
+	working: boolean;
+}) {
+	return (
+		<Button className="mint-submit" type="submit" size="custom" disabled={working || blocked}>
+			{working
+				? phaseLabel || MINT_PREFLIGHT_LABEL[submission ?? 'mint']
+				: connected
+				? mode === 'asset'
+					? 'Upload and mint'
+					: mode === 'collection'
+					? 'Mint collection'
+					: 'Mint token'
+				: 'Connect wallet to create'}
+			{!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
+		</Button>
+	);
+}
+
+export function MintRecoveryActions({
+	onDismiss,
+	onResume,
+	phaseLabel,
+	submission,
+	working,
+}: {
+	onDismiss: () => void;
+	onResume: () => void;
+	phaseLabel: string;
+	submission: MintSubmission | null;
+	working: boolean;
+}) {
+	return (
+		<div>
+			<Button type="button" onClick={onResume} disabled={working} size="custom">
+				{submission === 'resume' ? phaseLabel || MINT_PREFLIGHT_LABEL.resume : 'Finish mint'}
+			</Button>
+			<Button type="button" onClick={onDismiss} disabled={working} size="custom">
+				Dismiss
+			</Button>
+		</div>
 	);
 }
 
@@ -500,7 +607,11 @@ export default function CreateRoute() {
 	const fungibleProgressButton = React.useRef<HTMLButtonElement>(null);
 	const metadataRequest = React.useRef(0);
 	const artworkRevision = React.useRef(0);
-	const [mode, setMode] = React.useState<'asset' | 'collection' | 'fungible'>('asset');
+	const submissionGuard = React.useRef(false);
+	const assetQuoteReset = React.useRef<QuoteErrorReset>({ inputs: null, clearError: false });
+	const collectionQuoteReset = React.useRef<QuoteErrorReset>({ inputs: null, clearError: false });
+	const [submission, setSubmission] = React.useState<MintSubmission | null>(null);
+	const [mode, setMode] = React.useState<CreateMode>('asset');
 	const [name, setName] = React.useState('');
 	const [description, setDescription] = React.useState('');
 	const [ticker, setTicker] = React.useState('');
@@ -544,6 +655,11 @@ export default function CreateRoute() {
 	const [draft, setDraft] = React.useState<MintDraft | null>(() =>
 		wallet.address ? getMintDraft(wallet.address) : null
 	);
+	// Paid transactions a failed run leaves behind, mirroring logoTxId for the
+	// token logo. Each is reused only while its key (wallet, files, tagged
+	// fields) still matches, and is dropped once the mint succeeds.
+	const [artworkProgress, setArtworkProgress] = React.useState<MintProgress<string> | null>(null);
+	const [collectionProgress, setCollectionProgress] = React.useState<MintProgress<MintedByIndex> | null>(null);
 	const applyUdlPreset = (preset: UdlPreset) => {
 		setUdlConfigurationMode('configured');
 		setUdlTerms(udlTermsForPreset(preset));
@@ -573,6 +689,22 @@ export default function CreateRoute() {
 	);
 	const selectedContentType = file ? normalizeAssetContentType(file.type, file.name) : null;
 	const audioSelected = isAudioContentType(selectedContentType ?? undefined);
+	const artworkProgressKey =
+		wallet.address && artwork ? mintProgressKey(wallet.address, { artwork, udl: activeUdl }) : '';
+	const reusedArtworkId = reusableMintProgress(artworkProgress, artworkProgressKey);
+	const collectionProgressKey =
+		wallet.address && collectionFiles.length
+			? mintProgressKey(wallet.address, {
+					name: name.trim(),
+					description: description.trim(),
+					udl: activeUdl,
+					files: collectionFiles,
+			  })
+			: '';
+	const reusedCollectionAssets = reusableMintProgress(collectionProgress, collectionProgressKey);
+	const reusedCollectionCount = reusedCollectionAssets
+		? Object.values(reusedCollectionAssets).filter(Boolean).length
+		: 0;
 	const fungibleInput: FungibleMintInput = {
 		name,
 		description,
@@ -694,15 +826,21 @@ export default function CreateRoute() {
 			setEstimate(null);
 			return;
 		}
+		const reset = assetQuoteReset.current;
+		quoteClearsError(reset, [activeUdl, artwork, audioMetadata, description, file, mode, name]);
 		const controller = new AbortController();
 		const timer = window.setTimeout(() => {
 			setEstimating(true);
-			setError(null);
+			if (reset.clearError) {
+				reset.clearError = false;
+				setError(null);
+			}
 			void new AssetMintClient()
 				.estimate(
 					{
 						file,
 						artwork: artwork ?? undefined,
+						...(reusedArtworkId ? { artworkId: reusedArtworkId } : {}),
 						name,
 						description,
 						artist: audioMetadata.artist,
@@ -728,18 +866,27 @@ export default function CreateRoute() {
 			window.clearTimeout(timer);
 			controller.abort();
 		};
-	}, [activeUdl, artwork, audioMetadata, description, file, mode, name]);
+	}, [activeUdl, artwork, audioMetadata, description, file, mode, name, reusedArtworkId]);
 	React.useEffect(() => {
 		if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
 			setCollectionEstimate(null);
 			return;
 		}
+		const reset = collectionQuoteReset.current;
+		quoteClearsError(reset, [activeUdl, collectionFiles, description, mode, name]);
 		const controller = new AbortController();
 		const timer = window.setTimeout(() => {
 			setEstimating(true);
-			setError(null);
+			if (reset.clearError) {
+				reset.clearError = false;
+				setError(null);
+			}
 			void new CollectionMintClient()
-				.estimate({ files: collectionFiles, name, description, udl: activeUdl }, controller.signal)
+				.estimate(
+					{ files: collectionFiles, name, description, udl: activeUdl },
+					controller.signal,
+					reusedCollectionAssets
+				)
 				.then(
 					(nextEstimate) => {
 						if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
@@ -756,7 +903,7 @@ export default function CreateRoute() {
 			window.clearTimeout(timer);
 			controller.abort();
 		};
-	}, [activeUdl, collectionFiles, description, mode, name]);
+	}, [activeUdl, collectionFiles, description, mode, name, reusedCollectionAssets]);
 	React.useEffect(() => {
 		if (mode !== 'fungible' || !fungibleReady) {
 			setFungibleEstimate(null);
@@ -858,6 +1005,7 @@ export default function CreateRoute() {
 		market.addCreatedAsset(asset);
 		setResult(asset);
 		setDraft(null);
+		setArtworkProgress(null);
 		setPhase(null);
 		finishUpload(uploadId, {
 			assetId: asset.id,
@@ -865,7 +1013,17 @@ export default function CreateRoute() {
 			transactionIds: [asset.artworkId, asset.id].filter((id): id is string => Boolean(id)),
 		});
 	};
+	const submitOnce = (kind: MintSubmission, run: () => Promise<void>) =>
+		runSingleFlight(submissionGuard, async () => {
+			setSubmission(kind);
+			try {
+				await run();
+			} finally {
+				setSubmission(null);
+			}
+		});
 	const mint = async () => {
+		if (submissionGuard.current) return;
 		if (!wallet.address) {
 			wallet.openConnectDialog();
 			return;
@@ -881,6 +1039,10 @@ export default function CreateRoute() {
 			}
 			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
+		await submitOnce('mint', submitMint);
+	};
+	const submitMint = async () => {
+		if (!wallet.address) return;
 		setError(null);
 		setResult(null);
 		setCollectionResult(null);
@@ -895,6 +1057,9 @@ export default function CreateRoute() {
 			});
 		}
 		setFungibleResult(null);
+		// What this run pays for reaches state only if it fails, so the quote,
+		// signature count and notice keep describing the attempt in flight.
+		let keepPaidProgress = () => {};
 		try {
 			if (mode === 'fungible') {
 				setFungibleSubmitting(true);
@@ -911,11 +1076,17 @@ export default function CreateRoute() {
 				return;
 			}
 			if (mode === 'collection') {
+				const paidAssets = pendingMintProgress(collectionProgressKey, reusedCollectionAssets);
+				keepPaidProgress = () => {
+					if (paidAssets.progress) setCollectionProgress(paidAssets.progress);
+				};
 				const minted = await new CollectionMintClient().mint(
 					{ files: collectionFiles, name, description, udl: activeUdl },
 					wallet.address,
 					{
 						allowHighCost: true,
+						minted: reusedCollectionAssets,
+						onAssetMinted: (index, asset) => paidAssets.record((value) => ({ ...value, [index]: asset })),
 						onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 						onPhase: (nextPhase) => {
 							setCollectionPhase(nextPhase);
@@ -924,6 +1095,7 @@ export default function CreateRoute() {
 					}
 				);
 				market.addCollection(minted.collection);
+				setCollectionProgress(null);
 				setCollectionResult(minted);
 				setCollectionPhase(null);
 				finishUpload(uploadId, {
@@ -934,10 +1106,15 @@ export default function CreateRoute() {
 				return;
 			}
 			if (!file) return;
+			const paidArtwork = pendingMintProgress(artworkProgressKey, reusedArtworkId);
+			keepPaidProgress = () => {
+				if (paidArtwork.progress) setArtworkProgress(paidArtwork.progress);
+			};
 			const minted = await new AssetMintClient().mint(
 				{
 					file,
 					artwork: artwork ?? undefined,
+					...(reusedArtworkId ? { artworkId: reusedArtworkId } : {}),
 					name,
 					description,
 					artist: audioMetadata.artist,
@@ -948,6 +1125,7 @@ export default function CreateRoute() {
 				wallet.address,
 				{
 					allowHighCost: true,
+					onArtworkUploaded: (artworkId) => paidArtwork.record(() => artworkId),
 					onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 					onPhase: (nextPhase) => {
 						setPhase(nextPhase);
@@ -958,6 +1136,7 @@ export default function CreateRoute() {
 			completeMint(minted.asset, uploadId);
 		} catch (cause) {
 			const message = mintErrorMessage(cause);
+			keepPaidProgress();
 			setDraft(getMintDraft(wallet.address));
 			setPhase(null);
 			setCollectionPhase(null);
@@ -970,7 +1149,8 @@ export default function CreateRoute() {
 			}
 		}
 	};
-	const resume = async () => {
+	const resume = () => submitOnce('resume', submitResume);
+	const submitResume = async () => {
 		if (!wallet.address || !draft) return;
 		setError(null);
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
@@ -997,7 +1177,7 @@ export default function CreateRoute() {
 			failUpload(uploadId, message);
 		}
 	};
-	const working = phase !== null || collectionPhase !== null || fungibleSubmitting;
+	const working = submission !== null || phase !== null || collectionPhase !== null || fungibleSubmitting;
 	const phaseLabel = fungiblePhase
 		? {
 				'signing-logo': 'Approve the token logo in your wallet…',
@@ -1081,22 +1261,16 @@ export default function CreateRoute() {
 							finish a self-contained atomic asset.
 						</span>
 					</div>
-					<div>
-						<Button type="button" onClick={() => void resume()} disabled={working} size="custom">
-							Finish mint
-						</Button>
-						<Button
-							type="button"
-							onClick={() => {
-								discardMintDraft(draft.owner);
-								setDraft(null);
-							}}
-							disabled={working}
-							size="custom"
-						>
-							Dismiss
-						</Button>
-					</div>
+					<MintRecoveryActions
+						onDismiss={() => {
+							discardMintDraft(draft.owner);
+							setDraft(null);
+						}}
+						onResume={() => void resume()}
+						phaseLabel={phaseLabel}
+						submission={submission}
+						working={working}
+					/>
 				</div>
 			) : null}
 
@@ -1926,7 +2100,9 @@ export default function CreateRoute() {
 						<span>
 							{mode === 'asset'
 								? artwork
-									? 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
+									? reusedArtworkId
+										? 'Your album artwork is already on Arweave from the earlier attempt. Your wallet will request one signature for the atomic transaction containing the audio, metadata, and tradeable process.'
+										: 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
 									: 'Your wallet will request one signature for an atomic transaction containing the media, metadata, and tradeable process.'
 								: mode === 'fungible'
 								? `${
@@ -1935,7 +2111,15 @@ export default function CreateRoute() {
 											: 'Your wallet will request one signature for the atomic token process.'
 								  } The whole supply is minted to your connected wallet; the token becomes readable and dispatchable once the scheduler sequences it (~20 minutes).`
 								: collectionEstimate
-								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and carrier process.`
+								? `${
+										reusedCollectionCount
+											? `${reusedCollectionCount} of ${collectionFiles.length} assets are already on Arweave from the earlier attempt. `
+											: ''
+								  }Your wallet will request ${
+										collectionEstimate.transactionCount
+								  } signatures: one atomic transaction per ${
+										reusedCollectionCount ? 'remaining ' : ''
+								  }asset, then the collection manifest and carrier process.`
 								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and carrier process to Arweave.'}
 						</span>
 					</div>
@@ -2012,12 +2196,8 @@ export default function CreateRoute() {
 							)}
 						</Button>
 					) : (
-						<Button
-							className="mint-submit"
-							type="submit"
-							size="custom"
-							disabled={
-								working ||
+						<MintSubmitButton
+							blocked={
 								Boolean(wallet.address && readingAudioMetadata) ||
 								Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
 								Boolean(
@@ -2029,18 +2209,12 @@ export default function CreateRoute() {
 								) ||
 								Boolean(wallet.address && mode === 'fungible' && fungibleReady && !fungibleEstimate)
 							}
-						>
-							{working
-								? phaseLabel
-								: wallet.address
-								? mode === 'asset'
-									? 'Upload and mint'
-									: mode === 'collection'
-									? 'Mint collection'
-									: 'Mint token'
-								: 'Connect wallet to create'}
-							{!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
-						</Button>
+							connected={Boolean(wallet.address)}
+							mode={mode}
+							phaseLabel={phaseLabel}
+							submission={submission}
+							working={working}
+						/>
 					)}
 				</form>
 			</div>
