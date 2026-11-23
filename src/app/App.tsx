@@ -8724,6 +8724,21 @@ export function trackRateLimitFailure(rateLimits: Set<string>, processId: string
 	else rateLimits.delete(processId);
 }
 
+/**
+ * The one sentence every wallet live-state notice uses once checks finish with
+ * failures. `resolved` counts settled checks including failures, so the copy
+ * names only the candidates that could not be checked.
+ */
+export function walletUnavailableCandidatesCopy(
+	status: Pick<WalletResolutionStatus, 'failures' | 'total'>,
+	failureMessage: string
+) {
+	const candidates = status.total === 1 ? 'candidate' : 'candidates';
+	return `${
+		failureMessage ? `${failureMessage} ` : ''
+	}${status.failures.toLocaleString()} of ${status.total.toLocaleString()} ${candidates} could not be checked.`;
+}
+
 export function walletResolutionCopy(status: WalletResolutionStatus, failureMessage: string) {
 	const milestone = Math.floor(status.resolved / 10) * 10;
 	const heading =
@@ -8762,7 +8777,7 @@ export function walletResolutionCopy(status: WalletResolutionStatus, failureMess
 					status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0
 			  }% complete.`
 			: status.phase === 'done' && status.failures
-			? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Resolved assets remain visible.`
+			? walletUnavailableCandidatesCopy(status, failureMessage)
 			: status.phase === 'done'
 			? `Live state resolved for ${status.resolved.toLocaleString()} candidates.`
 			: 'Asset resolution was interrupted.';
@@ -8830,19 +8845,13 @@ export type WalletDiscoverySession = {
 	complete: boolean;
 };
 
-export function walletDiscoveryScope(address: string, gateway: string, collections: Collection[]) {
-	const supportedCollections = collections
-		.map((collection) =>
-			[
-				collection.id,
-				collection.kind,
-				collection.kind === 'names'
-					? collection.namespace?.manifestId ?? ''
-					: collection.manifestId ?? collection.id,
-			].join(':')
-		)
-		.sort();
-	return [address, gateway, ...supportedCollections].join('|');
+/**
+ * A wallet discovery session is scoped to the wallet and serving gateway only.
+ * Collections stream in after the first render; they refine support inside the
+ * running session instead of replacing it and restarting the GraphQL scan.
+ */
+export function walletDiscoveryScope(address: string, gateway: string) {
+	return [address, gateway].join('|');
 }
 
 export function walletDiscoverySession(

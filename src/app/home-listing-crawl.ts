@@ -75,7 +75,7 @@ export type HomeListingCrawl = {
 	demandChanged(): void;
 };
 
-function sameListingPresentation(left: ResolvedAsset, right: ResolvedAsset) {
+export function sameListingPresentation(left: ResolvedAsset, right: ResolvedAsset) {
 	return (
 		left.collection.id === right.collection.id &&
 		left.asset.id === right.asset.id &&
