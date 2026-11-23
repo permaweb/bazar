@@ -5793,6 +5793,9 @@ function useCollectionLookup(collectionId: string) {
 	};
 }
 
+// Same guard as Tooltip: static (server) rendering has no layout to measure.
+const useBrowserLayoutEffect = typeof document === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
 export function CollectionDescription({ description }: { description: string }) {
 	const text = formatTokenDescription(description);
 	const contentId = React.useId();
@@ -5800,7 +5803,9 @@ export function CollectionDescription({ description }: { description: string }) 
 	const [expanded, setExpanded] = React.useState(false);
 	const [overflowing, setOverflowing] = React.useState(false);
 
-	React.useEffect(() => {
+	// Measured before paint, so a "Show more" toggle is part of the first frame instead of pushing the
+	// collection header (and the grid below it) down a frame later.
+	useBrowserLayoutEffect(() => {
 		const paragraph = paragraphRef.current;
 		if (!paragraph) return;
 		let disposed = false;
