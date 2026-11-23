@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import { arBalanceLabel, tokenBalanceLabel, walletMenuLabel } from './WalletMenu';
 
+function withGermanBigIntGrouping(run: () => void) {
+	const original = BigInt.prototype.toLocaleString;
+	// de-DE groups with '.', which must never meet the fixed '.' decimal.
+	BigInt.prototype.toLocaleString = function (this: bigint) {
+		return this.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+	};
+	try {
+		run();
+	} finally {
+		BigInt.prototype.toLocaleString = original;
+	}
+}
+
 describe('wallet menu identity', () => {
 	it('shows only a known profile name and preserves the address fallback', () => {
 		const address = `${'a'.repeat(38)}12345`;
@@ -12,6 +25,13 @@ describe('wallet menu identity', () => {
 });
 
 describe('wallet AR balance', () => {
+	it('groups large balances with fixed commas in every locale', () => {
+		withGermanBigIntGrouping(() => {
+			expect(arBalanceLabel(1_234_500_000_000_000n, 'ready')).toBe('1,234.5000 AR');
+			expect(tokenBalanceLabel(1_234_567_000n, 'ready', 'AO', 3)).toBe('1,234,567.0000 AO');
+		});
+	});
+
 	it('formats winston as AR fixed to four decimal places', () => {
 		expect(arBalanceLabel(0n, 'ready')).toBe('0.0000 AR');
 		expect(arBalanceLabel(1_234_567_890_123n, 'ready')).toBe('1.2346 AR');

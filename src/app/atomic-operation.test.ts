@@ -5,8 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { liveOrderOfAsset, parseAssetState } from 'api/asset-marketplace';
 
 import {
+	atomicListingPriceLabel,
+	atomicOperationActionLabel,
 	AtomicOperationErrorAlert,
 	atomicOperationFormError,
+	atomicOperationResult,
 	atomicOperationStateError,
 	atomicOperationValue,
 	atomicOrderCanBeBought,
@@ -19,6 +22,7 @@ import {
 	externalReservationTransaction,
 	pendingListingMessage,
 	purchaseStatusMessage,
+	winstonToAr,
 } from './App';
 import { purchaseObservationResumeState } from './purchase-observation-retry';
 
@@ -62,7 +66,45 @@ describe('atomic operation error semantics', () => {
 	});
 });
 
+function withGermanBigIntGrouping(run: () => void) {
+	const original = BigInt.prototype.toLocaleString;
+	// de-DE groups with '.', which must never meet the fixed '.' decimal.
+	BigInt.prototype.toLocaleString = function (this: bigint) {
+		return this.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+	};
+	try {
+		run();
+	} finally {
+		BigInt.prototype.toLocaleString = original;
+	}
+}
+
 describe('atomic asset operation validation', () => {
+	it('formats AR prices with fixed comma grouping in every locale', () => {
+		withGermanBigIntGrouping(() => {
+			expect(winstonToAr('1234500000000000')).toBe('1,234.5');
+			expect(winstonToAr('1000000000000000')).toBe('1,000');
+		});
+	});
+
+	it('accepts a pasted AR price with surrounding whitespace', () => {
+		expect(atomicOperationValue('sell', ' 0.25 ')).toBe('0.25');
+		expect(atomicOperationFormError('sell', ' 0.25 ')).toBe('');
+		expect(atomicOperationFormError('sell', '0.25 ')).toBe('');
+		expect(atomicOperationFormError('sell', ' 0.0 ')).toContain('at least');
+	});
+
+	it('echoes the listing price as it is recorded on-chain', () => {
+		const sell = { kind: 'sell' } as any;
+		expect(atomicListingPriceLabel(' 0.50 ')).toBe('0.5 AR');
+		expect(atomicOperationActionLabel(sell, ' 1234.50 ')).toBe('List for 1,234.5 AR');
+		expect(atomicOperationActionLabel(sell, ' ')).toBe('Enter a listing price');
+		expect(atomicOperationResult('sell', 'Asset', '0.50')).toEqual({
+			title: 'Listing is live',
+			detail: 'Asset is offered for 0.5 AR.',
+		});
+	});
+
 	it('requires a positive AR price with at most twelve decimals', () => {
 		expect(atomicOperationFormError('sell', '')).toContain('AR price');
 		expect(atomicOperationFormError('sell', '0')).toContain('at least');

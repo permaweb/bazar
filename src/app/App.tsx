@@ -208,7 +208,13 @@ import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
-import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
+import {
+	formatArAmount,
+	formatTickerLabel,
+	formatTokenDescription,
+	groupDecimalAmount,
+	parseArAmount,
+} from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -10951,7 +10957,7 @@ function OperationDialog({
 			} else if (operation.resumeId) {
 				prepared = client.restore(operation.resumeId, owner);
 			} else if (operation.kind === 'sell') {
-				const winston = arToWinston(value);
+				const winston = arToWinston(operationValue);
 				prepared = await client.makeOffer(
 					{ processId: asset.id, quantity: '1', asking: winston, seller: owner },
 					signal
@@ -11047,7 +11053,7 @@ function OperationDialog({
 						orderId: prepared.id,
 						seller: owner,
 						quantity: '1',
-						asking: arToWinston(value),
+						asking: arToWinston(operationValue),
 					},
 					signal
 				);
@@ -11687,7 +11693,11 @@ function OperationDialog({
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
 									title={asset.name}
-									detail={operation.kind === 'sell' ? `${value} AR` : 'One asset'}
+									detail={
+										operation.kind === 'sell'
+											? atomicListingPriceLabel(operationValue)
+											: 'One asset'
+									}
 									media={
 										asset.image ? (
 											<ArtworkImage
@@ -12216,9 +12226,7 @@ function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
 	};
 }
 export function tokenBalanceLabel(value: string, state: AssetState) {
-	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
-	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${formatTickerLabel(
+	return `${groupDecimalAmount(formatTokenAmount(value, state.denomination))} ${formatTickerLabel(
 		state.ticker,
 		state.totalSupply === '1' ? 'asset' : 'tokens'
 	)}`;
@@ -12227,10 +12235,7 @@ function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;
 }
 export function winstonToAr(value: string) {
-	const raw = BigInt(value);
-	const whole = raw / 1_000_000_000_000n;
-	const fraction = (raw % 1_000_000_000_000n).toString().padStart(12, '0').replace(/0+$/, '');
-	return fraction ? `${whole.toLocaleString()}.${fraction}` : whole.toLocaleString();
+	return formatArAmount(value);
 }
 export function formatBytes(value: number) {
 	if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
@@ -12271,10 +12276,7 @@ export function mintErrorMessage(error: unknown) {
 	return friendly[value] ?? value.replaceAll('-', ' ');
 }
 function arToWinston(value: string) {
-	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)
-		throw new Error('Enter a positive AR amount.');
-	const [whole, decimals = ''] = value.split('.');
-	return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
+	return parseArAmount(value);
 }
 
 function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
@@ -12298,10 +12300,11 @@ const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = '') {
 	if (kind === 'sell') {
-		if (!value.trim()) return 'Enter the AR price for this asset.';
-		if (/^0(?:\.0*)?$/.test(value)) return 'Enter a price of at least 0.000000000001 AR.';
+		const price = value.trim();
+		if (!price) return 'Enter the AR price for this asset.';
+		if (/^0(?:\.0*)?$/.test(price)) return 'Enter a price of at least 0.000000000001 AR.';
 		try {
-			if (BigInt(arToWinston(value)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+			if (BigInt(arToWinston(price)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
 		} catch {
 			return 'Enter a valid AR amount with no more than 12 decimal places.';
 		}
@@ -12316,7 +12319,16 @@ export function atomicOperationFormError(kind: Operation['kind'], value: string,
 	return '';
 }
 export function atomicOperationValue(kind: Operation['kind'], value: string) {
-	return kind === 'transfer' ? value.trim() : value;
+	return kind === 'transfer' || kind === 'sell' ? value.trim() : value;
+}
+/** The listing price as it will be recorded on-chain ('0.50' -> '0.5 AR'),
+ * falling back to the typed value while it is not yet a valid price. */
+export function atomicListingPriceLabel(value: string) {
+	try {
+		return `${winstonToAr(arToWinston(value))} AR`;
+	} catch {
+		return `${value.trim()} AR`;
+	}
 }
 export function atomicOrderCanBeBought(order: SwapOrder | null): order is SwapOrder {
 	return order?.status === 'open';
@@ -12417,16 +12429,18 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
 }
 
-function atomicOperationActionLabel(operation: Operation, value: string) {
+export function atomicOperationActionLabel(operation: Operation, value: string) {
 	if (operation.kind === 'buy') return `Buy for ${winstonToAr(operation.order.asking)} AR`;
-	if (operation.kind === 'sell') return value ? `List for ${value} AR` : 'Enter a listing price';
+	if (operation.kind === 'sell')
+		return value.trim() ? `List for ${atomicListingPriceLabel(value)}` : 'Enter a listing price';
 	if (operation.kind === 'cancel') return 'Cancel listing and return asset';
 	return ARWEAVE_ADDRESS.test(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
 }
 
-function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
+export function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
 	if (kind === 'buy') return { title: 'Purchase complete', detail: `${assetName} is now owned by ${short(owner)}.` };
-	if (kind === 'sell') return { title: 'Listing is live', detail: `${assetName} is offered for ${value} AR.` };
+	if (kind === 'sell')
+		return { title: 'Listing is live', detail: `${assetName} is offered for ${atomicListingPriceLabel(value)}.` };
 	if (kind === 'cancel')
 		return {
 			title: 'Listing cancelled',
