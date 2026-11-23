@@ -7,7 +7,13 @@ import {
 	DispatchSignedTransactionRejectedError,
 } from 'api/fungible-dispatch';
 
-import { dispatchErrorMessage, rejectedSignatureConfirmation, rejectedSignatureOutcomeMessage } from './DispatchRoute';
+import {
+	dispatchErrorMessage,
+	dispatchRowStatusLabel,
+	notAppliedSignAgainConfirmation,
+	rejectedSignatureConfirmation,
+	rejectedSignatureOutcomeMessage,
+} from './DispatchRoute';
 
 describe('dispatch recovery errors', () => {
 	it('explains why a missing signed transaction requires manual review instead of replacement', () => {
@@ -72,5 +78,45 @@ describe('dispatch gateway rejection copy', () => {
 		expect(rejectedSignatureOutcomeMessage('discarded')).toContain(
 			'Resume signs a replacement for this holder only'
 		);
+	});
+});
+
+describe('dispatch receipt settlement copy', () => {
+	const a = 'A'.repeat(43);
+	const b = 'B'.repeat(43);
+
+	it('names a process-proven rejection Not applied and says no tokens moved', () => {
+		const message = dispatchErrorMessage(new DispatchSignedTransactionRejectedError([a], [a]));
+		expect(message).toContain('the row marked Not applied');
+		expect(message).toContain('no tokens moved');
+		expect(message).toContain('Sign again');
+		expect(message).not.toContain('may have been posted');
+
+		const mixed = dispatchErrorMessage(new DispatchSignedTransactionRejectedError([a, b], [b]));
+		expect(mixed).toContain('the row marked Rejected');
+		expect(mixed).toContain('the row marked Not applied');
+		expect(notAppliedSignAgainConfirmation(a)).toContain('no tokens moved');
+	});
+
+	it('keeps unproven outcomes Posted and never calls them rejected', () => {
+		for (const code of [
+			'fungible-transfer-proof-mismatch',
+			'asset-balance-proof-unavailable',
+			'scheduled-action-state-missing',
+		]) {
+			const message = dispatchErrorMessage(new Error(code));
+			expect(message).toContain('stays Posted');
+			expect(message).not.toMatch(/rejected/i);
+		}
+	});
+
+	it('labels rows by the evidence that settled them', () => {
+		expect(dispatchRowStatusLabel({ startingSlot: 41 }, { status: 'settled' })).toBe('Settled');
+		expect(dispatchRowStatusLabel({}, { status: 'settled' })).toBe('Settled (balance-checked)');
+		expect(dispatchRowStatusLabel({ startingSlot: 41 }, { status: 'rejected', rejectedBy: 'process' })).toBe(
+			'Not applied'
+		);
+		expect(dispatchRowStatusLabel({ startingSlot: 41 }, { status: 'rejected' })).toBe('Rejected');
+		expect(dispatchRowStatusLabel({}, { status: 'posted' })).toBe('Posted');
 	});
 });

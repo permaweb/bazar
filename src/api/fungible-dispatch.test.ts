@@ -172,6 +172,33 @@ describe('dispatch row lifecycle', () => {
 		expect(dispatchPlanProgress({ rows: [rows[0]] }).complete).toBe(true);
 	});
 
+	it('accepts an optional non-negative integer startingSlot and process rejections only on rejected rows', () => {
+		const plan = {
+			processId,
+			sender,
+			createdAt: 1,
+			baseline: { [addressA]: '0' },
+			rows: [{ address: addressA, quantity: '1', status: 'unsent' as const }],
+		};
+		expect(isDispatchPlan(plan)).toBe(true);
+		expect(isDispatchPlan({ ...plan, startingSlot: 0 })).toBe(true);
+		expect(isDispatchPlan({ ...plan, startingSlot: 41 })).toBe(true);
+		for (const startingSlot of [-1, 1.5, '41', null]) expect(isDispatchPlan({ ...plan, startingSlot })).toBe(false);
+		const notApplied = {
+			...plan.rows[0],
+			status: 'rejected' as const,
+			transactionId: txA,
+			rejectedBy: 'process' as const,
+		};
+		expect(isDispatchPlan({ ...plan, rows: [notApplied] })).toBe(true);
+		expect(isDispatchPlan({ ...plan, rows: [{ ...notApplied, status: 'posted' }] })).toBe(false);
+		expect(isDispatchPlan({ ...plan, rows: [{ ...notApplied, rejectedBy: 'gateway' }] })).toBe(false);
+	});
+
+	it('does not count a process-proven rejection as in flight: it can never apply', () => {
+		expect(dispatchRowInFlight({ status: 'rejected', transactionId: txA, rejectedBy: 'process' })).toBe(false);
+	});
+
 	it('keeps a rejected row in the discard confirmation: its signature may have been posted', () => {
 		expect(dispatchRowInFlight({ status: 'rejected', transactionId: txA })).toBe(true);
 	});

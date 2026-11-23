@@ -2,19 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import vectors from '../helpers/host-account.vectors.json';
 
-const mocks = vi.hoisted(() => ({ waitForAssetState: vi.fn() }));
+const mocks = vi.hoisted(() => ({ waitForAssetState: vi.fn(), readAssetState: vi.fn() }));
 
 vi.mock('./asset-marketplace', async (importOriginal) => ({
 	...(await importOriginal<typeof import('./asset-marketplace')>()),
 	waitForAssetState: mocks.waitForAssetState,
+	readAssetState: mocks.readAssetState,
 }));
 
 import { TransactionDispatchNotSentError, TransactionDispatchRejectedError } from 'weave-wrangler';
 
 import { ASSET_BALANCE_STATE_UNAVAILABLE, type AssetState } from './asset-marketplace';
-import { type AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from './asset-transactions';
 import {
+	ASSET_BALANCE_PROOF_UNAVAILABLE,
+	type AssetTransactionClient,
+	SIGNED_TRANSACTION_PREFIX,
+} from './asset-transactions';
+import {
+	createDispatchPlan,
 	discardRejectedDispatchSignature,
+	DISPATCH_PROOF_CONCURRENCY,
 	DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED,
 	DISPATCH_SIGNED_TRANSACTION_REJECTED,
 	type DispatchPlan,
@@ -70,6 +77,7 @@ function client(overrides: Partial<AssetTransactionClient> = {}) {
 }
 
 beforeEach(() => {
+	mocks.readAssetState.mockReset();
 	mocks.waitForAssetState.mockReset();
 	mocks.waitForAssetState.mockImplementation(async (_id, accept) => {
 		const state = { balances: { [recipientA]: '10', [recipientB]: '10' } };
@@ -455,5 +463,223 @@ describe('discardRejectedDispatchSignature', () => {
 
 		expect(loadDispatchPlan(processId, storage)).toEqual(rejectedPlan());
 		expect(held.has(signedKey(transactionA))).toBe(true);
+	});
+});
+
+describe('dispatch settlement on the exact transfer receipt', () => {
+	const signedKey = (id: string) => `${SIGNED_TRANSACTION_PREFIX}${id}`;
+	const startingSlot = 41;
+	const receiptPlan = (rows: DispatchPlan['rows']): DispatchPlan => ({ ...plan(rows), startingSlot });
+	const posted = (address: string, transactionId: string) => ({
+		address,
+		quantity: '10',
+		status: 'posted' as const,
+		transactionId,
+	});
+	const balances = (held: Record<string, string>) => {
+		mocks.waitForAssetState.mockImplementation(async (_id, accept) => {
+			const state = { balances: held };
+			if (!(await accept(state))) throw new Error('asset-state-timeout');
+			return { state, provider: 'test' };
+		});
+	};
+	const seeded = (...ids: string[]) => {
+		const memory = memoryStorage();
+		for (const id of ids) memory.held.set(signedKey(id), '{}');
+		return memory;
+	};
+
+	it('settles on the receipt even when the recipient spent the tokens during the window', async () => {
+		balances({ [recipientA]: '0' }); // received 10, then sold them before any poll
+		const { held, storage } = seeded(transactionA);
+		const waitForFungibleTransfer = vi.fn(async () => ({} as AssetState));
+
+		const result = await runDispatch(receiptPlan([posted(recipientA, transactionA)]), {
+			client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+			storage,
+		});
+
+		expect(waitForFungibleTransfer).toHaveBeenCalledWith(
+			processId,
+			transactionA,
+			sender,
+			recipientA,
+			'10',
+			{ startingSlot },
+			undefined
+		);
+		expect(result.rows[0]).toMatchObject({ status: 'settled', transactionId: transactionA });
+		expect(held.has(signedKey(transactionA))).toBe(false);
+		expect(mocks.waitForAssetState).not.toHaveBeenCalled();
+	});
+
+	it('does not settle on a third-party credit while this transfer has no receipt', async () => {
+		balances({ [recipientA]: '10' }); // someone else sent recipientA 10
+		const { held, storage } = seeded(transactionA);
+		const waitForFungibleTransfer = vi.fn(async () => {
+			throw new Error('asset-state-timeout');
+		});
+
+		await expect(
+			runDispatch(receiptPlan([posted(recipientA, transactionA)]), {
+				client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+				storage,
+			})
+		).rejects.toThrow('asset-state-timeout');
+
+		expect(loadDispatchPlan(processId, storage)?.rows[0]).toEqual(posted(recipientA, transactionA));
+		expect(held.has(signedKey(transactionA))).toBe(true);
+	});
+
+	it('keeps an unproven outcome posted with its error, never rejected, and still proves the other rows', async () => {
+		for (const code of [
+			'fungible-transfer-proof-mismatch',
+			ASSET_BALANCE_PROOF_UNAVAILABLE,
+			'scheduled-action-state-missing',
+		]) {
+			balances({ [recipientA]: '0', [recipientB]: '0' });
+			const { held, storage } = seeded(transactionA, transactionB);
+			const waitForFungibleTransfer = vi.fn(async (_process: string, transactionId: string) => {
+				if (transactionId === transactionA) throw new Error(code);
+				return {} as AssetState;
+			});
+
+			await expect(
+				runDispatch(receiptPlan([posted(recipientA, transactionA), posted(recipientB, transactionB)]), {
+					client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+					storage,
+				})
+			).rejects.toThrow(code);
+
+			expect(loadDispatchPlan(processId, storage)?.rows).toEqual([
+				posted(recipientA, transactionA),
+				{ ...posted(recipientB, transactionB), status: 'settled' },
+			]);
+			expect(held.has(signedKey(transactionA))).toBe(true);
+			expect(held.has(signedKey(transactionB))).toBe(false);
+		}
+	});
+
+	it("marks a proven 'fungible-transfer-rejected' row Not applied and stops working on it", async () => {
+		balances({ [recipientA]: '0', [recipientB]: '0' });
+		const { held, storage } = seeded(transactionA, transactionB);
+		const waitForFungibleTransfer = vi.fn(async (_process: string, transactionId: string) => {
+			if (transactionId === transactionA) throw new Error('fungible-transfer-rejected');
+			return {} as AssetState;
+		});
+		const options = {
+			client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+			storage,
+		};
+
+		await expect(
+			runDispatch(receiptPlan([posted(recipientA, transactionA), posted(recipientB, transactionB)]), options)
+		).rejects.toMatchObject({
+			code: DISPATCH_SIGNED_TRANSACTION_REJECTED,
+			addresses: [recipientA],
+			processRejected: [recipientA],
+		});
+
+		const saved = loadDispatchPlan(processId, storage)!;
+		expect(saved.rows).toEqual([
+			{ ...posted(recipientA, transactionA), status: 'rejected', rejectedBy: 'process' },
+			{ ...posted(recipientB, transactionB), status: 'settled' },
+		]);
+		// Kept for review until the user chooses Sign again.
+		expect(held.has(signedKey(transactionA))).toBe(true);
+
+		waitForFungibleTransfer.mockClear();
+		await expect(runDispatch(saved, options)).rejects.toMatchObject({ processRejected: [recipientA] });
+		expect(waitForFungibleTransfer).not.toHaveBeenCalled();
+	});
+
+	it('never runs more exact proofs at once than the pool size', async () => {
+		const rows = Array.from({ length: 10 }, (_, index) =>
+			posted(`${'r'.repeat(42)}${index}`, `${'x'.repeat(42)}${index}`)
+		);
+		let inFlight = 0;
+		let peak = 0;
+		const waitForFungibleTransfer = vi.fn(async () => {
+			inFlight += 1;
+			peak = Math.max(peak, inFlight);
+			await new Promise((resolve) => setTimeout(resolve, 1));
+			inFlight -= 1;
+			return {} as AssetState;
+		});
+
+		const result = await runDispatch(receiptPlan(rows), {
+			client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+			storage: memoryStorage().storage,
+		});
+
+		expect(waitForFungibleTransfer).toHaveBeenCalledTimes(10);
+		expect(peak).toBe(DISPATCH_PROOF_CONCURRENCY);
+		expect(result.rows.every((row) => row.status === 'settled')).toBe(true);
+	});
+
+	it('keeps the balance rule for a plan saved without startingSlot', async () => {
+		const waitForFungibleTransfer = vi.fn();
+
+		const result = await runDispatch(plan([posted(recipientA, transactionA)]), {
+			client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+			storage: memoryStorage().storage,
+		});
+
+		expect(waitForFungibleTransfer).not.toHaveBeenCalled();
+		expect(mocks.waitForAssetState).toHaveBeenCalledOnce();
+		expect(result.rows[0].status).toBe('settled');
+	});
+
+	it('captures startingSlot once from the preflight state, and omits it when the route exposes none', async () => {
+		const state = (raw: Record<string, unknown>) => ({
+			state: { holderBalancesAvailable: true, balances: { [sender]: '100', [recipientA]: '3' }, raw },
+		});
+		mocks.readAssetState.mockResolvedValueOnce(state({ 'at-slot': '41' }));
+		const created = await createDispatchPlan(processId, sender, [{ address: recipientA, quantity: '10' }]);
+		expect(created).toMatchObject({ startingSlot: 41, baseline: { [recipientA]: '3' } });
+
+		mocks.readAssetState.mockResolvedValueOnce(state({}));
+		const legacy = await createDispatchPlan(processId, sender, [{ address: recipientA, quantity: '10' }]);
+		expect('startingSlot' in legacy).toBe(false);
+
+		// Resume never re-reads it: a later slot would hide this plan's transfers.
+		const waitForFungibleTransfer = vi.fn(async () => ({} as AssetState));
+		await runDispatch(
+			{ ...created, rows: [posted(recipientA, transactionA)] },
+			{
+				client: client({ waitForFungibleTransfer } as Partial<AssetTransactionClient>),
+				storage: memoryStorage().storage,
+			}
+		);
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		expect(waitForFungibleTransfer).toHaveBeenCalledWith(
+			processId,
+			transactionA,
+			sender,
+			recipientA,
+			'10',
+			{ startingSlot: 41 },
+			undefined
+		);
+	});
+
+	it('Sign again on a Not applied row skips the balance check: an unrelated credit cannot settle it', async () => {
+		const memory = seeded(transactionA);
+		const rejectedPlan = receiptPlan([
+			{ ...posted(recipientA, transactionA), status: 'rejected', rejectedBy: 'process' },
+		]);
+		const readCurrentState = vi.fn(async () => ({
+			state: { holderBalancesAvailable: true, balances: { [recipientA]: '10' } } as unknown as AssetState,
+		}));
+
+		const result = await discardRejectedDispatchSignature(rejectedPlan, recipientA, {
+			storage: memory.storage,
+			readCurrentState,
+		});
+
+		expect(readCurrentState).not.toHaveBeenCalled();
+		expect(result.outcome).toBe('discarded');
+		expect(result.plan.rows).toEqual([{ address: recipientA, quantity: '10', status: 'unsent' }]);
+		expect(memory.held.has(signedKey(transactionA))).toBe(false);
 	});
 });
