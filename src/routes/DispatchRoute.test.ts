@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { AssetState } from 'api/asset-marketplace';
 import { DISPLAY_STATE_TIMEOUT_ERROR } from 'api/asset-state-store';
-import { DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, type DispatchPlan } from 'api/fungible-dispatch';
+import { DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, type DispatchPlan, runDispatch } from 'api/fungible-dispatch';
 
-import { dispatchErrorMessage, type DispatchStartRequest, startDispatchOnce } from './DispatchRoute';
+import {
+	dispatchEndActivity,
+	dispatchErrorMessage,
+	type DispatchStartRequest,
+	startDispatchOnce,
+} from './DispatchRoute';
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -197,5 +202,69 @@ describe('dispatch recovery errors', () => {
 		expect(message).toContain('within 45 seconds');
 		expect(message).toContain('No new transfer was signed');
 		expect(message).toContain('saved dispatch progress remains available');
+	});
+});
+
+describe('dispatch run end activity', () => {
+	const progressed: DispatchPlan = {
+		...PLAN,
+		rows: [
+			{ ...PLAN.rows[0], status: 'settled' },
+			{ ...PLAN.rows[1], status: 'posted', transactionId: 'T'.repeat(43) },
+			{ address: 'C'.repeat(43), quantity: '3', status: 'unsent' },
+		],
+	};
+
+	it('replaces the working row with a paused row when the page unmounts mid-run', () => {
+		const activity = dispatchEndActivity({ kind: 'interrupted' }, progressed);
+
+		expect(activity.phase).toBe('error');
+		expect(activity.status).toContain('Dispatch paused when you left the page');
+		expect(activity.status).toContain('1 of 3 settled');
+		expect(activity.status).toContain('Resume it from Dispatch on this token');
+		expect(activity.status).toContain('posted transfers will not be re-sent');
+		// Clicking the row opens the token page, not the dispatch route.
+		expect(activity.status).not.toContain('Open the dispatch page');
+	});
+
+	it('removes the row when the run completes', () => {
+		expect(dispatchEndActivity({ kind: 'complete' }, progressed)).toEqual({ phase: 'done', status: '' });
+	});
+
+	it('keeps the failure message on the row when the run fails', () => {
+		const cause = new Error('wallet-account-changed');
+
+		expect(dispatchEndActivity({ kind: 'failed', cause }, progressed)).toEqual({
+			phase: 'error',
+			status: dispatchErrorMessage(cause),
+		});
+	});
+
+	it('never leaves a stopped run in the working phase', () => {
+		const ends = [
+			{ kind: 'complete' },
+			{ kind: 'failed', cause: new Error('x') },
+			{ kind: 'interrupted' },
+		] as const;
+
+		for (const end of ends) expect(dispatchEndActivity(end, PLAN).phase).not.toBe('working');
+	});
+
+	it('reaches the interrupted branch: an unmount abort rejects runDispatch instead of resolving it', async () => {
+		const store = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => store.get(key) ?? null,
+			setItem: (key: string, value: string) => void store.set(key, value),
+			removeItem: (key: string) => void store.delete(key),
+		};
+		const controller = new AbortController();
+		const onProgress = vi.fn(() => controller.abort());
+		const saved: DispatchPlan = { ...PLAN, baseline: { [ROWS[0].address]: '0', [ROWS[1].address]: '0' } };
+
+		await expect(runDispatch(saved, { signal: controller.signal, storage, onProgress })).rejects.toMatchObject({
+			name: 'AbortError',
+		});
+		expect(controller.signal.aborted).toBe(true);
+		expect(onProgress).toHaveBeenCalledTimes(1);
 	});
 });
