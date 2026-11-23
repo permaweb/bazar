@@ -6036,6 +6036,30 @@ function CollectionRoute() {
 	return <CollectionView key={collectionId} />;
 }
 
+export type CollectionRouteState = 'loading' | 'unavailable' | 'not-found' | 'ready';
+
+/**
+ * Route state for a page addressed by collection id. A collection outside the
+ * loaded catalogue stays loading while useCollectionLookup fetches it, so a
+ * deep link never settles on "not found" before the lookup has answered.
+ */
+export function collectionRouteState({
+	hasCollection,
+	marketLoading,
+	marketError,
+	lookup,
+}: {
+	hasCollection: boolean;
+	marketLoading: boolean;
+	marketError: string | null;
+	lookup: { loading: boolean; error: string };
+}): CollectionRouteState {
+	if (hasCollection) return 'ready';
+	if (marketLoading || lookup.loading) return 'loading';
+	if (lookup.error || marketError) return 'unavailable';
+	return 'not-found';
+}
+
 function useCollectionLookup(collectionId: string) {
 	const market = React.useContext(MarketContext);
 	const needsLookup =
@@ -7976,10 +8000,11 @@ function CollectionIndexNotice({
 	);
 }
 
-function CollectionActivityView() {
+export function CollectionActivityView() {
 	const { collectionId = '' } = useParams();
 	const market = React.useContext(MarketContext);
 	const collection = market.collections.find((item) => item.id === collectionId);
+	const collectionLookup = useCollectionLookup(collectionId);
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
@@ -8120,22 +8145,28 @@ function CollectionActivityView() {
 		return () => controller.abort();
 	}, [activityScope, activityWindowVersion, retry]);
 
-	if (!collection && market.loading)
+	const routeState = collectionRouteState({
+		hasCollection: Boolean(collection),
+		marketLoading: market.loading,
+		marketError: market.error,
+		lookup: collectionLookup,
+	});
+	if (routeState === 'loading')
 		return (
 			<RouteState title="Collection activity">
 				<Loading label="Reading collection index…" />
 			</RouteState>
 		);
-	if (!collection && market.error)
+	if (routeState === 'unavailable')
 		return (
 			<RouteState title="Activity unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection)
 		return (
 			<RouteState title="Collection not found">
-				<ErrorPanel message="This collection could not be found on Arweave." />
+				<ErrorPanel message="This collection could not be found on Arweave." onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	const activityScanAnnouncement = collectionActivityScanAnnouncement({
