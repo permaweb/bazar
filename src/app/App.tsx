@@ -3084,6 +3084,34 @@ export function homeListingCrawlDemand(view: {
 	return [{ count: (page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, matches: matching(view.assetType) }];
 }
 
+export function homeDiscoverOrderId({ asset, collection }: { asset: { id: string }; collection: { id: string } }) {
+	return `${collection.id}:${asset.id}`;
+}
+
+/**
+ * The Discover lists hold their painted order until nothing that can add or move a card is loading: the
+ * market shell and listing crawl are idle and, for views that filter or rank by price, every candidate
+ * has a price summary (resolved or unavailable). The unfiltered "all" view is not ranked by price.
+ */
+export function homeDiscoverOrderSettled(
+	view: HomeAssetView,
+	loading: boolean,
+	candidateIds: readonly string[],
+	summaries: Record<string, HomeMarketSummary>
+) {
+	if (loading) return false;
+	return view === 'all' || candidateIds.every((id) => Boolean(summaries[id]));
+}
+
+/** Placeholder rows that keep the token overview at its page height while its rows are still arriving. */
+export function homeTokenPlaceholderRows(
+	settled: boolean,
+	shownRows: number,
+	pageSize = HOME_DISCOVER_TOKEN_PAGE_SIZE
+) {
+	return settled ? 0 : Math.max(0, pageSize - shownRows);
+}
+
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
 	return view === 'all' || homeMarketSummaryListed(summary);
 }
@@ -3094,6 +3122,18 @@ function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
 			<LoaderCircle aria-hidden="true" />
 			<span>{label}</span>
 		</span>
+	);
+}
+
+function HomeTokenPlaceholderRow() {
+	return (
+		<div aria-hidden="true" className="token-market-row token-market-row--placeholder">
+			<span className="token-market-logo layout-placeholder" />
+			<span className="token-market-identity">
+				<span className="layout-placeholder token-market-placeholder-line" />
+				<span className="layout-placeholder token-market-placeholder-line short" />
+			</span>
+		</div>
 	);
 }
 
@@ -3467,7 +3507,7 @@ function Home() {
 		}
 		return indexed;
 	}, [displayHomeListings, verifiedHomeListingActivity]);
-	const displayedAssets = React.useMemo(
+	const rankedDisplayedAssets = React.useMemo(
 		() =>
 			[...assetCandidates]
 				.filter(({ asset }) => homeAssetVisibleForView(displayAssetPrices[asset.id], assetView))
@@ -3492,6 +3532,27 @@ function Home() {
 				}),
 		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
+	// Rows and cards already on screen keep their slots while listings and prices stream in; the lists
+	// re-rank when the viewer changes the view or once nothing that could move a card is still loading.
+	const displayedAssetOrderSettled = homeDiscoverOrderSettled(
+		assetView,
+		market.loading || portableHomeListingsLoading,
+		assetCandidates.map(({ asset }) => asset.id),
+		displayAssetPrices
+	);
+	const displayedAssetOrder = useStableOrder(
+		rankedDisplayedAssets.map(homeDiscoverOrderId),
+		`${assetView}|${assetType}|${normalizedQuery}`,
+		displayedAssetOrderSettled
+	);
+	const displayedAssets = React.useMemo(
+		() => applyStableOrder(rankedDisplayedAssets, displayedAssetOrder, homeDiscoverOrderId),
+		[displayedAssetOrder, rankedDisplayedAssets]
+	);
+	const discoverTokenList = React.useRef<HTMLDivElement>(null);
+	const discoverUniqueGrid = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(discoverTokenList, displayedAssetOrder);
+	useGridReorderMotion(discoverUniqueGrid, displayedAssetOrder);
 	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
 	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
 	const discoverTokenPagination = homeAssetPage(discoverTokens, discoverTokenPage, HOME_DISCOVER_TOKEN_PAGE_SIZE);
@@ -4300,8 +4361,12 @@ function Home() {
 		setAssetPage(page);
 		marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	};
-	const renderTokenList = (items: typeof displayedAssets) => (
-		<div className="token-market-list" role="list">
+	const renderTokenList = (
+		items: typeof displayedAssets,
+		placeholderRows = 0,
+		listRef?: React.RefObject<HTMLDivElement>
+	) => (
+		<div className="token-market-list" ref={listRef} role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
 				const change = tokenPriceChanges[asset.id];
@@ -4330,19 +4395,25 @@ function Home() {
 									: 'muted',
 						}}
 						onWarm={() => prefetchAssetPage(asset.id, true)}
+						orderId={homeDiscoverOrderId({ asset, collection })}
 						priority={index < 2}
 					/>
 				);
 			})}
+			{Array.from({ length: placeholderRows }, (_, index) => (
+				// Keyed by slot, so the remaining placeholders stay put as rows fill the slots above them.
+				<HomeTokenPlaceholderRow key={`placeholder-${items.length + index}`} />
+			))}
 		</div>
 	);
-	const renderCollectibleGrid = (items: typeof displayedAssets) => (
-		<div className="home-asset-grid">
+	const renderCollectibleGrid = (items: typeof displayedAssets, gridRef?: React.RefObject<HTMLDivElement>) => (
+		<div className="home-asset-grid" ref={gridRef}>
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
 				const pricePending = !price;
 				return (
 					<Link
+						data-order-id={homeDiscoverOrderId({ asset, collection })}
 						key={`${collection.id}-${asset.id}`}
 						to={`/asset/${collection.id}/${asset.id}`}
 						onFocus={() => prefetchAssetPage(asset.id, false)}
@@ -4655,16 +4726,32 @@ function Home() {
 															/>
 														</Button>
 													</div>
-													{discoverTokens.length ? (
+													{discoverTokens.length || !displayedAssetOrderSettled ? (
 														<>
-															{renderTokenList(discoverTokenPagination.items)}
-															<Pagination
-																ariaLabel="Token overview pages"
-																className="discover-token-pagination"
-																onPageChange={setDiscoverTokenPage}
-																page={discoverTokenPagination.page}
-																pageCount={discoverTokenPagination.pageCount}
-															/>
+															{renderTokenList(
+																discoverTokenPagination.items,
+																homeTokenPlaceholderRows(
+																	displayedAssetOrderSettled,
+																	discoverTokenPagination.items.length
+																),
+																discoverTokenList
+															)}
+															{discoverTokenPagination.pageCount > 1 ||
+															displayedAssetOrderSettled ? (
+																<Pagination
+																	ariaLabel="Token overview pages"
+																	className="discover-token-pagination"
+																	onPageChange={setDiscoverTokenPage}
+																	page={discoverTokenPagination.page}
+																	pageCount={discoverTokenPagination.pageCount}
+																/>
+															) : (
+																// Hold the pager's height while more tokens may still arrive.
+																<div
+																	aria-hidden="true"
+																	className="pagination discover-token-pagination"
+																/>
+															)}
 														</>
 													) : (
 														<p className="discover-section-empty">
@@ -4688,7 +4775,8 @@ function Home() {
 													</div>
 													{discoverCollectibles.length ? (
 														renderCollectibleGrid(
-															discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW)
+															discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
+															discoverUniqueGrid
 														)
 													) : (
 														<p className="discover-section-empty">

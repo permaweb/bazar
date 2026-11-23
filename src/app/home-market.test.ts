@@ -51,6 +51,8 @@ import {
 	homeCollectionAssetCountLabel,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
+	homeDiscoverOrderId,
+	homeDiscoverOrderSettled,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
@@ -69,6 +71,7 @@ import {
 	homeSummaryRequestKeys,
 	homeTabFromPathname,
 	homeTabPath,
+	homeTokenPlaceholderRows,
 	homeTokenPriceChangeLabel,
 	homeTokenPriceChangePercent,
 	isFungiblePendingMint,
@@ -1112,6 +1115,32 @@ describe('Home market summary retries', () => {
 		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
 		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
 		expect(homeMarketShowsInitialLoader(false, 0)).toBe(false);
+	});
+
+	it('holds the Discover order until the shell, the listing crawl and ranked prices are settled', () => {
+		const summaries: Record<string, HomeMarketSummary> = {
+			listed: { status: 'resolved', value: '1 AR' },
+			failed: { status: 'unavailable', source: 'compute', kind: 'unavailable' },
+		};
+		expect(homeDiscoverOrderSettled('listed', true, ['listed'], summaries)).toBe(false);
+		expect(homeDiscoverOrderSettled('listed', false, ['listed', 'pending'], summaries)).toBe(false);
+		expect(homeDiscoverOrderSettled('price-low', false, ['listed', 'failed'], summaries)).toBe(true);
+		// The unranked "all" view does not wait on prices.
+		expect(homeDiscoverOrderSettled('all', false, ['pending'], summaries)).toBe(true);
+		expect(homeDiscoverOrderSettled('all', true, [], summaries)).toBe(false);
+	});
+
+	it('keys Discover rows by collection and asset', () => {
+		expect(homeDiscoverOrderId({ asset: { id: 'asset' }, collection: { id: 'collection' } })).toBe(
+			'collection:asset'
+		);
+	});
+
+	it('reserves the token overview page height only while rows may still arrive', () => {
+		expect(homeTokenPlaceholderRows(false, 0)).toBe(5);
+		expect(homeTokenPlaceholderRows(false, 3)).toBe(2);
+		expect(homeTokenPlaceholderRows(false, 5)).toBe(0);
+		expect(homeTokenPlaceholderRows(true, 2)).toBe(0);
 	});
 
 	it('turns a stuck card price into an explicit unavailable label after the display deadline', () => {

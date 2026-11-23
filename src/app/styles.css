@@ -10974,6 +10974,17 @@ body input:focus-visible {
 	grid-column: 7;
 	color: var(--muted);
 }
+.token-market-row--placeholder,
+.token-market-row--placeholder:hover {
+	background: var(--paper);
+}
+.token-market-placeholder-line {
+	width: min(16ch, 100%);
+	height: 0.9em;
+}
+.token-market-placeholder-line.short {
+	width: 6ch;
+}
 .token-market-list.compact .token-market-row {
 	min-height: 66px;
 	padding: 8px 10px;
