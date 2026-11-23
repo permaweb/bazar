@@ -23,8 +23,19 @@ describe('TokenAvatar', () => {
 
 	it('keeps direct Arweave logo URLs on the ordinary resource route', () => {
 		const logoId = 'L'.repeat(43);
-		const markup = renderToStaticMarkup(<TokenAvatar image={`https://arweave.net/${logoId}`} ticker="TRUNKY" />);
+		const markup = renderToStaticMarkup(
+			<TokenAvatar image={`https://arweave.net/${logoId}`} loading="eager" ticker="TRUNKY" />
+		);
 
 		expect(markup).toContain(`src="https://arweave.net/${logoId}"`);
+	});
+
+	it('leaves a lazy logo without a src until it nears the viewport and holds a host slot', () => {
+		const markup = renderToStaticMarkup(
+			<TokenAvatar image={`https://arweave.net/${'L'.repeat(43)}`} ticker="TRUNKY" />
+		);
+
+		expect(markup).toContain('token-avatar-image');
+		expect(markup).not.toContain('src=');
 	});
 });

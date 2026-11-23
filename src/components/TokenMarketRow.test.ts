@@ -34,6 +34,7 @@ describe('TokenMarketRow', () => {
 					context: 'Fungible token',
 					metric: { label: 'Unit price', value: '0.1 AR / TRUNKY', tone: 'positive' },
 					secondaryMetric: { label: '24h change', value: '-12.5%', tone: 'negative' },
+					priority: true,
 				})
 			)
 		);

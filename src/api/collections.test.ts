@@ -10,6 +10,7 @@ import {
 	type Collection,
 	COLLECTION_AO_READ_TIMEOUT_MS,
 	collectionAsset,
+	collectionCoverImage,
 	discoverBazarCollections,
 	enrichImageCollectionAssetMetadata,
 	HIDDEN_ASSET_IDS,
@@ -32,13 +33,6 @@ import {
 
 const emptyHiddenCollectionAssetIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
 
-const encodeJson = (value: unknown) =>
-	btoa(JSON.stringify(value)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-const encodeUtf8Json = (value: unknown) =>
-	btoa(Array.from(new TextEncoder().encode(JSON.stringify(value)), (byte) => String.fromCharCode(byte)).join(''))
-		.replaceAll('+', '-')
-		.replaceAll('/', '_')
-		.replaceAll('=', '');
 const encodeTag = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 
 beforeEach(() => {
@@ -97,8 +91,8 @@ describe('direct collection links', () => {
 					{ headers: { 'codec-device': 'json@1.0' } }
 				);
 			}
-			if (String(input).endsWith(`/tx/${currentManifest}/data`)) {
-				return new Response(encodeUtf8Json({ name: 'Shared collection', assets: [assetId] }));
+			if (String(input).endsWith(`/raw/${currentManifest}`)) {
+				return new Response(JSON.stringify({ name: 'Shared collection', assets: [assetId] }));
 			}
 			throw new Error(`unexpected-request: ${input}`);
 		});
@@ -117,6 +111,43 @@ describe('direct collection links', () => {
 			createdAt: 200_000,
 			assets: [{ id: assetId }],
 		});
+	});
+
+	it('takes a collection cover from its Thumbnail tag and falls back to the first asset artwork', async () => {
+		const thumbnailId = 'T'.repeat(43);
+		const tagged = candidate();
+		tagged.node.tags.push({ name: 'Thumbnail', value: thumbnailId }, { name: 'Banner', value: 'B'.repeat(43) });
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollectionById')) return indexResponse([tagged]);
+			if (String(input).includes(`${collectionId}~process@1.0/compute`)) {
+				return Response.json(
+					{
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						value: currentManifest,
+						balances: { ['O'.repeat(43)]: '1' },
+						orders: {},
+					},
+					{ headers: { 'codec-device': 'json@1.0' } }
+				);
+			}
+			if (String(input).endsWith(`/raw/${currentManifest}`)) {
+				return new Response(JSON.stringify({ name: 'Covered collection', assets: [assetId] }));
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+		vi.stubGlobal('window', { aoFetch: Object.assign(fetcher, { peers: ['https://peer.example'] }) });
+		connectPermawebOsTestWallet();
+
+		const collection = await loadBazarCollectionById(collectionId);
+		expect(collection?.thumbnail).toBe(`https://arweave.net/raw/${thumbnailId}`);
+		expect(collectionCoverImage(collection!)).toBe(`https://arweave.net/raw/${thumbnailId}`);
+		expect(collectionCoverImage({ ...collection!, thumbnail: undefined })).toBe(
+			`https://arweave.net/raw/${assetId}`
+		);
+		expect(collectionCoverImage({ assets: [{ id: assetId, name: 'Audio' }] })).toBeUndefined();
 	});
 
 	it('loads a carrier that still reports its initial manifest as a linked message', async () => {
@@ -139,8 +170,8 @@ describe('direct collection links', () => {
 			if (String(input).includes(`${valueLink}~message@1.0/serialize~json@1.0`)) {
 				return Response.json({ device: 'json@1.0', target: initialManifest });
 			}
-			if (String(input).endsWith(`/tx/${initialManifest}/data`)) {
-				return new Response(encodeUtf8Json({ name: 'First-slot collection', assets: [assetId] }));
+			if (String(input).endsWith(`/raw/${initialManifest}`)) {
+				return new Response(JSON.stringify({ name: 'First-slot collection', assets: [assetId] }));
 			}
 			throw new Error(`unexpected-request: ${input}`);
 		});
@@ -255,8 +286,8 @@ describe('collection index loading', () => {
 						],
 					});
 				}
-				if (url.includes(`/tx/${manifests[index]}/data`)) {
-					return new Response(encodeUtf8Json({ name: `Hidden ${index}`, assets: [assets[index]] }));
+				if (url.includes(`/raw/${manifests[index]}`)) {
+					return new Response(JSON.stringify({ name: `Hidden ${index}`, assets: [assets[index]] }));
 				}
 			}
 			return new Response('unavailable', { status: 503 });
@@ -292,7 +323,7 @@ describe('collection index loading', () => {
 		});
 		// The carrier index also returns a member of an unavailable and of a readable hidden manifest.
 		const carrierIds = [nameId, assets[0], assets[1]];
-		const namesNamespace = encodeJson({
+		const namesNamespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId }, unindexed: { id: assets[0] }, hidden: { id: assets[1] } },
@@ -317,7 +348,7 @@ describe('collection index loading', () => {
 						},
 					});
 				}
-				if (url.includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namesNamespace);
+				if (url.includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namesNamespace);
 				for (const [index, collectionId] of HIDDEN_COLLECTION_IDS.entries()) {
 					if (url.endsWith(`/tx/${collectionId}`)) {
 						// Hidden membership only answers after the catalogue sources have started.
@@ -327,9 +358,9 @@ describe('collection index loading', () => {
 							tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifests[index]) }],
 						});
 					}
-					if (url.includes(`/tx/${manifests[index]}/data`)) {
+					if (url.includes(`/raw/${manifests[index]}`)) {
 						if (index === 0 && !manifestRecovered) return new Response('missing', { status: 404 });
-						return new Response(encodeUtf8Json({ name: `Hidden ${index}`, assets: [assets[index]] }));
+						return new Response(JSON.stringify({ name: `Hidden ${index}`, assets: [assets[index]] }));
 					}
 				}
 				return new Response('unavailable', { status: 503 });
@@ -657,7 +688,7 @@ describe('collection index loading', () => {
 			},
 		});
 		const encodeManifest = (name: string, asset = assetId) =>
-			encodeUtf8Json({ name, description: `${name} description`, assets: [asset] });
+			JSON.stringify({ name, description: `${name} description`, assets: [asset] });
 		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
 			if (body?.query?.includes('BazarCollections')) {
@@ -695,7 +726,7 @@ describe('collection index loading', () => {
 					{ headers: { 'codec-device': 'json@1.0' } }
 				);
 			}
-			if (String(input).includes(`/tx/${currentManifest}/data`)) return new Response(encodeManifest('Current'));
+			if (String(input).includes(`/raw/${currentManifest}`)) return new Response(encodeManifest('Current'));
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -978,7 +1009,7 @@ describe('collection index loading', () => {
 		const manifestId = 'M'.repeat(43);
 		const stringAssetId = 'A'.repeat(43);
 		const objectAssetId = 'B'.repeat(43);
-		const manifest = encodeUtf8Json({
+		const manifest = JSON.stringify({
 			name: 'Content-routed collection',
 			assets: [stringAssetId, { id: objectAssetId, name: 'Object asset' }],
 		});
@@ -991,7 +1022,8 @@ describe('collection index loading', () => {
 						tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifestId) }],
 					});
 				}
-				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				// The policy's permanent-content provider is a HyperBEAM-style host: `/<id>`, no `/raw`.
+				if (url === `https://content.example/${manifestId}`) return new Response(manifest);
 				return new Response('unexpected', { status: 500 });
 			})
 		);
@@ -1223,7 +1255,7 @@ describe('collection index loading', () => {
 
 	it('publishes successful sources progressively and reports partial failures', async () => {
 		const nameId = 'N'.repeat(43);
-		const namesNamespace = encodeJson({
+		const namesNamespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId } },
@@ -1248,7 +1280,7 @@ describe('collection index loading', () => {
 						},
 					});
 				}
-				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namesNamespace);
+				if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namesNamespace);
 				return new Response('unavailable', { status: 503 });
 			})
 		);
@@ -1277,7 +1309,7 @@ describe('collection index loading', () => {
 		const collectionId = 'C'.repeat(43);
 		const manifestId = 'M'.repeat(43);
 		const assetId = 'A'.repeat(43);
-		const namespace = encodeJson({
+		const namespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId } },
@@ -1322,9 +1354,9 @@ describe('collection index loading', () => {
 					data: { transactions: empty, legacyHintStyle: empty, legacyAssetType: empty },
 				});
 			}
-			if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
-			if (String(input).includes(`/tx/${manifestId}/data`)) {
-				return new Response(encodeUtf8Json({ name: 'Phone collection', description: '', assets: [assetId] }));
+			if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namespace);
+			if (String(input).includes(`/raw/${manifestId}`)) {
+				return new Response(JSON.stringify({ name: 'Phone collection', description: '', assets: [assetId] }));
 			}
 			return new Response('unavailable', { status: 503 });
 		});
@@ -1385,7 +1417,7 @@ describe('collection index loading', () => {
 		const controller = new AbortController();
 		const reason = new Error('test-complete');
 		const nameId = 'N'.repeat(43);
-		const namespace = encodeJson({
+		const namespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId } },
@@ -1404,7 +1436,7 @@ describe('collection index loading', () => {
 						data: { transactions: { count: 0, pageInfo: { hasNextPage: false }, edges: [] } },
 					});
 				}
-				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
+				if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namespace);
 				return new Response('unavailable', { status: 503 });
 			})
 		);
@@ -1438,7 +1470,7 @@ describe('collection index loading', () => {
 						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
 					});
 				}
-				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) {
+				if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) {
 					requests.push('namespace');
 					return new Promise<Response>((_resolve, reject) => {
 						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
@@ -1903,7 +1935,7 @@ describe('collection index loading', () => {
 		const manifestId = 'M'.repeat(43);
 		const fallbackId = 'F'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const manifest = encodeUtf8Json({
+		const manifest = JSON.stringify({
 			name: 'Referenced collection — café 🐈',
 			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
 		});
@@ -1917,7 +1949,7 @@ describe('collection index loading', () => {
 						tags: [{ name: encode('reference-value'), value: encode(manifestId) }],
 					});
 				}
-				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				if (url.endsWith(`/raw/${manifestId}`)) return new Response(manifest);
 				return new Response('unexpected', { status: 500 });
 			})
 		);
@@ -1933,7 +1965,7 @@ describe('collection index loading', () => {
 		vi.useFakeTimers();
 		const referenceId = 'R'.repeat(43);
 		const manifestId = 'M'.repeat(43);
-		const manifest = encodeJson({
+		const manifest = JSON.stringify({
 			name: 'Published collection',
 			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
 		});
@@ -1950,7 +1982,7 @@ describe('collection index loading', () => {
 						],
 					});
 				}
-				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				if (url.endsWith(`/raw/${manifestId}`)) return new Response(manifest);
 				return new Response('unexpected', { status: 500 });
 			})
 		);
@@ -1979,14 +2011,14 @@ describe('collection index loading', () => {
 	});
 
 	it.each([
-		['pending', 'Accepted'],
-		['malformed', encodeJson({ name: 'Broken collection', assets: [{ id: 'invalid', name: 'Broken' }] })],
+		['pending', ''],
+		['malformed', JSON.stringify({ name: 'Broken collection', assets: [{ id: 'invalid', name: 'Broken' }] })],
 	])('retains the published manifest when the live reference target is %s', async (_label, liveBody) => {
 		const referenceId = 'R'.repeat(43);
 		const manifestId = 'M'.repeat(43);
 		const fallbackId = 'F'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const fallback = encodeJson({
+		const fallback = JSON.stringify({
 			name: 'Published collection',
 			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
 		});
@@ -1997,8 +2029,8 @@ describe('collection index loading', () => {
 					tags: [{ name: encode('reference-value'), value: encode(manifestId) }],
 				});
 			}
-			if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(liveBody);
-			if (url.endsWith(`/tx/${fallbackId}/data`)) return new Response(fallback);
+			if (url.endsWith(`/raw/${manifestId}`)) return new Response(liveBody);
+			if (url.endsWith(`/raw/${fallbackId}`)) return new Response(fallback);
 			return new Response('unexpected', { status: 500 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -2011,12 +2043,81 @@ describe('collection index loading', () => {
 		expect(fetcher).toHaveBeenCalledTimes(3);
 	});
 
+	it('reads a manifest on the content route and moves to the next gateway after a 429', async () => {
+		const referenceId = 'R'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+		vi.stubGlobal('window', {
+			location: { protocol: 'https:', hostname: 'bazar.example', port: '', search: '', hash: '' },
+		});
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith(`/tx/${referenceId}`)) {
+				return Response.json({ tags: [{ name: encode('reference-value'), value: encode(manifestId) }] });
+			}
+			if (url === `https://bazar.example/${manifestId}`) return new Response('busy', { status: 429 });
+			if (url === `https://ardrive.net/raw/${manifestId}`) {
+				return new Response(JSON.stringify({ name: 'Raw collection', assets: ['A'.repeat(43)] }));
+			}
+			return new Response('unexpected', { status: 500 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(loadImageCollection(referenceId, 'F'.repeat(43))).resolves.toMatchObject({
+			name: 'Raw collection',
+			manifestId,
+			indexSource: 'reference',
+		});
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			`https://bazar.example/tx/${referenceId}`,
+			`https://bazar.example/${manifestId}`,
+			`https://ardrive.net/raw/${manifestId}`,
+		]);
+	});
+
+	it('moves past a gateway that answers a manifest read with a 200 HTML page', async () => {
+		const referenceId = 'R'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+		vi.stubGlobal('window', {
+			location: { protocol: 'https:', hostname: 'bazar.example', port: '', search: '', hash: '' },
+		});
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith(`/tx/${referenceId}`)) {
+				return Response.json({ tags: [{ name: encode('reference-value'), value: encode(manifestId) }] });
+			}
+			// An SPA index.html fallback served for an unknown path, with status 200.
+			if (url === `https://bazar.example/${manifestId}`) {
+				return new Response('<!doctype html><html><body>Bazar</body></html>', {
+					headers: { 'content-type': 'text/html' },
+				});
+			}
+			if (url === `https://ardrive.net/raw/${manifestId}`) {
+				return new Response(JSON.stringify({ name: 'Raw collection', assets: ['A'.repeat(43)] }));
+			}
+			return new Response('unexpected', { status: 500 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(loadImageCollection(referenceId, 'F'.repeat(43))).resolves.toMatchObject({
+			name: 'Raw collection',
+			manifestId,
+			indexSource: 'reference',
+		});
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			`https://bazar.example/tx/${referenceId}`,
+			`https://bazar.example/${manifestId}`,
+			`https://ardrive.net/raw/${manifestId}`,
+		]);
+	});
+
 	it('waits for the live image reference before loading an index', async () => {
 		const referenceId = 'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g';
 		const publishedManifestId = '8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw';
 		const liveManifestId = 'L'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const live = encodeJson({
+		const live = JSON.stringify({
 			name: 'Live collection',
 			assets: [{ id: 'B'.repeat(43), name: 'Live asset' }],
 		});
@@ -2027,7 +2128,7 @@ describe('collection index loading', () => {
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
 			if (url.endsWith(`/tx/${referenceId}`)) return reference;
-			if (url.endsWith(`/tx/${liveManifestId}/data`)) return new Response(live);
+			if (url.endsWith(`/raw/${liveManifestId}`)) return new Response(live);
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -2054,7 +2155,7 @@ describe('collection index loading', () => {
 		expect(fetcher).toHaveBeenCalledTimes(2);
 		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
 			expect.stringContaining(`/tx/${referenceId}`),
-			expect.stringContaining(`/tx/${liveManifestId}/data`),
+			expect.stringContaining(`/raw/${liveManifestId}`),
 		]);
 	});
 
