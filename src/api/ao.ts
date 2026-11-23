@@ -134,6 +134,14 @@ export function warmAoFetch(onNetworkPolicy?: () => void): () => void {
 		globalThis.window?.removeEventListener?.(AO_WALLET_CONNECTION_EVENT, walletChanged);
 	};
 }
+/**
+ * Per-peer network deadline. ao.js starts it when the request is sent (queue
+ * wait is bounded separately), so it only has to cover a slow compute answer.
+ */
+export const AO_REQUEST_TIMEOUT_MS = 12_000;
+/** Start the next read peer when the first has not sent headers by then. */
+export const AO_READ_HEDGE_AFTER_MS = 1_500;
+
 function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
 	const nodes = peers.map((prefix) => ({ prefix, 'rate-limit': rateLimit } as const));
 	const readRoute = (method: 'GET' | 'HEAD') => ({
@@ -143,10 +151,11 @@ function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
 		choose: nodes.length,
 		'admissible-status': [200, 201, 202, 204, 206, 304],
 		'fallback-on-cooldown': true,
+		'hedge-after-ms': AO_READ_HEDGE_AFTER_MS,
 	});
 	return {
 		nodes,
-		requestTimeoutMs: 4_000,
+		requestTimeoutMs: AO_REQUEST_TIMEOUT_MS,
 		...(nodes.length
 			? {
 					routes: [

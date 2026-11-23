@@ -9,7 +9,16 @@ import {
 	setAoWalletConnection,
 } from 'helpers/config';
 
-import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from './ao';
+import {
+	AO_READ_HEDGE_AFTER_MS,
+	AO_REQUEST_TIMEOUT_MS,
+	aoFetch,
+	aoPeers,
+	aoPrimaryPeer,
+	createBazarAoFetch,
+	readyAoFetch,
+	warmAoFetch,
+} from './ao';
 
 function injectedAoFetch(peers: string[]): PermawebOsAoFetch {
 	const fetcher = vi.fn(async () => new Response('from-permawebos')) as unknown as PermawebOsAoFetch;
@@ -384,6 +393,71 @@ describe('Bazar AO.js routing', () => {
 		await routed('https://arweave.net/graphql');
 
 		expect(requested.at(-1)).toBe('https://arweave.net/graphql');
+	});
+
+	it('pins the read hedge delay and the per-peer request deadline', () => {
+		expect(AO_READ_HEDGE_AFTER_MS).toBe(1_500);
+		expect(AO_REQUEST_TIMEOUT_MS).toBe(12_000);
+	});
+
+	it('hedges a read to the next peer when the first has not answered after the hedge delay', async () => {
+		vi.useFakeTimers();
+		try {
+			const requested: string[] = [];
+			let abandoned: string | undefined;
+			const routed = createBazarAoFetch(
+				['https://alpha.example', 'https://charlie.example'],
+				vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+					const origin = new URL(String(input)).origin;
+					requested.push(origin);
+					if (requested.length > 1) return Promise.resolve(new Response(origin));
+					return new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => {
+							abandoned = origin;
+							reject(init.signal?.reason);
+						});
+					});
+				}) as typeof fetch
+			);
+
+			const response = routed('https://alpha.example/slow~process@1.0/compute', { method: 'HEAD' });
+			await vi.advanceTimersByTimeAsync(AO_READ_HEDGE_AFTER_MS - 1);
+			expect(requested).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(1);
+
+			const winner = await response;
+			expect(requested).toHaveLength(2);
+			expect(await winner.text()).toBe(requested[1]);
+			expect(abandoned).toBe(requested[0]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('waits for a slow compute answer longer than the former four-second deadline', async () => {
+		vi.useFakeTimers();
+		try {
+			const routed = createBazarAoFetch(
+				['https://alpha.example'],
+				vi.fn(
+					(_input: RequestInfo | URL, init?: RequestInit) =>
+						new Promise<Response>((resolve, reject) => {
+							const timer = setTimeout(() => resolve(new Response('computed')), 11_000);
+							init?.signal?.addEventListener('abort', () => {
+								clearTimeout(timer);
+								reject(init.signal?.reason);
+							});
+						})
+				) as typeof fetch
+			);
+
+			const response = routed('https://alpha.example/cold~process@1.0/compute');
+			await vi.advanceTimersByTimeAsync(11_000);
+
+			expect(await (await response).text()).toBe('computed');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('can return a not-found response for an optional AO path', async () => {
