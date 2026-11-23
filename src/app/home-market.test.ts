@@ -713,6 +713,27 @@ describe('Home market summary retries', () => {
 		]);
 		expect(overview[1].matches?.(listing('tokens'))).toBe(true);
 
+		// Without a collection lookup every candidate stays admissible.
+		expect(overview[1].admits).toBeUndefined();
+		const tokens = listing('tokens').collection;
+		const images = listing('images').collection;
+		const known = new Map([
+			['T'.repeat(43), tokens],
+			['I'.repeat(43), images],
+		]);
+		const [uniques, tokenRows] = homeListingCrawlDemand(
+			{ ...view, assetType: 'all', assetPage: 1, tokenPage: 1 },
+			(processId) => known.get(processId)
+		)!;
+		const candidate = (processId: string) => ({ processId, height: 1, timestamp: 1, sources: [] });
+		expect(uniques.admits?.(candidate('T'.repeat(43)))).toBe(false);
+		expect(uniques.admits?.(candidate('I'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('T'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('I'.repeat(43)))).toBe(false);
+		// A process no loaded collection claims yet may be either kind.
+		expect(uniques.admits?.(candidate('U'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('U'.repeat(43)))).toBe(true);
+
 		// Price order and search rank every live listing, so they keep the full crawl.
 		expect(homeListingCrawlDemand({ ...view, assetView: 'price-low', assetPage: 1 })).toBeUndefined();
 		expect(homeListingCrawlDemand({ ...view, assetView: 'price-high', assetPage: 1 })).toBeUndefined();

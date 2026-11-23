@@ -3142,25 +3142,41 @@ export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = H
 /**
  * Live listings the home crawl must find for the visible page plus one page
  * ahead. Price order and search need every listing, so they stay unbounded.
+ * `collectionOf` names the loaded collection of a discovered process, so a
+ * demand only reads candidates that can still be of its type; candidates no
+ * loaded collection claims are admitted by every demand.
  */
-export function homeListingCrawlDemand(view: {
-	assetView: HomeAssetView;
-	assetType: HomeAssetType;
-	query: string;
-	assetPage: number;
-	tokenPage: number;
-}): HomeListingDemand[] | undefined {
+export function homeListingCrawlDemand(
+	view: {
+		assetView: HomeAssetView;
+		assetType: HomeAssetType;
+		query: string;
+		assetPage: number;
+		tokenPage: number;
+	},
+	collectionOf?: (processId: string) => Collection | undefined
+): HomeListingDemand[] | undefined {
 	if (view.query || view.assetView === 'price-low' || view.assetView === 'price-high') return undefined;
-	const matching = (assetType: HomeAssetType) => (result: ResolvedAsset) =>
-		homeAssetTypeMatches(result.collection, assetType);
+	const demand = (count: number, assetType: HomeAssetType): HomeListingDemand => ({
+		count,
+		matches: (result) => homeAssetTypeMatches(result.collection, assetType),
+		...(collectionOf
+			? {
+					admits: (candidate: AssetCandidate) => {
+						const collection = collectionOf(candidate.processId);
+						return !collection || homeAssetTypeMatches(collection, assetType);
+					},
+			  }
+			: {}),
+	});
 	const page = (requested: number) => Math.max(1, Math.floor(requested) || 1);
 	if (view.assetType === 'all') {
 		return [
-			{ count: HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE, matches: matching('atomic') },
-			{ count: (page(view.tokenPage) + 1) * HOME_DISCOVER_TOKEN_PAGE_SIZE, matches: matching('tokens') },
+			demand(HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE, 'atomic'),
+			demand((page(view.tokenPage) + 1) * HOME_DISCOVER_TOKEN_PAGE_SIZE, 'tokens'),
 		];
 	}
-	return [{ count: (page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, matches: matching(view.assetType) }];
+	return [demand((page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, view.assetType)];
 }
 
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
@@ -3481,13 +3497,18 @@ function Home() {
 	const homeListingCrawlRef = React.useRef<HomeListingCrawl>();
 	const homeListingDemand = React.useMemo(
 		() =>
-			homeListingCrawlDemand({
-				assetView,
-				assetType,
-				query: normalizedQuery,
-				assetPage,
-				tokenPage: discoverTokenPage,
-			}),
+			homeListingCrawlDemand(
+				{
+					assetView,
+					assetType,
+					query: normalizedQuery,
+					assetPage,
+					tokenPage: discoverTokenPage,
+				},
+				// Read through the ref so streaming collections sharpen admission without
+				// changing the demand identity.
+				(processId) => globalActivityCollection(marketCollectionsRef.current, processId)
+			),
 		[assetPage, assetType, assetView, discoverTokenPage, normalizedQuery]
 	);
 	const homeListingDemandRef = React.useRef(homeListingDemand);
