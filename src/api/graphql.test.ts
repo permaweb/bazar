@@ -9,8 +9,10 @@ import {
 	usableGraphqlPayload,
 } from './graphql';
 
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
+
 const primary = 'https://arweave.net/graphql';
-const secondary = 'https://ardrive.net/graphql';
+const secondary = 'https://index.example/graphql';
 const data = (id: string) => ({ data: { transactions: { pageInfo: { hasNextPage: false }, edges: [], id } } });
 
 type Planned = { delayMs?: number; respond: () => Response | Promise<Response> };
@@ -277,11 +279,11 @@ describe('retryTransientGraphql', () => {
 			[1_000, 1_000]
 		);
 
-		// Round 1: arweave.net timed out (thrown), ardrive.net said 429 Retry-After 5.
+		// Round 1: arweave.net timed out (thrown), the fallback index said 429 Retry-After 5.
 		await vi.advanceTimersByTimeAsync(4_999);
 		expect(fetcher).toHaveBeenCalledTimes(2);
 		await vi.advanceTimersByTimeAsync(1);
-		// Round 2: arweave.net answered 503 without Retry-After, ardrive.net 429 Retry-After 3.
+		// Round 2: arweave.net answered 503 without Retry-After, the fallback index 429 Retry-After 3.
 		expect(fetcher).toHaveBeenCalledTimes(4);
 		await vi.advanceTimersByTimeAsync(2_999);
 		expect(fetcher).toHaveBeenCalledTimes(4);

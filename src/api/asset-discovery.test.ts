@@ -32,6 +32,8 @@ import {
 import { parseAssetState } from './asset-marketplace';
 import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from './collections';
 
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
+
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
 const assetA = 'A'.repeat(43);
@@ -142,7 +144,7 @@ describe('Bazar atomic asset search', () => {
 		const requests: string[] = [];
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			requests.push(String(input));
-			// arweave.net times out and ardrive.net is busy; arweave.net answers the retry.
+			// arweave.net times out and the fallback index is busy; arweave.net answers the retry.
 			if (requests.length === 1) throw new Error('asset-index-graphql-timeout');
 			if (requests.length === 2) return new Response('busy', { status: 503 });
 			return Response.json({ data: { transaction: { id: processId, tags } } });
@@ -153,7 +155,7 @@ describe('Bazar atomic asset search', () => {
 		).resolves.toMatchObject({ asset: { id: processId, name: 'AntiqueWhite' } });
 		expect(requests).toEqual([
 			'https://arweave.net/graphql',
-			'https://ardrive.net/graphql',
+			'https://index.example/graphql',
 			'https://arweave.net/graphql',
 		]);
 	});
@@ -304,12 +306,12 @@ describe('wallet candidate discovery', () => {
 		});
 		const rejection = expect(discovery).rejects.toThrow('asset-discovery-graphql-timeout');
 
-		// The first page tries arweave.net, then ardrive.net, each with its own deadline.
+		// The first page tries arweave.net, then the fallback index, each with its own deadline.
 		await vi.advanceTimersByTimeAsync(100);
 		await rejection;
 		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
 			'https://arweave.net/graphql',
-			'https://ardrive.net/graphql',
+			'https://index.example/graphql',
 		]);
 	});
 
@@ -378,19 +380,19 @@ describe('wallet candidate discovery', () => {
 			if (requests.length === 2) {
 				return Response.json({
 					data: {
-						initiallyHeld: held(assetA, 'ardrive-1', true),
+						initiallyHeld: held(assetA, 'index-1', true),
 						marketActions: empty,
 						receivedTransfers: empty,
 					},
 				});
 			}
-			if (variables.initialCursor === 'ardrive-1') {
-				return Response.json({ data: { initiallyHeld: held(assetB, 'ardrive-2', false) } });
+			if (variables.initialCursor === 'index-1') {
+				return Response.json({ data: { initiallyHeld: held(assetB, 'index-2', false) } });
 			}
 			// The catch-up pass finds the same head it recorded, on the index that recorded it.
 			return Response.json({
 				data: {
-					initiallyHeld: held(assetA, 'ardrive-1', true),
+					initiallyHeld: held(assetA, 'index-1', true),
 					marketActions: empty,
 					receivedTransfers: empty,
 				},
@@ -408,15 +410,15 @@ describe('wallet candidate discovery', () => {
 		expect(result.map(({ processId }) => processId).sort()).toEqual([assetA, assetB].sort());
 		expect(requests).toEqual([
 			{ url: 'https://arweave.net/graphql', initialCursor: null },
-			{ url: 'https://ardrive.net/graphql', initialCursor: null },
-			// ardrive.net issued the cursor, so the next page never goes back to arweave.net.
-			{ url: 'https://ardrive.net/graphql', initialCursor: 'ardrive-1' },
-			{ url: 'https://ardrive.net/graphql', initialCursor: null },
+			{ url: 'https://index.example/graphql', initialCursor: null },
+			// the fallback index issued the cursor, so the next page never goes back to arweave.net.
+			{ url: 'https://index.example/graphql', initialCursor: 'index-1' },
+			{ url: 'https://index.example/graphql', initialCursor: null },
 		]);
 		expect(scan.caughtUp).toBe(true);
 		// The scan keeps its preferred-index scope; the catch-up page went to the index that recorded the heads.
 		expect(scan.graphql).toBe(arweaveGraphqlEndpoint());
-		expect(scan.answeringIndex).toBe('https://ardrive.net/graphql');
+		expect(scan.answeringIndex).toBe('https://index.example/graphql');
 	});
 
 	it('never stores or resumes a scan a fallback index answered, so the next visit rescans the preferred index', async () => {
@@ -444,7 +446,7 @@ describe('wallet candidate discovery', () => {
 		older.found.set(assetC, { processId: assetC, height: 1, timestamp: 1, sources: ['initial-holder'] });
 		expect(storeCompletedWalletCandidateScan(storage, older)).toBe(true);
 
-		// Visit 1: arweave.net is down and ardrive.net answers with head H (assetA).
+		// Visit 1: arweave.net is down and the fallback index answers with head H (assetA).
 		const visit1 = vi.fn(async (input: RequestInfo | URL) =>
 			String(input) === arweaveGraphqlEndpoint()
 				? new Response('busy', { status: 503 })
@@ -460,14 +462,14 @@ describe('wallet candidate discovery', () => {
 			retryDelaysMs: [],
 		});
 		expect(scan.caughtUp).toBe(true);
-		expect(scan.answeringIndex).toBe('https://ardrive.net/graphql');
+		expect(scan.answeringIndex).toBe('https://index.example/graphql');
 		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(false);
 		expect(storage.values.size).toBe(0);
 		expect(loadCompletedWalletCandidateScan(storage, wallet)).toBeUndefined();
 		expect(resumeCompletedWalletCandidateScan(scan, wallet)).toBeUndefined();
 
 		// Visit 2: arweave.net answers without H. A fresh scan reads it in full instead of comparing
-		// ardrive.net's heads there (which used to fail with asset-discovery-head-watermark-missing).
+		// the fallback index's heads there (which used to fail with asset-discovery-head-watermark-missing).
 		const visit2 = vi.fn(async (input: RequestInfo | URL) => {
 			expect(String(input)).toBe(arweaveGraphqlEndpoint());
 			return Response.json({
@@ -501,7 +503,7 @@ describe('wallet candidate discovery', () => {
 		expect(restored.answeringIndex).toBe(arweaveGraphqlEndpoint());
 		const fetcher = vi.fn(async (_input: RequestInfo | URL) => new Response('busy', { status: 503 }));
 
-		// arweave.net's heads are never compared on ardrive.net, so the catch-up fails on arweave.net.
+		// arweave.net's heads are never compared on the fallback index, so the catch-up fails on arweave.net.
 		await expect(
 			discoverWalletAssetCandidates(wallet, {
 				fetch: fetcher as typeof fetch,
@@ -529,7 +531,7 @@ describe('wallet candidate discovery', () => {
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			requests.push(String(input));
 			// arweave.net answers the first page after 5 s (and the catch-up at once) with both assets;
-			// ardrive.net answers at once but lacks assetB.
+			// the fallback index answers at once but lacks assetB.
 			if (String(input) !== arweaveGraphqlEndpoint()) return answer([assetA]);
 			if (requests.filter((url) => url === arweaveGraphqlEndpoint()).length === 1)
 				await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -550,7 +552,7 @@ describe('wallet candidate discovery', () => {
 		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS - 1);
 		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(requests).toEqual([arweaveGraphqlEndpoint(), 'https://ardrive.net/graphql']);
+		expect(requests).toEqual([arweaveGraphqlEndpoint(), 'https://index.example/graphql']);
 		// The preview reaches the caller while the preferred page is still pending, and leaves the scan alone.
 		expect(pages).toEqual([[assetA]]);
 		expect(scan.found.size).toBe(0);
@@ -1635,7 +1637,7 @@ describe('wallet candidate discovery', () => {
 		expect(candidates.map(({ processId }) => processId)).toEqual([assetA, assetB]);
 		expect(requests).toEqual([
 			{ url: 'https://arweave.net/graphql', cursor: null },
-			{ url: 'https://ardrive.net/graphql', cursor: null },
+			{ url: 'https://index.example/graphql', cursor: null },
 			{ url: 'https://arweave.net/graphql', cursor: null },
 			{ url: 'https://arweave.net/graphql', cursor: 'page-1' },
 			{ url: 'https://arweave.net/graphql', cursor: 'page-1' },
@@ -1656,10 +1658,10 @@ describe('wallet candidate discovery', () => {
 			})
 		).rejects.toThrow('asset-activity-batch-failed');
 		expect(fetcher.mock.calls.map(([input]) => String(input)).sort()).toEqual([
-			'https://ardrive.net/graphql',
-			'https://ardrive.net/graphql',
 			'https://arweave.net/graphql',
 			'https://arweave.net/graphql',
+			'https://index.example/graphql',
+			'https://index.example/graphql',
 		]);
 	});
 
@@ -1901,13 +1903,13 @@ describe('wallet candidate discovery', () => {
 		});
 
 		expect(pages).toEqual([
-			[[assetA], 'https://ardrive.net/graphql'],
-			[[assetB], 'https://ardrive.net/graphql'],
+			[[assetA], 'https://index.example/graphql'],
+			[[assetB], 'https://index.example/graphql'],
 		]);
 		expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
 			'https://arweave.net/graphql',
-			'https://ardrive.net/graphql',
-			'https://ardrive.net/graphql',
+			'https://index.example/graphql',
+			'https://index.example/graphql',
 		]);
 	});
 
@@ -2131,7 +2133,7 @@ describe('wallet candidate discovery', () => {
 				data: {
 					transactions: {
 						pageInfo: { hasNextPage: !body.variables.cursor },
-						edges: [activityEdge(body.variables.cursor ? 'ardrive-2' : 'ardrive-1', assetA, 42)],
+						edges: [activityEdge(body.variables.cursor ? 'index-2' : 'index-1', assetA, 42)],
 					},
 				},
 			});
@@ -2142,14 +2144,14 @@ describe('wallet candidate discovery', () => {
 			recipients: [assetA],
 		});
 		expect(first).toMatchObject({
-			cursor: 'ardrive-1',
+			cursor: 'index-1',
 			hasNextPage: true,
 			totalCount: null,
-			graphql: 'https://ardrive.net/graphql',
+			graphql: 'https://index.example/graphql',
 		});
 		expect(requests.map(({ url, query }) => [url, /\bcount\b/.test(query)])).toEqual([
 			['https://arweave.net/graphql', true],
-			['https://ardrive.net/graphql', false],
+			['https://index.example/graphql', false],
 		]);
 
 		const second = await discoverCollectionActivityPage({
@@ -2158,9 +2160,9 @@ describe('wallet candidate discovery', () => {
 			cursor: first.cursor,
 			graphql: first.graphql,
 		});
-		expect(second).toMatchObject({ hasNextPage: false, graphql: 'https://ardrive.net/graphql' });
+		expect(second).toMatchObject({ hasNextPage: false, graphql: 'https://index.example/graphql' });
 		expect(requests.slice(2).map(({ url, variables }) => [url, variables.cursor])).toEqual([
-			['https://ardrive.net/graphql', 'ardrive-1'],
+			['https://index.example/graphql', 'index-1'],
 		]);
 	});
 

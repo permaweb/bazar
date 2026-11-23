@@ -790,9 +790,8 @@ export async function discoverWalletAssetCandidates(
 	) => {
 		const requestedAliases = [...active];
 		// Only a scan's first page may fall back; its cursors and heads belong to the index that answered
-		// it, so every later page and catch-up pass goes there alone. The query has no `count`, and on
-		// 2026-11-23 ardrive.net answered it in 0.4 s with the same 12 + 21 + 2 transactions for a
-		// 35-transaction wallet that arweave.net took 30.5 s to return.
+		// it, so every later page and catch-up pass goes there alone. The query has no `count`, so any
+		// configured index can answer it.
 		const endpoints = scan.answeringIndex ? [scan.answeringIndex] : [graphql, ...fallbackEndpoints];
 		const body = JSON.stringify({
 			query: WALLET_CANDIDATES_QUERY,
@@ -854,8 +853,8 @@ export async function discoverWalletAssetCandidates(
 	};
 	/**
 	 * While a fresh scan's first page waits on a slow preferred index (arweave.net took 9-15 s and more
-	 * for a profile's first page in round 3 and in the 2026-11-23 A/B, against 0.3 s on ardrive.net),
-	 * ask the next index for the same page once and hand its candidates to `onPage` as a preview. It
+	 * for a profile's first page in round 3 and in the 2026-11-23 A/B), ask the next configured index
+	 * for the same page once and hand its candidates to `onPage` as a preview. It
 	 * changes nothing in the scan: the preferred request keeps its deadline, retry and fallback, and
 	 * its answer alone sets the cursors, heads, `found` and answeringIndex, so a scan stays resumable
 	 * and storable exactly as before. Preview candidates are only checked and shown this session, the

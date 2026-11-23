@@ -40,9 +40,9 @@ function isArweaveNetEndpoint(endpoint: string): boolean {
 }
 
 /**
- * Only arweave.net's index answers the TransactionConnection `count` extension.
- * AR.IO gateway GraphQL (for example ardrive.net) rejects the whole query with
- * 400 GRAPHQL_VALIDATION_FAILED when it is selected.
+ * Only arweave.net's index answers the TransactionConnection `count` extension;
+ * another index may reject the whole query (400 GRAPHQL_VALIDATION_FAILED) when
+ * it is selected.
  */
 export function graphqlSupportsCount(endpoint: string): boolean {
 	return isArweaveNetEndpoint(endpoint);
@@ -69,8 +69,8 @@ export function usableGraphqlPayload(result: Pick<GraphqlResult<unknown>, 'respo
 /**
  * POST one read query to an ordered endpoint list, one endpoint at a time.
  *
- * The indexes do not hold the same data (ardrive.net lacks Bazar collections,
- * activity events and Account-0.3 profiles that arweave.net returns), so a
+ * The indexes do not hold the same data (a configured fallback may lack Bazar
+ * collections, activity events or profiles that arweave.net returns), so a
  * later endpoint is a failure fallback, never a faster substitute: it is tried
  * only after the previous one failed (network error, its deadline, a non-2xx
  * status, a non-JSON body, or a GraphQL answer without data or with errors).
@@ -84,8 +84,7 @@ export function usableGraphqlPayload(result: Pick<GraphqlResult<unknown>, 'respo
  * the longest Retry-After any endpoint sent travels with it, so a retry waits for
  * a rate-limited fallback even when the preferred endpoint only timed out.
  *
- * Cursors are index-specific (arweave.net and AR.IO gateways encode them
- * differently), so pass the answering `endpoint` back as the only endpoint for
+ * Cursors are index-specific (each index encodes them its own way), so pass the answering `endpoint` back as the only endpoint for
  * any follow-up page.
  */
 export async function postGraphql<T = unknown>(

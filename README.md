@@ -53,11 +53,14 @@ starts with an immutable JSON manifest and lets its holder publish a signed
 `set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
 GraphQL and paged in the browser.
 
-All GraphQL searches use `POST https://arweave.net/graphql`, including
-collection discovery, asset search, wallet candidates, profiles, and activity.
-This endpoint is fixed in local development and deployed builds, independent of
-the serving gateway, `VITE_ARWEAVE_GATEWAY`, `arweave-node`, and AO compute peers.
-There is no Goldsky fallback.
+All GraphQL searches use `POST https://arweave.net/graphql` by default, including
+collection discovery, asset search, wallet candidates, profiles, and activity,
+independent of the serving gateway, `VITE_ARWEAVE_GATEWAY`, `arweave-node`, and
+AO compute peers. A deployment that runs or trusts another index sets
+`VITE_GRAPHQL_ENDPOINTS` to an ordered, comma-separated list; reads that fail on
+one index then try the next. No third-party index is used by default, so when
+arweave.net's index is unavailable those reads are retried and then reported as
+unavailable.
 
 ## Wallet inventory
 

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createGlobalActivityPager } from './global-activity';
 
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
+
 const asset = 'A'.repeat(43);
 const foreign = 'F'.repeat(43);
 function edge(id: string, cursor = id, processId = asset, action = 'make-offer', height = 10) {
@@ -150,15 +152,15 @@ describe('global activity native pagination', () => {
 	it('returns to the index that issued a cursor for the next page', async () => {
 		const { pager, requests } = setup([
 			new Error('arweave.net offline'),
-			response([edge('a', 'ardrive-tail')]),
+			response([edge('a', 'index-tail')]),
 			response([edge('b')], false),
 		]);
 		await pager.load('all');
 		await pager.load('all');
 		expect(requests.map(({ url, variables }) => [url, variables.cursor])).toEqual([
 			['https://arweave.net/graphql', undefined],
-			['https://ardrive.net/graphql', undefined],
-			['https://ardrive.net/graphql', 'ardrive-tail'],
+			['https://index.example/graphql', undefined],
+			['https://index.example/graphql', 'index-tail'],
 		]);
 	});
 

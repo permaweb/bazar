@@ -132,10 +132,11 @@ export function arweaveClientConfig(gateway = arweaveGatewayFromLocation()) {
 	};
 }
 
-export const DEFAULT_GRAPHQL_ENDPOINTS: readonly string[] = [
-	'https://arweave.net/graphql',
-	'https://ardrive.net/graphql',
-];
+/**
+ * arweave.net's index only. A deployment that runs or trusts another index lists it, in
+ * preference order, in `VITE_GRAPHQL_ENDPOINTS`; reads then fall back along that list.
+ */
+export const DEFAULT_GRAPHQL_ENDPOINTS: readonly string[] = ['https://arweave.net/graphql'];
 
 /** Parse an ordered, comma-separated GraphQL endpoint list; unusable entries are skipped. */
 export function parseGraphqlEndpoints(value: string | undefined): string[] {

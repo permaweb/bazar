@@ -35,6 +35,8 @@ import {
 	withIndexedAssetNames,
 } from './collections';
 
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
+
 // Catalogue reads retry transient index failures after GRAPHQL_RETRY_DELAYS_MS (1 s, 3 s). Most tests
 // answer unrelated requests with a 503, so retries stay off unless a test sets zero-delay retries.
 const graphqlRetry = vi.hoisted(() => ({ delays: [] as number[] }));
@@ -258,7 +260,7 @@ describe('direct collection links', () => {
 		await expect(loadBazarCollectionById(collectionId)).resolves.toBeNull();
 		expect(lookups).toEqual([
 			'https://arweave.net/graphql',
-			'https://ardrive.net/graphql',
+			'https://index.example/graphql',
 			'https://arweave.net/graphql',
 		]);
 	});
@@ -289,10 +291,10 @@ describe('direct collection links', () => {
 		await expect(discoverBazarCollections()).resolves.toEqual([]);
 		expect(pages).toEqual([
 			{ url: 'https://arweave.net/graphql', after: null },
-			{ url: 'https://ardrive.net/graphql', after: null },
-			// The cursor belongs to ardrive.net, so its transient failure is retried there, not on arweave.net.
-			{ url: 'https://ardrive.net/graphql', after: 'page-1' },
-			{ url: 'https://ardrive.net/graphql', after: 'page-1' },
+			{ url: 'https://index.example/graphql', after: null },
+			// The cursor belongs to the fallback index, so its transient failure is retried there, not on arweave.net.
+			{ url: 'https://index.example/graphql', after: 'page-1' },
+			{ url: 'https://index.example/graphql', after: 'page-1' },
 		]);
 	});
 });

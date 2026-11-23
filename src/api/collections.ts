@@ -1196,9 +1196,9 @@ function countingGraphqlEndpoint(): string {
 }
 
 /**
- * The token list stays on the counting index (AR.IO GraphQL such as ardrive.net rejects `count`, and
- * on 2026-11-23 its fungible index lacked 3 of arweave.net's 41 hint-ui-style tokens), so a slow
- * arweave.net moment is retried there instead of falling back to an index that would drop tokens.
+ * The token list stays on the counting index (arweave.net; another index may reject `count` or hold
+ * fewer tokens), so a slow arweave.net moment is retried there instead of falling back to an index
+ * that could drop tokens.
  */
 async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Promise<FungibleTokenPage> {
 	const result = await retryTransientGraphql(

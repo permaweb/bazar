@@ -9,6 +9,8 @@ import {
 	readAccountProfile,
 } from './profile';
 
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
+
 const address = 'A'.repeat(43);
 const profileId = 'P'.repeat(43);
 const avatarId = 'V'.repeat(43);
@@ -275,7 +277,7 @@ describe('Account-0.3 profiles', () => {
 		await rejection;
 		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
 			'https://arweave.net/graphql',
-			'https://ardrive.net/graphql',
+			'https://index.example/graphql',
 		]);
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -322,7 +324,7 @@ describe('Account-0.3 profiles', () => {
 
 	describe('index choice', () => {
 		const primaryIndex = 'https://arweave.net/graphql';
-		const fallbackIndex = 'https://ardrive.net/graphql';
+		const fallbackIndex = 'https://index.example/graphql';
 		const profileEdges = { data: { transactions: { edges: [{ node: { id: profileId } }] } } };
 		const noEdges = { data: { transactions: { edges: [] } } };
 		const storedProfile = { handle: 'old-name', name: 'Full Name', bio: 'Still here.', avatar: `ar://${avatarId}` };
