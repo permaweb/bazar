@@ -35,6 +35,53 @@ export type MintedCollection = Collection & {
 	createdAt: number;
 };
 
+/** Collection assets an earlier, failed run already minted (and paid for), by file index. */
+export type MintedByIndex = Readonly<Partial<Record<number, MintedAsset>>>;
+
+/** Paid progress kept in memory after a failed run, valid only for the inputs `key` names. */
+export type MintProgress<T> = { key: string; value: T };
+
+/**
+ * Name the exact inputs a run's paid transactions were made from. A retry may
+ * reuse kept progress only while this key is unchanged: another wallet, file
+ * (name, size, last modified, type, position) or tagged field means the earlier
+ * transactions no longer match what the creator is about to mint.
+ */
+export function mintProgressKey(owner: string, scope: Record<string, unknown>): string {
+	return JSON.stringify([owner, scope], (_key, value) =>
+		typeof File !== 'undefined' && value instanceof File
+			? ['file', value.name, value.size, value.lastModified, value.type]
+			: value
+	);
+}
+
+export function reusableMintProgress<T>(progress: MintProgress<T> | null | undefined, key: string): T | undefined {
+	return key && progress?.key === key ? progress.value : undefined;
+}
+
+/**
+ * Paid progress gathered while a run is still going. The caller commits `progress`
+ * to its state only when the run fails, so the quote, signature count and notice
+ * keep describing the attempt in flight; only the retry sees what it paid for.
+ */
+export type PendingMintProgress<T> = {
+	record: (update: (value: T | undefined) => T) => void;
+	/** The reused progress plus what this run paid for, or null when it paid for nothing new. */
+	readonly progress: MintProgress<T> | null;
+};
+
+export function pendingMintProgress<T>(key: string, reused: T | undefined): PendingMintProgress<T> {
+	let progress: MintProgress<T> | null = null;
+	return {
+		record(update) {
+			if (key) progress = { key, value: update(progress ? progress.value : reused) };
+		},
+		get progress() {
+			return progress;
+		},
+	};
+}
+
 export function loadMintedAssets(storage: StorageLike | undefined = globalThis.window?.localStorage): MintedAsset[] {
 	if (!storage) return [];
 	try {
