@@ -3348,6 +3348,13 @@ export function homeTabHeading(tab: HomeTab) {
 	return HOME_TAB_HEADINGS[tab];
 }
 
+/** Where a collection page's back link goes: token pages return to Discover, the rest to the Collections tab. */
+export function collectionBackLink(kind: Collection['kind']) {
+	return kind === 'tokens'
+		? { to: homeTabPath('discover'), label: 'Discover' }
+		: { to: homeTabPath('collections'), label: 'All collections' };
+}
+
 export function homeRouteSearch(search: string) {
 	const params = new URLSearchParams(search);
 	params.delete('tab');
@@ -7361,9 +7368,9 @@ function CollectionView() {
 		: `${resultSummary} in ${collection.name}.`;
 	return (
 		<section className={`collection-page collection-marketplace-page view-${viewMode}`}>
-			<Link className="back" to="/">
+			<Link className="back" to={collectionBackLink(collection.kind).to}>
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
+				{collectionBackLink(collection.kind).label}
 			</Link>
 			<div className="collection-market-navigation">
 				<CollectionMarketHeader
@@ -8381,7 +8388,7 @@ export function CollectionActivityView() {
 	});
 	return (
 		<section className="collection-page collection-marketplace-page collection-activity-page view-compact">
-			<Link className="back" to="/">
+			<Link className="back" to={homeTabPath('collections')}>
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
 			<div className="collection-market-navigation">
@@ -12822,7 +12829,7 @@ export function alphabetBrowseIndex(direction: 'previous' | 'next', visible: num
 export function RouteState({
 	children,
 	title,
-	backTo = '/',
+	backTo = homeTabPath('collections'),
 	backLabel = 'All collections',
 }: {
 	children: React.ReactNode;
