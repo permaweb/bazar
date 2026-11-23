@@ -25,6 +25,14 @@ type GeneratedWallet = {
 	jwk: WalletJwk;
 };
 
+type WalletDialogAction = BrowserWalletId | 'generate' | 'import' | null;
+
+/**
+ * The connect dialog's phase, derived from its pending action and generated key. `backup` holds a
+ * freshly generated key that has not been confirmed as saved. Exposed as `data-phase` on the dialog.
+ */
+export type WalletDialogPhase = 'choosing' | 'connecting' | 'generating' | 'importing' | 'backup';
+
 /**
  * Where the connected wallet's key lives. `local` means Bazar holds the only stored copy of the
  * private key in this browser's localStorage, so disconnecting it erases the key. `browser` means an
@@ -286,39 +294,58 @@ function WalletConnectionDialog({
 }) {
 	const wallet = useWallet();
 	const fileInput = React.useRef<HTMLInputElement>(null);
-	const [action, setAction] = React.useState<BrowserWalletId | 'generate' | 'import' | null>(null);
+	const [action, setAction] = React.useState<WalletDialogAction>(null);
 	const [error, setError] = React.useState('');
 	const [generatedWallet, setGeneratedWallet] = React.useState<GeneratedWallet | null>(null);
-	const [copied, setCopied] = React.useState(false);
+	const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
 	const [generatedWalletDownloaded, setGeneratedWalletDownloaded] = React.useState(false);
+	// Each open or close starts a new session. A browser connect stays dismissible because an
+	// extension prompt can wait forever, so its late result must not close or mark up a later session.
+	const session = React.useRef(0);
+	const addressAtOpen = React.useRef<string | null>(null);
+	const phase = walletDialogPhase(action, generatedWallet);
+	const dismissible = walletDialogDismissible(action, generatedWallet);
 	const close = React.useCallback(() => {
-		if (generatedWallet) return;
+		if (!dismissible) return;
 		setError('');
 		setAction(null);
 		onClose();
-	}, [generatedWallet, onClose]);
-	const dialogRef = useDialogFocus<HTMLDivElement>(open, close, restoreTarget, generatedWallet?.address);
+	}, [dismissible, onClose]);
+	const dialogRef = useDialogFocus<HTMLDivElement>(
+		open,
+		close,
+		restoreTarget,
+		generatedWallet?.address,
+		connectDialogRestoreFallback
+	);
 
 	React.useEffect(() => {
-		if (!open) {
-			setCopied(false);
-			setGeneratedWallet(null);
-			setGeneratedWalletDownloaded(false);
-		}
+		session.current += 1;
+		addressAtOpen.current = open ? wallet.address : null;
+		setAction(null);
+		setError('');
+		setCopyState('idle');
+		setGeneratedWallet(null);
+		setGeneratedWalletDownloaded(false);
 	}, [open]);
+
+	React.useEffect(() => {
+		if (open && walletDialogClosesForAddress(phase, addressAtOpen.current, wallet.address)) onClose();
+	}, [open, phase, wallet.address]);
 
 	if (!open) return null;
 
 	const connectBrowserWallet = async (walletId: BrowserWalletId) => {
+		const started = session.current;
 		setAction(walletId);
 		setError('');
 		try {
 			await wallet.connect(walletId);
-			onClose();
+			if (started === session.current) onClose();
 		} catch (cause) {
-			setError(walletErrorMessage(cause));
+			if (started === session.current) setError(walletErrorMessage(cause));
 		} finally {
-			setAction(null);
+			if (started === session.current) setAction(null);
 		}
 	};
 	const generate = async () => {
@@ -374,6 +401,7 @@ function WalletConnectionDialog({
 				aria-labelledby="wallet-connect-title"
 				aria-modal="true"
 				className="dialog dialog-compact wallet-connect-dialog"
+				data-phase={phase}
 				ref={dialogRef}
 				role="dialog"
 				tabIndex={-1}
@@ -385,7 +413,7 @@ function WalletConnectionDialog({
 					<Button
 						aria-label="Close wallet options"
 						className="close"
-						disabled={Boolean(generatedWallet)}
+						disabled={!dismissible}
 						onClick={close}
 						size="icon"
 						type="button"
@@ -411,14 +439,24 @@ function WalletConnectionDialog({
 							<Button
 								className="with-icon"
 								onClick={async () => {
-									await navigator.clipboard.writeText(generatedWallet.address);
-									setCopied(true);
+									try {
+										await navigator.clipboard.writeText(generatedWallet.address);
+										setCopyState('copied');
+									} catch {
+										setCopyState('failed');
+									}
 								}}
 								type="button"
 								size="custom"
 							>
 								<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
-								{copied ? 'Copied' : 'Copy'}
+								<span aria-live="polite">
+									{copyState === 'copied'
+										? 'Copied'
+										: copyState === 'failed'
+										? 'Copy failed'
+										: 'Copy'}
+								</span>
 							</Button>
 						</div>
 						<Button
@@ -649,6 +687,41 @@ export function generatedKeyfileBackupStep(downloaded: boolean) {
 				finishLabel: 'I saved the keyfile',
 				canFinish: false,
 		  };
+}
+
+export function walletDialogPhase(action: WalletDialogAction, generatedWallet: unknown): WalletDialogPhase {
+	if (generatedWallet) return 'backup';
+	if (action === 'generate') return 'generating';
+	if (action === 'import') return 'importing';
+	return action ? 'connecting' : 'choosing';
+}
+
+/**
+ * Whether Escape, the backdrop and the close button may dismiss the dialog. Generating or importing
+ * writes the only stored key and finishes in bounded time, and a generated key must be backed up, so
+ * those phases stay open. A browser connect can wait on an extension prompt indefinitely, so it can
+ * still be dismissed; its late result then only takes effect on the wallet, not on the dialog.
+ */
+export function walletDialogDismissible(action: WalletDialogAction, generatedWallet: unknown) {
+	const phase = walletDialogPhase(action, generatedWallet);
+	return phase === 'choosing' || phase === 'connecting';
+}
+
+/** True when another path (a stored-key restore, a wallet switch) committed an address while the user was choosing. */
+export function walletDialogClosesForAddress(
+	phase: WalletDialogPhase,
+	addressAtOpen: string | null,
+	address: string | null
+) {
+	return phase === 'choosing' && Boolean(address) && address !== addressAtOpen;
+}
+
+/**
+ * Where focus goes when the connect dialog's trigger is gone, such as an in-page Connect button that
+ * unmounts once a wallet connects: the header wallet button, which then names the account.
+ */
+export function connectDialogRestoreFallback(root: Pick<ParentNode, 'querySelector'> = document) {
+	return root.querySelector<HTMLElement>('.wallet-menu .wallet');
 }
 
 export function browserWalletSelection(

@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
 
+import { dialogRestoreTarget } from '../app/useDialogFocus';
+
 import {
 	browserWalletSelection,
 	completePrivateJwk,
+	connectDialogRestoreFallback,
 	connectWallet,
 	createLatestAddressCommitter,
 	generatedKeyfileBackupStep,
@@ -12,6 +15,9 @@ import {
 	localWalletExportJson,
 	localWalletReplacementNeedsConfirm,
 	restoreBrowserWalletAfterDisconnect,
+	walletDialogClosesForAddress,
+	walletDialogDismissible,
+	walletDialogPhase,
 	walletDisconnectPlan,
 	walletKindOf,
 } from './WalletProvider';
@@ -251,5 +257,61 @@ describe('local keyfile forget semantics', () => {
 		expect(afterDownload.downloadLabel).toBe('Download again');
 		expect(afterDownload.finishLabel).toBe('I saved the keyfile');
 		expect(afterDownload.hint).toContain('wallet menu');
+	});
+});
+
+describe('connect wallet dialog phases', () => {
+	const generated = { address: 'a'.repeat(43), jwk: { kty: 'RSA', n: 'n', e: 'AQAB', d: 'd' } };
+
+	it('derives one phase from the pending action and the generated key', () => {
+		expect(walletDialogPhase(null, null)).toBe('choosing');
+		expect(walletDialogPhase('wander', null)).toBe('connecting');
+		expect(walletDialogPhase('permaweb-os', null)).toBe('connecting');
+		expect(walletDialogPhase('generate', null)).toBe('generating');
+		expect(walletDialogPhase('import', null)).toBe('importing');
+		expect(walletDialogPhase(null, generated)).toBe('backup');
+	});
+
+	it('cannot be dismissed while a local key is generated, imported or waiting for backup', () => {
+		expect(walletDialogDismissible('generate', null)).toBe(false);
+		expect(walletDialogDismissible('import', null)).toBe(false);
+		expect(walletDialogDismissible(null, generated)).toBe(false);
+	});
+
+	it('stays dismissible while choosing and while a browser extension prompt is pending', () => {
+		expect(walletDialogDismissible(null, null)).toBe(true);
+		expect(walletDialogDismissible('wander', null)).toBe(true);
+		expect(walletDialogDismissible('permaweb-os', null)).toBe(true);
+	});
+
+	it('closes itself when a restore commits an address while the user is still choosing', () => {
+		const address = 'b'.repeat(43);
+		expect(walletDialogClosesForAddress('choosing', null, address)).toBe(true);
+		expect(walletDialogClosesForAddress('choosing', null, null)).toBe(false);
+		expect(walletDialogClosesForAddress('choosing', address, address)).toBe(false);
+		for (const phase of ['connecting', 'generating', 'importing', 'backup'] as const) {
+			expect(walletDialogClosesForAddress(phase, null, address)).toBe(false);
+		}
+	});
+
+	it('returns focus to the header wallet button when the in-page Connect button has unmounted', () => {
+		const element = (connected: boolean) =>
+			({
+				isConnected: connected,
+				hidden: false,
+				disabled: false,
+				inert: false,
+				parentElement: null,
+				getAttribute: () => null,
+				getClientRects: () => (connected ? [{}] : []),
+			} as unknown as HTMLElement);
+		const detachedTrigger = element(false);
+		const headerButton = element(true);
+		const querySelector = vi.fn((selector: string) => (selector === '.wallet-menu .wallet' ? headerButton : null));
+
+		const fallback = connectDialogRestoreFallback({ querySelector } as unknown as ParentNode);
+
+		expect(fallback).toBe(headerButton);
+		expect(dialogRestoreTarget(detachedTrigger, fallback)).toBe(headerButton);
 	});
 });
