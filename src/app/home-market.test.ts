@@ -777,6 +777,50 @@ describe('Home market summary retries', () => {
 		expect(ids(homeSummaryWindow(candidates, undefined, {}))).toBe('ABCDEF');
 	});
 
+	it('settles a bounded listed Discover once its summary window is known, not every candidate', () => {
+		const images: Collection = { id: 'images', name: 'images', description: '', kind: 'images', assets: [] };
+		const candidates = ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => ({
+			asset: { id: id.repeat(43) },
+			collection: images,
+		}));
+		const view = {
+			assetView: 'listed' as const,
+			assetType: 'atomic' as const,
+			query: '',
+			assetPage: 1,
+			tokenPage: 1,
+		};
+		const [uniqueDemand] = homeListingCrawlDemand(view)!;
+		const demand = [{ ...uniqueDemand, count: 3 }];
+		const listed: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const summaries: Record<string, HomeMarketSummary> = {
+			['A'.repeat(43)]: listed,
+			['B'.repeat(43)]: listed,
+			['C'.repeat(43)]: listed,
+		};
+		const windowIds = homeSummaryWindow(candidates, demand, summaries).map(({ asset }) => asset.id);
+		// D-F are never read for this view, so they must not hold the order (and token placeholders) open.
+		expect(homeDiscoverOrderSettled('listed', false, windowIds, summaries)).toBe(true);
+		expect(
+			homeDiscoverOrderSettled(
+				'listed',
+				false,
+				candidates.map(({ asset }) => asset.id),
+				summaries
+			)
+		).toBe(false);
+		// An unread candidate inside the window still holds it.
+		const partial = { ['A'.repeat(43)]: listed };
+		expect(
+			homeDiscoverOrderSettled(
+				'listed',
+				false,
+				homeSummaryWindow(candidates, demand, partial).map(({ asset }) => asset.id),
+				partial
+			)
+		).toBe(false);
+	});
+
 	it('keeps malformed or unverified asset shells outside the actionable asset boundary', () => {
 		const asset = { id: 'A'.repeat(43), name: 'Cached asset' };
 		expect(

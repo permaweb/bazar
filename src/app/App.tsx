@@ -3777,12 +3777,20 @@ function Home() {
 				}),
 		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
+	// Listed views learn which candidates are listed from these summaries, so they
+	// read only as many unknown candidates as the visible pages plus one ahead need.
+	const summaryWindow = React.useMemo(
+		() => homeSummaryWindow(assetCandidates, homeListingDemand, displayAssetPrices, !portableHomeListingsLoading),
+		[assetCandidates, displayAssetPrices, homeListingDemand, portableHomeListingsLoading]
+	);
 	// Rows and cards already on screen keep their slots while listings and prices stream in; the lists
 	// re-rank when the viewer changes the view or once nothing that could move a card is still loading.
+	// Bounded listed views never read candidates outside the summary window, so only the window has to
+	// be known; unbounded views (price order, search) get every candidate in the window.
 	const displayedAssetOrderSettled = homeDiscoverOrderSettled(
 		assetView,
 		market.loading || portableHomeListingsLoading,
-		assetCandidates.map(({ asset }) => asset.id),
+		summaryWindow.map(({ asset }) => asset.id),
 		displayAssetPrices
 	);
 	const displayedAssetOrder = useStableOrder(
@@ -3828,12 +3836,6 @@ function Home() {
 	// Values read for another index or AO routing scope are dropped, not shown.
 	const tokenPriceChanges =
 		tokenPriceChangeState.scope === homeListingSnapshotScope ? tokenPriceChangeState.values : {};
-	// Listed views learn which candidates are listed from these summaries, so they
-	// read only as many unknown candidates as the visible pages plus one ahead need.
-	const summaryWindow = React.useMemo(
-		() => homeSummaryWindow(assetCandidates, homeListingDemand, displayAssetPrices, !portableHomeListingsLoading),
-		[assetCandidates, displayAssetPrices, homeListingDemand, portableHomeListingsLoading]
-	);
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : summaryWindow;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
