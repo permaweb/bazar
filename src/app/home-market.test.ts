@@ -14,11 +14,14 @@ import {
 	replaceHiddenCollectionAssetIndex,
 } from 'api/collections';
 
+import { nextStableOrder, stableOrderDiffers } from 'helpers/stable-order';
+
 import {
 	ACTIVITY_CATALOGUE_QUIET_MS,
 	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
 	activityCatalogueMembershipKey,
 	activityCatalogueRevealDelay,
+	activityLoadingPlacement,
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembership,
@@ -1733,6 +1736,27 @@ describe('Home market summary retries', () => {
 		expect(globalCatalogueActivity(events, [tokens]).map((item) => item.id)).toEqual(['3']);
 		// The same loaded rows, filtered again once a streamed collection claims one; gateway order holds.
 		expect(globalCatalogueActivity(events, [tokens, images]).map((item) => item.id)).toEqual(['1', '3']);
+	});
+
+	it('appends rows a late collection claims instead of inserting them above painted rows', () => {
+		// Painted after the reveal: rows 3 and 5 (newest first).
+		const painted = nextStableOrder(undefined, ['3', '5'], 'all|0', false);
+		// A collection streaming in after the cap claims rows 1 (newest) and 4.
+		const ranked = ['1', '3', '4', '5'];
+		const held = nextStableOrder(painted, ranked, 'all|0', false);
+
+		expect(held.ids).toEqual(['3', '5', '1', '4']);
+		// The newest-first order is offered rather than applied, and applying it re-ranks.
+		expect(stableOrderDiffers(held.ids, ranked, 20)).toBe(true);
+		expect(nextStableOrder(held, ranked, 'all|1', false).ids).toEqual(ranked);
+	});
+
+	it('says Activity is loading without inserting a line above painted rows', () => {
+		expect(activityLoadingPlacement(false, 0, true)).toBeNull();
+		expect(activityLoadingPlacement(true, 0, true)).toBe('placeholder');
+		// Rows painted: the load-more button says "Loading activity…".
+		expect(activityLoadingPlacement(true, 20, true)).toBeNull();
+		expect(activityLoadingPlacement(true, 4, false)).toBe('after-list');
 	});
 
 	it('paints activity rows after a short catalogue quiet time, capped from market settle', () => {

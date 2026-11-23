@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import {
 	HashRouter,
 	Link,
@@ -5834,6 +5835,18 @@ export function activityCatalogueRevealDelay(
 	return Math.max(0, Math.min(quietMs, settledAt + capMs - now));
 }
 
+/**
+ * Where the Activity panel says it is loading. With no rows painted it is the placeholder above the
+ * list. Once rows are painted, a line inserted above them (and removed when the page arrives) would
+ * move every row, so the load-more button carries "Loading activity…" instead, or a line after the
+ * list when there is no button.
+ */
+export function activityLoadingPlacement(busy: boolean, rowCount: number, hasMoreControl: boolean) {
+	if (!busy) return null;
+	if (!rowCount) return 'placeholder' as const;
+	return hasMoreControl ? null : ('after-list' as const);
+}
+
 /** True once the market has settled and its membership has been quiet briefly (or the cap passed). Stays true. */
 function useActivityCatalogueRevealed(marketLoading: boolean, collections: readonly Collection[]) {
 	const [revealed, setRevealed] = React.useState(false);
@@ -5908,7 +5921,26 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	// collections streaming in do not insert rows between ones already painted. Names for the rows
 	// already claimed are asked for meanwhile, so they paint named.
 	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections);
-	const filteredEvents = catalogueRevealed ? claimedEvents : [];
+	const revealedEvents = catalogueRevealed ? claimedEvents : [];
+	// Rows already painted keep their places: rows a collection streaming in after the reveal brings
+	// (the reveal waits at most ACTIVITY_CATALOGUE_WAIT_CAP_MS) are appended rather than inserted
+	// above them, and the newest-first order is offered instead of applied on its own. A filter change
+	// or the offer re-ranks.
+	const [activityOrderRevision, setActivityOrderRevision] = React.useState(0);
+	const rankedActivityIds = revealedEvents.map((event) => event.id);
+	const activityOrder = useStableOrder(rankedActivityIds, `${activityFilter}|${activityOrderRevision}`, false);
+	const filteredEvents = React.useMemo(
+		() => applyStableOrder(revealedEvents, activityOrder, (event) => event.id),
+		[activityOrder, revealedEvents]
+	);
+	const newerActivityOrder = stableOrderDiffers(activityOrder, rankedActivityIds, activityLimit);
+	const activityPanelRef = React.useRef<HTMLDivElement>(null);
+	const applyNewerActivityOrder = () => {
+		setActivityOrderRevision((current) => current + 1);
+		window.requestAnimationFrame(() =>
+			activityPanelRef.current?.querySelector<HTMLElement>('.activity-filter[aria-pressed="true"]')?.focus()
+		);
+	};
 	const busy = loading || (!catalogueRevealed && !error);
 	React.useEffect(() => {
 		if (!catalogueRevealed || loading || !loadAnnouncementPending.current) return;
@@ -5916,7 +5948,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setAnnouncement(`${catalogueEvents.length.toLocaleString()} indexed events loaded.`);
 	}, [catalogueEvents.length, catalogueRevealed, loading]);
 	useIndexedAssetNames(
-		visibleActivityAssets(claimedEvents.slice(0, activityLimit), (event) =>
+		visibleActivityAssets((catalogueRevealed ? filteredEvents : claimedEvents).slice(0, activityLimit), (event) =>
 			globalActivityCollection(collections, event.processId)
 		),
 		rememberIndexedAssets
@@ -5934,12 +5966,18 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(collections, event.processId);
 	const canReveal = activityLimit < filteredEvents.length;
+	const loadingPlacement = activityLoadingPlacement(
+		busy,
+		Math.min(activityLimit, filteredEvents.length),
+		canReveal || hasNextPage
+	);
 	return (
 		<div
 			aria-busy={busy}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
+			ref={activityPanelRef}
 			role="tabpanel"
 		>
 			<div aria-label="Filter global activity" className="activity-filters" role="group">
@@ -5959,9 +5997,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</Button>
 				))}
 			</div>
-			{busy ? (
+			{loadingPlacement === 'placeholder' ? (
 				<div className="global-activity-loading">
-					<Loading label={filteredEvents.length ? 'Loading activity…' : 'Loading recent activity…'} />
+					<Loading label="Loading recent activity…" />
 				</div>
 			) : null}
 			{error ? (
@@ -5994,6 +6032,32 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				}}
 				resolveCollection={resolveCollection}
 			/>
+			{loadingPlacement === 'after-list' ? (
+				<div className="global-activity-loading">
+					<Loading label="Loading activity…" />
+				</div>
+			) : null}
+			{/* Zero-height, with the offer fixed to the bottom of the viewport, so it never moves the rows. The
+			    Home sections are size containers, which would anchor a fixed descendant to the section, so the
+			    offer is portalled to the body as Tooltip does for its floating layer. */}
+			{typeof document !== 'undefined'
+				? createPortal(
+						<div className="collection-order-notice" aria-live="polite">
+							{newerActivityOrder ? (
+								<Button
+									aria-controls={activityListId}
+									className="collection-order-notice-button with-icon"
+									onClick={applyNewerActivityOrder}
+									size="custom"
+									type="button"
+								>
+									<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Show newest first
+								</Button>
+							) : null}
+						</div>,
+						document.body
+				  )
+				: null}
 			<p className="sr-only" role="status" aria-live="polite">
 				{announcement}
 			</p>
@@ -6007,7 +6071,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</p>
 				</div>
 			) : null}
-			{canReveal || hasNextPage ? (
+			{/* While the first rows load the placeholder says so; a button under an empty list would be pushed
+			    down by the rows it is waiting for. */}
+			{(canReveal || hasNextPage) && (filteredEvents.length || !busy) ? (
 				<Button
 					aria-controls={activityListId}
 					className="load-more"
