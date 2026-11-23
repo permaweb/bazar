@@ -8161,15 +8161,25 @@ export function verifiedAssetForDetail(
 		: resolvedAsset;
 }
 
+export const ASSET_STATE_UNAVAILABLE_HEADING = 'Live state unavailable';
+
+/**
+ * Loading-shell identity for an asset page. Until the collection is known the
+ * kind and device stay undefined so the shell renders a neutral skeleton
+ * instead of guessing a collection such as Arweave names / carrier@1.0.
+ */
 export function assetDetailLoadingPresentation(collection: Collection | undefined, collectionId: string) {
-	const kind =
+	const kind: Collection['kind'] | undefined =
 		collection?.kind ??
 		(collectionId === FUNGIBLE_TOKEN_COLLECTION_ID
 			? 'tokens'
 			: collectionId === CREATED_COLLECTION_ID
 			? 'images'
-			: 'names');
-	return { kind, device: kind === 'names' ? 'carrier@1.0' : 'token@1.0' } as const;
+			: collectionId === 'arweave-names'
+			? 'names'
+			: undefined);
+	const device = kind === 'names' ? 'carrier@1.0' : kind ? 'token@1.0' : undefined;
+	return { kind, device } as const;
 }
 
 export function mergeAssetDetailMetadata(
@@ -8205,11 +8215,12 @@ export function assetStateRecoveryUrl(
 	return error && usesPermawebOsAo(location, scope) ? bazarAoTransportUrl(location.href) : null;
 }
 
-function AssetDetailLoadingShell({
+export function AssetDetailLoadingShell({
 	asset,
 	collection,
 	collectionId,
 	error,
+	errorHeading = ASSET_STATE_UNAVAILABLE_HEADING,
 	onRetry,
 	secondaryAction,
 }: {
@@ -8217,6 +8228,7 @@ function AssetDetailLoadingShell({
 	collection?: Collection;
 	collectionId: string;
 	error?: string | null;
+	errorHeading?: string;
 	onRetry?: () => void;
 	secondaryAction?: ErrorPanelAction;
 }) {
@@ -8225,7 +8237,13 @@ function AssetDetailLoadingShell({
 	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
 	const collectionName =
 		(collection ? (kind === 'tokens' ? collectionDisplayName(collection) : collection.name) : undefined) ??
-		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
+		(kind === 'tokens'
+			? 'Fungible tokens'
+			: kind === 'images'
+			? CREATED_COLLECTION_NAME
+			: kind === 'names'
+			? 'Arweave names'
+			: undefined);
 
 	if (kind === 'tokens') {
 		return (
@@ -8266,7 +8284,12 @@ function AssetDetailLoadingShell({
 					</div>
 				</header>
 				{error ? (
-					<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
+					<ErrorPanel
+						heading={errorHeading}
+						message={error}
+						onRetry={onRetry}
+						secondaryAction={secondaryAction}
+					/>
 				) : (
 					<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
 						<span aria-hidden="true" /> Computing current state…
@@ -8376,8 +8399,10 @@ function AssetDetailLoadingShell({
 								<Link className="asset-collection-link" to={`/collection/${collection.id}`}>
 									{collectionName}
 								</Link>
-							) : (
+							) : collectionName ? (
 								<span className="asset-collection-link">{collectionName}</span>
+							) : (
+								<span aria-hidden="true" className="layout-placeholder asset-loading-kicker" />
 							)}
 						</div>
 						{asset ? (
@@ -8386,15 +8411,32 @@ function AssetDetailLoadingShell({
 							<span className="layout-placeholder layout-placeholder-title" />
 						)}
 						<div className="asset-owner-line">
-							<span>Loading ownership and market state</span>
+							<span>
+								{error
+									? 'Ownership and market state unavailable'
+									: 'Loading ownership and market state'}
+							</span>
 						</div>
 						<div className="asset-token-tags" aria-hidden="true">
-							<span>{device}</span>
-							<span>Arweave</span>
-							<span>Supply 1</span>
+							{device ? (
+								<>
+									<span>{device}</span>
+									<span>Arweave</span>
+									<span>Supply 1</span>
+								</>
+							) : (
+								Array.from({ length: 3 }, (_, index) => (
+									<span className="layout-placeholder asset-loading-tag" key={index} />
+								))
+							)}
 						</div>
 						{error ? (
-							<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
+							<ErrorPanel
+								heading={errorHeading}
+								message={error}
+								onRetry={onRetry}
+								secondaryAction={secondaryAction}
+							/>
 						) : (
 							<div
 								aria-live="polite"
@@ -9274,16 +9316,28 @@ function AssetView() {
 		);
 	}
 	if (!collection && (collectionLookup.error || market.error))
-		return (
+		return shellAsset ? (
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={collectionLookup.error || market.error!}
+				errorHeading="Collection unavailable"
+				onRetry={collectionLookup.retry}
+			/>
+		) : (
 			<RouteState title="Asset unavailable">
 				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection && directAtomicRoute && error)
 		return (
-			<RouteState title="Asset unavailable">
-				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
-			</RouteState>
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={detailError ?? error}
+				onRetry={load}
+				secondaryAction={stateRecoveryAction}
+			/>
 		);
 	if (!collection)
 		return (
@@ -9304,6 +9358,11 @@ function AssetView() {
 						  market.notice ||
 						  'Current collection membership could not be verified.'
 				}
+				errorHeading={
+					market.loading || collectionLookup.loading
+						? ASSET_STATE_UNAVAILABLE_HEADING
+						: 'Collection membership unavailable'
+				}
 				onRetry={market.loading || collectionLookup.loading ? load : collectionLookup.retry}
 				secondaryAction={
 					(market.loading || collectionLookup.loading) && detailError ? stateRecoveryAction : undefined
@@ -9313,9 +9372,14 @@ function AssetView() {
 	const asset = verifiedAsset;
 	if (!asset && error)
 		return (
-			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
-			</RouteState>
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collection={collection}
+				collectionId={collectionId}
+				error={detailError ?? error}
+				onRetry={load}
+				secondaryAction={stateRecoveryAction}
+			/>
 		);
 	if (!asset && !loading)
 		return (
@@ -9521,7 +9585,12 @@ function AssetView() {
 						</div>
 						{loading ? <Loading label="Computing current state…" /> : null}
 						{error ? (
-							<ErrorPanel message={error} onRetry={load} secondaryAction={stateRecoveryAction} />
+							<ErrorPanel
+								heading={ASSET_STATE_UNAVAILABLE_HEADING}
+								message={error}
+								onRetry={load}
+								secondaryAction={stateRecoveryAction}
+							/>
 						) : null}
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
@@ -12060,5 +12129,23 @@ export function assetStateErrorMessage(error: unknown) {
 		}
 		return `${host} could not be reached. Retry live state or review the AO Core settings in the header.`;
 	}
-	return errorMessage(error);
+	if (/^HTTP 4\d\d(?:\b|$)/i.test(value)) {
+		return `The configured AO peers do not serve live state for this asset (${value}). Retry, or review the AO Core settings in the header.`;
+	}
+	if (
+		error instanceof SyntaxError ||
+		[
+			'invalid-asset-state',
+			'invalid-asset-state-link',
+			'invalid-asset-state-trie',
+			'asset-state-link-limit',
+		].includes(value)
+	) {
+		return 'The configured AO peers answered, but not with this asset’s process state. Retry, or review the AO Core settings in the header.';
+	}
+	const friendly = errorMessage(error);
+	if (friendly !== value.replaceAll('-', ' ')) return friendly;
+	return `Live state for this asset could not be read through the configured AO peers${
+		value ? ` (${value})` : ''
+	}. Retry, or review the AO Core settings in the header.`;
 }

@@ -3766,6 +3766,17 @@ input:focus {
 	width: 100%;
 	height: 45px;
 }
+.asset-loading-kicker {
+	width: 112px;
+	height: 1.25em;
+}
+.asset-token-tags .asset-loading-tag {
+	width: 72px;
+	height: 26px;
+	padding: 0;
+	border-color: var(--surface);
+	background: var(--surface);
+}
 .asset-loading-balance {
 	width: 112px;
 	height: 18px;

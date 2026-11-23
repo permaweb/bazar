@@ -95,7 +95,7 @@ import { optionalMotionBehavior } from 'helpers/motion';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
-import { collectionDisplayName, MarketSelect } from './App';
+import { ASSET_STATE_UNAVAILABLE_HEADING, collectionDisplayName, MarketSelect } from './App';
 import {
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
@@ -1239,7 +1239,12 @@ export function FungibleAssetView({
 			</header>
 			{loading ? <Loading label="Computing current state…" /> : null}
 			{error ? (
-				<ErrorPanel message={error} onRetry={() => void onRefresh()} secondaryAction={stateRecoveryAction} />
+				<ErrorPanel
+					heading={ASSET_STATE_UNAVAILABLE_HEADING}
+					message={error}
+					onRetry={() => void onRefresh()}
+					secondaryAction={stateRecoveryAction}
+				/>
 			) : null}
 			<div className="asset-detail-layout">
 				<div className="asset-commerce-column asset-commerce-primary">

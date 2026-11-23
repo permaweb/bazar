@@ -36,6 +36,17 @@ describe('asset detail fallbacks', () => {
 		expect(assetDetailLoadingPresentation(names, names.id)).toEqual({ kind: 'names', device: 'carrier@1.0' });
 	});
 
+	it('does not guess Arweave names / carrier@1.0 before the collection is known', () => {
+		expect(assetDetailLoadingPresentation(undefined, 'C'.repeat(43))).toEqual({
+			kind: undefined,
+			device: undefined,
+		});
+		expect(assetDetailLoadingPresentation(undefined, 'arweave-names')).toEqual({
+			kind: 'names',
+			device: 'carrier@1.0',
+		});
+	});
+
 	it('replaces an ID-only manifest label with permanent indexed metadata', () => {
 		const manifestAsset: AssetSummary = {
 			id: assetId,
@@ -63,6 +74,25 @@ describe('asset detail fallbacks', () => {
 		expect(legacyFriendly).toBe(friendly);
 		expect(assetDetailErrorMessage(friendly, { name: 'AntiqueWhite' }, true)).toBe(
 			'AntiqueWhite is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.'
+		);
+	});
+
+	it('explains peers that do not serve or misparse this asset state', () => {
+		expect(assetStateErrorMessage(new Error('HTTP 404'))).toBe(
+			'The configured AO peers do not serve live state for this asset (HTTP 404). Retry, or review the AO Core settings in the header.'
+		);
+		const notState =
+			'The configured AO peers answered, but not with this asset’s process state. Retry, or review the AO Core settings in the header.';
+		expect(assetStateErrorMessage(new Error('invalid-asset-state'))).toBe(notState);
+		expect(assetStateErrorMessage(new SyntaxError("Unexpected token '<'"))).toBe(notState);
+	});
+
+	it('keeps unrecognised state failures asset-specific with their diagnostic', () => {
+		expect(assetStateErrorMessage(new Error('historical-state-slot-mismatch'))).toBe(
+			'Live state for this asset could not be read through the configured AO peers (historical-state-slot-mismatch). Retry, or review the AO Core settings in the header.'
+		);
+		expect(assetStateErrorMessage(new Error('asset-balance-state-unavailable'))).toContain(
+			'without a complete holder balance table'
 		);
 	});
 
