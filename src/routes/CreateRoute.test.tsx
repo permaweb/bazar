@@ -10,9 +10,11 @@ import {
 	isMintLiveFor,
 	MINT_LIVE_EVENT,
 	MintRecoveryActions,
+	MintRecoveryCost,
 	MintSubmitButton,
 	quoteClearsError,
 	type QuoteErrorReset,
+	resumeMintDraft,
 	runSingleFlight,
 	subscribeMintLive,
 } from './CreateRoute';
@@ -284,5 +286,66 @@ describe('mint submit controls', () => {
 		expect(markup.match(/disabled=""/g)).toHaveLength(2);
 		expect(markup).toContain('Finish mint');
 		expect(recoveryActions({})).not.toContain('disabled');
+	});
+});
+
+describe('legacy draft recovery cost', () => {
+	const draft = {
+		owner: 'W'.repeat(43),
+		name: 'Long recording',
+		description: '',
+		contentType: 'audio/mpeg',
+		mediaId: 'M'.repeat(43),
+		createdAt: 123,
+	};
+	const estimate = { assetReward: 100_000_000_001n, assetBytes: 50 * 1024 * 1024 };
+	const callbacks = { onPhase: () => undefined, onTransaction: () => undefined };
+
+	it('shows the re-upload price in the recovery panel', () => {
+		const markup = renderToStaticMarkup(React.createElement(MintRecoveryCost, { estimate, pricing: false }));
+		expect(markup).toContain('Network cost to finish');
+		expect(markup).toContain('0.100000000001');
+		expect(markup).toContain('50.0 MB');
+		expect(
+			renderToStaticMarkup(React.createElement(MintRecoveryCost, { estimate: null, pricing: true }))
+		).toContain('Checking the network cost to finish…');
+		expect(
+			renderToStaticMarkup(React.createElement(MintRecoveryCost, { estimate: null, pricing: false }))
+		).toContain('your wallet shows it before you approve');
+	});
+
+	it('approves a high re-upload cost once the panel has shown it', async () => {
+		const client = { resume: vi.fn(async () => ({} as any)) };
+		await resumeMintDraft(client, draft, draft.owner, estimate, callbacks);
+		expect(client.resume).toHaveBeenCalledWith(
+			draft,
+			draft.owner,
+			expect.objectContaining({ allowHighCost: true })
+		);
+	});
+
+	it('keeps the high-cost gate when the price could not be shown', async () => {
+		const client = { resume: vi.fn(async () => ({} as any)) };
+		await resumeMintDraft(client, draft, draft.owner, null, callbacks);
+		expect(client.resume).toHaveBeenCalledWith(
+			draft,
+			draft.owner,
+			expect.objectContaining({ allowHighCost: false })
+		);
+	});
+
+	it('holds Finish mint, but not Dismiss, while the price is being checked', () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(MintRecoveryActions, {
+				onDismiss: () => undefined,
+				onResume: () => undefined,
+				phaseLabel: '',
+				pricing: true,
+				submission: null,
+				working: false,
+			})
+		);
+		expect(markup.match(/disabled=""/g)).toHaveLength(1);
+		expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>Finish mint/);
 	});
 });

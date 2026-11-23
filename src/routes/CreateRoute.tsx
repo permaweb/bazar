@@ -27,6 +27,8 @@ import {
 	type MintPhase,
 	type MintProgress,
 	mintProgressKey,
+	type MintResumeEstimate,
+	type MintUploadTransaction,
 	pendingMintProgress,
 	reusableMintProgress,
 	UDL_LICENSE_ID,
@@ -289,22 +291,63 @@ export function MintSubmitButton({
 	);
 }
 
+/**
+ * Finishes a saved draft. The re-upload may exceed the ordinary cost cap only once the recovery
+ * panel has shown its price; without a shown price the mint client's high-cost gate stays on.
+ */
+export function resumeMintDraft(
+	client: Pick<AssetMintClient, 'resume'>,
+	draft: MintDraft,
+	owner: string,
+	shownEstimate: MintResumeEstimate | null,
+	options: {
+		onPhase: (phase: MintPhase) => void;
+		onTransaction: (transaction: MintUploadTransaction) => void;
+	}
+) {
+	return client.resume(draft, owner, { ...options, allowHighCost: shownEstimate !== null });
+}
+
+/** The re-upload price line in the recovery panel. */
+export function MintRecoveryCost({ estimate, pricing }: { estimate: MintResumeEstimate | null; pricing: boolean }) {
+	if (estimate)
+		return (
+			<span>
+				Network cost to finish:{' '}
+				<strong>
+					<ArCurrencyText>{`${winstonToAr(estimate.assetReward.toString())} AR`}</ArCurrencyText>
+				</strong>{' '}
+				for {formatBytes(estimate.assetBytes)} of media.
+			</span>
+		);
+	return (
+		<span>
+			{pricing
+				? 'Checking the network cost to finish…'
+				: 'Bazar could not check the network cost; your wallet shows it before you approve.'}
+		</span>
+	);
+}
+
 export function MintRecoveryActions({
 	onDismiss,
 	onResume,
 	phaseLabel,
+	pricing = false,
 	submission,
 	working,
 }: {
 	onDismiss: () => void;
 	onResume: () => void;
 	phaseLabel: string;
+	/** The re-upload price is still being checked; Finish waits so the creator sees it first. */
+	pricing?: boolean;
 	submission: MintSubmission | null;
 	working: boolean;
 }) {
 	return (
 		<div>
-			<Button type="button" onClick={onResume} disabled={working} size="custom">
+			<Button type="button" onClick={onResume} disabled={working || pricing} size="custom">
 				{submission === 'resume' ? phaseLabel || MINT_PREFLIGHT_LABEL.resume : 'Finish mint'}
 			</Button>
 			<Button type="button" onClick={onDismiss} disabled={working} size="custom">
@@ -731,6 +774,8 @@ export default function CreateRoute() {
 	// fields) still matches, and is dropped once the mint succeeds.
 	const [artworkProgress, setArtworkProgress] = React.useState<MintProgress<string> | null>(null);
 	const [collectionProgress, setCollectionProgress] = React.useState<MintProgress<MintedByIndex> | null>(null);
+	const [resumeEstimate, setResumeEstimate] = React.useState<MintResumeEstimate | null>(null);
+	const [resumePricing, setResumePricing] = React.useState(false);
 	const applyUdlPreset = (preset: UdlPreset) => {
 		setUdlConfigurationMode('configured');
 		setUdlTerms(udlTermsForPreset(preset));
@@ -799,6 +844,27 @@ export default function CreateRoute() {
 	React.useEffect(() => {
 		setDraft(wallet.address ? getMintDraft(wallet.address) : null);
 	}, [wallet.address]);
+	React.useEffect(() => {
+		setResumeEstimate(null);
+		if (mode !== 'asset' || !draft) {
+			setResumePricing(false);
+			return;
+		}
+		const controller = new AbortController();
+		setResumePricing(true);
+		void new AssetMintClient()
+			.estimateResume(draft, controller.signal)
+			.then(
+				(nextEstimate) => {
+					if (!controller.signal.aborted) setResumeEstimate(nextEstimate);
+				},
+				() => undefined
+			)
+			.finally(() => {
+				if (!controller.signal.aborted) setResumePricing(false);
+			});
+		return () => controller.abort();
+	}, [draft, mode]);
 	React.useEffect(() => {
 		if (!logo) {
 			setLogoPreview('');
@@ -1195,7 +1261,7 @@ export default function CreateRoute() {
 			status: 'Recovering the saved asset upload…',
 		});
 		try {
-			const minted = await new AssetMintClient().resume(draft, wallet.address, {
+			const minted = await resumeMintDraft(new AssetMintClient(), draft, wallet.address, resumeEstimate, {
 				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (nextPhase) => {
 					setPhase(nextPhase);
@@ -1293,6 +1359,7 @@ export default function CreateRoute() {
 							The earlier media upload for “{draft.name}” was accepted. Bazar can reuse its bytes to
 							finish a self-contained atomic asset.
 						</span>
+						<MintRecoveryCost estimate={resumeEstimate} pricing={resumePricing} />
 					</div>
 					<MintRecoveryActions
 						onDismiss={() => {
@@ -1301,6 +1368,7 @@ export default function CreateRoute() {
 						}}
 						onResume={() => void resume()}
 						phaseLabel={phaseLabel}
+						pricing={resumePricing}
 						submission={submission}
 						working={working}
 					/>
