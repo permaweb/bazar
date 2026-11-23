@@ -1,9 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Copy, LogOut, Monitor, Moon, Sun, SunDim, UserRound, Wallet } from 'lucide-react';
+import { Check, Copy, Download, LogOut, Monitor, Moon, Sun, SunDim, Trash2, UserRound, Wallet } from 'lucide-react';
 
 import { useTheme } from 'providers/ThemeProvider';
-import { useWallet } from 'providers/WalletProvider';
+import { useWallet, walletDisconnectPlan, type WalletKind } from 'providers/WalletProvider';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
@@ -30,6 +30,7 @@ export function WalletMenu() {
 	const [error, setError] = React.useState('');
 	const profile = useAccountProfileSummary(wallet.address ?? '');
 	const walletLabel = walletMenuLabel(wallet.address, profile.displayName);
+	const dangerAction = walletMenuDangerAction(wallet.walletKind);
 
 	React.useEffect(() => {
 		if (!open) return;
@@ -68,12 +69,19 @@ export function WalletMenu() {
 		setDisconnecting(true);
 		setError('');
 		try {
-			await wallet.disconnect();
-			setOpen(false);
+			if (await wallet.disconnect()) setOpen(false);
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Wallet could not be disconnected.');
 		} finally {
 			setDisconnecting(false);
+		}
+	};
+	const downloadKeyfile = () => {
+		setError('');
+		try {
+			if (!wallet.exportLocalWallet()) setError('No keyfile is stored in this browser.');
+		} catch {
+			setError('Keyfile could not be downloaded.');
 		}
 	};
 
@@ -109,7 +117,7 @@ export function WalletMenu() {
 					<div className="wallet-dropdown-header">
 						<Wallet className="ui-icon" aria-hidden="true" />
 						<div>
-							<span>Connected wallet</span>
+							<span>{dangerAction.heading}</span>
 							<strong>{walletLabel}</strong>
 						</div>
 					</div>
@@ -158,6 +166,12 @@ export function WalletMenu() {
 							<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
 							{copied ? 'Copied' : 'Copy address'}
 						</Button>
+						{dangerAction.showsExport ? (
+							<Button onClick={downloadKeyfile} role="menuitem" size="custom" variant="ghost">
+								<Download className="ui-icon ui-icon--sm" aria-hidden="true" />
+								Download keyfile
+							</Button>
+						) : null}
 					</div>
 					<div aria-labelledby={appearanceLabelId} className="wallet-dropdown-appearance" role="group">
 						<span className="wallet-dropdown-section-label" id={appearanceLabelId}>
@@ -190,8 +204,12 @@ export function WalletMenu() {
 							size="custom"
 							variant="danger"
 						>
-							<LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
-							{disconnecting ? 'Disconnecting…' : 'Disconnect'}
+							{dangerAction.showsExport ? (
+								<Trash2 className="ui-icon ui-icon--sm" aria-hidden="true" />
+							) : (
+								<LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
+							)}
+							{disconnecting ? dangerAction.busyLabel : dangerAction.label}
 						</Button>
 					</div>
 					{error ? <p role="alert">{error}</p> : null}
@@ -207,6 +225,29 @@ function shortAddress(address: string) {
 
 export function walletMenuLabel(address?: string | null, displayName?: string | null) {
 	return displayName?.trim() || (address ? shortAddress(address) : 'Connect');
+}
+
+/**
+ * The menu's wallet-kind copy and its danger action. Derived from walletDisconnectPlan so the label,
+ * the confirmation and whether the key is erased cannot disagree.
+ */
+export function walletMenuDangerAction(kind: WalletKind | null) {
+	const plan = walletDisconnectPlan(kind);
+	return plan.clearsKey
+		? {
+				heading: 'Keyfile wallet, stored only in this browser',
+				label: 'Remove keyfile…',
+				busyLabel: 'Removing…',
+				needsConfirm: plan.confirm,
+				showsExport: true,
+		  }
+		: {
+				heading: 'Connected wallet',
+				label: 'Disconnect',
+				busyLabel: 'Disconnecting…',
+				needsConfirm: plan.confirm,
+				showsExport: false,
+		  };
 }
 
 export function arBalanceLabel(balance: bigint | null, status: 'idle' | 'loading' | 'ready' | 'error'): string {

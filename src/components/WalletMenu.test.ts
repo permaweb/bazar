@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { arBalanceLabel, tokenBalanceLabel, walletMenuLabel } from './WalletMenu';
+import { arBalanceLabel, tokenBalanceLabel, walletMenuDangerAction, walletMenuLabel } from './WalletMenu';
 
 describe('wallet menu identity', () => {
 	it('shows only a known profile name and preserves the address fallback', () => {
@@ -8,6 +8,30 @@ describe('wallet menu identity', () => {
 		expect(walletMenuLabel(address, 'Agent Smith')).toBe('Agent Smith');
 		expect(walletMenuLabel(address)).toBe(`${'a'.repeat(6)}…12345`);
 		expect(walletMenuLabel()).toBe('Connect');
+	});
+});
+
+describe('wallet menu danger action', () => {
+	it('offers a keyfile download and a confirmed removal for a local keyfile wallet', () => {
+		expect(walletMenuDangerAction('local')).toEqual({
+			heading: 'Keyfile wallet, stored only in this browser',
+			label: 'Remove keyfile…',
+			busyLabel: 'Removing…',
+			needsConfirm: true,
+			showsExport: true,
+		});
+	});
+
+	it('keeps one-click Disconnect for browser wallets', () => {
+		for (const kind of ['browser', null] as const) {
+			expect(walletMenuDangerAction(kind)).toEqual({
+				heading: 'Connected wallet',
+				label: 'Disconnect',
+				busyLabel: 'Disconnecting…',
+				needsConfirm: false,
+				showsExport: false,
+			});
+		}
 	});
 });
 

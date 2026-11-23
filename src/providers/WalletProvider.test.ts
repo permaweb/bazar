@@ -7,8 +7,13 @@ import {
 	completePrivateJwk,
 	connectWallet,
 	createLatestAddressCommitter,
+	generatedKeyfileBackupStep,
 	isValidWalletJwk,
+	localWalletExportJson,
+	localWalletReplacementNeedsConfirm,
 	restoreBrowserWalletAfterDisconnect,
+	walletDisconnectPlan,
+	walletKindOf,
 } from './WalletProvider';
 
 function deferred<T>() {
@@ -184,5 +189,67 @@ describe('local Arweave keyfiles', () => {
 		} as any);
 		expect(['p', 'q', 'dp', 'dq', 'qi'].every((field) => typeof (completed as any)[field] === 'string')).toBe(true);
 		expect(completed.e).toBe(encoded(17));
+	});
+});
+
+describe('local keyfile forget semantics', () => {
+	const address = 'a'.repeat(43);
+	const storedKey = { kty: 'RSA', n: 'stored-public', e: 'AQAB', d: 'stored-private' };
+
+	it('asks before removing a local keyfile and erases the stored key only after that', () => {
+		const plan = walletDisconnectPlan('local', address);
+		expect(plan.confirm).toBe(true);
+		expect(plan.clearsKey).toBe(true);
+		expect(plan.copy).toContain('Remove keyfile from this browser?');
+		expect(plan.copy).toContain(address);
+		expect(plan.copy).toContain('downloaded keyfile');
+	});
+
+	it('disconnects a browser wallet in one click without touching the stored keyfile', () => {
+		for (const kind of ['browser', null] as const) {
+			expect(walletDisconnectPlan(kind, address)).toEqual({ confirm: false, clearsKey: false, copy: '' });
+		}
+	});
+
+	it('records the committed wallet kind, and no kind once disconnected', () => {
+		const extension = { connect: async () => undefined, sign: async (transaction: unknown) => transaction };
+		expect(walletKindOf(address, extension as Window['arweaveWallet'])).toBe('browser');
+		expect(walletKindOf(null, extension as Window['arweaveWallet'])).toBeNull();
+		expect(walletKindOf(null, undefined)).toBeNull();
+	});
+
+	it('exports the stored keyfile as JSON that round-trips into a valid key', () => {
+		const exported = localWalletExportJson(storedKey);
+		expect(exported).not.toBeNull();
+		const parsed: unknown = JSON.parse(exported!);
+		expect(isValidWalletJwk(parsed)).toBe(true);
+		expect(parsed).toEqual(storedKey);
+	});
+
+	it('has nothing to export when no valid keyfile is stored', () => {
+		expect(localWalletExportJson(null)).toBeNull();
+		expect(localWalletExportJson({ kty: 'RSA', n: 'public-only', e: 'AQAB' })).toBeNull();
+	});
+
+	it('asks before a browser wallet, a new keyfile or a different import replaces a stored key', () => {
+		expect(localWalletReplacementNeedsConfirm(storedKey)).toBe(true);
+		expect(
+			localWalletReplacementNeedsConfirm(storedKey, { ...storedKey, n: 'other-public', d: 'other-private' })
+		).toBe(true);
+		expect(localWalletReplacementNeedsConfirm(storedKey, { ...storedKey })).toBe(false);
+		expect(localWalletReplacementNeedsConfirm(null)).toBe(false);
+		expect(localWalletReplacementNeedsConfirm(null, storedKey)).toBe(false);
+	});
+
+	it('keeps the generated keyfile panel open after Download until the user confirms the save', () => {
+		const beforeDownload = generatedKeyfileBackupStep(false);
+		expect(beforeDownload.canFinish).toBe(false);
+		expect(beforeDownload.downloadLabel).toBe('Download keyfile');
+
+		const afterDownload = generatedKeyfileBackupStep(true);
+		expect(afterDownload.canFinish).toBe(true);
+		expect(afterDownload.downloadLabel).toBe('Download again');
+		expect(afterDownload.finishLabel).toBe('I saved the keyfile');
+		expect(afterDownload.hint).toContain('wallet menu');
 	});
 });
