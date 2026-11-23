@@ -4877,10 +4877,12 @@ export function batchStageLabel(state?: PurchaseState) {
 	if (state.stage === 'registration-accepting') return 'Checking reservation';
 	if (state.stage === 'ownership-verifying') return 'Checking receipt';
 	if (state.stage.includes('payment')) {
-		return `Pay ${Math.min(state.payment?.consensus.confirmations ?? 0, 5)}/5`;
+		const confirmations = state.payment?.consensus.confirmations ?? 0;
+		return `Pay ${Math.min(confirmations, PURCHASE_PAYMENT_TARGET)}/${PURCHASE_PAYMENT_TARGET}`;
 	}
 	if (state.stage === 'signing' || state.stage === 'idle') return 'Preparing';
-	return `Reserve ${Math.min(state.registration?.consensus.confirmations ?? 0, 5)}/5`;
+	const confirmations = state.registration?.consensus.confirmations ?? 0;
+	return `Reserve ${Math.min(confirmations, PURCHASE_REGISTRATION_TARGET)}/${PURCHASE_REGISTRATION_TARGET}`;
 }
 
 function activityDetail(event: CollectionActivityEvent, state: AssetState) {

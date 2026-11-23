@@ -61,6 +61,7 @@ import {
 	visibleOrderbookRows,
 	waitForSettlementBatch,
 } from './FungibleAssetView';
+import { PURCHASE_PAYMENT_TARGET } from './purchase-lifecycle';
 
 describe('fungible operation activity progress', () => {
 	it('reports the active Arweave confirmation depth for a purchase', () => {
@@ -1221,6 +1222,24 @@ describe('parallel settlement progress summary', () => {
 				registration: { consensus: { confirmations: 316 } },
 			} as PurchaseState)
 		).toBe('Reserve 5/5');
+	});
+
+	it('counts seller payment progress against the payment target, not the reservation depth', () => {
+		expect(PURCHASE_PAYMENT_TARGET).toBe(1);
+		expect(
+			batchStageLabel({
+				stage: 'payment-confirming',
+				payment: { consensus: { confirmations: 0 } },
+			} as PurchaseState)
+		).toBe('Pay 0/1');
+		expect(batchStageLabel({ stage: 'signing-payment' } as PurchaseState)).toBe('Pay 0/1');
+		expect(batchStageLabel({ stage: 'dispatching-payment' } as PurchaseState)).toBe('Pay 0/1');
+		expect(
+			batchStageLabel({
+				stage: 'payment-confirming',
+				payment: { consensus: { confirmations: 7 } },
+			} as PurchaseState)
+		).toBe('Pay 1/1');
 	});
 });
 
