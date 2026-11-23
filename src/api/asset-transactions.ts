@@ -13,7 +13,7 @@ import {
 import { createArweaveClient } from 'helpers/arweave';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
 import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
-import { accountAddress, sameAccount } from 'helpers/host-account';
+import { accountAddress, isWalletAddress, sameAccount } from 'helpers/host-account';
 
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
@@ -301,7 +301,7 @@ export class AssetTransactionClient {
 		expectedSigner?: string,
 		signal?: AbortSignal
 	): Promise<PreparedTransaction> {
-		if (!ADDRESS.test(processId) || !ADDRESS.test(recipient)) {
+		if (!ADDRESS.test(processId) || !isWalletAddress(recipient)) {
 			throw new TypeError('invalid-asset-transfer');
 		}
 		assertTokenQuantity(quantity);

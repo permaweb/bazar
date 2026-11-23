@@ -1,3 +1,5 @@
+import { isWalletAddress, NONCANONICAL_WALLET_ADDRESS_MESSAGE } from 'helpers/host-account';
+
 import {
 	ASSET_BALANCE_STATE_UNAVAILABLE,
 	assetBalanceStateAvailable,
@@ -144,6 +146,10 @@ function collectRow(
 		errors.push(`${label}: "${String(address).slice(0, 60)}" is not a 43-character Arweave address.`);
 		return;
 	}
+	if (!isWalletAddress(address)) {
+		errors.push(`${label}: "${address}" — ${NONCANONICAL_WALLET_ADDRESS_MESSAGE}`);
+		return;
+	}
 	const humanAmount =
 		typeof quantity === 'number' && Number.isSafeInteger(quantity) && quantity > 0
 			? String(quantity)
@@ -252,6 +258,10 @@ export function isDispatchPlan(value: unknown): value is DispatchPlan {
 		plan.rows.length > 0 &&
 		plan.rows.every(
 			(row) =>
+				// Loose on purpose: a plan saved before the canonical check may hold
+				// a mistyped row, and rejecting it here would drop the progress and
+				// signed transactions of its posted rows. transferFungible refuses
+				// to sign such a row instead.
 				ADDRESS.test(row.address) &&
 				QUANTITY.test(row.quantity) &&
 				['unsent', 'posted', 'settled'].includes(row.status) &&

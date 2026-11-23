@@ -90,7 +90,12 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
-import { accountAddress, sameAccount } from 'helpers/host-account';
+import {
+	accountAddress,
+	isWalletAddress,
+	NONCANONICAL_WALLET_ADDRESS_MESSAGE,
+	sameAccount,
+} from 'helpers/host-account';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
@@ -4826,6 +4831,7 @@ export function fungibleOperationStateError(
 export function fungibleTransferRecipientError(recipient: string, owner: string) {
 	const normalized = recipient.trim();
 	if (!ADDRESS.test(normalized)) return 'Enter a 43-character Arweave wallet address.';
+	if (!isWalletAddress(normalized)) return NONCANONICAL_WALLET_ADDRESS_MESSAGE;
 	if (normalized === owner)
 		return 'Choose a different wallet. Sending tokens to this wallet would not change its balance.';
 	return '';

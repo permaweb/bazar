@@ -1,18 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from './asset-transactions';
 import {
 	createDispatchPlan,
+	discardDispatchPlan,
 	estimateDispatchCost,
 	isDispatchPlan,
 	loadDispatchPlan,
 	parseHolderList,
 	planTotals,
 	requiresCostConfirmation,
+	runDispatch,
 	saveDispatchPlan,
 } from './fungible-dispatch';
 
 const addressA = 'A'.repeat(43);
-const addressB = 'B'.repeat(43);
+const addressB = 'E'.repeat(43);
 const processId = 'P'.repeat(43);
 const sender = 'S'.repeat(43);
 
@@ -71,6 +74,16 @@ describe('parseHolderList', () => {
 		expect(parseHolderList(`${addressA},1.5`, 0).errors).toHaveLength(1);
 	});
 
+	it('rejects a 43-character row whose last character makes it no wallet address', () => {
+		const mistyped = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB';
+		const parsed = parseHolderList(`${addressA},1\n${mistyped},2`, 3);
+		expect(parsed.rows).toEqual([]);
+		expect(parsed.errors).toEqual([
+			`Line 2: "${mistyped}" — This is not a valid Arweave wallet address. Check the last characters.`,
+		]);
+		expect(parseHolderList('not-an-address,5', 3).errors[0]).toContain('is not a 43-character Arweave address');
+	});
+
 	it('rejects duplicate addresses and names them', () => {
 		const parsed = parseHolderList(`${addressA},1\n${addressB},2\n${addressA},3`, 3);
 		expect(parsed.rows).toEqual([]);
@@ -127,6 +140,50 @@ describe('dispatch plan persistence', () => {
 		expect(isDispatchPlan({ ...plan, baseline: {} })).toBe(false);
 		expect(isDispatchPlan({ ...plan, rows: [{ ...plan.rows[0], status: 'weird' }] })).toBe(false);
 		expect(isDispatchPlan({ ...plan, sender: 'short' })).toBe(false);
+	});
+
+	it('keeps a pre-fix plan with a mistyped row loadable and refuses to sign that row', async () => {
+		const mistyped = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB';
+		const postedTransaction = 'T'.repeat(43);
+		const signedKey = `${SIGNED_TRANSACTION_PREFIX}${postedTransaction}`;
+		const stored = {
+			...plan,
+			baseline: { [addressA]: '0', [mistyped]: '0' },
+			rows: [
+				{ address: addressA, quantity: '10', status: 'posted' as const, transactionId: postedTransaction },
+				{ address: mistyped, quantity: '5', status: 'unsent' as const },
+			],
+		};
+		const storage = memoryStorage();
+		saveDispatchPlan(stored, storage);
+		storage.setItem(signedKey, '{"signed":true}');
+
+		// Progress for the posted row survives the stricter recipient check.
+		expect(loadDispatchPlan(processId, storage)).toEqual(stored);
+
+		const sign = vi.fn();
+		const fetcher = vi.fn();
+		const subject = new AssetTransactionClient({
+			wallet: { getActiveAddress: async () => sender, sign },
+			fetch: fetcher as unknown as typeof fetch,
+			storage,
+		});
+		await expect(
+			runDispatch(stored, {
+				client: subject,
+				storage,
+				readCurrentState: async () => ({ state: { holderBalancesAvailable: true } }),
+			})
+		).rejects.toThrow('invalid-asset-transfer');
+		expect(sign).not.toHaveBeenCalled();
+		expect(fetcher).not.toHaveBeenCalled();
+		expect(loadDispatchPlan(processId, storage)).toEqual(stored);
+		expect(storage.getItem(signedKey)).toBe('{"signed":true}');
+
+		// Discarding still finds the plan and clears its signed transactions.
+		discardDispatchPlan(processId, storage);
+		expect(loadDispatchPlan(processId, storage)).toBeNull();
+		expect(storage.getItem(signedKey)).toBeNull();
 	});
 });
 
