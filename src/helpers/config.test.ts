@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	aoPeerPlanFromLocation,
+	aoPeerSelectionQuery,
 	aoRoutingScopeFromLocation,
 	arweaveClientConfig,
 	arweaveDataFallbackUrls,
@@ -77,13 +78,42 @@ describe('Arweave gateway routing', () => {
 		});
 	});
 
+	it('keeps default routing when the peer editor is submitted unchanged', () => {
+		const served = location();
+		const editor = fallbackAoPeersFromLocation(served);
+		const node = aoPeerSelectionQuery(editor, served);
+		const submitted = location({ search: node === null ? '' : `?node=${encodeURIComponent(node)}` });
+
+		expect(node).toBeNull();
+		expect(aoPeerPlanFromLocation(submitted)).toEqual(aoPeerPlanFromLocation(served));
+		expect(aoPeerPlanFromLocation(submitted).ordered).toBe(true);
+	});
+
+	it('writes a peer selection only when it differs from the default plan', () => {
+		const selected = location({ search: '?node=https://compute.example' });
+		expect(aoPeerSelectionQuery(['https://bazar.arweave.net', 'https://arweave.net'], selected)).toBeNull();
+		expect(aoPeerSelectionQuery(['https://compute.example'], selected)).toBe('https://compute.example');
+		expect(aoPeerSelectionQuery(['https://arweave.net', 'https://bazar.arweave.net'], location())).toBe(
+			'https://arweave.net,https://bazar.arweave.net'
+		);
+		expect(
+			aoPeerSelectionQuery(
+				['https://bazar.arweave.net', 'https://arweave.net'],
+				location({ hash: '#/assets?node=https://compute.example' })
+			)
+		).toBe('https://bazar.arweave.net,https://arweave.net');
+	});
+
 	it('honors a configured AO peer and gives the URL override precedence', async () => {
 		vi.stubEnv('VITE_COMPUTE_GATEWAY', 'http://127.0.0.1:3101/path');
-		const { aoPeerPlanFromLocation: configuredPlan, fallbackAoPeersFromLocation: configuredPeers } = await import(
-			'./config'
-		);
+		const {
+			aoPeerPlanFromLocation: configuredPlan,
+			aoPeerSelectionQuery: configuredSelection,
+			fallbackAoPeersFromLocation: configuredPeers,
+		} = await import('./config');
 		expect(configuredPeers(location())).toEqual(['http://127.0.0.1:3101']);
 		expect(configuredPlan(location())).toEqual({ peers: ['http://127.0.0.1:3101'], ordered: false });
+		expect(configuredSelection(['http://127.0.0.1:3101'], location())).toBeNull();
 		expect(configuredPeers(location({ search: '?node=https://compute.example' }))).toEqual([
 			'https://compute.example',
 		]);

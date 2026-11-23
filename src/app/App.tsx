@@ -190,6 +190,7 @@ import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
 	AO_TRANSPORT_QUERY_PARAMETER,
+	aoPeerSelectionQuery,
 	aoRoutingScopeFromLocation,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -4889,7 +4890,9 @@ function GatewayControl() {
 		}
 		setError('');
 		const url = new URL(window.location.href);
-		url.searchParams.set('node', computeOrigins.join(','));
+		const node = aoPeerSelectionQuery(computeOrigins, window.location);
+		if (node === null) url.searchParams.delete('node');
+		else url.searchParams.set('node', node);
 		if (permawebOsAvailable && usePermawebOs) {
 			url.searchParams.delete(AO_TRANSPORT_QUERY_PARAMETER);
 		} else {

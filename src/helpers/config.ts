@@ -222,6 +222,21 @@ export function fallbackAoPeersFromLocation(
 	return aoPeerPlanFromLocation(location).peers;
 }
 
+/**
+ * The `node` query value that selects these AO peers, or null when they are the
+ * default plan, so submitting the peer editor unchanged keeps default routing
+ * instead of pinning the defaults as a user selection.
+ */
+export function aoPeerSelectionQuery(peers: readonly string[], location: GatewayLocation): string | null {
+	const selected = [...new Set(peers)];
+	const { protocol, hostname, port } = location;
+	const unselected = { protocol, hostname, port, search: '', hash: '' };
+	const defaults = aoPeerPlanFromLocation(unselected).peers;
+	const isDefault = selected.length === defaults.length && selected.every((peer, index) => peer === defaults[index]);
+	// A selection carried in the hash query outlives removing ?node=, so it must be overridden explicitly.
+	return isDefault && !queryValue({ search: '', hash: location.hash }, 'node') ? null : selected.join(',');
+}
+
 export async function loadPermawebOsNetworkPolicy(
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): Promise<EffectivePermawebNetworkPolicy | undefined> {
