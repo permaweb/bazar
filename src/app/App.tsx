@@ -4762,7 +4762,7 @@ function Home() {
 												<section className="discover-market-section collectible-section">
 													<div className="discover-market-heading">
 														<div>
-															<p className="eyebrow">1/1 assets</p>
+															<p className="eyebrow">One-of-one assets</p>
 															<h2>Uniques</h2>
 														</div>
 														<Button size="custom" onClick={() => setAssetType('atomic')}>
