@@ -10,6 +10,7 @@ import {
 	type Collection,
 	COLLECTION_AO_READ_TIMEOUT_MS,
 	collectionAsset,
+	collectionCoverImage,
 	discoverBazarCollections,
 	enrichImageCollectionAssetMetadata,
 	HIDDEN_ASSET_IDS,
@@ -110,6 +111,43 @@ describe('direct collection links', () => {
 			createdAt: 200_000,
 			assets: [{ id: assetId }],
 		});
+	});
+
+	it('takes a collection cover from its Thumbnail tag and falls back to the first asset artwork', async () => {
+		const thumbnailId = 'T'.repeat(43);
+		const tagged = candidate();
+		tagged.node.tags.push({ name: 'Thumbnail', value: thumbnailId }, { name: 'Banner', value: 'B'.repeat(43) });
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollectionById')) return indexResponse([tagged]);
+			if (String(input).includes(`${collectionId}~process@1.0/compute`)) {
+				return Response.json(
+					{
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						value: currentManifest,
+						balances: { ['O'.repeat(43)]: '1' },
+						orders: {},
+					},
+					{ headers: { 'codec-device': 'json@1.0' } }
+				);
+			}
+			if (String(input).endsWith(`/raw/${currentManifest}`)) {
+				return new Response(JSON.stringify({ name: 'Covered collection', assets: [assetId] }));
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+		vi.stubGlobal('window', { aoFetch: Object.assign(fetcher, { peers: ['https://peer.example'] }) });
+		connectPermawebOsTestWallet();
+
+		const collection = await loadBazarCollectionById(collectionId);
+		expect(collection?.thumbnail).toBe(`https://arweave.net/raw/${thumbnailId}`);
+		expect(collectionCoverImage(collection!)).toBe(`https://arweave.net/raw/${thumbnailId}`);
+		expect(collectionCoverImage({ ...collection!, thumbnail: undefined })).toBe(
+			`https://arweave.net/raw/${assetId}`
+		);
+		expect(collectionCoverImage({ assets: [{ id: assetId, name: 'Audio' }] })).toBeUndefined();
 	});
 
 	it('loads a carrier that still reports its initial manifest as a linked message', async () => {

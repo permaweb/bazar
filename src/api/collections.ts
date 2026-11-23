@@ -48,6 +48,8 @@ export type Collection = {
 	indexSource?: 'carrier' | 'reference' | 'compiled-fallback';
 	manifestId?: string;
 	namespace?: NamesNamespaceIndex;
+	/** Content URL of the collection process's `Thumbnail` tag: a cover sized for cards and avatars. */
+	thumbnail?: string;
 };
 
 export type NamesNamespaceIndex = {
@@ -166,6 +168,7 @@ type BazarCollectionCandidate = {
 	createdAt: number;
 	createdHeight: number;
 	scheduled: boolean;
+	thumbnailId?: string;
 };
 
 type BazarCollectionConnection = {
@@ -737,6 +740,7 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		createdAt: edge.node.block.timestamp * 1_000,
 		createdHeight: edge.node.block.height,
 		scheduled,
+		...(ARWEAVE_ID.test(tags.thumbnail ?? '') ? { thumbnailId: tags.thumbnail } : {}),
 	};
 }
 
@@ -749,7 +753,23 @@ async function loadDiscoveredImageCollection(
 		manifestId = (await liveCarrierManifestId(candidate.id, signal)) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
-	return imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal));
+	const collection = imageCollection(
+		candidate.id,
+		manifestId,
+		'carrier',
+		await fetchJson<ImageManifest>(manifestId, signal)
+	);
+	return candidate.thumbnailId
+		? { ...collection, thumbnail: arweaveDataUrl(candidate.thumbnailId, permanentContentGatewayFromLocation()) }
+		: collection;
+}
+
+/**
+ * The image a collection card or avatar shows: the collection's own thumbnail when its process
+ * carries one (Dumdumz: a 91 KB GIF), otherwise the first asset artwork (often 1-3 MB originals).
+ */
+export function collectionCoverImage(collection: Pick<Collection, 'assets' | 'thumbnail'>): string | undefined {
+	return collection.thumbnail ?? collection.assets.find((asset) => asset.image)?.image;
 }
 
 async function liveCarrierManifestId(processId: string, signal?: AbortSignal): Promise<string | undefined> {

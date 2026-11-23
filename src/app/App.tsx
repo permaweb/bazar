@@ -102,6 +102,7 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
+	collectionCoverImage,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
 	FUNGIBLE_TOKEN_ID,
@@ -2243,7 +2244,7 @@ function Header() {
 										</div>
 										<div className="search-collection-grid">
 											{collectionResults.map((collection) => {
-												const preview = collection.assets.find((asset) => asset.image)?.image;
+												const preview = collectionCoverImage(collection);
 												const tokenPreview =
 													collection.assets.find((asset) => asset.image) ??
 													collection.assets[0];
@@ -4586,7 +4587,7 @@ function Home() {
 									{collections.length || collectionResultsPending ? (
 										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
-												const image = collection.assets.find((asset) => asset.image)?.image;
+												const image = collectionCoverImage(collection);
 												const tokenPreview =
 													collection.assets.find((asset) => asset.image) ??
 													collection.assets[0];
@@ -5850,12 +5851,13 @@ function CollectionMarketHeader({
 	collection: Collection;
 	stats: CollectionMarketStat[];
 }) {
+	const avatar = collection.thumbnail ?? collection.assets[0]?.image;
 	return (
 		<div className="collection-title collection-market-header">
 			<div className="collection-identity">
 				<div className="collection-avatar" aria-hidden="true">
-					{collection.assets[0]?.image ? (
-						<ArtworkImage alt="" src={collection.assets[0].image} loading="eager" fetchPriority="high" />
+					{avatar ? (
+						<ArtworkImage alt="" src={avatar} loading="eager" fetchPriority="high" />
 					) : (
 						<span>{collectionDisplayName(collection).slice(0, 1)}</span>
 					)}
