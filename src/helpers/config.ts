@@ -166,43 +166,34 @@ export function arweaveGraphqlEndpoint(): string {
 	return graphqlEndpoints[0];
 }
 
-/** AR.IO gateway domains whose apex and ArNS/sandbox subdomains serve item bytes on `/raw/<id>`. */
-const AR_IO_CONTENT_DOMAINS = ['arweave.net', 'ardrive.net'] as const;
-
-/** Domains whose subdomains are AR.IO gateways but whose apex is not (https://ar.io/raw/<id> is 404 HTML). */
-const AR_IO_CONTENT_SUBDOMAIN_ROOTS = ['ar.io'] as const;
-
-/** Public AR.IO content gateways tried, in order, after the selected and same-origin gateways. */
-export const ARWEAVE_CONTENT_FALLBACK_GATEWAYS = ['https://ardrive.net', 'https://arweave.net'] as const;
+/** Arweave content gateways tried, in order, after the selected and same-origin gateways. */
+export const ARWEAVE_CONTENT_FALLBACK_GATEWAYS = ['https://arweave.net'] as const;
 
 /**
- * AR.IO gateways redirect `/<id>` to a `<b32>` sandbox that answers 200 with an empty body for
- * process-with-data items, so content reads must use `/raw/<id>` there. HyperBEAM nodes have no
- * `/raw` route and serve `/<id>` directly.
+ * arweave.net (and its subdomains, such as bazar.arweave.net) redirects `/<id>` to a `<b32>`
+ * sandbox that answers 200 with an empty body for process-with-data items, so content reads use
+ * `/raw/<id>` there. HyperBEAM nodes and other gateways serve `/<id>` directly.
  */
-export function isArIoContentGateway(gateway: string): boolean {
+export function isArweaveNetGateway(gateway: string): boolean {
 	let hostname: string;
 	try {
 		hostname = new URL(gateway).hostname.toLowerCase();
 	} catch {
 		return false;
 	}
-	return (
-		AR_IO_CONTENT_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`)) ||
-		AR_IO_CONTENT_SUBDOMAIN_ROOTS.some((domain) => hostname.endsWith(`.${domain}`))
-	);
+	return hostname === 'arweave.net' || hostname.endsWith('.arweave.net');
 }
 
 /** Address an Arweave item's bytes through the route the gateway kind serves them on. */
 export function arweaveDataUrl(id: string, gateway = arweaveGatewayFromLocation()): string {
 	const base = gateway.replace(/\/+$/, '');
-	return isArIoContentGateway(base) ? `${base}/raw/${id}` : `${base}/${id}`;
+	return isArweaveNetGateway(base) ? `${base}/raw/${id}` : `${base}/${id}`;
 }
 
 /**
  * Content URLs for one Arweave item: the PermawebOS permanent-content provider (or the selected
- * gateway), the same-origin AR.IO gateway, the caller's URL, then public AR.IO fallbacks. An active
- * PermawebOS network policy names its own content providers, so public fallbacks are left out.
+ * gateway), a same-origin arweave.net gateway, the caller's URL, then arweave.net. An active
+ * PermawebOS network policy names its own content providers, so that fallback is left out.
  */
 export function arweaveDataFallbackUrls(
 	value: string,
@@ -223,12 +214,12 @@ export function arweaveDataFallbackUrls(
 	const computeOrigins = new Set(policy?.ao.processReads.map(({ url: provider }) => new URL(provider).origin));
 	const permanent = arweaveDataUrl(id, permanentContentGatewayFromLocation(location, scope));
 	const servingOrigin = locationOrigin(location);
-	const requested = isArIoContentGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
+	const requested = isArweaveNetGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
 	return [
 		...new Set([
 			permanent,
 			arweaveDataUrl(id, arweaveGatewayFromLocation(location)),
-			...(isArIoContentGateway(servingOrigin) ? [arweaveDataUrl(id, servingOrigin)] : []),
+			...(isArweaveNetGateway(servingOrigin) ? [arweaveDataUrl(id, servingOrigin)] : []),
 			...(computeOrigins.has(url.origin) && url.origin !== new URL(permanent).origin ? [] : [requested]),
 			...(policy ? [] : ARWEAVE_CONTENT_FALLBACK_GATEWAYS.map((gateway) => arweaveDataUrl(id, gateway))),
 		]),

@@ -194,8 +194,8 @@ describe('ArtworkImage', () => {
 	it('loads a racing candidate in a detached image and aborts it when dropped', async () => {
 		const image = fakeImage();
 		const settled = vi.fn();
-		const cancel = startArtworkCandidate('https://ardrive.net/raw/id', settled, () => image);
-		expect(image.src).toBe('https://ardrive.net/raw/id');
+		const cancel = startArtworkCandidate('https://gateway.example/raw/id', settled, () => image);
+		expect(image.src).toBe('https://gateway.example/raw/id');
 		expect(image.decoding).toBe('async');
 
 		image.onload();
@@ -216,7 +216,7 @@ describe('ArtworkImage', () => {
 	it('reports nothing from a candidate dropped while it decodes', async () => {
 		const image = fakeImage();
 		const settled = vi.fn();
-		const cancel = startArtworkCandidate('https://ardrive.net/raw/id', settled, () => image);
+		const cancel = startArtworkCandidate('https://gateway.example/raw/id', settled, () => image);
 		const onload = image.onload;
 		onload();
 		cancel();
@@ -300,7 +300,7 @@ describe('ArtworkImage', () => {
 	});
 
 	it('starts queued lazy artwork at once when it becomes eager or high priority after mount', () => {
-		const sources = ['https://arweave.net/raw/a', 'https://ardrive.net/raw/a'];
+		const sources = ['https://arweave.net/raw/a', 'https://gateway.example/raw/a'];
 		const queued: ArtworkStartState = {
 			...initialArtworkLoadState,
 			scheduled: true,
@@ -391,17 +391,17 @@ describe('ArtworkImage', () => {
 				limit: 6,
 			})
 		);
-		const other = acquireArtworkSlot('https://ardrive.net/raw/x', () => granted.push('ardrive'), {
+		const other = acquireArtworkSlot('https://gateway.example/raw/x', () => granted.push('other'), {
 			queues,
 			limit: 6,
 		});
 		return Promise.resolve().then(async () => {
-			expect(granted).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'ardrive']);
+			expect(granted).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'other']);
 			// Leaving the queue before the grant gives up the place without spending a slot.
 			release[6]();
 			release[0]();
 			await new Promise((resolve) => setTimeout(resolve));
-			expect(granted).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'ardrive', 'a7']);
+			expect(granted).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'other', 'a7']);
 			release.forEach((done) => done());
 			other();
 		});

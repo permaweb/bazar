@@ -2187,7 +2187,7 @@ describe('collection index loading', () => {
 				return Response.json({ tags: [{ name: encode('reference-value'), value: encode(manifestId) }] });
 			}
 			if (url === `https://bazar.example/${manifestId}`) return new Response('busy', { status: 429 });
-			if (url === `https://ardrive.net/raw/${manifestId}`) {
+			if (url === `https://arweave.net/raw/${manifestId}`) {
 				return new Response(JSON.stringify({ name: 'Raw collection', assets: ['A'.repeat(43)] }));
 			}
 			return new Response('unexpected', { status: 500 });
@@ -2202,7 +2202,7 @@ describe('collection index loading', () => {
 		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
 			`https://bazar.example/tx/${referenceId}`,
 			`https://bazar.example/${manifestId}`,
-			`https://ardrive.net/raw/${manifestId}`,
+			`https://arweave.net/raw/${manifestId}`,
 		]);
 	});
 
@@ -2224,7 +2224,7 @@ describe('collection index loading', () => {
 					headers: { 'content-type': 'text/html' },
 				});
 			}
-			if (url === `https://ardrive.net/raw/${manifestId}`) {
+			if (url === `https://arweave.net/raw/${manifestId}`) {
 				return new Response(JSON.stringify({ name: 'Raw collection', assets: ['A'.repeat(43)] }));
 			}
 			return new Response('unexpected', { status: 500 });
@@ -2239,7 +2239,7 @@ describe('collection index loading', () => {
 		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
 			`https://bazar.example/tx/${referenceId}`,
 			`https://bazar.example/${manifestId}`,
-			`https://ardrive.net/raw/${manifestId}`,
+			`https://arweave.net/raw/${manifestId}`,
 		]);
 	});
 

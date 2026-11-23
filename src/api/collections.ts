@@ -1719,7 +1719,7 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 }
 
 /**
- * Read an item's JSON bytes on the route its gateway kind serves them (`/raw/<id>` on AR.IO,
+ * Read an item's JSON bytes on the route its gateway kind serves them (`/raw/<id>` on arweave.net,
  * `/<id>` on HyperBEAM), trying the same content candidates as artwork in order. `/tx/<id>/data`
  * returned the body base64url-encoded (a third larger) from the L1 data route instead.
  */
@@ -1736,7 +1736,7 @@ async function fetchArweaveItemJson<T>(id: string, signal?: AbortSignal): Promis
 				{ timeoutError: 'collection-data-timeout' }
 			);
 			if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
-			// An AR.IO sandbox redirect can answer 200 with no body for an item still being seeded.
+			// An arweave.net sandbox redirect can answer 200 with no body for an item still being seeded.
 			if (!body?.trim()) throw new Error('collection-data-pending');
 			return JSON.parse(body) as T;
 		} catch (cause) {

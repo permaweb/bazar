@@ -4,7 +4,7 @@ import {
 	arweaveDataUrl,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
-	isArIoContentGateway,
+	isArweaveNetGateway,
 } from 'helpers/config';
 
 import { signedTransactionSignerAddress } from './arweave-transaction-signature';
@@ -79,10 +79,10 @@ export function profileAvatarUrl(profile: AccountProfile | null | undefined, gat
 }
 
 /**
- * Profiles saved before content URLs were built by gateway kind store an AR.IO `/<id>` URL
- * (e.g. https://bazar.arweave.net/<id>). AR.IO redirects that to a sandbox subdomain that answers
- * 200 with an empty body for process-with-data items, so the avatar never renders; read the same
- * gateway's `/raw/<id>` route instead, as artwork does for a requested AR.IO URL.
+ * Profiles saved before content URLs were built by gateway kind store an arweave.net `/<id>` URL
+ * (e.g. https://bazar.arweave.net/<id>). arweave.net redirects that to a sandbox subdomain that
+ * answers 200 with an empty body for process-with-data items, so the avatar never renders; read the
+ * same gateway's `/raw/<id>` route instead, as artwork does for a requested arweave.net URL.
  */
 function storedAvatarUrl(value: string): string {
 	let url: URL;
@@ -92,7 +92,7 @@ function storedAvatarUrl(value: string): string {
 		return value;
 	}
 	const id = url.pathname.match(/^\/([A-Za-z0-9_-]{43})$/)?.[1];
-	return id && !url.search && !url.hash && isArIoContentGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
+	return id && !url.search && !url.hash && isArweaveNetGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
 }
 
 export async function readAccountProfile(
