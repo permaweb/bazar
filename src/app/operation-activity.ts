@@ -24,7 +24,7 @@ export const FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY = 'bazar-fungible-operation
 export const FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT = 'bazar:fungible-operation-activities-changed';
 
 export type Operation =
-	| { kind: 'sell'; resumeId?: string; value?: string }
+	| { kind: 'sell'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
 	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
@@ -132,8 +132,16 @@ type StoredOperation = {
 	kind?: unknown;
 	order?: unknown;
 	value?: unknown;
+	startingSlot?: unknown;
 	createdAt?: unknown;
 };
+
+/** A listing's exact-slot baseline; records saved before it keep the open-order wait. */
+function sellStartingSlot(record: StoredOperation): { startingSlot?: number } {
+	return Number.isSafeInteger(record.startingSlot) && (record.startingSlot as number) >= 0
+		? { startingSlot: record.startingSlot as number }
+		: {};
+}
 
 export function operationRecoveryCanStillApply(
 	state: AssetState,
@@ -322,6 +330,7 @@ export function discoverOperationActivities(
 			restoredOperation = {
 				kind,
 				resumeId: record.txId,
+				...sellStartingSlot(record),
 				...(typeof record.value === 'string' ? { value: record.value } : {}),
 			};
 		} else {
@@ -454,6 +463,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
 				: ({
 						kind: saved.kind as 'sell' | 'transfer',
 						resumeId: saved.txId,
+						...(saved.kind === 'sell' ? sellStartingSlot(saved) : {}),
 						...(typeof saved.value === 'string' ? { value: saved.value } : {}),
 				  } as const);
 		return { ...activity, operation, phase: 'working', status: 'Resuming signed transaction…' };

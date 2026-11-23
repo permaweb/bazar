@@ -107,6 +107,13 @@ export type FungibleTransferBaseline = {
 	startingSlot: number;
 };
 
+/** The order a make-offer must open, keyed by its own transaction id. */
+export type ExactOfferExpectation = {
+	seller: string;
+	quantity: string;
+	asking: string;
+};
+
 async function mapBounded<T, Result>(
 	values: T[],
 	concurrency: number,
@@ -394,6 +401,36 @@ export class AssetTransactionClient {
 				{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
 			)
 		).state;
+	}
+
+	/**
+	 * Decide a listing from its exact schedule slot, as cancellations and
+	 * transfers are: the make-offer either opened the expected order at that
+	 * slot, or the token process rejected it ('asset-offer-rejected'). Records
+	 * saved without a slot baseline keep using waitForOfferAcceptance.
+	 */
+	async waitForExactOffer(
+		processId: string,
+		transactionId: string,
+		expected: ExactOfferExpectation,
+		baseline: FungibleTransferBaseline,
+		signal?: AbortSignal
+	): Promise<AssetState> {
+		if (![processId, transactionId, expected.seller].every((value) => ADDRESS.test(value))) {
+			throw new TypeError('invalid-asset-offer-verification');
+		}
+		assertTokenQuantity(expected.quantity);
+		assertTokenQuantity(expected.asking);
+		return this.#waitForExactScheduledAction(
+			processId,
+			transactionId,
+			baseline,
+			(assignment) => assertExactOfferAssignment(assignment, processId, transactionId, expected),
+			(after, assignment) => hasExactOfferOrder(after, assignment, transactionId, expected),
+			'asset-offer-proof-mismatch',
+			'asset-offer-rejected',
+			signal
+		);
 	}
 
 	async waitForExactCancellation(
@@ -1304,6 +1341,65 @@ export function fungibleTransferAppliedAtSlot(
 ) {
 	assertExactFungibleTransferAssignment(assignment, processId, transactionId, sender, recipient, quantity);
 	return hasExactFungibleTransferReceipt(after, assignment, sender, recipient, quantity);
+}
+
+export function offerAppliedAtSlot(
+	after: AssetState,
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	expected: ExactOfferExpectation
+): boolean {
+	assertExactOfferAssignment(assignment, processId, transactionId, expected);
+	return hasExactOfferOrder(after, assignment, transactionId, expected);
+}
+
+export function assertExactOfferAssignment(
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	expected: ExactOfferExpectation
+): void {
+	const body = record(assignment.raw.body);
+	const commitment = record(record(body?.commitments)?.[transactionId]);
+	const committed = Array.isArray(commitment?.committed)
+		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
+		: new Set<string>();
+	if (
+		!assignment.transactionIds.includes(transactionId) ||
+		assignment.raw.process !== processId ||
+		body?.target !== processId ||
+		body?.action !== 'make-offer' ||
+		wireAmount(body?.['offer-quantity']) !== expected.quantity ||
+		wireAmount(body?.asking) !== expected.asking ||
+		wireAmount(body?.['minimum-fee']) === null ||
+		commitment?.['commitment-device'] !== 'tx@1.0' ||
+		!sameAccount(commitment.committer, expected.seller) ||
+		commitment['field-target'] !== processId ||
+		!['action', 'offer-quantity', 'asking', 'minimum-fee', 'target'].every((field) => committed.has(field))
+	)
+		throw new Error('asset-offer-proof-mismatch');
+}
+
+/** The make-offer applied iff its exact slot opened the signed order, fee included. */
+export function hasExactOfferOrder(
+	after: AssetState,
+	assignment: ProcessAssignment,
+	transactionId: string,
+	expected: ExactOfferExpectation
+): boolean {
+	if (assetStateSlot(after) !== assignment.slot) return false;
+	const order = after.orders[transactionId];
+	const minimumFee = wireAmount(record(assignment.raw.body)?.['minimum-fee']);
+	return Boolean(
+		order &&
+			minimumFee !== null &&
+			order.status === 'open' &&
+			sameAccount(order.creator, expected.seller) &&
+			order.quantity === expected.quantity &&
+			order.asking === expected.asking &&
+			order.minimumFee === minimumFee
+	);
 }
 
 export function cancelAppliedAtSlot(
