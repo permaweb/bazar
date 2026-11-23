@@ -212,7 +212,7 @@ import { useWallet } from 'providers/WalletProvider';
 import './styles.css';
 
 import { createGlobalActivityPager, type GlobalActivityFilter } from './global-activity';
-import { createHomeListingCrawl, type HomeListingCrawl } from './home-listing-crawl';
+import { createHomeListingCrawl, type HomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
 	marketplaceCodedError,
@@ -3036,6 +3036,7 @@ export function compareHomeListingRecency(
 
 export const HOME_ASSET_PAGE_SIZE = 9;
 export const HOME_DISCOVER_TOKEN_PAGE_SIZE = 5;
+export const HOME_DISCOVER_UNIQUE_PREVIEW = 12;
 const HOME_LISTING_ASSET_LIMIT = HOME_ASSET_PAGE_SIZE * 4;
 const HOME_STATE_MAX_AGE = 30;
 const HOME_STATE_STALE_WHILE_REVALIDATE = 86_400;
@@ -3046,6 +3047,30 @@ export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = H
 	const page = Math.min(Math.max(1, requestedPage), pageCount);
 	const start = (page - 1) * pageSize;
 	return { items: items.slice(start, start + pageSize), page, pageCount };
+}
+
+/**
+ * Live listings the home crawl must find for the visible page plus one page
+ * ahead. Price order and search need every listing, so they stay unbounded.
+ */
+export function homeListingCrawlDemand(view: {
+	assetView: HomeAssetView;
+	assetType: HomeAssetType;
+	query: string;
+	assetPage: number;
+	tokenPage: number;
+}): HomeListingDemand[] | undefined {
+	if (view.query || view.assetView === 'price-low' || view.assetView === 'price-high') return undefined;
+	const matching = (assetType: HomeAssetType) => (result: ResolvedAsset) =>
+		homeAssetTypeMatches(result.collection, assetType);
+	const page = (requested: number) => Math.max(1, Math.floor(requested) || 1);
+	if (view.assetType === 'all') {
+		return [
+			{ count: HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE, matches: matching('atomic') },
+			{ count: (page(view.tokenPage) + 1) * HOME_DISCOVER_TOKEN_PAGE_SIZE, matches: matching('tokens') },
+		];
+	}
+	return [{ count: (page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, matches: matching(view.assetType) }];
 }
 
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
@@ -3310,6 +3335,19 @@ function Home() {
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
 	const homeListingCrawlRef = React.useRef<HomeListingCrawl>();
+	const homeListingDemand = React.useMemo(
+		() =>
+			homeListingCrawlDemand({
+				assetView,
+				assetType,
+				query: normalizedQuery,
+				assetPage,
+				tokenPage: discoverTokenPage,
+			}),
+		[assetPage, assetType, assetView, discoverTokenPage, normalizedQuery]
+	);
+	const homeListingDemandRef = React.useRef(homeListingDemand);
+	homeListingDemandRef.current = homeListingDemand;
 	const loadedAssetLimit = React.useMemo(
 		() =>
 			market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
@@ -3398,7 +3436,10 @@ function Home() {
 	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
 	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
 	const discoverTokenPagination = homeAssetPage(discoverTokens, discoverTokenPage, HOME_DISCOVER_TOKEN_PAGE_SIZE);
-	const discoverOverviewAssets = [...discoverTokenPagination.items, ...discoverCollectibles.slice(0, 12)];
+	const discoverOverviewAssets = [
+		...discoverTokenPagination.items,
+		...discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
+	];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
 	const visibleDiscoverTokens =
 		assetType === 'all'
@@ -3602,6 +3643,16 @@ function Home() {
 				onIndexFailure: (cause) => {
 					indexFailure ??= cause;
 				},
+				// Page activity only as far as the visible pages need; pagination
+				// resumes the same crawl through demandChanged().
+				demand: () => homeListingDemandRef.current,
+				onIdle: (idle) => {
+					if (disposed) return;
+					// A paused crawl never reaches the final flush, and animation frames
+					// do not run in background tabs, so publish what is settled now.
+					if (idle) publications.flush();
+					setPortableHomeListingsLoading(!idle);
+				},
 			});
 			homeListingCrawlRef.current = crawl;
 			try {
@@ -3649,6 +3700,9 @@ function Home() {
 	React.useEffect(() => {
 		homeListingCrawlRef.current?.supportChanged();
 	}, [listingSupportVersion]);
+	React.useEffect(() => {
+		homeListingCrawlRef.current?.demandChanged();
+	}, [homeListingDemand]);
 	React.useEffect(() => {
 		if (
 			!liveHomeListingShells.length ||
@@ -4548,7 +4602,9 @@ function Home() {
 														</Button>
 													</div>
 													{discoverCollectibles.length ? (
-														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
+														renderCollectibleGrid(
+															discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW)
+														)
 													) : (
 														<p className="discover-section-empty">
 															No Uniques match this view.

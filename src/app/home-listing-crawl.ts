@@ -9,9 +9,15 @@ import {
 	verifyAssetCandidateSupport,
 } from 'api/asset-discovery';
 import type { ComputeResult } from 'api/asset-marketplace';
-import type { Collection } from 'api/collections';
+import { type Collection, isVisibleAssetId } from 'api/collections';
 
 type ListingCallback = (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
+
+/** How many live listings matching `matches` the visible pages (plus one page ahead) need. */
+export type HomeListingDemand = {
+	count: number;
+	matches?: (result: ResolvedAsset) => boolean;
+};
 
 export type HomeListingCrawlOptions = {
 	signal: AbortSignal;
@@ -32,6 +38,13 @@ export type HomeListingCrawlOptions = {
 	onReclassified?: (result: ResolvedAsset | null, candidate: AssetCandidate) => void;
 	onDiscoveryFailure?: (cause: unknown) => void;
 	onIndexFailure?: (cause: unknown) => void;
+	/**
+	 * Read before each further activity page. Discovery pauses once every demand is
+	 * met by live listings plus reads still in flight; `undefined` pages everything.
+	 */
+	demand?: () => readonly HomeListingDemand[] | undefined;
+	/** True while discovery is paused on demand with no reads or support checks in flight. */
+	onIdle?: (idle: boolean) => void;
 };
 
 export type HomeListingCrawl = {
@@ -42,6 +55,8 @@ export type HomeListingCrawl = {
 	 * collections without restarting discovery or aborting in-flight reads.
 	 */
 	supportChanged(): void;
+	/** Re-reads `demand` and resumes discovery when the visible pages need more listings. */
+	demandChanged(): void;
 };
 
 function sameListingPresentation(left: ResolvedAsset, right: ResolvedAsset) {
@@ -64,8 +79,16 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 	const checkedIds = new Set<string>();
 	const enqueued = new Set<string>();
 	const live = new Map<string, ResolvedAsset>();
+	const unsettled = new Set<string>();
 	let supportTail = Promise.resolve();
 	let sealed = false;
+	let idle = false;
+	let wake: (() => void) | undefined;
+	const notify = () => {
+		const resume = wake;
+		wake = undefined;
+		resume?.();
+	};
 
 	const track = (result: ResolvedAsset | null, candidate: AssetCandidate) => {
 		if (result && isLiveListing(result)) live.set(candidate.processId, result);
@@ -77,23 +100,30 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 		read: options.read,
 		onSettled: (result: ResolvedAsset | null, candidate: AssetCandidate, cause?: unknown) => {
 			if (signal.aborted) return;
+			unsettled.delete(candidate.processId);
 			if (!cause) track(result, candidate);
 			options.onSettled?.(result, candidate, cause);
+			notify();
 		},
 		onRevalidated: (result: ResolvedAsset | null, candidate: AssetCandidate, cause?: unknown) => {
 			if (signal.aborted) return;
 			if (!cause) track(result, candidate);
 			options.onRevalidated?.(result, candidate, cause);
+			notify();
 		},
 	};
 	const resolver = createAssetCandidateResolver(options.collections, resolverOptions);
 	let lateResolver: ReturnType<typeof createAssetCandidateResolver> | undefined;
 
 	const enqueue = (candidates: AssetCandidate[]) => {
-		const fresh = candidates.filter((candidate) => !enqueued.has(candidate.processId));
+		// The resolver drops hidden IDs without settling them, so they never count as in flight.
+		const fresh = candidates.filter(
+			(candidate) => !enqueued.has(candidate.processId) && isVisibleAssetId(candidate.processId)
+		);
 		if (!fresh.length || signal.aborted) return;
 		for (const candidate of fresh) {
 			enqueued.add(candidate.processId);
+			unsettled.add(candidate.processId);
 			held.delete(candidate.processId);
 		}
 		if (!sealed) {
@@ -149,6 +179,7 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 					checkedIds.add(candidate.processId);
 					if (!enqueued.has(candidate.processId)) held.set(candidate.processId, candidate);
 				}
+				notify();
 			}
 		});
 		// `finished` awaits the chain; this branch only keeps work queued after an
@@ -177,14 +208,58 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 					if (!previous || (result && sameListingPresentation(previous, result))) return;
 					track(result, candidate);
 					options.onReclassified?.(result, candidate);
+					notify();
 				},
 			}
 		).catch(() => undefined);
 	};
 
+	const inFlight = () => unsettled.size + verifying.size;
+	const needsMoreListings = () => {
+		const demands = options.demand?.();
+		if (!demands) return true;
+		// Reads still in flight count as optimistic listings so the next page waits
+		// for them; if they settle short of the demand, discovery resumes.
+		const pending = inFlight();
+		return demands.some(({ count, matches }) => {
+			if (!Number.isFinite(count)) return true;
+			let matched = 0;
+			for (const result of live.values()) if (!matches || matches(result)) matched += 1;
+			return matched + pending < count;
+		});
+	};
+	const setIdle = (next: boolean) => {
+		if (idle === next) return;
+		idle = next;
+		options.onIdle?.(next);
+	};
+	const nextWake = () =>
+		new Promise<void>((resolve, reject) => {
+			if (signal.aborted) {
+				reject(signal.reason);
+				return;
+			}
+			const onAbort = () => reject(signal.reason);
+			signal.addEventListener('abort', onAbort, { once: true });
+			wake = () => {
+				signal.removeEventListener('abort', onAbort);
+				resolve();
+			};
+		});
+	const waitForDemand = async () => {
+		while (!needsMoreListings()) {
+			setIdle(inFlight() === 0);
+			await nextWake();
+		}
+		setIdle(false);
+	};
+
 	const finished = (async () => {
 		try {
-			await options.discover(async (candidates) => route(candidates), signal);
+			await options.discover(async (candidates) => {
+				route(candidates);
+				await waitForDemand();
+			}, signal);
 		} catch (cause) {
 			options.onDiscoveryFailure?.(cause);
 		}
@@ -205,6 +280,10 @@ export function createHomeListingCrawl(options: HomeListingCrawlOptions): HomeLi
 			if (signal.aborted) return;
 			route([...held.values()]);
 			reclassify();
+			notify();
+		},
+		demandChanged() {
+			if (!signal.aborted) notify();
 		},
 	};
 }
