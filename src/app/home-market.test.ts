@@ -1559,6 +1559,27 @@ describe('Collection activity scope', () => {
 		);
 	});
 
+	it('keeps listing scope stable when GraphQL titles update collection metadata only', () => {
+		// The card-price effect keys on listingScope and visible IDs, not on the collection object,
+		// so publishing titles page by page must not change the scope and abort in-flight price reads.
+		const collection: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [asset, { id: 'B'.repeat(43), name: 'B'.repeat(43) }],
+			manifestId: 'M'.repeat(43),
+		};
+		const titled: Collection = {
+			...collection,
+			name: 'Renamed images',
+			assets: collection.assets.map((item, index) => ({ ...item, name: `Title ${index}` })),
+		};
+
+		expect(collectionListingScopeVersion(titled)).toBe(collectionListingScopeVersion(collection));
+		expect(collectionActivityVersion(titled)).toBe(collectionActivityVersion(collection));
+	});
+
 	it('checks only the newly loaded token window and resets after removal', () => {
 		expect(collectionAssetWindowDelta(['a', 'b'], ['a', 'b', 'c', 'd'])).toEqual({
 			reset: false,

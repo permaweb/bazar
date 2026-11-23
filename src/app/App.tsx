@@ -6031,7 +6031,12 @@ function CollectionView() {
 			}
 		});
 	}, [filtered.length, limit, moreState.error, moreState.loading, moreState.scanned]);
+	// Metadata-only collection updates (titles arriving from GraphQL) keep the same
+	// listing scope and visible IDs, so they must not abort in-flight card price reads.
+	const priceCollection = React.useRef(collection);
+	priceCollection.current = collection;
 	React.useEffect(() => {
+		const collection = priceCollection.current;
 		if (!collection) return;
 		const nextScope = listingScope;
 		if (priceScope.current !== nextScope) {
@@ -6073,7 +6078,7 @@ function CollectionView() {
 						}));
 						await resolveAssetCandidates(
 							candidates.filter((candidate) => completedIds.has(candidate.processId)),
-							[collection],
+							[priceCollection.current ?? collection],
 							{
 								signal: controller.signal,
 								concurrency: 2,
@@ -6131,7 +6136,7 @@ function CollectionView() {
 			}
 		})();
 		return () => controller.abort();
-	}, [activityState.loading, collection, listedOnly, listingScope, priceRetry, visiblePriceKey]);
+	}, [activityState.loading, listedOnly, listingScope, priceRetry, visiblePriceKey]);
 	const retryCardPrices = () => {
 		setCardPrices((current) =>
 			Object.fromEntries(
