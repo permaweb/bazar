@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
+import { MAXIMUM_ASSET_OFFER_PRICE } from 'api/order-matching';
+
+import { formatArAmount } from 'helpers/token-display';
+
 import {
+	ASSET_OFFER_PRICE_CAP_ERROR,
+	ASSET_OFFER_TOTAL_CAP_ERROR,
 	isRejectedTransactionDispatch,
+	isTerminalPurchaseFailureCode,
 	marketplaceCodedError,
 	marketplaceErrorMessage,
 	marketplaceFailureKind,
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 	purchaseQuoteFailure,
 } from './marketplace-error';
 
@@ -53,6 +62,7 @@ describe('marketplaceErrorMessage', () => {
 		['fungible-transfer-proof-mismatch', 'signed transaction is saved in this browser'],
 		['asset-cancel-rejected', 'listing changed first'],
 		['asset-cancel-proof-mismatch', 'signed transaction is saved in this browser'],
+		['asset-offer-proof-mismatch', 'signed transaction is saved in this browser'],
 		['asset-purchase-rejected', 'permanent payment evidence'],
 		['asset-purchase-proof-mismatch', 'Both transaction IDs remain saved in this browser'],
 		['asset-payment-id-missing', 'cannot prove settlement safely'],
@@ -61,6 +71,46 @@ describe('marketplaceErrorMessage', () => {
 		['asset-pending-listing-check-unavailable', 'did not ask your wallet to sign'],
 	] as const)('explains recovery for %s', (code, guidance) => {
 		expect(marketplaceErrorMessage(new Error(code))).toContain(guidance);
+	});
+
+	it.each([
+		['asset-offer-asking-too-high', '66,000,000 AR maximum'],
+		['invalid-asset-offer-asking', 'at least 0.000000000001 AR'],
+		['wallet-sign-unavailable', 'Connect an Arweave wallet that can sign transactions.'],
+		['wallet-returned-unsigned-transaction', 'did not return a signed transaction'],
+		['wallet-returned-invalid-signature', 'signature that does not verify'],
+	] as const)('explains the pre-dispatch listing or signing failure %s', (code, guidance) => {
+		const message = marketplaceErrorMessage(new TypeError(code));
+		expect(message).toContain(guidance);
+		expect(message).toContain('No transaction was submitted.');
+		expect(message).not.toBe(code.replaceAll('-', ' '));
+	});
+
+	it.each(['wallet-modified-transaction-fields', 'wallet-modified-transaction-data'])(
+		'explains that Bazar refused to submit a transaction the wallet altered (%s)',
+		(code) => {
+			for (const error of [new Error(code), marketplaceCodedError('transaction-dispatch-not-sent', code)]) {
+				const message = marketplaceErrorMessage(error);
+				expect(message).toContain('Bazar did not submit it');
+				expect(message).not.toBe(code.replaceAll('-', ' '));
+			}
+		}
+	);
+
+	it('states the listing cap that makeOffer enforces', () => {
+		const cap = `${formatArAmount(MAXIMUM_ASSET_OFFER_PRICE)} AR`;
+		expect(ASSET_OFFER_PRICE_CAP_ERROR).toContain(cap);
+		expect(ASSET_OFFER_TOTAL_CAP_ERROR).toContain(cap);
+		expect(marketplaceErrorMessage(new TypeError('asset-offer-asking-too-high'))).toContain(cap);
+	});
+
+	it('explains a rejected listing as final, with nothing locked and nothing to resume', () => {
+		const message = marketplaceErrorMessage(new Error('asset-offer-rejected'));
+		expect(message).toContain('The listing was not created and nothing is locked.');
+		expect(message).toContain('signed transaction was discarded');
+		expect(message).not.toMatch(/keep checking|resume|continue it/i);
+		expect(marketplaceOperationFailure(new Error('asset-offer-rejected'))).toBe('transaction-rejected');
+		expect(marketplaceOperationFailure(new Error('asset-offer-proof-mismatch'))).toBe('other');
 	});
 
 	it('keeps unknown errors readable', () => {
@@ -155,5 +205,42 @@ describe('isRejectedTransactionDispatch', () => {
 		expect(isRejectedTransactionDispatch('transaction dispatch 500')).toBe(false);
 		expect(isRejectedTransactionDispatch('transaction propagation timeout')).toBe(false);
 		expect(isRejectedTransactionDispatch('payment not found')).toBe(false);
+	});
+});
+
+describe('terminal purchase failures', () => {
+	it('treats only a process rejection after payment as terminal', () => {
+		expect(isTerminalPurchaseFailureCode('asset-purchase-rejected')).toBe(true);
+		for (const code of [
+			'asset-purchase-proof-mismatch',
+			'asset-balance-proof-unavailable',
+			'payment-not-found',
+			'unexpected',
+			'',
+			null,
+			undefined,
+		]) {
+			expect(isTerminalPurchaseFailureCode(code)).toBe(false);
+		}
+	});
+
+	it('keeps proof-mismatch copy consistent with resuming the saved purchase', () => {
+		expect(marketplaceErrorMessage(new Error('asset-purchase-proof-mismatch'))).toContain('continue here');
+		expect(marketplaceErrorMessage(new Error('asset-purchase-rejected'))).toContain('remains saved for review');
+	});
+});
+
+describe('not-sent recovery copy', () => {
+	it('names the signed operation instead of calling every signature a transfer', () => {
+		expect(notSentRecoveryCopy('sell')).toEqual({
+			retry: 'Retry listing',
+			discard: 'Discard listing',
+			changed: 'This saved listing changed in another tab. Close this panel and review the active action.',
+		});
+		expect(notSentRecoveryCopy('cancel').discard).toBe('Discard cancellation');
+		expect(notSentRecoveryCopy('transfer').retry).toBe('Retry transfer');
+		expect(NOT_SENT_RECOVERY_NOTE).toBe(
+			'No transaction was submitted. Retry this signature or discard it to start over.'
+		);
 	});
 });

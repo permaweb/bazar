@@ -1941,6 +1941,14 @@ p {
 	position: relative;
 	display: inline-flex;
 }
+.ui-button[aria-busy='true'] {
+	cursor: progress;
+}
+.wallet-menu-notice {
+	margin: 0;
+	font-size: var(--type-small);
+	line-height: 1.35;
+}
 .wallet-dropdown {
 	position: absolute;
 	z-index: 85;
@@ -2038,7 +2046,7 @@ p {
 	padding-bottom: 0;
 	border-top: 1px solid var(--line);
 }
-.wallet-dropdown button[role^='menuitem'] {
+.wallet-dropdown button.wallet-dropdown-item {
 	width: 100%;
 	min-height: 38px;
 	padding: 0 8px;
@@ -2050,11 +2058,11 @@ p {
 	background: var(--transparent);
 	text-align: left;
 }
-.wallet-dropdown button[role^='menuitem']:hover:not(:disabled) {
+.wallet-dropdown button.wallet-dropdown-item:hover:not(:disabled) {
 	border-color: var(--transparent);
 	background: var(--panel);
 }
-.wallet-dropdown button[role='menuitemradio'].is-active {
+.wallet-dropdown button.wallet-dropdown-item.is-active {
 	background: var(--panel);
 }
 .theme-option-check {
@@ -2467,6 +2475,10 @@ main {
 	width: 1px;
 	height: 1px;
 	opacity: 0;
+}
+
+.collection-append-dialog .collection-selection-notice {
+	margin: 0 0 16px;
 }
 
 .collection-append-preview {
@@ -5680,30 +5692,11 @@ input:focus {
 .operation-summary small {
 	grid-column: 1 / -1;
 }
-.matched-listings {
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	background: var(--panel);
-}
 .purchase-route {
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	background: var(--paper);
 	overflow: hidden;
-}
-.matched-listings-heading {
-	padding: 11px 14px;
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 16px;
-	color: var(--ink);
-	font-size: var(--type-body);
-	font-weight: 400;
-}
-.matched-listings-heading > span {
-	color: var(--muted);
-	font-size: var(--type-small);
 }
 .purchase-route summary {
 	padding: 12px 15px;
@@ -5730,27 +5723,6 @@ input:focus {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
 }
-.matched-listings ul {
-	max-height: min(300px, 40dvh);
-	margin: 0;
-	padding: 0 14px 12px;
-	overflow-y: auto;
-	list-style: none;
-}
-.matched-listings ul:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
-}
-.matched-listings li {
-	padding: 7px 0;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
-	align-items: center;
-	gap: 16px;
-	border-top: 1px solid var(--line);
-	color: var(--muted);
-	font-size: var(--type-body);
-}
 .purchase-route li {
 	padding: 11px 15px;
 	display: grid;
@@ -5760,22 +5732,6 @@ input:focus {
 	border-top: 1px solid var(--line);
 	color: var(--muted);
 	font-size: var(--type-body);
-}
-.matched-listings li > span:first-child {
-	min-width: 0;
-	display: grid;
-	gap: 2px;
-}
-.matched-listings li > span:first-child small {
-	overflow: hidden;
-	color: var(--muted);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.matched-listings a {
-	flex: 0 0 auto;
-	color: var(--ink);
-	text-underline-offset: 3px;
 }
 .purchase-route-index {
 	width: 22px;
@@ -5809,24 +5765,6 @@ input:focus {
 .purchase-route .wallet-address {
 	justify-self: end;
 	font-size: 0.68rem;
-}
-.matched-listings button {
-	min-height: 34px;
-	padding: 6px 10px;
-	color: var(--muted);
-	background: var(--paper);
-	font-size: var(--type-small);
-}
-.matched-listings button:hover {
-	color: var(--negative);
-	border-color: color-mix(in srgb, var(--negative) 45%, var(--line));
-}
-.matched-listings-empty {
-	margin: 0;
-	padding: 14px;
-	border-top: 1px solid var(--line);
-	color: var(--muted);
-	font-size: var(--type-body);
 }
 .field-help {
 	min-height: 1.1em;
@@ -8095,9 +8033,14 @@ body input:focus-visible {
 	background: var(--panel);
 	cursor: pointer;
 }
-.mint-dropzone:hover {
+.mint-dropzone:hover:not([aria-disabled='true']) {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
+}
+/* A label dropzone hides its file input; show keyboard focus on the visible drop target. */
+.mint-dropzone:has(> input:focus-visible) {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
 }
 .mint-dropzone > span {
 	display: grid;
@@ -8853,6 +8796,9 @@ body input:focus-visible {
 	font-size: var(--type-body);
 	line-height: 1.5;
 }
+.collection-selection-notice {
+	margin: 12px 0 0;
+}
 .mint-cost-note {
 	padding: 11px 12px;
 	display: flex;
@@ -9012,7 +8958,9 @@ body input:focus-visible {
 	overflow-wrap: anywhere;
 }
 .mint-success-actions {
+	grid-column: 2 / -1;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
 	gap: 8px;
@@ -9161,6 +9109,9 @@ body input:focus-visible {
 .mint-live-notice span {
 	color: var(--muted);
 	font-size: var(--type-small);
+}
+.mint-live-notice-attention {
+	border-color: var(--warning-border);
 }
 
 .home-shell {
@@ -10042,7 +9993,6 @@ body input:focus-visible {
 .operation-side-panel .trade-quote,
 .operation-side-panel .cancel-summary,
 .operation-side-panel .batch-quote,
-.operation-side-panel .matched-listings,
 .operation-side-panel .purchase-route {
 	padding: 0;
 	border: 0;
@@ -10095,8 +10045,6 @@ body input:focus-visible {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
 }
-.operation-side-panel .matched-listings-heading,
-.operation-side-panel .matched-listings ul,
 .operation-side-panel .purchase-route summary,
 .operation-side-panel .purchase-route li {
 	padding-inline: 0;
@@ -10168,6 +10116,31 @@ body input:focus-visible {
 }
 .upload-activity-panel > .wide {
 	margin-top: var(--space-4);
+}
+.upload-observer-note {
+	margin: 0 0 var(--space-4);
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.55;
+}
+.upload-observer-note strong {
+	color: var(--ink);
+	font-weight: 500;
+}
+.upload-activity-actions {
+	display: grid;
+	gap: var(--space-2);
+	margin-bottom: var(--space-4);
+}
+.upload-activity-actions .ui-button {
+	width: 100%;
+}
+.upload-activity-actions p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-small);
+	line-height: 1.45;
+	text-align: center;
 }
 .fungible-mint-dialog .operation-working {
 	display: grid;
@@ -10707,7 +10680,7 @@ body input:focus-visible {
 	cursor: pointer;
 	text-align: left;
 }
-.fungible-logo-dropzone:hover:not(:disabled) {
+.fungible-logo-dropzone:hover:not(:disabled):not([aria-disabled='true']) {
 	border-color: var(--ink);
 	background: var(--surface-hover);
 }

@@ -1,5 +1,16 @@
 import React from 'react';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+	HashRouter,
+	Link,
+	Navigate,
+	type NavigationType,
+	Route,
+	Routes,
+	useLocation,
+	useNavigate,
+	useNavigationType,
+	useParams,
+} from 'react-router-dom';
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -84,7 +95,7 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
-import type { CollectionMintEstimate, CollectionMintPhase, MintUploadTransaction } from 'api/asset-mint';
+import type { MintUploadTransaction } from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
@@ -123,13 +134,19 @@ import {
 	withIndexedAssetNames,
 	withVisibleCollectionAssets,
 } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import { GRAPHQL_RETRY_DELAYS_MS } from 'api/graphql';
 import {
 	advanceMintActivity,
 	loadMintActivities,
 	MINT_ACTIVITY_CHANGE_EVENT,
+	MINT_ACTIVITY_STALLED_STATUS,
 	type MintActivity,
 	mintActivityNeedsAttention,
+	mintActivityObservationDelay,
+	mintActivityTrackingState,
+	mintActivityWatchPlan,
+	nextMintActivityStalledAt,
 	removeMintActivities,
 	removeMintActivity,
 	upsertMintActivity,
@@ -141,9 +158,14 @@ import {
 	loadMintedAssets,
 	loadMintedCollections,
 	type MintedAsset,
+	type MintedByIndex,
 	type MintedCollection,
+	type MintProgress,
+	mintProgressKey,
+	pendingMintProgress,
+	reusableMintProgress,
 } from 'api/minted-assets';
-import { formatTokenAmount } from 'api/order-matching';
+import { formatTokenAmount, MAXIMUM_ASSET_OFFER_PRICE } from 'api/order-matching';
 import { ProfileClient } from 'api/profile';
 
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
@@ -152,11 +174,12 @@ import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
-import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
+import { type AssetDetailTab, assetDetailTabIndex, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
+import { CollectionSelectionNotice, mergeCollectionFiles } from 'components/CollectionSelectionNotice';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel, type ErrorPanelAction } from 'components/ErrorPanel';
 import { InteractiveHtmlArtwork } from 'components/InteractiveHtmlArtwork';
@@ -183,6 +206,7 @@ import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
+	transactionActivityHeading,
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/TransactionDialogControl';
@@ -210,24 +234,38 @@ import {
 	prefersPermawebOsAo,
 	usesPermawebOsAo,
 } from 'helpers/config';
-import { sameAccount } from 'helpers/host-account';
+import { isWalletAddress, NONCANONICAL_WALLET_ADDRESS_MESSAGE, sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { applyStableOrder, stableOrderDiffers } from 'helpers/stable-order';
-import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
+import {
+	formatArAmount,
+	formatTickerLabel,
+	formatTokenDescription,
+	formatTokenQuantity,
+	parseArAmount,
+} from 'helpers/token-display';
 import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
+import { Footer } from 'navigation/Footer';
 import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
 
-import { createGlobalActivityPager, type GlobalActivityFilter } from './global-activity';
+import {
+	collectionAppendCanSubmit,
+	collectionAppendEstimateReducer,
+	type CollectionAppendEstimateState,
+	idleCollectionAppendEstimate,
+} from './collection-append-estimate';
+import { createGlobalActivityPager, type GlobalActivityFilter, mergeIndexedActivityEvent } from './global-activity';
 import { createHomeListingCrawl, type HomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
+	ASSET_OFFER_PRICE_CAP_ERROR,
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceFailureKind,
@@ -236,11 +274,17 @@ import {
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
 	type MarketplaceRequestSource,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 	purchaseQuoteFailure,
+	type SignedOperationKind,
 } from './marketplace-error';
+import { collectionMintPhaseLabel } from './mint-phase-labels';
 import {
 	atomicOperationActivityId,
 	atomicPurchaseRecoveryCanBeDiscarded,
+	type BackgroundOperationOutcome,
+	backgroundOperationOutcome,
 	deriveFungibleOperationActivities,
 	deriveOperationActivities,
 	FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
@@ -249,10 +293,17 @@ import {
 	type FungibleOperationActivityChange,
 	type FungibleOperationActivitySummary,
 	fungiblePurchaseRecoveryCanBeDiscarded,
+	initialOperationPhase,
+	type Operation,
+	type OperationActivity as OperationActivityRecord,
+	type OperationActivityPhase,
+	operationAfterProvenRejection,
+	operationConfirmationTarget,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
+	settledWhileHidden,
 } from './operation-activity';
 import {
 	acquireWalletOperationClaim,
@@ -274,6 +325,7 @@ import {
 	removeWalletRecordIf,
 	removeWalletRecoveryAndSignatures,
 	repairRejectedPurchase,
+	savedPurchaseContinuation,
 	shouldAutomaticallyResumePurchase,
 	storeWalletRecordIf,
 	storeWalletRecordOrThrow,
@@ -286,6 +338,7 @@ import {
 	PURCHASE_PAYMENT_TARGET,
 	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseFailureCode,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
 	purchaseSkipKind,
@@ -296,10 +349,13 @@ import {
 	purchaseObservationPendingState,
 	purchaseObservationResumeState,
 	purchaseObservationRetryDelay,
+	type PurchaseObservationRetryKind,
 	purchaseObservationRetryKind,
 	purchaseObservationRetryMessage,
+	shouldClearRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
+import { trackRouteDocumentTitle } from './route-title';
 import {
 	loadArweaveTransactionSync,
 	loadAssetObserverRuntime,
@@ -713,28 +769,17 @@ export function App() {
 							<Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
 							<Route path="/asset/:collectionId/:assetId/pending" element={<PendingAssetView />} />
 							<Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
-							<Route path="*" element={<Navigate to="/" replace />} />
+							<Route path="*" element={<NotFoundRoute />} />
 						</Routes>
 					</main>
+					<Footer />
 				</OperationActivityProvider>
 			</HashRouter>
 		</MarketContext.Provider>
 	);
 }
 
-type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
-
-type OperationActivity = {
-	id: string;
-	asset: AssetSummary;
-	collectionId: string;
-	owner: string;
-	operation: Operation;
-	phase: OperationActivityPhase;
-	status: string;
-	confirmations: number;
-	confirmationTarget: number;
-	createdAt: number;
+type OperationActivity = OperationActivityRecord & {
 	origin: 'runtime' | 'restored';
 	restoreFallback(): HTMLElement | null;
 };
@@ -784,7 +829,42 @@ type OperationActivityContextValue = {
 
 const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
 
-async function observeMintActivity(
+/** A result shown after its own panel is gone: a live mint, or work that settled while hidden. */
+type BackgroundNotice = {
+	id: string;
+	tone: 'positive' | 'attention';
+	title: string;
+	detail: string;
+	action?:
+		| { kind: 'navigate'; label: string; path: string }
+		| { kind: 'show-operation' | 'show-upload'; label: string; id: string };
+};
+
+function backgroundOperationNotice(outcome: BackgroundOperationOutcome): BackgroundNotice {
+	if (outcome.phase === 'error') {
+		return {
+			id: outcome.id,
+			tone: 'attention',
+			title: `${outcome.asset.name} needs attention`,
+			detail: `${operationLabel(outcome.operation.kind)}: ${outcome.status}`,
+			action: { kind: 'show-operation', label: 'Review', id: outcome.id },
+		};
+	}
+	const value =
+		outcome.operation.kind === 'sell' || outcome.operation.kind === 'transfer'
+			? atomicOperationValue(outcome.operation.kind, outcome.operation.value ?? '')
+			: '';
+	const result = atomicOperationResult(outcome.operation.kind, outcome.asset.name, value, outcome.owner);
+	return {
+		id: outcome.id,
+		tone: 'positive',
+		title: `${result.title}: ${outcome.asset.name}`,
+		detail: result.detail,
+		action: { kind: 'navigate', label: 'View asset', path: `/asset/${outcome.collectionId}/${outcome.asset.id}` },
+	};
+}
+
+export async function observeMintActivity(
 	activity: MintActivity,
 	onPhase: (phase: MintActivity['phase']) => void,
 	signal: AbortSignal
@@ -806,7 +886,10 @@ async function observeMintActivity(
 			if (signal.aborted) throw cause;
 		}
 
-		let retryDelay = 4_000;
+		// Re-read each iteration: a watch that outlives the attention threshold slows down
+		// for the whole iteration instead of stopping.
+		const observationDelay = mintActivityObservationDelay(activity, Date.now());
+		let retryDelay = observationDelay;
 		if (!mined) {
 			try {
 				const response = await fetch(
@@ -820,7 +903,7 @@ async function observeMintActivity(
 						onPhase('mined');
 					}
 				} else if (response.status === 429) {
-					retryDelay = retryAfterDelay(response.headers.get('retry-after'), 4_000);
+					retryDelay = retryAfterDelay(response.headers.get('retry-after'), observationDelay);
 				}
 			} catch (cause) {
 				if (signal.aborted) throw cause;
@@ -855,6 +938,40 @@ function waitForBackgroundObservation(milliseconds: number, signal: AbortSignal)
 	});
 }
 
+/** Re-render once when the next tracked upload turns 'stalled', so every view flips on time. */
+function useMintActivityStalledRerender(activities: MintActivity[]) {
+	const [, rerender] = React.useReducer((count: number) => count + 1, 0);
+	const next = nextMintActivityStalledAt(activities, Date.now());
+	React.useEffect(() => {
+		if (next === null) return;
+		const timer = window.setTimeout(rerender, Math.max(0, next - Date.now()));
+		return () => window.clearTimeout(timer);
+	}, [next]);
+}
+
+/** The Activity panel view of a mint that has no runtime upload activity (for example after reload). */
+export function mintActivityUploadActivity(activity: MintActivity, now = Date.now()): UploadActivity {
+	const stalled = mintActivityTrackingState(activity, now) === 'stalled';
+	return {
+		id: activity.id,
+		owner: activity.owner,
+		kind: 'asset',
+		name: activity.asset.name,
+		// A stalled watch is still running, but the panel stops presenting it as live progress so it
+		// matches the Activity menu and can offer explicit actions.
+		phase: stalled ? 'error' : 'tracking',
+		status: stalled ? MINT_ACTIVITY_STALLED_STATUS : activity.status,
+		createdAt: activity.createdAt,
+		transactionIds: activity.transactionIds,
+		transactions: activity.transactionIds.map((id, index) => ({
+			id,
+			label: mintActivityReceiptLabel(activity, index),
+		})),
+		assetId: activity.asset.id,
+		collectionId: activity.collectionId,
+	};
+}
+
 function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const navigate = useNavigate();
 	const wallet = useWallet();
@@ -863,10 +980,23 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
 	const [mintActivities, setMintActivities] = React.useState<MintActivity[]>([]);
 	const [uploadActivities, setUploadActivities] = React.useState<UploadActivity[]>([]);
-	const [mintNotice, setMintNotice] = React.useState<MintActivity | null>(null);
+	const [notices, setNotices] = React.useState<BackgroundNotice[]>([]);
 	const [activeId, setActiveId] = React.useState<string | null>(null);
 	const [activeUploadId, setActiveUploadId] = React.useState<string | null>(null);
+	const activeIdRef = React.useRef(activeId);
+	activeIdRef.current = activeId;
+	const activeUploadIdRef = React.useRef(activeUploadId);
+	activeUploadIdRef.current = activeUploadId;
+	const uploadActivitiesRef = React.useRef(uploadActivities);
+	uploadActivitiesRef.current = uploadActivities;
+	const pushNotice = React.useCallback((notice: BackgroundNotice) => {
+		setNotices((current) => [...current.filter((candidate) => candidate.id !== notice.id), notice]);
+	}, []);
+	const dismissNotice = React.useCallback((id: string) => {
+		setNotices((current) => current.filter((candidate) => candidate.id !== id));
+	}, []);
 	const [activeMintId, setActiveMintId] = React.useState<string | null>(null);
+	const [mintWatchRevision, setMintWatchRevision] = React.useState(0);
 	const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
 	const [recoveryValidationRetry, setRecoveryValidationRetry] = React.useState(0);
 	const fungibleRuntimeActivitiesRef = React.useRef<FungibleOperationActivitySummary[]>([]);
@@ -952,13 +1082,12 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		return () => window.removeEventListener('bazar:mint-live', completeUpload);
 	}, []);
 	React.useEffect(() => {
-		for (const activity of mintActivities) {
-			if (
-				mintWatchersRef.current.has(activity.id) ||
-				activity.phase === 'complete' ||
-				mintActivityNeedsAttention(activity)
-			)
-				continue;
+		const plan = mintActivityWatchPlan(mintActivities, mintWatchersRef.current.keys());
+		for (const id of plan.stop) {
+			mintWatchersRef.current.get(id)?.abort();
+			mintWatchersRef.current.delete(id);
+		}
+		for (const activity of plan.start) {
 			const controller = new AbortController();
 			mintWatchersRef.current.set(activity.id, controller);
 			void observeMintActivity(
@@ -969,7 +1098,17 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					const updated = advanceMintActivity(current, phase);
 					upsertMintActivity(localStorage, updated);
 					if (phase !== 'complete') return;
-					setMintNotice(updated);
+					pushNotice({
+						id: `mint:${updated.id}`,
+						tone: 'positive',
+						title: `${updated.asset.name} is live on Bazar`,
+						detail: 'The original accepted upload is now applied to live process state.',
+						action: {
+							kind: 'navigate',
+							label: 'View asset',
+							path: `/asset/${updated.collectionId}/${updated.asset.id}`,
+						},
+					});
 					window.dispatchEvent(new CustomEvent('bazar:mint-live', { detail: updated }));
 					if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
 						try {
@@ -985,18 +1124,23 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				controller.signal
 			)
 				.catch(() => undefined)
-				.finally(() => mintWatchersRef.current.delete(activity.id));
+				.finally(() => {
+					// A restarted watch ("Check again") owns the slot now; leave it in place.
+					if (mintWatchersRef.current.get(activity.id) === controller)
+						mintWatchersRef.current.delete(activity.id);
+				});
 		}
-		const active = new Set(
-			mintActivities.filter((activity) => !mintActivityNeedsAttention(activity)).map((activity) => activity.id)
-		);
-		for (const [id, controller] of mintWatchersRef.current) {
-			if (!active.has(id)) {
-				controller.abort();
-				mintWatchersRef.current.delete(id);
-			}
-		}
-	}, [mintActivities]);
+	}, [mintActivities, mintWatchRevision, pushNotice]);
+	const checkMintActivityAgain = React.useCallback((id: string) => {
+		mintWatchersRef.current.get(id)?.abort();
+		mintWatchersRef.current.delete(id);
+		setMintWatchRevision((revision) => revision + 1);
+	}, []);
+	const stopTrackingMintActivity = React.useCallback((id: string) => {
+		setActiveMintId((current) => (current === id ? null : current));
+		removeMintActivity(localStorage, id);
+	}, []);
+	useMintActivityStalledRerender(mintActivities);
 	React.useEffect(
 		() => () => {
 			for (const controller of mintWatchersRef.current.values()) controller.abort();
@@ -1153,14 +1297,15 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				}
 				return;
 			}
-			const phase: OperationActivityPhase =
-				input.operation.kind === 'buy' && input.operation.resume
-					? purchaseRecoveryApprovalCount(input.operation.resume)
-						? 'approval'
-						: 'working'
-					: input.operation.kind !== 'buy' && input.operation.resumeId
-					? 'working'
-					: 'form';
+			const phase = initialOperationPhase({
+				kind: input.operation.kind,
+				hasResume: input.operation.kind === 'buy' && Boolean(input.operation.resume),
+				hasResumeId: input.operation.kind !== 'buy' && Boolean(input.operation.resumeId),
+				recoveryApprovalCount:
+					input.operation.kind === 'buy' && input.operation.resume
+						? purchaseRecoveryApprovalCount(input.operation.resume)
+						: 0,
+			});
 			setActivities((current) => {
 				if (
 					current.some(
@@ -1184,7 +1329,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 								? 'Starting transaction…'
 								: 'Waiting for details',
 						confirmations: 0,
-						confirmationTarget: 5,
+						confirmationTarget: operationConfirmationTarget(input.operation),
 						createdAt: Date.now(),
 						origin: 'runtime',
 					},
@@ -1205,16 +1350,24 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
 			assetId: string
 		) => {
+			// A hidden dialog cannot show or announce its result, and a hidden 'done' is pruned on the
+			// next render, so the settled-while-hidden transition raises the background notice here.
+			const outcome = backgroundOperationOutcome(
+				activitiesRef.current.find((activity) => activity.id === id),
+				patch,
+				activeIdRef.current
+			);
 			setActivities((current) =>
 				current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity))
 			);
+			if (outcome) pushNotice(backgroundOperationNotice(outcome));
 			if (patch.phase === 'done') {
 				queueMicrotask(() =>
 					window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId }))
 				);
 			}
 		},
-		[]
+		[pushNotice]
 	);
 	const updateOperation = React.useCallback((id: string, operation: Operation) => {
 		setActivities((current) =>
@@ -1257,6 +1410,25 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			result: Pick<UploadActivity, 'transactionIds'> &
 				Partial<Pick<UploadActivity, 'assetId' | 'assetIds' | 'collectionId' | 'extended'>>
 		) => {
+			// Asset uploads move to 'tracking' and are announced by the mint notice once live; only a
+			// collection upload settles here, so only it can owe a settled-while-hidden notice.
+			const previous = uploadActivitiesRef.current.find((activity) => activity.id === id);
+			if (
+				previous?.kind === 'collection' &&
+				settledWhileHidden(previous, result.assetId ? 'tracking' : 'done', activeUploadIdRef.current)
+			) {
+				pushNotice({
+					id: `upload:${id}`,
+					tone: 'positive',
+					title: `${previous.name}: ${result.extended ? 'Collection extended' : 'Collection submitted'}`,
+					detail: result.extended
+						? 'Collection manifest update submitted to Arweave.'
+						: 'Collection process submitted to Arweave.',
+					action: result.collectionId
+						? { kind: 'navigate', label: 'View collection', path: `/collection/${result.collectionId}` }
+						: undefined,
+				});
+			}
 			setUploadActivities((current) =>
 				current.map((activity) =>
 					activity.id === id
@@ -1274,13 +1446,26 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				)
 			);
 		},
-		[]
+		[pushNotice]
 	);
-	const failUpload = React.useCallback((id: string, status: string) => {
-		setUploadActivities((current) =>
-			current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
-		);
-	}, []);
+	const failUpload = React.useCallback(
+		(id: string, status: string) => {
+			const previous = uploadActivitiesRef.current.find((activity) => activity.id === id);
+			if (previous && settledWhileHidden(previous, 'error', activeUploadIdRef.current)) {
+				pushNotice({
+					id: `upload:${id}`,
+					tone: 'attention',
+					title: `${previous.name} needs attention`,
+					detail: status,
+					action: { kind: 'show-upload', label: 'Review', id },
+				});
+			}
+			setUploadActivities((current) =>
+				current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
+			);
+		},
+		[pushNotice]
+	);
 	const removeUpload = React.useCallback((id: string) => {
 		setUploadActivities((current) => current.filter((activity) => activity.id !== id));
 		setActiveUploadId((current) => (current === id ? null : current));
@@ -1298,6 +1483,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activeId,
 			start,
 			show: (id) => {
+				dismissNotice(id);
 				setActiveUploadId(null);
 				setActiveMintId(null);
 				setActiveId(id);
@@ -1318,6 +1504,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				setActiveMintId(id);
 			},
 			showUpload: (id) => {
+				dismissNotice(`upload:${id}`);
 				setActiveId(null);
 				setActiveMintId(null);
 				setActiveUploadId(id);
@@ -1338,6 +1525,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activeId,
 			activities,
 			beginUpload,
+			dismissNotice,
 			failUpload,
 			finishUpload,
 			fungibleActivities,
@@ -1350,30 +1538,46 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			uploadActivities,
 		]
 	);
+	const notice = notices[notices.length - 1];
 	return (
 		<OperationActivityContext.Provider value={value}>
 			{children}
-			{mintNotice ? (
-				<div className="mint-live-notice" role="status" aria-live="polite">
-					<div>
-						<strong>{mintNotice.asset.name} is live on Bazar</strong>
-						<span>The original accepted upload is now applied to live process state.</span>
-					</div>
-					<Button
-						type="button"
-						size="custom"
-						onClick={() => {
-							navigate(`/asset/${mintNotice.collectionId}/${mintNotice.asset.id}`);
-							setMintNotice(null);
-						}}
+			{/* The live region stays mounted so inserting a notice is announced; one notice shows at a time. */}
+			<div aria-live="polite" role="status">
+				{notice ? (
+					<div
+						className={`mint-live-notice${
+							notice.tone === 'attention' ? ' mint-live-notice-attention' : ''
+						}`}
+						key={notice.id}
 					>
-						View asset
-					</Button>
-					<Button type="button" size="custom" variant="ghost" onClick={() => setMintNotice(null)}>
-						Dismiss
-					</Button>
-				</div>
-			) : null}
+						<div>
+							<strong>{notice.title}</strong>
+							<span>
+								<ArCurrencyText>{notice.detail}</ArCurrencyText>
+							</span>
+						</div>
+						{notice.action ? (
+							<Button
+								type="button"
+								size="custom"
+								onClick={() => {
+									const action = notice.action!;
+									dismissNotice(notice.id);
+									if (action.kind === 'navigate') navigate(action.path);
+									else if (action.kind === 'show-operation') value.show(action.id);
+									else value.showUpload(action.id);
+								}}
+							>
+								{notice.action.label}
+							</Button>
+						) : null}
+						<Button type="button" size="custom" variant="ghost" onClick={() => dismissNotice(notice.id)}>
+							Dismiss
+						</Button>
+					</div>
+				) : null}
+			</div>
 			{activities.map((activity) => (
 				<OperationDialog
 					key={activity.id}
@@ -1435,30 +1639,14 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				)
 				.map((activity) => (
 					<UploadActivityPanel
-						activity={{
-							id: activity.id,
-							owner: activity.owner,
-							kind: 'asset',
-							name: activity.asset.name,
-							phase: 'tracking',
-							status: activity.status,
-							createdAt: activity.createdAt,
-							transactionIds: activity.transactionIds,
-							transactions: activity.transactionIds.map((id, index) => ({
-								id,
-								label:
-									index === activity.transactionIds.length - 1
-										? 'Asset transaction'
-										: 'Artwork transaction',
-							})),
-							assetId: activity.asset.id,
-							collectionId: activity.collectionId,
-						}}
+						activity={mintActivityUploadActivity(activity)}
 						key={activity.id}
 						relatedMintActivities={[activity]}
 						visible={activeMintId === activity.id}
 						onHide={() => setActiveMintId(null)}
 						onClose={() => setActiveMintId(null)}
+						onCheckAgain={() => checkMintActivityAgain(activity.id)}
+						onStopTracking={() => stopTrackingMintActivity(activity.id)}
 					/>
 				))}
 		</OperationActivityContext.Provider>
@@ -1472,6 +1660,31 @@ export function useOperationActivity() {
 }
 
 export type UploadObserverState = Record<string, { views: ObserverView[]; consensus?: Consensus }>;
+
+/** Receipt label for a mint activity's transaction: the last id is the process, earlier ids are its media. */
+export function mintActivityReceiptLabel(
+	activity: Pick<MintActivity, 'asset' | 'collectionId' | 'transactionIds'>,
+	index: number
+) {
+	const processTransaction = index === activity.transactionIds.length - 1;
+	if (isFungiblePendingMint(activity.asset, activity.collectionId))
+		return processTransaction ? 'Token process transaction' : 'Token logo transaction';
+	return processTransaction ? 'Asset transaction' : 'Artwork transaction';
+}
+
+/**
+ * Activity menu copy for a mint activity, so token mints are not described as uploads. A stalled
+ * mint's attention text is the shared MINT_ACTIVITY_STALLED_STATUS, which names neither.
+ */
+export function mintActivityMenuCopy(activity: Pick<MintActivity, 'asset' | 'collectionId'>) {
+	return isFungiblePendingMint(activity.asset, activity.collectionId) ? { kind: 'Token mint' } : { kind: 'Upload' };
+}
+
+/** The panel eyebrow for an upload activity. */
+export function uploadActivityEyebrow(activity: Pick<UploadActivity, 'kind' | 'collectionId'>) {
+	if (activity.kind === 'collection') return 'Collection upload';
+	return activity.collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ? 'Token mint' : 'Asset upload';
+}
 
 export function uploadActivitySyncSteps(
 	activity: UploadActivity,
@@ -1502,22 +1715,101 @@ export function uploadActivitySyncSteps(
 	});
 }
 
-function UploadActivityPanel({
+/**
+ * Identity of an upload panel's observer watch. Providers rebuild the
+ * transaction list on every render, so the watch is keyed on the ids it
+ * observes rather than on the array identity.
+ */
+export function uploadActivityObserverKey(transactions: UploadActivity['transactions']) {
+	return transactions.map((transaction) => transaction.id).join('|');
+}
+
+/** idle -> loading -> watching | unavailable; the panel shows a note only when unavailable. */
+export type UploadObserverAvailability = 'idle' | 'loading' | 'watching' | 'unavailable';
+
+/**
+ * Starts one observer watch per transaction on the shared observer network and
+ * returns the cleanup. A runtime, peer-configuration or discovery failure
+ * releases the lease and reports `unavailable` instead of leaving the panel
+ * waiting on lanes that will never arrive.
+ */
+export function observeUploadActivityTransactions(
+	transactionIds: string[],
+	loadRuntime: () => Promise<Pick<typeof import('api/asset-observers'), 'acquireAssetObserverNetwork'>>,
+	handlers: {
+		onObservation(transactionId: string, observation: UploadObserverState[string]): void;
+		onAvailability(availability: UploadObserverAvailability): void;
+	}
+): () => void {
+	let cancelled = false;
+	let lease: AssetObserverNetworkLease | undefined;
+	const watchers: Array<{ stop(): void }> = [];
+	const unsubscribe: Array<() => void> = [];
+	const observe = async () => {
+		handlers.onAvailability('loading');
+		const runtime = await loadRuntime();
+		if (cancelled) return;
+		lease = runtime.acquireAssetObserverNetwork();
+		await lease.ready;
+		if (cancelled) return;
+		for (const transactionId of transactionIds) {
+			const watcher = lease.network.watch(transactionId, {
+				target: 1,
+				minObservers: 3,
+				propagation: 'all',
+				notFoundTimeout: 180_000,
+			});
+			const publish = (consensus = watcher.consensus()) => {
+				if (cancelled) return;
+				handlers.onObservation(transactionId, { views: watcher.views(), consensus });
+			};
+			unsubscribe.push(
+				watcher.on('view', () => publish()),
+				watcher.on('consensus', publish)
+			);
+			watchers.push(watcher);
+			watcher.start();
+		}
+		if (!cancelled) handlers.onAvailability('watching');
+	};
+	void observe().catch(() => {
+		// After cleanup the lease is already released and the panel is gone.
+		if (cancelled) return;
+		lease?.release();
+		lease = undefined;
+		handlers.onAvailability('unavailable');
+	});
+	return () => {
+		cancelled = true;
+		for (const off of unsubscribe) off();
+		for (const watcher of watchers) watcher.stop();
+		lease?.release();
+	};
+}
+
+export function UploadActivityPanel({
 	activity,
 	relatedMintActivities,
 	visible,
 	onHide,
 	onClose,
+	onCheckAgain,
+	onStopTracking,
 }: {
 	activity: UploadActivity;
 	relatedMintActivities: MintActivity[];
 	visible: boolean;
 	onHide(): void;
 	onClose(): void;
+	/** Background mint tracking only: restart the watch now. */
+	onCheckAgain?(): void;
+	/** Background mint tracking only: drop the local activity (nothing on Arweave changes). */
+	onStopTracking?(): void;
 }) {
 	const navigate = useNavigate();
 	const [hiding, setHiding] = React.useState(false);
 	const [observerState, setObserverState] = React.useState<UploadObserverState>({});
+	const [observerAvailability, setObserverAvailability] = React.useState<UploadObserverAvailability>('idle');
 	const hideTimerRef = React.useRef<number | null>(null);
 	const titleId = React.useId();
 	const working = activity.phase === 'working' || activity.phase === 'tracking';
@@ -1560,51 +1852,22 @@ function UploadActivityPanel({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
+	const observerKey = uploadActivityObserverKey(activity.transactions);
+	const transactionsRef = React.useRef(activity.transactions);
+	transactionsRef.current = activity.transactions;
 	React.useEffect(() => {
-		if (!visible || !working || !activity.transactions.length) return;
-		let cancelled = false;
-		let lease: AssetObserverNetworkLease | undefined;
-		const watchers: Array<{ stop(): void }> = [];
-		const unsubscribe: Array<() => void> = [];
-		const observe = async () => {
-			const runtime = await loadAssetObserverRuntime();
-			if (cancelled) return;
-			lease = runtime.acquireAssetObserverNetwork();
-			await lease.ready;
-			if (cancelled) return;
-			for (const transaction of activity.transactions) {
-				const watcher = lease.network.watch(transaction.id, {
-					target: 1,
-					minObservers: 3,
-					propagation: 'all',
-					notFoundTimeout: 180_000,
-				});
-				const publish = (consensus = watcher.consensus()) => {
-					if (cancelled) return;
-					setObserverState((current) => ({
-						...current,
-						[transaction.id]: { views: watcher.views(), consensus },
-					}));
-				};
-				unsubscribe.push(
-					watcher.on('view', () => publish()),
-					watcher.on('consensus', publish)
-				);
-				watchers.push(watcher);
-				watcher.start();
+		setObserverAvailability('idle');
+		if (!visible || !working || !observerKey) return;
+		return observeUploadActivityTransactions(
+			transactionsRef.current.map((transaction) => transaction.id),
+			loadAssetObserverRuntime,
+			{
+				onObservation: (transactionId, observation) =>
+					setObserverState((current) => ({ ...current, [transactionId]: observation })),
+				onAvailability: setObserverAvailability,
 			}
-		};
-		void observe().catch(() => {
-			lease?.release();
-			lease = undefined;
-		});
-		return () => {
-			cancelled = true;
-			for (const off of unsubscribe) off();
-			for (const watcher of watchers) watcher.stop();
-			lease?.release();
-		};
-	}, [activity.transactions, visible, working]);
+		);
+	}, [observerKey, visible, working]);
 	React.useEffect(
 		() => () => {
 			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
@@ -1631,6 +1894,14 @@ function UploadActivityPanel({
 				transactionId,
 		  }));
 	const dialogPhase = activity.phase === 'error' ? 'error' : activity.phase === 'done' ? 'done' : 'working';
+	const resultTitle =
+		activity.phase === 'done'
+			? activity.kind === 'collection'
+				? activity.extended
+					? 'Collection extended'
+					: 'Collection submitted'
+				: 'Live on Bazar'
+			: 'Upload needs attention';
 	return (
 		<div
 			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
@@ -1657,14 +1928,18 @@ function UploadActivityPanel({
 							)}
 						</span>
 						<div className="dialog-asset-heading-copy">
-							<p className="eyebrow">
-								{activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
-							</p>
+							<p className="eyebrow">{uploadActivityEyebrow(activity)}</p>
 							<h2 id={titleId}>{activity.name}</h2>
 						</div>
 					</div>
 					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
 				</div>
+				{/* A failure is read once as an alert in the panel body; only a finished upload is announced here. */}
+				<OperationOutcomeAnnouncement
+					active={activity.phase === 'done'}
+					title={resultTitle}
+					detail={displayedStatus}
+				/>
 				{working && !syncSteps.length ? (
 					<div className="operation-preparing">
 						<Loading label={displayedStatus} />
@@ -1676,6 +1951,12 @@ function UploadActivityPanel({
 						<p className="sr-only" aria-live="polite" role="status">
 							{displayedStatus}
 						</p>
+						{observerAvailability === 'unavailable' ? (
+							<p aria-atomic="true" className="upload-observer-note" role="status">
+								<strong>Live observer view unavailable.</strong> Transaction tracking continues, and
+								this panel updates when Bazar confirms the upload.
+							</p>
+						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
@@ -1702,19 +1983,30 @@ function UploadActivityPanel({
 							{activity.phase === 'done' ? <Check /> : <CircleX />}
 						</span>
 						<div>
-							<strong>
-								{activity.phase === 'done'
-									? activity.kind === 'collection'
-										? activity.extended
-											? 'Collection extended'
-											: 'Collection submitted'
-										: 'Live on Bazar'
-									: 'Upload needs attention'}
-							</strong>
-							<p aria-live="polite" role="status">
-								{displayedStatus}
-							</p>
+							<strong>{resultTitle}</strong>
+							{activity.phase === 'error' ? (
+								<p role="alert">{displayedStatus}</p>
+							) : (
+								<p>{displayedStatus}</p>
+							)}
 						</div>
+					</div>
+				) : null}
+				{activity.phase === 'error' && onCheckAgain && onStopTracking ? (
+					<div className="upload-activity-actions">
+						<Button
+							data-dialog-initial
+							onClick={onCheckAgain}
+							size="custom"
+							type="button"
+							variant="primary"
+						>
+							Check again
+						</Button>
+						<Button onClick={onStopTracking} size="custom" type="button" variant="ghost">
+							Stop tracking
+						</Button>
+						<p>Stop tracking removes this item from Activity only. Nothing is deleted from Arweave.</p>
 					</div>
 				) : null}
 				{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
@@ -1741,36 +2033,73 @@ function UploadActivityPanel({
 	);
 }
 
+/**
+ * Route intent a navigate() call can attach as `location.state`. `preserveFocus` marks an in-view URL
+ * update (for example a Home tab switch): the view stays mounted, so focus and window scroll stay put.
+ */
+export type RouteFocusState = { preserveFocus?: boolean };
+export const PRESERVE_ROUTE_FOCUS: { state: RouteFocusState } = { state: { preserveFocus: true } };
+
+export function routeFocusPreserved(state: unknown): boolean {
+	return Boolean(state && typeof state === 'object' && (state as RouteFocusState).preserveFocus === true);
+}
+
+/**
+ * What RouteFocus does when the route key settles:
+ * - 'initial': first render (or an unchanged key): scroll to top and set the title, keep focus.
+ * - 'in-view': the caller asked to preserve focus on a forward navigation: set the title only.
+ * - 'new-view': a different view: scroll to top, set the title and move focus to <main>.
+ * History entries keep their state, so a POP onto a preserveFocus entry is still a new view.
+ */
+export type RouteFocusAction = 'initial' | 'in-view' | 'new-view';
+
+export function routeFocusAction(
+	previousKey: string | null,
+	nextKey: string,
+	{ preserveFocus = false, navigationType }: { preserveFocus?: boolean; navigationType?: `${NavigationType}` } = {}
+): RouteFocusAction {
+	if (previousKey === null || previousKey === nextKey) return 'initial';
+	if (preserveFocus && navigationType !== 'POP') return 'in-view';
+	return 'new-view';
+}
+
 function RouteFocus() {
-	const { pathname, search } = useLocation();
+	const { pathname, search, state } = useLocation();
+	const navigationType = useNavigationType();
 	const routeKey = `${pathname}${search}`;
 	const previousRoute = React.useRef<string | null>(null);
 	React.useEffect(() => {
-		window.scrollTo({ top: 0, left: 0 });
+		// Reads this render's state and navigation type; only a route key change re-runs the policy.
+		const action = routeFocusAction(previousRoute.current, routeKey, {
+			preserveFocus: routeFocusPreserved(state),
+			navigationType,
+		});
+		if (action !== 'in-view') window.scrollTo({ top: 0, left: 0 });
 		const main = document.getElementById('main-content');
 		if (!main) return;
-		const shouldMoveFocus = previousRoute.current !== null && previousRoute.current !== routeKey;
+		const shouldMoveFocus = action === 'new-view';
 		previousRoute.current = routeKey;
-		let title = 'Bazar — Arweave-native assets';
-		let observer: MutationObserver | null = null;
-		const updateRouteContext = () => {
-			const heading = main.querySelector('h1');
-			const headingText = heading?.textContent?.trim();
-			if (headingText) {
-				title = `${headingText} — Bazar`;
-				observer?.disconnect();
-			}
-			document.title = title;
-		};
+		const titleTracker = trackRouteDocumentTitle({
+			main,
+			getTitle: () => document.title,
+			setTitle: (title) => {
+				document.title = title;
+			},
+			observe: (target, options, onMutation) => {
+				const observer = new MutationObserver(onMutation);
+				observer.observe(target, options);
+				return () => observer.disconnect();
+			},
+			requestFrame: (callback) => window.requestAnimationFrame(callback),
+			cancelFrame: (frame) => window.cancelAnimationFrame(frame),
+		});
 		const focusFrame = window.requestAnimationFrame(() => {
-			updateRouteContext();
+			titleTracker.sync();
 			if (shouldMoveFocus) main.focus({ preventScroll: true });
 		});
-		observer = new MutationObserver(updateRouteContext);
-		observer.observe(main, { characterData: true, childList: true, subtree: true });
 		return () => {
 			window.cancelAnimationFrame(focusFrame);
-			observer?.disconnect();
+			titleTracker.stop();
 		};
 	}, [routeKey]);
 	return null;
@@ -2102,7 +2431,7 @@ function Header() {
 						<input
 							ref={inputRef}
 							aria-label="Search tokens, collections, and Uniques"
-							placeholder="Search tokens, collections, and assets"
+							placeholder="Search tokens, collections, and Uniques"
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							onClick={openSearch}
@@ -2467,6 +2796,20 @@ function Header() {
 	);
 }
 
+/** Escape closes the Transaction activity popover and returns focus to its trigger, as WalletMenu does. */
+export function handleActivityPopoverKey(
+	event: Pick<KeyboardEvent, 'key' | 'defaultPrevented'>,
+	close: () => void,
+	trigger: { readonly current: Pick<HTMLElement, 'focus'> | null },
+	schedule: (callback: () => void) => unknown = (callback) => window.requestAnimationFrame(callback)
+) {
+	// A dialog above the popover claims Escape first (useDialogFocus calls preventDefault).
+	if (event.key !== 'Escape' || event.defaultPrevented) return false;
+	close();
+	schedule(() => trigger.current?.focus());
+	return true;
+}
+
 function OperationActivityControl() {
 	const wallet = useWallet();
 	const {
@@ -2481,6 +2824,8 @@ function OperationActivityControl() {
 	} = useOperationActivity();
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
+	const triggerRef = React.useRef<HTMLButtonElement>(null);
+	const menuId = React.useId();
 	const visibleActivities = activities.filter(
 		(activity) => activity.owner === wallet.address && isTransactionActivityVisible(activity.phase)
 	);
@@ -2494,6 +2839,7 @@ function OperationActivityControl() {
 	const visibleMintActivities = mintActivities.filter(
 		(activity) => activity.owner === wallet.address && !linkedUploadAssets.has(activity.asset.id)
 	);
+	useMintActivityStalledRerender(visibleMintActivities);
 	const attentionMintActivities = visibleMintActivities.filter((activity) => mintActivityNeedsAttention(activity));
 	const activityCount =
 		visibleActivities.length +
@@ -2507,6 +2853,9 @@ function OperationActivityControl() {
 		visibleMintActivities.filter(
 			(activity) => activity.phase !== 'complete' && !mintActivityNeedsAttention(activity)
 		).length;
+	const approvalCount =
+		visibleActivities.filter((activity) => activity.phase === 'approval').length +
+		visibleFungibleActivities.filter((activity) => activity.phase === 'approval').length;
 	const clearUploadIssues = () => {
 		if (!attentionMintActivities.length) return;
 		const count = attentionMintActivities.length;
@@ -2526,11 +2875,18 @@ function OperationActivityControl() {
 	};
 	React.useEffect(() => {
 		if (!open) return;
-		const close = (event: MouseEvent) => {
+		const closeFromOutside = (event: PointerEvent) => {
 			if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
 		};
-		window.addEventListener('mousedown', close);
-		return () => window.removeEventListener('mousedown', close);
+		const closeFromKeyboard = (event: KeyboardEvent) => {
+			handleActivityPopoverKey(event, () => setOpen(false), triggerRef);
+		};
+		document.addEventListener('pointerdown', closeFromOutside);
+		document.addEventListener('keydown', closeFromKeyboard);
+		return () => {
+			document.removeEventListener('pointerdown', closeFromOutside);
+			document.removeEventListener('keydown', closeFromKeyboard);
+		};
 	}, [open]);
 	if (!activityCount) return null;
 	return (
@@ -2538,11 +2894,13 @@ function OperationActivityControl() {
 			<Tooltip content="Transaction activity" disabled={open}>
 				{(tooltipId) => (
 					<Button
+						aria-controls={open ? menuId : undefined}
 						aria-describedby={tooltipId}
 						aria-expanded={open}
 						aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
 						className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
 						data-activity-owner="global"
+						ref={triggerRef}
 						size="custom"
 						onClick={() => setOpen((value) => !value)}
 						type="button"
@@ -2554,18 +2912,16 @@ function OperationActivityControl() {
 				)}
 			</Tooltip>
 			{open ? (
-				<section aria-label="Transaction activity" className="operation-activity-menu">
+				<section aria-label="Transaction activity" className="operation-activity-menu" id={menuId}>
 					<div className="operation-activity-heading">
 						<div>
 							<strong>Transaction activity</strong>
 							<span>
-								{attentionMintActivities.length
-									? `${attentionMintActivities.length.toLocaleString()} ${
-											attentionMintActivities.length === 1 ? 'upload needs' : 'uploads need'
-									  } attention`
-									: workingCount
-									? `${workingCount} running in the background`
-									: 'No transactions running'}
+								{transactionActivityHeading({
+									uploadAttention: attentionMintActivities.length,
+									approval: approvalCount,
+									working: workingCount,
+								})}
 							</span>
 						</div>
 						{attentionMintActivities.length ? (
@@ -2723,6 +3079,7 @@ function OperationActivityControl() {
 								activity.arweaveGateway !== arweaveGatewayFromLocation() ||
 								activity.computeGateway !== gatewayFromLocation();
 							const needsAttention = mintActivityNeedsAttention(activity);
+							const menuCopy = mintActivityMenuCopy(activity);
 							return (
 								<div
 									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
@@ -2744,15 +3101,13 @@ function OperationActivityControl() {
 										<span className="operation-activity-copy">
 											<strong>{activity.asset.name}</strong>
 											<small>
-												Upload ·{' '}
+												{menuCopy.kind} ·{' '}
 												{needsAttention
 													? 'Needs attention'
 													: mintActivityPhaseLabel(activity.phase)}
 											</small>
 											<span>
-												{needsAttention
-													? 'This upload has not reached live process state.'
-													: activity.status}
+												{needsAttention ? MINT_ACTIVITY_STALLED_STATUS : activity.status}
 												{pinnedGateway ? ' Tracking is pinned to the original gateways.' : ''}
 											</span>
 										</span>
@@ -2777,9 +3132,9 @@ function OperationActivityControl() {
 	);
 }
 
-function operationActivityPhaseLabel(phase: OperationActivityPhase) {
+export function operationActivityPhaseLabel(phase: OperationActivityPhase) {
 	return {
-		form: 'Awaiting signature',
+		form: 'Not submitted',
 		approval: 'Awaiting approval',
 		working: 'In progress',
 		done: 'Complete',
@@ -3021,6 +3376,24 @@ export function homeTabFromPathname(pathname: string): HomeTab {
 
 export function homeTabPath(tab: HomeTab) {
 	return `/${tab}`;
+}
+
+const HOME_TAB_HEADINGS: Record<HomeTab, string> = {
+	discover: 'Discover',
+	collections: 'Collections',
+	activity: 'Activity',
+};
+
+/** The Home route's page heading, which also names the document title for each tab. */
+export function homeTabHeading(tab: HomeTab) {
+	return HOME_TAB_HEADINGS[tab];
+}
+
+/** Where a collection page's back link goes: token pages return to Discover, the rest to the Collections tab. */
+export function collectionBackLink(kind: Collection['kind']) {
+	return kind === 'tokens'
+		? { to: homeTabPath('discover'), label: 'Discover' }
+		: { to: homeTabPath('collections'), label: 'All collections' };
 }
 
 export function homeRouteSearch(search: string) {
@@ -3607,6 +3980,47 @@ export function homeScrollIndicatorMetrics(
 	const offsetRange = Math.max(0, trackHeight - size);
 	const progress = Math.min(1, Math.max(0, scrollTop / scrollRange));
 	return { visible: true, size, offset: offsetRange * progress };
+}
+
+const HOME_MARKET_TABS: { value: HomeTab; label: string; icon: React.ReactNode }[] = [
+	{ value: 'discover', label: 'Discover', icon: <Compass className="ui-icon" aria-hidden="true" /> },
+	{ value: 'collections', label: 'Collections', icon: <LayoutGrid className="ui-icon" aria-hidden="true" /> },
+	{ value: 'activity', label: 'Activity', icon: <History className="ui-icon" aria-hidden="true" /> },
+];
+
+/** Home view tablist: roving tabindex, with Arrow/Home/End selecting and focusing the next tab. */
+export function HomeMarketTabs({ active, onSelect }: { active: HomeTab; onSelect(tab: HomeTab): void }) {
+	return (
+		<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
+			{HOME_MARKET_TABS.map((tab, index) => {
+				const selected = active === tab.value;
+				return (
+					<Button
+						aria-controls={`home-${tab.value}-panel`}
+						aria-selected={selected}
+						className="home-market-tab"
+						id={`home-${tab.value}-tab`}
+						key={tab.value}
+						onClick={() => onSelect(tab.value)}
+						onKeyDown={(event) => {
+							const nextIndex = assetDetailTabIndex(event.key, index, HOME_MARKET_TABS.length);
+							if (nextIndex === null) return;
+							event.preventDefault();
+							const next = HOME_MARKET_TABS[nextIndex].value;
+							onSelect(next);
+							window.requestAnimationFrame(() => document.getElementById(`home-${next}-tab`)?.focus());
+						}}
+						role="tab"
+						size="small"
+						tabIndex={selected ? 0 : -1}
+					>
+						{tab.icon}
+						{tab.label}
+					</Button>
+				);
+			})}
+		</div>
+	);
 }
 
 function HomeRedirect() {
@@ -4853,7 +5267,7 @@ function Home() {
 		return () => market.setPageRefreshing(false);
 	}, [market.setPageRefreshing, pageRefreshing]);
 	const selectHomeTab = (tab: HomeTab) => {
-		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) });
+		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) }, PRESERVE_ROUTE_FOCUS);
 		if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
 	};
 	const selectAssetPage = (page: number) => {
@@ -4947,47 +5361,10 @@ function Home() {
 				<div className="home-content">
 					<div className="home-market-layout" ref={marketPaneRef}>
 						<section className="home-section home-assets" id="market">
-							<h1 className="sr-only">Marketplace</h1>
+							<h1 className="sr-only">{homeTabHeading(homeTab)}</h1>
 							<div className="home-section-heading">
 								<div>
-									<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
-										<Button
-											aria-controls="home-discover-panel"
-											aria-selected={homeTab === 'discover'}
-											className="home-market-tab"
-											id="home-discover-tab"
-											onClick={() => selectHomeTab('discover')}
-											role="tab"
-											size="small"
-										>
-											<Compass className="ui-icon" aria-hidden="true" />
-											Discover
-										</Button>
-										<Button
-											aria-controls="home-collections-panel"
-											aria-selected={homeTab === 'collections'}
-											className="home-market-tab"
-											id="home-collections-tab"
-											onClick={() => selectHomeTab('collections')}
-											role="tab"
-											size="small"
-										>
-											<LayoutGrid className="ui-icon" aria-hidden="true" />
-											Collections
-										</Button>
-										<Button
-											aria-controls="home-activity-panel"
-											aria-selected={homeTab === 'activity'}
-											className="home-market-tab"
-											id="home-activity-tab"
-											onClick={() => selectHomeTab('activity')}
-											role="tab"
-											size="small"
-										>
-											<History className="ui-icon" aria-hidden="true" />
-											Activity
-										</Button>
-									</div>
+									<HomeMarketTabs active={homeTab} onSelect={selectHomeTab} />
 									<p>
 										{homeTab === 'discover'
 											? normalizedQuery
@@ -5896,6 +6273,15 @@ type MarketSelectOption<Value extends string> = {
 	label: string;
 };
 
+/**
+ * While its listbox is open, a MarketSelect owns Escape: an enclosing dialog
+ * (useDialogFocus) must let the first Escape close only the list. Closed, the
+ * attribute is absent so the next Escape dismisses the dialog as usual.
+ */
+export function marketSelectEscapeOwnerAttr(open: boolean): '' | undefined {
+	return open ? '' : undefined;
+}
+
 export function MarketSelect<Value extends string>({
 	label,
 	value,
@@ -5967,6 +6353,7 @@ export function MarketSelect<Value extends string>({
 	return (
 		<div
 			className="market-select"
+			data-dialog-escape-owner={marketSelectEscapeOwnerAttr(open)}
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
 			}}
@@ -6244,15 +6631,7 @@ export function collectionActivityVersion(collection: Collection) {
 
 export function newestCollectionActivity(events: CollectionActivityEvent[], limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
 	const byId = new Map<string, CollectionActivityEvent>();
-	for (const event of events) {
-		const previous = byId.get(event.id);
-		byId.set(
-			event.id,
-			previous?.purchaseProof && !event.purchaseProof
-				? { ...event, purchaseProof: previous.purchaseProof }
-				: event
-		);
-	}
+	for (const event of events) byId.set(event.id, mergeIndexedActivityEvent(byId.get(event.id), event));
 	return [...byId.values()]
 		.sort((a, b) => b.height - a.height || b.timestamp - a.timestamp || a.id.localeCompare(b.id))
 		.slice(0, limit);
@@ -6313,6 +6692,30 @@ export function collectionDefaultsToListed(collectionId: string) {
 	return collectionId === 'arweave-names';
 }
 
+/**
+ * The collection Items/Offers choice lives in the URL as `?view=items | offers`; with no (or an unknown)
+ * value the collection's default applies. The URL is the only source of truth, so Back, reload and shared
+ * links all show the same view.
+ */
+export type CollectionListingView = 'items' | 'offers';
+
+export function collectionViewFromSearch(search: string): CollectionListingView | null {
+	const view = new URLSearchParams(search).get('view');
+	return view === 'items' || view === 'offers' ? view : null;
+}
+
+export function collectionListedFromSearch(search: string, collectionId: string): boolean {
+	const view = collectionViewFromSearch(search);
+	return view ? view === 'offers' : collectionDefaultsToListed(collectionId);
+}
+
+/** Writes `view` into the current search, keeping every other param (such as `q`). */
+export function collectionViewSearch(search: string, view: CollectionListingView): string {
+	const params = new URLSearchParams(search);
+	params.set('view', view);
+	return `?${params.toString()}`;
+}
+
 export function compareCollectionAssetNames(a: AssetSummary, b: AssetSummary) {
 	return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 }
@@ -6361,6 +6764,30 @@ export function useProgressiveAssetPageSize() {
 function CollectionRoute() {
 	const { collectionId = '' } = useParams();
 	return <CollectionView key={collectionId} />;
+}
+
+export type CollectionRouteState = 'loading' | 'unavailable' | 'not-found' | 'ready';
+
+/**
+ * Route state for a page addressed by collection id. A collection outside the
+ * loaded catalogue stays loading while useCollectionLookup fetches it, so a
+ * deep link never settles on "not found" before the lookup has answered.
+ */
+export function collectionRouteState({
+	hasCollection,
+	marketLoading,
+	marketError,
+	lookup,
+}: {
+	hasCollection: boolean;
+	marketLoading: boolean;
+	marketError: string | null;
+	lookup: { loading: boolean; error: string };
+}): CollectionRouteState {
+	if (hasCollection) return 'ready';
+	if (marketLoading || lookup.loading) return 'loading';
+	if (lookup.error || marketError) return 'unavailable';
+	return 'not-found';
 }
 
 function useCollectionLookup(collectionId: string) {
@@ -6507,7 +6934,8 @@ function CollectionMarketHeader({
 
 function CollectionView() {
 	const { collectionId = '' } = useParams();
-	const { search } = useLocation();
+	const { pathname, search } = useLocation();
+	const navigate = useNavigate();
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
 	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
@@ -6547,23 +6975,47 @@ function CollectionView() {
 	);
 	const [appendOpen, setAppendOpen] = React.useState(false);
 	const [appendFiles, setAppendFiles] = React.useState<File[]>([]);
-	const [appendEstimate, setAppendEstimate] = React.useState<CollectionMintEstimate | null>(null);
-	const [appendEstimating, setAppendEstimating] = React.useState(false);
+	const [appendDropped, setAppendDropped] = React.useState(0);
+	const [appendEstimate, dispatchAppendEstimate] = React.useReducer(
+		collectionAppendEstimateReducer,
+		idleCollectionAppendEstimate
+	);
+	const [appendEstimateRetry, setAppendEstimateRetry] = React.useState(0);
 	const [appendWorking, setAppendWorking] = React.useState(false);
 	const [appendStatus, setAppendStatus] = React.useState('');
 	const [appendError, setAppendError] = React.useState<string | null>(null);
+	// Assets a failed append already paid for, reused on retry while the wallet,
+	// collection and chosen files are unchanged; dropped once the append succeeds.
+	const [appendProgress, setAppendProgress] = React.useState<MintProgress<MintedByIndex> | null>(null);
+	const appendProgressKey =
+		wallet.address && collection && appendFiles.length
+			? mintProgressKey(wallet.address, {
+					collection: collection.id,
+					name: collection.name,
+					description: collection.description,
+					base: collection.assets.length,
+					files: appendFiles,
+			  })
+			: '';
+	const reusedAppendAssets = reusableMintProgress(appendProgress, appendProgressKey);
+	const appendTriggerRef = React.useRef<HTMLButtonElement>(null);
 	const appendPreviews = React.useMemo(
 		() => appendFiles.map((file) => ({ file, url: URL.createObjectURL(file) })),
 		[appendFiles]
 	);
 	React.useEffect(() => () => appendPreviews.forEach(({ url }) => URL.revokeObjectURL(url)), [appendPreviews]);
 	const routedQuery = new URLSearchParams(search).get('q') ?? '';
-	const routedOffers = new URLSearchParams(search).get('view') === 'offers';
 	const [query, setQuery] = React.useState(routedQuery);
 	const deferredQuery = React.useDeferredValue(query);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
-	const [listedOnly, setListedOnly] = React.useState(() => routedOffers || collectionDefaultsToListed(collectionId));
+	const listedOnly = collectionListedFromSearch(search, collectionId);
+	const selectListingView = (view: CollectionListingView) => {
+		const nextSearch = collectionViewSearch(search, view);
+		// An in-view switch: replace the entry so Back from an asset returns here, and keep focus and scroll.
+		if (nextSearch !== search)
+			navigate({ pathname, search: nextSearch }, { replace: true, ...PRESERVE_ROUTE_FOCUS });
+	};
 	const [sort, setSort] = React.useState<CollectionSort>('recent');
 	const [viewMode, setViewMode] = React.useState<CollectionViewMode>('compact');
 	const [initial, setInitial] = React.useState<string>('all');
@@ -6645,30 +7097,39 @@ function CollectionView() {
 	const collectionStatusRef = React.useRef<HTMLSpanElement>(null);
 	React.useEffect(() => {
 		if (!appendOpen || !appendFiles.length || !ownedCollection) {
-			setAppendEstimate(null);
+			dispatchAppendEstimate({ type: 'reset' });
 			return;
 		}
 		const controller = new AbortController();
-		setAppendEstimating(true);
+		dispatchAppendEstimate({ type: 'start' });
 		void import('api/asset-mint')
 			.then(({ CollectionMintClient }) =>
-				new CollectionMintClient().estimateAppend(ownedCollection, appendFiles, controller.signal)
+				new CollectionMintClient().estimateAppend(
+					ownedCollection,
+					appendFiles,
+					controller.signal,
+					reusedAppendAssets
+				)
 			)
 			.then(
 				(estimate) => {
-					if (!controller.signal.aborted) setAppendEstimate(estimate);
+					if (!controller.signal.aborted) dispatchAppendEstimate({ type: 'resolve', estimate });
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setAppendError(errorMessage(cause));
+					if (!controller.signal.aborted)
+						dispatchAppendEstimate({ type: 'reject', message: mintErrorMessage(cause) });
 				}
-			)
-			.finally(() => {
-				if (!controller.signal.aborted) setAppendEstimating(false);
-			});
+			);
 		return () => controller.abort();
-	}, [appendFiles, appendOpen, ownedCollection]);
+	}, [appendFiles, appendOpen, ownedCollection, reusedAppendAssets, appendEstimateRetry]);
 	const appendToCollection = async () => {
-		if (!collection || !ownedCollection || !wallet.address || !appendFiles.length || appendWorking) return;
+		if (
+			!collection ||
+			!ownedCollection ||
+			!wallet.address ||
+			!collectionAppendCanSubmit({ estimate: appendEstimate, files: appendFiles, working: appendWorking })
+		)
+			return;
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
 		setAppendError(null);
 		setAppendWorking(true);
@@ -6679,6 +7140,9 @@ function CollectionView() {
 			name: `${collection.name} additions`,
 			status: 'Preparing secure wallet approvals…',
 		});
+		// What this append pays for reaches state only if it fails, so the quote
+		// and its transaction count keep describing the append in flight.
+		let keepPaidProgress = () => {};
 		try {
 			const { CollectionMintClient } = await import('api/asset-mint');
 			const source: MintedCollection = {
@@ -6687,12 +7151,20 @@ function CollectionView() {
 				owner: ownedCollection.owner,
 				createdAt: ownedCollection.createdAt,
 				manifestId: collection.manifestId ?? ownedCollection.manifestId,
+				// License terms come from the local record only, matching the dialog's license copy.
+				udl: ownedCollection.udl,
+			};
+			const paidAssets = pendingMintProgress(appendProgressKey, reusedAppendAssets);
+			keepPaidProgress = () => {
+				if (paidAssets.progress) setAppendProgress(paidAssets.progress);
 			};
 			const result = await new CollectionMintClient().append(source, appendFiles, wallet.address, {
 				allowHighCost: true,
+				minted: reusedAppendAssets,
+				onAssetMinted: (index, asset) => paidAssets.record((value) => ({ ...value, [index]: asset })),
 				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (phase) => {
-					const status = collectionAppendPhaseLabel(phase);
+					const status = collectionMintPhaseLabel(phase, { extending: true });
 					setAppendStatus(status);
 					updateUpload(uploadId, status);
 				},
@@ -6700,6 +7172,7 @@ function CollectionView() {
 			const previousIds = new Set(collection.assets.map((asset) => asset.id));
 			const added = result.collection.assets.filter((asset) => !previousIds.has(asset.id));
 			market.addCollection(result.collection);
+			setAppendProgress(null);
 			finishUpload(uploadId, {
 				collectionId: collection.id,
 				assetIds: added.map((asset) => asset.id),
@@ -6707,10 +7180,12 @@ function CollectionView() {
 				extended: true,
 			});
 			setAppendFiles([]);
-			setAppendEstimate(null);
+			dispatchAppendEstimate({ type: 'reset' });
+			setAppendDropped(0);
 			setAppendOpen(false);
 		} catch (cause) {
-			const message = errorMessage(cause);
+			const message = mintErrorMessage(cause);
+			keepPaidProgress();
 			setAppendError(message);
 			failUpload(uploadId, message);
 		} finally {
@@ -7546,15 +8021,20 @@ function CollectionView() {
 		: `${resultSummary} in ${collection.name}.`;
 	return (
 		<section className={`collection-page collection-marketplace-page view-${viewMode}`}>
-			<Link className="back" to="/">
+			<Link className="back" to={collectionBackLink(collection.kind).to}>
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
+				{collectionBackLink(collection.kind).label}
 			</Link>
 			<div className="collection-market-navigation">
 				<CollectionMarketHeader
 					action={
 						collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
-							<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
+							<Button
+								onClick={() => setAppendOpen(true)}
+								ref={appendTriggerRef}
+								type="button"
+								variant="neutral"
+							>
 								<Images aria-hidden="true" /> Add assets
 							</Button>
 						) : undefined
@@ -7587,95 +8067,32 @@ function CollectionView() {
 				<CollectionTabs
 					collection={collection}
 					active={listedOnly ? 'offers' : 'assets'}
-					onSelectAssets={() => setListedOnly(false)}
-					onSelectOffers={() => setListedOnly(true)}
+					onSelectAssets={() => selectListingView('items')}
+					onSelectOffers={() => selectListingView('offers')}
 				/>
 			</div>
 			{appendOpen && ownedCollection ? (
-				<div className="dialog-backdrop" role="presentation">
-					<section
-						aria-labelledby="append-collection-title"
-						aria-modal="true"
-						className="dialog dialog-compact collection-append-dialog"
-						role="dialog"
-					>
-						<div className="dialog-heading">
-							<div>
-								<p className="eyebrow">Extend collection</p>
-								<h2 id="append-collection-title">Add assets to {collection.name}</h2>
-							</div>
-							<Button
-								aria-label="Close add assets"
-								disabled={appendWorking}
-								onClick={() => setAppendOpen(false)}
-								size="icon"
-								type="button"
-								variant="ghost"
-							>
-								<X aria-hidden="true" />
-							</Button>
-						</div>
-						<p className="append-collection-copy">
-							Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
-							collection carrier.
-						</p>
-						<label className={`mint-dropzone${appendFiles.length ? ' has-file' : ''}`}>
-							<input
-								accept="image/png,image/jpeg,image/webp,image/gif"
-								disabled={appendWorking}
-								multiple
-								onChange={(event) => {
-									setAppendFiles(Array.from(event.target.files ?? []).slice(0, 10));
-									setAppendError(null);
-								}}
-								type="file"
-							/>
-							<span>
-								<Upload aria-hidden="true" />
-								<strong>
-									{appendFiles.length ? `${appendFiles.length} images ready` : 'Choose images'}
-								</strong>
-								<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
-							</span>
-						</label>
-						{appendFiles.length ? (
-							<div className="collection-append-preview" aria-label="Selected images">
-								{appendPreviews.map(({ file, url }) => (
-									<figure key={`${file.name}:${file.size}`}>
-										<img alt="" src={url} />
-										<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
-									</figure>
-								))}
-							</div>
-						) : null}
-						<div className="collection-append-summary">
-							<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
-							<strong>
-								{appendEstimate ? (
-									<ArCurrencyText>{`${winstonToAr(appendEstimate.total.toString())} AR · ${
-										appendEstimate.transactionCount
-									} transactions`}</ArCurrencyText>
-								) : (
-									'—'
-								)}
-							</strong>
-						</div>
-						{appendError ? <ErrorPanel message={appendError} /> : null}
-						<Button
-							className="wide"
-							disabled={!appendFiles.length || !appendEstimate || appendWorking}
-							onClick={() => void appendToCollection()}
-							type="button"
-						>
-							{appendWorking ? (
-								<LoaderCircle className="spin" aria-hidden="true" />
-							) : (
-								<Upload aria-hidden="true" />
-							)}
-							{appendWorking ? 'Adding assets…' : `Add ${appendFiles.length || ''} assets`}
-						</Button>
-					</section>
-				</div>
+				<CollectionAppendDialog
+					collectionName={collection.name}
+					dropped={appendDropped}
+					error={appendError}
+					estimate={appendEstimate}
+					files={appendFiles}
+					licensed={Boolean(ownedCollection.udl)}
+					onClose={() => setAppendOpen(false)}
+					onRetryEstimate={() => setAppendEstimateRetry((count) => count + 1)}
+					onSelectFiles={(files) => {
+						const selection = mergeCollectionFiles([], files);
+						setAppendFiles(selection.files);
+						setAppendDropped(selection.dropped);
+						setAppendError(null);
+					}}
+					onSubmit={() => void appendToCollection()}
+					previews={appendPreviews}
+					restoreTargetRef={appendTriggerRef}
+					status={appendStatus}
+					working={appendWorking}
+				/>
 			) : null}
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{pagedTokenScope ? (
@@ -7822,7 +8239,7 @@ function CollectionView() {
 							/>
 							<MarketSelect<'all' | 'listed'>
 								label="Show"
-								onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
+								onChange={(nextValue) => selectListingView(nextValue === 'listed' ? 'offers' : 'items')}
 								options={[
 									{ value: 'all', label: 'All assets' },
 									{ value: 'listed', label: 'Listed for sale' },
@@ -8252,14 +8669,160 @@ function CollectionAnalyticsPanel({
 	);
 }
 
-function collectionAppendPhaseLabel(phase: CollectionMintPhase) {
-	if (phase.kind === 'asset') {
-		const action = phase.phase.startsWith('signing') ? 'Approve in your wallet' : 'Uploading to Arweave';
-		return `Asset ${phase.index + 1} of ${phase.total} · ${action}`;
-	}
-	if (phase.kind === 'manifest')
-		return phase.phase === 'signing' ? 'Approve the new manifest' : 'Publishing manifest';
-	return phase.phase === 'signing' ? 'Approve the collection update' : 'Updating collection carrier';
+/**
+ * The owner's "Add assets" modal. It uses the shared dialog contract
+ * (useDialogFocus): focus moves in, Tab is trapped, the background is inert
+ * and scroll-locked, Escape and a backdrop click close it unless an append is
+ * in progress, and focus returns to the "Add assets" trigger on close.
+ */
+export function CollectionAppendDialog({
+	collectionName,
+	dropped = 0,
+	error,
+	estimate,
+	files,
+	licensed = false,
+	onClose,
+	onRetryEstimate,
+	onSelectFiles,
+	onSubmit,
+	previews,
+	restoreTargetRef,
+	status,
+	working,
+}: {
+	collectionName: string;
+	/** Picked images the 10-per-batch cap left out of the current selection. */
+	dropped?: number;
+	/** The last append (submit) failure; estimate failures live in `estimate`. */
+	error: string | null;
+	estimate: CollectionAppendEstimateState;
+	files: File[];
+	/** Whether the local collection record carries license terms; added assets inherit exactly those. */
+	licensed?: boolean;
+	onClose(): void;
+	onRetryEstimate(): void;
+	onSelectFiles(files: File[]): void;
+	onSubmit(): void;
+	previews: Array<{ file: File; url: string }>;
+	restoreTargetRef: React.RefObject<HTMLElement>;
+	status: string;
+	working: boolean;
+}) {
+	const close = () => {
+		if (!working) onClose();
+	};
+	const estimating = estimate.status === 'checking';
+	const restoreTarget = React.useCallback(() => restoreTargetRef.current, [restoreTargetRef]);
+	const dialogRef = useDialogFocus<HTMLElement>(true, close, restoreTarget);
+	return (
+		<div
+			className="dialog-backdrop"
+			onMouseDown={(event) => event.target === event.currentTarget && close()}
+			role="presentation"
+		>
+			<section
+				aria-labelledby="append-collection-title"
+				aria-modal="true"
+				className="dialog dialog-compact collection-append-dialog"
+				ref={dialogRef}
+				role="dialog"
+				tabIndex={-1}
+			>
+				<div className="dialog-heading">
+					<div>
+						<p className="eyebrow">Extend collection</p>
+						<h2 id="append-collection-title">Add assets to {collectionName}</h2>
+					</div>
+					<Button
+						aria-label="Close add assets"
+						disabled={working}
+						onClick={close}
+						size="icon"
+						type="button"
+						variant="ghost"
+					>
+						<X aria-hidden="true" />
+					</Button>
+				</div>
+				<p className="append-collection-copy">
+					Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
+					collection carrier.{' '}
+					{licensed
+						? 'Added assets carry the same license tags as this collection.'
+						: 'Added assets carry no license tags.'}
+				</p>
+				<label className={`mint-dropzone${files.length ? ' has-file' : ''}`}>
+					<input
+						accept="image/png,image/jpeg,image/webp,image/gif"
+						data-dialog-initial
+						disabled={working}
+						multiple
+						onChange={(event) => onSelectFiles(Array.from(event.target.files ?? []))}
+						type="file"
+					/>
+					<span>
+						<Upload aria-hidden="true" />
+						<strong>{files.length ? `${files.length} images ready` : 'Choose images'}</strong>
+						<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
+					</span>
+				</label>
+				<CollectionSelectionNotice dropped={dropped} />
+				{files.length ? (
+					<div className="collection-append-preview" aria-label="Selected images">
+						{previews.map(({ file, url }) => (
+							<figure key={`${file.name}:${file.size}`}>
+								<img alt="" src={url} />
+								<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
+							</figure>
+						))}
+					</div>
+				) : null}
+				<div className="collection-append-summary">
+					<span>
+						{/* Only append phases are announced; the cost-check and idle copy stay silent. */}
+						<span aria-atomic="true" role="status">
+							{estimating ? '' : status}
+						</span>
+						{estimating
+							? 'Checking Arweave storage cost…'
+							: status
+							? null
+							: estimate.status === 'failed'
+							? 'Storage cost unavailable'
+							: 'Ready'}
+					</span>
+					<strong>
+						{estimate.status === 'ready' ? (
+							<ArCurrencyText>{`${winstonToAr(estimate.estimate.total.toString())} AR · ${
+								estimate.estimate.transactionCount
+							} transactions`}</ArCurrencyText>
+						) : (
+							'—'
+						)}
+					</strong>
+				</div>
+				{estimate.status === 'failed' ? (
+					<>
+						<CollectionAppendFailureNotice failure={{ stage: 'estimate', message: estimate.message }} />
+						<Button className="with-icon" disabled={working} onClick={onRetryEstimate} type="button">
+							<RefreshCw aria-hidden="true" className="ui-icon ui-icon--sm" /> Retry cost check
+						</Button>
+					</>
+				) : null}
+				{error ? <CollectionAppendFailureNotice failure={{ stage: 'submit', message: error }} /> : null}
+				<Button
+					className="wide"
+					disabled={!collectionAppendCanSubmit({ estimate, files, working })}
+					onClick={onSubmit}
+					type="button"
+				>
+					{working ? <LoaderCircle className="spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+					{working ? 'Adding assets…' : `Add ${files.length || ''} assets`}
+				</Button>
+			</section>
+		</div>
+	);
 }
 
 function CollectionResultStatus({ message }: { message: string }) {
@@ -8362,10 +8925,11 @@ function CollectionIndexNotice({
 	);
 }
 
-function CollectionActivityView() {
+export function CollectionActivityView() {
 	const { collectionId = '' } = useParams();
 	const market = React.useContext(MarketContext);
 	const collection = market.collections.find((item) => item.id === collectionId);
+	const collectionLookup = useCollectionLookup(collectionId);
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
@@ -8510,22 +9074,28 @@ function CollectionActivityView() {
 		return () => controller.abort();
 	}, [activityScope, activityWindowVersion, retry]);
 
-	if (!collection && market.loading)
+	const routeState = collectionRouteState({
+		hasCollection: Boolean(collection),
+		marketLoading: market.loading,
+		marketError: market.error,
+		lookup: collectionLookup,
+	});
+	if (routeState === 'loading')
 		return (
 			<RouteState title="Collection activity">
 				<Loading label="Reading collection index…" />
 			</RouteState>
 		);
-	if (!collection && market.error)
+	if (routeState === 'unavailable')
 		return (
 			<RouteState title="Activity unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection)
 		return (
 			<RouteState title="Collection not found">
-				<ErrorPanel message="This collection could not be found on Arweave." />
+				<ErrorPanel message="This collection could not be found on Arweave." onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	const activityScanAnnouncement = collectionActivityScanAnnouncement({
@@ -8537,7 +9107,7 @@ function CollectionActivityView() {
 	});
 	return (
 		<section className="collection-page collection-marketplace-page collection-activity-page view-compact">
-			<Link className="back" to="/">
+			<Link className="back" to={homeTabPath('collections')}>
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
 			<div className="collection-market-navigation">
@@ -8736,7 +9306,7 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({
+export function CollectionTabs({
 	collection,
 	active,
 	onSelectAssets,
@@ -8762,7 +9332,7 @@ function CollectionTabs({
 				<Link
 					aria-current={active === 'assets' ? 'page' : undefined}
 					className={active === 'assets' ? 'active' : ''}
-					to={`/collection/${collection.id}`}
+					to={`/collection/${collection.id}${collectionViewSearch('', 'items')}`}
 				>
 					{collection.kind === 'tokens' ? 'Tokens' : 'Items'}
 				</Link>
@@ -8780,7 +9350,7 @@ function CollectionTabs({
 				<Link
 					aria-current={active === 'offers' ? 'page' : undefined}
 					className={active === 'offers' ? 'active' : ''}
-					to={`/collection/${collection.id}?view=offers`}
+					to={`/collection/${collection.id}${collectionViewSearch('', 'offers')}`}
 				>
 					Offers
 				</Link>
@@ -9261,7 +9831,7 @@ export function mergeAssetActivityPages(
 	older: CollectionActivityEvent[]
 ): CollectionActivityEvent[] {
 	const events = new Map(current.map((event) => [event.id, event]));
-	for (const event of older) events.set(event.id, event);
+	for (const event of older) events.set(event.id, mergeIndexedActivityEvent(events.get(event.id), event));
 	return [...events.values()].sort(
 		(left, right) =>
 			right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id)
@@ -9625,6 +10195,7 @@ function PendingAssetView() {
 		loadMintActivities(localStorage).find((candidate) => candidate.asset.id === assetId);
 	const finalPath = `/asset/${activity?.collectionId ?? collectionId}/${assetId}`;
 	const asset = activity?.asset ?? loadMintedAssets().find((candidate) => candidate.id === assetId);
+	useMintActivityStalledRerender(activity ? [activity] : []);
 
 	React.useEffect(() => {
 		const showLiveAsset = (event: Event) => {
@@ -9652,6 +10223,7 @@ function PendingAssetView() {
 		['complete', 'Live on Bazar'],
 	];
 	const currentPhase = phases.findIndex(([phase]) => phase === activity.phase);
+	const stalled = mintActivityTrackingState(activity) === 'stalled';
 	const pinnedGateway =
 		activity.arweaveGateway !== arweaveGatewayFromLocation() || activity.computeGateway !== gatewayFromLocation();
 
@@ -9675,9 +10247,12 @@ function PendingAssetView() {
 					)}
 				</div>
 				<div className="mint-pending-copy">
-					<p className="eyebrow">Submitted · safe to leave</p>
+					<p className="eyebrow">
+						{stalled ? 'Taking longer than usual · still checking' : 'Submitted · safe to leave'}
+					</p>
 					<h1>{asset.name}</h1>
 					<p>{activity.status}</p>
+					{stalled ? <p role="status">{MINT_ACTIVITY_STALLED_STATUS}</p> : null}
 					<ol className="mint-pending-phases">
 						{phases.map(([phase, label], index) => (
 							<li className={index <= currentPhase ? 'reached' : undefined} key={phase}>
@@ -9703,13 +10278,10 @@ function PendingAssetView() {
 					</div>
 					<MintTransactionReceipt
 						entries={activity.transactionIds.map((transactionId, index) => ({
-							label: fungible
-								? index === activity.transactionIds.length - 1
-									? 'Token process transaction'
-									: 'Token logo transaction'
-								: index === activity.transactionIds.length - 1
-								? 'Asset transaction'
-								: 'Artwork transaction',
+							label: mintActivityReceiptLabel(
+								{ ...activity, asset, collectionId: activity.collectionId ?? collectionId },
+								index
+							),
 							transactionId,
 						}))}
 					/>
@@ -10433,7 +11005,16 @@ function AssetView() {
 					{ show: false }
 				);
 			}
-		})().catch(() => undefined);
+		})().then(
+			() => {
+				if (!controller.signal.aborted)
+					setRecoveryNotice((current) => savedActionCheckNotice(current, 'checked'));
+			},
+			() => {
+				if (!controller.signal.aborted)
+					setRecoveryNotice((current) => savedActionCheckNotice(current, 'failed'));
+			}
+		);
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
@@ -11223,16 +11804,23 @@ function AssetView() {
 	);
 }
 
-type Operation =
-	| { kind: 'sell'; resumeId?: string; value?: string }
-	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
-	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
-	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
+export type PurchaseSequenceStepState = 'done' | 'active' | 'next';
+
+const PURCHASE_SEQUENCE_STEP_STATUS: Record<PurchaseSequenceStepState, string> = {
+	done: 'completed',
+	active: 'in progress',
+	next: 'not started',
+};
+
+/** Screen-reader text for a purchase step; the visible marker conveys the same state and is aria-hidden. */
+export function purchaseSequenceStepStatus(state: PurchaseSequenceStepState): string {
+	return PURCHASE_SEQUENCE_STEP_STATUS[state];
+}
 
 export type AtomicPurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
 	label: string;
-	state: 'done' | 'active' | 'next';
+	state: PurchaseSequenceStepState;
 };
 
 const ATOMIC_PAYMENT_STAGES = new Set([
@@ -11270,12 +11858,17 @@ export function AtomicPurchaseSequence({ state }: { state: PurchaseState | null 
 		<section aria-label="Asset purchase transaction sequence" className="purchase-sequence">
 			<ol>
 				{steps.map((step, index) => (
-					<li className={step.state} key={step.key}>
+					<li
+						aria-current={step.state === 'active' ? 'step' : undefined}
+						className={step.state}
+						key={step.key}
+					>
 						<span aria-hidden="true" className="purchase-sequence-marker">
 							{step.state === 'done' ? <Check /> : index + 1}
 						</span>
 						<span className="purchase-sequence-copy">
 							<strong>{step.label}</strong>
+							<span className="sr-only">{`, ${purchaseSequenceStepStatus(step.state)}`}</span>
 						</span>
 					</li>
 				))}
@@ -11324,14 +11917,13 @@ function OperationDialog({
 	const [value, setValue] = React.useState(
 		operation.kind === 'sell' || operation.kind === 'transfer' ? operation.value ?? '' : ''
 	);
-	const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
-		operation.kind === 'buy' && operation.resume
-			? recoveryApprovalCount
-				? 'approval'
-				: 'working'
-			: operation.kind !== 'buy' && operation.resumeId
-			? 'working'
-			: 'form'
+	const [phase, setPhase] = React.useState<OperationActivityPhase>(
+		initialOperationPhase({
+			kind: operation.kind,
+			hasResume: operation.kind === 'buy' && Boolean(operation.resume),
+			hasResumeId: operation.kind !== 'buy' && Boolean(operation.resumeId),
+			recoveryApprovalCount,
+		})
 	);
 	const [message, setMessage] = React.useState('');
 	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
@@ -11350,8 +11942,10 @@ function OperationDialog({
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
 	const submittedAtRef = React.useRef<number>();
+	// A listing saved without a baseline predates exact-slot listing checks and
+	// keeps the open-order wait, so 'sell' never falls back to slot 0.
 	const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
-		(operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
+		operation.kind !== 'buy' && Number.isSafeInteger(operation.startingSlot)
 			? { startingSlot: operation.startingSlot! }
 			: (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
 			? { startingSlot: 0 }
@@ -11444,7 +12038,7 @@ function OperationDialog({
 		void submit();
 	}, []);
 
-	async function submit() {
+	async function submit(savedPurchase?: PurchaseSnapshot | null) {
 		const validation = atomicOperationFormError(operation.kind, operationValue, owner);
 		if (validation) {
 			setMessage(validation);
@@ -11459,7 +12053,8 @@ function OperationDialog({
 		try {
 			let currentPurchaseSnapshot =
 				operation.kind === 'buy'
-					? latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
+					? savedPurchase ??
+					  latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
 					: null;
 			const freshOperation =
 				operation.kind === 'buy'
@@ -11523,11 +12118,13 @@ function OperationDialog({
 						);
 					}
 				}
-				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
-					const startingSlot = Number(freshState.raw['at-slot']);
-					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
-					}
+				const startingSlot = Number(freshState.raw['at-slot']);
+				const hasStartingSlot = Number.isSafeInteger(startingSlot) && startingSlot >= 0;
+				if ((operation.kind === 'cancel' || operation.kind === 'transfer') && !hasStartingSlot) {
+					throw new Error('asset-action-starting-slot-unavailable');
+				}
+				// Listings without a slot keep the open-order wait rather than refusing to sign.
+				if (operation.kind !== 'buy' && hasStartingSlot) {
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
 				}
@@ -11541,6 +12138,8 @@ function OperationDialog({
 				const network = observerLease.network;
 				if (signal.aborted) throw signal.reason;
 				let observationRetryAttempt = 0;
+				// Set while the "checking again" copy is shown; the retried run clears it once it moves past that step.
+				let retryCheckingKind: PurchaseObservationRetryKind | null = null;
 				let completedSnapshot: PurchaseSnapshot | null = null;
 				const persistPurchaseSnapshot = (snapshot: PurchaseSnapshot) => {
 					onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
@@ -11625,6 +12224,10 @@ function OperationDialog({
 					const update = (state: PurchaseState) => {
 						if (signal.aborted || recoveryConflict) return;
 						setPurchaseState(state);
+						if (retryCheckingKind && shouldClearRetryMessage(retryCheckingKind, state)) {
+							retryCheckingKind = null;
+							setMessage('');
+						}
 						const snapshot = purchase.snapshot();
 						if (hasRecoverablePurchase(snapshot)) {
 							try {
@@ -11652,6 +12255,7 @@ function OperationDialog({
 						setMessage(purchaseObservationRetryMessage(finalState, delay));
 						await waitForPurchaseObservationRetry(delay, signal);
 						setMessage(purchaseObservationCheckingMessage(retryKind));
+						retryCheckingKind = retryKind;
 						continue;
 					}
 					if (finalState.stage !== 'complete' || !finalState.success) {
@@ -11721,7 +12325,7 @@ function OperationDialog({
 			} else if (operation.resumeId) {
 				prepared = client.restore(operation.resumeId, owner);
 			} else if (operation.kind === 'sell') {
-				const winston = arToWinston(value);
+				const winston = arToWinston(operationValue);
 				prepared = await client.makeOffer(
 					{ processId: asset.id, quantity: '1', asking: winston, seller: owner },
 					signal
@@ -11757,7 +12361,12 @@ function OperationDialog({
 							startingSlot: exactActionBaseline!.startingSlot,
 							value: operationValue,
 					  }
-					: { kind: 'sell', resumeId: prepared.id, value: operationValue }
+					: {
+							kind: 'sell',
+							resumeId: prepared.id,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+							value: operationValue,
+					  }
 			);
 			const operationRecord = {
 				txId: prepared.id,
@@ -11771,7 +12380,10 @@ function OperationDialog({
 					? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
 					: operation.kind === 'transfer'
 					? { value: operationValue, startingSlot: exactActionBaseline!.startingSlot }
-					: { value: operationValue }),
+					: {
+							value: operationValue,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+					  }),
 				createdAt: Date.now(),
 			};
 			try {
@@ -11803,24 +12415,22 @@ function OperationDialog({
 			setConsensus(null);
 			await runtime.dispatchAndConfirm(prepared, {
 				signal,
-				target: 5,
+				target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 				onViews: setViews,
 				onConsensus: setConsensus,
 				onProgress: (progress) => setConfirmations(progress.confirmations),
 			});
-			setConfirmations(5);
-			setMessage('Five confirmations reached. Waiting for the scheduler safety depth and live asset state…');
+			setConfirmations(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+			setMessage(
+				`${ASSET_TRANSACTION_CONFIRMATION_TARGET} confirmations reached. Waiting for the scheduler safety depth and live asset state…`
+			);
 			if (operation.kind === 'sell') {
-				await client.waitForOfferAcceptance(
-					asset.id,
-					{
-						orderId: prepared.id,
-						seller: owner,
-						quantity: '1',
-						asking: arToWinston(value),
-					},
-					signal
-				);
+				const expectedOffer = { seller: owner, quantity: '1', asking: arToWinston(operationValue) };
+				if (exactActionBaseline) {
+					await client.waitForExactOffer(asset.id, prepared.id, expectedOffer, exactActionBaseline, signal);
+				} else {
+					await client.waitForOfferAcceptance(asset.id, { orderId: prepared.id, ...expectedOffer }, signal);
+				}
 			} else if (operation.kind === 'cancel') {
 				await client.waitForExactCancellation(
 					asset.id,
@@ -11862,7 +12472,9 @@ function OperationDialog({
 			if (attemptRef.current.signal.aborted) return;
 			if (
 				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				['asset-cancel-rejected', 'fungible-transfer-rejected', 'asset-offer-rejected'].includes(
+					cause.message
+				) &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(
@@ -11872,12 +12484,35 @@ function OperationDialog({
 				);
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
+				// The discarded signature must never be resumed, so "Try again" starts a fresh attempt.
+				onOperation(operationAfterProvenRejection(operation));
+				exactActionBaselineRef.current = null;
 			}
 			setFailureKind(marketplaceOperationFailure(cause));
 			setMessage(errorMessage(cause));
 			setPhase('error');
 		}
 	}
+
+	// A gateway-rejected signature is discarded and the same dialog returns to its form, keeping the user's
+	// input, so the next submit signs a replacement.
+	const discardRejectedSignatureAndSignAgain = (rejected: PreparedTransaction) => {
+		removeWalletRecordIf<any>(
+			localStorage,
+			operationStorageKey(asset.id, owner),
+			(record) => record?.txId === rejected.id
+		);
+		localStorage.removeItem(`bazar-signed-transaction:${rejected.id}`);
+		setTransaction(null);
+		onOperation(operationAfterProvenRejection(operation));
+		exactActionBaselineRef.current = null;
+		setViews([]);
+		setConfirmations(0);
+		setConsensus(null);
+		setFailureKind(null);
+		setMessage('');
+		setPhase('form');
+	};
 
 	const purchaseSteps: ArweaveSyncStep[] =
 		purchaseState && hasRecoverablePurchase(purchaseState)
@@ -11902,7 +12537,7 @@ function OperationDialog({
 				{
 					key: operation.kind,
 					label: operationLabel(operation.kind),
-					target: 5,
+					target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
@@ -11916,7 +12551,7 @@ function OperationDialog({
 			? 'register'
 			: operation.kind;
 	const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
-	const confirmationTarget = activeSyncStep?.target ?? 5;
+	const confirmationTarget = activeSyncStep?.target ?? operationConfirmationTarget(operation);
 	const activityConfirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
 	const visiblePhase =
 		operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;
@@ -11943,13 +12578,14 @@ function OperationDialog({
 		purchaseQuote && purchaseWalletBalance !== null ? purchaseWalletBalance >= BigInt(purchaseQuote.total) : null;
 	const actionLabel = atomicOperationActionLabel(operation, operationValue);
 	const resultCopy = atomicOperationResult(operation.kind, asset.name, operationValue, owner);
+	const resuming = Boolean(operation.kind === 'buy' ? operation.resume : operation.resumeId);
 	const reportedStatus =
 		visiblePhase === 'form'
 			? 'Waiting for details'
 			: visiblePhase === 'approval'
 			? 'Waiting for wallet approval'
 			: visiblePhase === 'working'
-			? workingStatus || 'Watching Arweave confirmations…'
+			? atomicOperationWorkingStatus({ workingStatus, hasSteps: steps.length > 0, resuming })
 			: visiblePhase === 'done'
 			? resultCopy.title
 			: visibleMessage || 'This transaction needs attention';
@@ -11966,42 +12602,47 @@ function OperationDialog({
 		);
 	}, [activityConfirmations, asset.id, confirmationTarget, onUpdate, reportedStatus, taskId, visiblePhase]);
 	const restartPurchase = () => {
-		if (operation.kind !== 'buy' || !recoverable) {
+		// The failed run has already ended and released its claim and network
+		// lease; submit() re-acquires both. Continue in this visible dialog so the
+		// activity stays listed, instead of closing (which removes it).
+		const continuation =
+			operation.kind === 'buy'
+				? savedPurchaseContinuation(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
+				: null;
+		if (operation.kind !== 'buy' || !continuation) {
 			setMessage('');
 			setFailureKind(null);
 			setPhase('form');
 			return;
 		}
-		if (purchaseState) {
-			const snapshot = purchaseSnapshot(purchaseState);
-			if (hasRecoverablePurchase(snapshot)) {
-				const record = {
-					asset: { id: asset.id, name: asset.name },
-					activityKind: 'atomic',
-					buyer: owner,
-					collectionId,
-					gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
-					order: operation.order,
-					snapshot,
-					createdAt: submittedAtRef.current ?? Date.now(),
-				};
-				storeWalletRecordIf<any>(
-					localStorage,
-					atomicPurchaseStorageKey(asset.id, owner),
-					record,
-					(current) =>
-						current?.buyer === owner &&
-						current?.order?.orderId === operation.order.orderId &&
-						current?.snapshot?.registration?.id === snapshot.registration?.id,
-					true
-				);
-			}
+		const { snapshot } = continuation;
+		storeWalletRecordIf<any>(
+			localStorage,
+			atomicPurchaseStorageKey(asset.id, owner),
+			{
+				asset: { id: asset.id, name: asset.name },
+				activityKind: 'atomic',
+				buyer: owner,
+				collectionId,
+				gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
+				order: operation.order,
+				snapshot,
+				createdAt: submittedAtRef.current ?? Date.now(),
+			},
+			(current) =>
+				current?.buyer === owner &&
+				current?.order?.orderId === operation.order.orderId &&
+				current?.snapshot?.registration?.id === snapshot.registration?.id,
+			true
+		);
+		onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
+		if (continuation.phase === 'approval') {
+			setMessage('');
+			setFailureKind(null);
+			setPhase('approval');
+			return;
 		}
-		attemptRef.current.abort();
-		purchaseRef.current?.abandon();
-		networkRef.current?.release();
-		networkRef.current = null;
-		onClose(false);
+		void submit(snapshot);
 	};
 	const startFreshPurchase = () => {
 		if (operation.kind !== 'buy') return;
@@ -12028,6 +12669,58 @@ function OperationDialog({
 		setMessage('');
 		setFailureKind(null);
 		setPhase('form');
+	};
+	const errorRecovery = atomicOperationRecovery({
+		kind: operation.kind,
+		failureKind,
+		hasTransaction: Boolean(transaction),
+		purchaseFailureCode: atomicPurchaseFailureCode(purchaseState),
+		recoverable,
+	});
+	const runRecoveryAction = (action: AtomicOperationRecoveryAction) => {
+		switch (action) {
+			case 'view-updated-asset':
+			case 'view-current-listing':
+				onClose(false);
+				return;
+			case 'start-fresh-purchase':
+				startFreshPurchase();
+				return;
+			case 'restart-purchase':
+				restartPurchase();
+				return;
+			case 'resign-seller-payment':
+			case 'retry-not-sent':
+			case 'resume-signed-transaction':
+				void submit();
+				return;
+			case 'discard-not-sent': {
+				if (!transaction || operation.kind === 'buy') return;
+				const conflict = discardUnsentAtomicSignature(
+					localStorage,
+					asset.id,
+					owner,
+					operation.kind,
+					transaction.id
+				);
+				if (conflict) {
+					setMessage(conflict);
+					return;
+				}
+				// Nothing reached the network, so there is no live state to refresh and nothing to resume later.
+				setTransaction(null);
+				onClose(false, false);
+				return;
+			}
+			case 'discard-rejected-signature':
+				if (transaction) discardRejectedSignatureAndSignAgain(transaction);
+				return;
+			case 'return-to-form':
+				setFailureKind(null);
+				setMessage('');
+				setPhase('form');
+				return;
+		}
 	};
 	const closeOrHide = () => {
 		const action = transactionDialogDismissAction(visiblePhase, recoverable && !terminalReservationFailure);
@@ -12144,7 +12837,7 @@ function OperationDialog({
 						<Button
 							className="wide"
 							data-dialog-initial
-							onClick={() => void submit()}
+							onClick={() => void submit(operation.kind === 'buy' ? operation.resume : undefined)}
 							type="button"
 							size="custom"
 							variant="primary"
@@ -12260,14 +12953,10 @@ function OperationDialog({
 									{quoteRetryable && (purchaseQuote || quoteError) ? (
 										<Button
 											aria-describedby={quoteStatusId}
-											aria-disabled={!purchaseQuote && !quoteError}
 											className="with-icon"
 											size="custom"
 											type="button"
-											onClick={() => {
-												if (purchaseQuote || quoteError)
-													setQuoteRetry((current) => current + 1);
-											}}
+											onClick={() => setQuoteRetry((current) => current + 1)}
 										>
 											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 											{purchaseQuote ? 'Refresh costs' : 'Retry cost check'}
@@ -12387,13 +13076,7 @@ function OperationDialog({
 				) : null}
 				{visiblePhase === 'working' && !steps.length ? (
 					<div className="operation-preparing">
-						<Loading
-							label={
-								(operation.kind === 'buy' ? operation.resume : operation.resumeId)
-									? 'Recovering the signed transaction…'
-									: 'Preparing secure wallet approvals…'
-							}
-						/>
+						<Loading label={atomicOperationPreparingLabel(resuming)} />
 						<p>
 							{operation.kind === 'buy'
 								? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
@@ -12457,7 +13140,11 @@ function OperationDialog({
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
 									title={asset.name}
-									detail={operation.kind === 'sell' ? `${value} AR` : 'One asset'}
+									detail={
+										operation.kind === 'sell'
+											? atomicListingPriceLabel(operationValue)
+											: 'One asset'
+									}
 									media={
 										asset.image ? (
 											<ArtworkImage
@@ -12564,109 +13251,64 @@ function OperationDialog({
 				{visiblePhase === 'error' ? (
 					<div className="result error">
 						<AtomicOperationErrorAlert message={visibleMessage} />
-						{failureKind === 'market-state-changed' ? (
-							<Button data-dialog-initial type="button" onClick={() => onClose(false)} size="custom">
-								View updated asset
-							</Button>
-						) : operation.kind === 'buy' ? (
-							<>
-								<div className="settlement-receipt">
-									<div>
-										<span>Failed stage</span>
-										<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
-									</div>
-									<div>
-										<span>Seller</span>
-										<WalletAddress address={operation.order.creator} full label="seller" />
-									</div>
-									<div>
-										<span>Order</span>
+						{operation.kind === 'buy' && errorRecovery.purchaseReceipt ? (
+							<div className="settlement-receipt">
+								<div>
+									<span>Failed stage</span>
+									<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
+								</div>
+								<div>
+									<span>Seller</span>
+									<WalletAddress address={operation.order.creator} full label="seller" />
+								</div>
+								<div>
+									<span>Order</span>
+									<a
+										href={transactionExplorerUrl(operation.order.orderId)}
+										rel="noreferrer"
+										target="_blank"
+									>
+										<OperationExternalLink>{short(operation.order.orderId)}</OperationExternalLink>
+									</a>
+								</div>
+								<div className="settlement-receipt-links">
+									{purchaseState?.registration?.id ? (
 										<a
-											href={transactionExplorerUrl(operation.order.orderId)}
+											href={transactionExplorerUrl(purchaseState.registration.id)}
 											rel="noreferrer"
 											target="_blank"
 										>
 											<OperationExternalLink>
-												{short(operation.order.orderId)}
+												Reservation {short(purchaseState.registration.id)}
 											</OperationExternalLink>
 										</a>
-									</div>
-									<div className="settlement-receipt-links">
-										{purchaseState?.registration?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.registration.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Reservation {short(purchaseState.registration.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-										{purchaseState?.payment?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.payment.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Payment {short(purchaseState.payment.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-									</div>
+									) : null}
+									{purchaseState?.payment?.id ? (
+										<a
+											href={transactionExplorerUrl(purchaseState.payment.id)}
+											rel="noreferrer"
+											target="_blank"
+										>
+											<OperationExternalLink>
+												Payment {short(purchaseState.payment.id)}
+											</OperationExternalLink>
+										</a>
+									) : null}
 								</div>
-								{atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => onClose(false)} size="custom">
-										View current listing
-									</Button>
-								) : terminalReservationFailure ? (
-									<Button data-dialog-initial onClick={startFreshPurchase} size="custom">
-										Start a new purchase
-									</Button>
-								) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => void submit()} size="custom">
-										Sign a replacement seller payment
-									</Button>
-								) : (
-									<Button data-dialog-initial onClick={restartPurchase} size="custom">
-										{recoverable ? 'Continue saved purchase' : 'Try again'}
-									</Button>
-								)}
-							</>
-						) : failureKind === 'transaction-rejected' && transaction ? (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									removeWalletRecordIf<any>(
-										localStorage,
-										operationStorageKey(asset.id, owner),
-										(record) => record?.txId === transaction.id
-									);
-									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-									onClose(false);
-								}}
-								variant="danger"
-							>
-								Discard rejected signature and sign again
-							</Button>
-						) : transaction ? (
-							<Button data-dialog-initial onClick={() => void submit()} size="custom">
-								Resume the signed transaction
-							</Button>
+							</div>
+						) : null}
+						{errorRecovery.note ? <p>{errorRecovery.note}</p> : null}
+						{errorRecovery.secondary ? (
+							<div className="dialog-actions">
+								<AtomicRecoveryButton
+									initial
+									option={errorRecovery.primary}
+									onAction={runRecoveryAction}
+								/>
+								<AtomicRecoveryButton option={errorRecovery.secondary} onAction={runRecoveryAction} />
+							</div>
 						) : (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									setFailureKind(null);
-									setMessage('');
-									setPhase('form');
-								}}
-							>
-								Try again
-							</Button>
+							<AtomicRecoveryButton initial option={errorRecovery.primary} onAction={runRecoveryAction} />
 						)}
 					</div>
 				) : null}
@@ -12675,8 +13317,44 @@ function OperationDialog({
 	);
 }
 
+/**
+ * Where a collection "Add assets" failure came from: the storage-cost check that
+ * runs while images are chosen, or the signed append itself.
+ */
+export type CollectionAppendFailure = { stage: 'estimate' | 'submit'; message: string };
+
+export function CollectionAppendFailureNotice({ failure }: { failure: CollectionAppendFailure }) {
+	return (
+		<OperationErrorAlert
+			title={failure.stage === 'submit' ? 'Could not add assets' : 'Could not check the storage cost'}
+			message={failure.message}
+		/>
+	);
+}
+
 export function AtomicOperationErrorAlert({ message }: { message: string }) {
 	return <OperationErrorAlert title="Could not complete this action" message={message} />;
+}
+
+function AtomicRecoveryButton({
+	initial = false,
+	onAction,
+	option,
+}: {
+	initial?: boolean;
+	onAction(action: AtomicOperationRecoveryAction): void;
+	option: AtomicOperationRecoveryOption;
+}) {
+	return (
+		<Button
+			data-dialog-initial={initial || undefined}
+			onClick={() => onAction(option.action)}
+			size="custom"
+			variant={option.danger ? 'danger' : undefined}
+		>
+			{option.label}
+		</Button>
+	);
 }
 
 function collectionKindLabel(collection: Collection) {
@@ -12921,7 +13599,7 @@ export function alphabetBrowseIndex(direction: 'previous' | 'next', visible: num
 export function RouteState({
 	children,
 	title,
-	backTo = '/',
+	backTo = homeTabPath('collections'),
 	backLabel = 'All collections',
 }: {
 	children: React.ReactNode;
@@ -12940,6 +13618,20 @@ export function RouteState({
 		</section>
 	);
 }
+
+// Catch-all route. It keeps the unmatched URL in the address bar and names it,
+// instead of silently replacing it with Discover.
+export function NotFoundRoute() {
+	const { pathname } = useLocation();
+	return (
+		<RouteState title="Page not found" backTo="/discover" backLabel="Discover">
+			<p>
+				This Bazar link does not match a page: <code>{pathname}</code>. Check the address or continue browsing.
+			</p>
+		</RouteState>
+	);
+}
+
 function assetDescription(state: AssetState | null, fallback: string) {
 	if (!state) return formatTokenDescription(fallback);
 	if (typeof state.raw.description === 'string' && state.raw.description.trim()) {
@@ -12986,29 +13678,60 @@ function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
 	};
 }
 export function tokenBalanceLabel(value: string, state: AssetState) {
-	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
-	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${formatTickerLabel(
-		state.ticker,
-		state.totalSupply === '1' ? 'asset' : 'tokens'
-	)}`;
+	return formatTokenQuantity(value, state, state.totalSupply === '1' ? 'asset' : 'tokens');
 }
 function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;
 }
 export function winstonToAr(value: string) {
-	const raw = BigInt(value);
-	const whole = raw / 1_000_000_000_000n;
-	const fraction = (raw % 1_000_000_000_000n).toString().padStart(12, '0').replace(/0+$/, '');
-	return fraction ? `${whole.toLocaleString()}.${fraction}` : whole.toLocaleString();
+	return formatArAmount(value);
 }
 export function formatBytes(value: number) {
 	if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
 	return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
-export function mintErrorMessage(error: unknown) {
+/**
+ * Shown for any code the mint mapper does not know, including programmer-error
+ * TypeErrors. It never claims that nothing was submitted: collection mints and
+ * appends sign file by file, so earlier transactions may already exist.
+ */
+export const MINT_ERROR_FALLBACK =
+	'Bazar could not finish this mint. Check Transaction activity for any submitted transactions, then try again.';
+/**
+ * Fallback for a token mint. Token mints never create a Transaction activity
+ * entry (no beginUpload/recordUploadTransaction, and mintFungible writes to
+ * the activity notifier only after success), so the copy must not point there.
+ */
+export const FUNGIBLE_MINT_ERROR_FALLBACK =
+	'Bazar could not finish this token mint. If the token logo already uploaded, Bazar reuses it when you try again.';
+const MINT_LICENSE_DATA_INVALID = 'This draft or license data is invalid. Start the mint again.';
+const MINT_EARLIER_TRANSACTIONS = 'any transactions you already approved are listed in Transaction activity.';
+const FUNGIBLE_LOGO_REUSED = 'a token logo that already uploaded is reused.';
+/**
+ * Which flow a mint error comes from. 'upload': asset, collection and append
+ * mints, which list every signed transaction in Transaction activity.
+ * 'fungible': token mints, which have no such record for a failed attempt.
+ */
+export type MintErrorContext = 'upload' | 'fungible';
+export function mintErrorMessage(error: unknown, context: MintErrorContext = 'upload') {
+	const fungible = context === 'fungible';
 	const value = error instanceof Error ? error.message : String(error);
 	const friendly: Record<string, string> = {
+		'mint-collection-name-invalid': 'Enter a collection name between 1 and 80 characters.',
+		'mint-collection-size-invalid': 'Choose between 1 and 10 images for the collection.',
+		'mint-artist-invalid': 'Keep the artist name under 160 characters.',
+		'mint-album-invalid': 'Keep the album name under 160 characters.',
+		'mint-duration-invalid': 'Bazar could not read a valid duration from this audio file. Choose another file.',
+		'collection-owner-mismatch':
+			'Only the wallet that created this collection can add assets to it. Connect that wallet and try again.',
+		'wallet-returned-unsigned-transaction':
+			'Your wallet did not return a signed transaction, so this upload was not sent. Reconnect your wallet and try again.',
+		'wallet-returned-invalid-signature':
+			'Your wallet returned an invalid signature, so this upload was not sent. Reconnect your wallet and try again.',
+		'mint-udl-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-grant-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-unknown-rights-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-value-unexpected': MINT_LICENSE_DATA_INVALID,
 		'mint-name-invalid': 'Enter a name between 1 and 80 characters.',
 		'mint-description-invalid': 'Keep the description under 600 characters.',
 		'mint-file-required': 'Choose an image, MP3, or WAV file to continue.',
@@ -13038,13 +13761,28 @@ export function mintErrorMessage(error: unknown) {
 	if (value.startsWith('mint-media-unavailable-')) {
 		return 'The earlier media upload is not available through this gateway yet. Try finishing the mint later.';
 	}
-	return friendly[value] ?? value.replaceAll('-', ' ');
+	const earlier = fungible ? FUNGIBLE_LOGO_REUSED : MINT_EARLIER_TRANSACTIONS;
+	if (value === 'mint-upload-network') {
+		// Every retry lost its connection, so the POST may still have reached the gateway: no claim either way.
+		return fungible
+			? `The gateway did not accept the transaction. Check your connection and try again; ${FUNGIBLE_LOGO_REUSED}`
+			: 'The gateway did not accept the upload. Check your connection and try again; your earlier uploads are kept.';
+	}
+	if (/^mint-upload-\d+$/.test(value)) {
+		return fungible
+			? `Your wallet signed this transaction, but the Arweave gateway did not accept it, so as far as Bazar can tell it was not published or charged. Try again; ${FUNGIBLE_LOGO_REUSED}`
+			: 'Your wallet signed this upload, but the Arweave gateway did not accept it, so as far as Bazar can tell it was not published or charged. Its transaction ID is listed in Transaction activity. Check your connection and try again; your earlier uploads are kept.';
+	}
+	if (/^mint-price-(?:\d+|invalid)$/.test(value)) {
+		return `Arweave network fees could not be checked. Try again in a moment; ${earlier}`;
+	}
+	if (/^wallet-balance-(?:\d+|invalid)$/.test(value)) {
+		return `Your AR balance could not be checked. Try again in a moment; ${earlier}`;
+	}
+	return friendly[value] ?? (fungible ? FUNGIBLE_MINT_ERROR_FALLBACK : MINT_ERROR_FALLBACK);
 }
 function arToWinston(value: string) {
-	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)
-		throw new Error('Enter a positive AR amount.');
-	const [whole, decimals = ''] = value.split('.');
-	return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
+	return parseArAmount(value);
 }
 
 function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
@@ -13068,25 +13806,40 @@ const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = '') {
 	if (kind === 'sell') {
-		if (!value.trim()) return 'Enter the AR price for this asset.';
-		if (/^0(?:\.0*)?$/.test(value)) return 'Enter a price of at least 0.000000000001 AR.';
+		const price = value.trim();
+		if (!price) return 'Enter the AR price for this asset.';
+		if (/^0(?:\.0*)?$/.test(price)) return 'Enter a price of at least 0.000000000001 AR.';
+		let winston: bigint;
 		try {
-			if (BigInt(arToWinston(value)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+			winston = BigInt(arToWinston(price));
 		} catch {
 			return 'Enter a valid AR amount with no more than 12 decimal places.';
 		}
+		if (winston < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+		// The same winston value and cap makeOffer checks, before any network work.
+		if (winston > MAXIMUM_ASSET_OFFER_PRICE) return ASSET_OFFER_PRICE_CAP_ERROR;
 	}
 	if (kind === 'transfer') {
 		const recipient = value.trim();
 		if (!recipient) return 'Enter the recipient’s 43-character Arweave address.';
 		if (!ARWEAVE_ADDRESS.test(recipient)) return 'Enter a valid 43-character Arweave address.';
+		if (!isWalletAddress(recipient)) return NONCANONICAL_WALLET_ADDRESS_MESSAGE;
 		if (owner && recipient === owner)
 			return 'Choose a different wallet. An asset cannot be transferred to its current owner.';
 	}
 	return '';
 }
 export function atomicOperationValue(kind: Operation['kind'], value: string) {
-	return kind === 'transfer' ? value.trim() : value;
+	return kind === 'transfer' || kind === 'sell' ? value.trim() : value;
+}
+/** The listing price as it will be recorded on-chain ('0.50' -> '0.5 AR'),
+ * falling back to the typed value while it is not yet a valid price. */
+export function atomicListingPriceLabel(value: string) {
+	try {
+		return `${winstonToAr(arToWinston(value))} AR`;
+	} catch {
+		return `${value.trim()} AR`;
+	}
 }
 export function atomicOrderCanBeBought(order: SwapOrder | null): order is SwapOrder {
 	return order?.status === 'open';
@@ -13116,6 +13869,24 @@ export function externalReservationTransaction(
 				ARWEAVE_ADDRESS.test(event.id)
 		) ?? null
 	);
+}
+
+export const SAVED_ACTION_CHECK_FAILED_NOTICE =
+	'Could not check this browser for a saved action. It will be checked again when the asset refreshes.';
+
+// The saved-action check shares the asset's single recovery notice. A failure
+// is appended to whatever the check already reported, and the next completed
+// check removes it again without touching the other notice.
+export function savedActionCheckNotice(current: string, outcome: 'checked' | 'failed'): string {
+	const suffix = ` ${SAVED_ACTION_CHECK_FAILED_NOTICE}`;
+	const base =
+		current === SAVED_ACTION_CHECK_FAILED_NOTICE
+			? ''
+			: current.endsWith(suffix)
+			? current.slice(0, -suffix.length)
+			: current;
+	if (outcome === 'checked') return base;
+	return base ? `${base}${suffix}` : SAVED_ACTION_CHECK_FAILED_NOTICE;
 }
 
 export function atomicPurchaseRecoveryStatus(
@@ -13187,22 +13958,44 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
 }
 
-function atomicOperationActionLabel(operation: Operation, value: string) {
-	if (operation.kind === 'buy') return `Buy for ${winstonToAr(operation.order.asking)} AR`;
-	if (operation.kind === 'sell') return value ? `List for ${value} AR` : 'Enter a listing price';
+export function atomicOperationActionLabel(operation: Operation, value: string) {
+	if (operation.kind === 'buy') return operationLabel('buy');
+	if (operation.kind === 'sell')
+		return value.trim() ? `List for ${atomicListingPriceLabel(value)}` : 'Enter a listing price';
 	if (operation.kind === 'cancel') return 'Cancel listing and return asset';
-	return ARWEAVE_ADDRESS.test(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
+	return isWalletAddress(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
 }
 
-function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
+export function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
 	if (kind === 'buy') return { title: 'Purchase complete', detail: `${assetName} is now owned by ${short(owner)}.` };
-	if (kind === 'sell') return { title: 'Listing is live', detail: `${assetName} is offered for ${value} AR.` };
+	if (kind === 'sell')
+		return { title: 'Listing is live', detail: `${assetName} is offered for ${atomicListingPriceLabel(value)}.` };
 	if (kind === 'cancel')
 		return {
 			title: 'Listing cancelled',
 			detail: 'The asset is back in your liquid balance and is no longer for sale.',
 		};
 	return { title: 'Transfer complete', detail: `${assetName} now belongs to ${short(value)}.` };
+}
+/** Dialog loading copy while working before a transaction (and its sync steps) exists. */
+export function atomicOperationPreparingLabel(resuming: boolean) {
+	return resuming ? 'Recovering the signed transaction…' : 'Preparing secure wallet approvals…';
+}
+/**
+ * Activity status for the working phase. Explicit status (buy's lifecycle copy) wins; otherwise
+ * confirmations are only claimed once a transaction exists, and the pre-signature window mirrors
+ * the dialog's own loading label.
+ */
+export function atomicOperationWorkingStatus({
+	workingStatus,
+	hasSteps,
+	resuming,
+}: {
+	workingStatus: string;
+	hasSteps: boolean;
+	resuming: boolean;
+}) {
+	return workingStatus || (hasSteps ? 'Watching Arweave confirmations…' : atomicOperationPreparingLabel(resuming));
 }
 function operationLabel(kind: Operation['kind']) {
 	return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Cancel listing', transfer: 'Transfer asset' }[kind];
@@ -13244,14 +14037,118 @@ export function atomicPurchaseFailureStage(state: PurchaseState | null) {
 }
 export function atomicPurchaseFailureCode(state: PurchaseState | null) {
 	if (!state?.error?.code) return null;
-	return state.error.code === 'unexpected' ? state.error.message || state.error.code : state.error.code;
+	return purchaseFailureCode(state);
 }
+const TERMINAL_RESERVATION_FAILURE_CODES = [
+	'registration-dispatch-rejected',
+	'asset-order-reservation-rejected',
+	'asset-order-reservation-expired',
+];
 export function atomicPurchaseHasTerminalReservationFailure(state: PurchaseState | null) {
-	return [
-		'registration-dispatch-rejected',
-		'asset-order-reservation-rejected',
-		'asset-order-reservation-expired',
-	].includes(atomicPurchaseFailureCode(state) ?? '');
+	return TERMINAL_RESERVATION_FAILURE_CODES.includes(atomicPurchaseFailureCode(state) ?? '');
+}
+
+/** What each button in the NFT operation dialog's error footer does. */
+export type AtomicOperationRecoveryAction =
+	| 'view-updated-asset'
+	| 'view-current-listing'
+	| 'start-fresh-purchase'
+	| 'resign-seller-payment'
+	| 'restart-purchase'
+	| 'retry-not-sent'
+	| 'discard-not-sent'
+	| 'discard-rejected-signature'
+	| 'resume-signed-transaction'
+	| 'return-to-form';
+
+export type AtomicOperationRecoveryOption = {
+	action: AtomicOperationRecoveryAction;
+	label: string;
+	danger?: boolean;
+};
+
+export type AtomicOperationRecovery = {
+	primary: AtomicOperationRecoveryOption;
+	secondary?: AtomicOperationRecoveryOption;
+	note?: string;
+	/** Whether the failed purchase's stage, seller, order and receipts are shown above the actions. */
+	purchaseReceipt: boolean;
+};
+
+/**
+ * The NFT operation dialog's error state -> recovery actions. Precedence: a changed market wins; then
+ * purchases (whose dispatch rejections are also classified 'transaction-rejected') by purchase error
+ * code; then a saved signature that never left (retry or discard), a rejected signature (discard and
+ * sign again), any other saved signature (resume), and finally a return to the form.
+ */
+export function atomicOperationRecovery(input: {
+	kind: Operation['kind'];
+	failureKind: MarketplaceOperationFailure | null;
+	hasTransaction: boolean;
+	purchaseFailureCode: string | null;
+	recoverable: boolean;
+}): AtomicOperationRecovery {
+	const { kind, failureKind, hasTransaction, purchaseFailureCode, recoverable } = input;
+	const only = (primary: AtomicOperationRecoveryOption, purchaseReceipt = false): AtomicOperationRecovery => ({
+		primary,
+		purchaseReceipt,
+	});
+	if (failureKind === 'market-state-changed') {
+		return only({ action: 'view-updated-asset', label: 'View updated asset' });
+	}
+	if (kind === 'buy') {
+		if (purchaseFailureCode === 'registration-dispatch-rejected') {
+			return only({ action: 'view-current-listing', label: 'View current listing' }, true);
+		}
+		if (TERMINAL_RESERVATION_FAILURE_CODES.includes(purchaseFailureCode ?? '')) {
+			return only({ action: 'start-fresh-purchase', label: 'Start a new purchase' }, true);
+		}
+		if (purchaseFailureCode === 'payment-dispatch-rejected') {
+			return only({ action: 'resign-seller-payment', label: 'Sign a replacement seller payment' }, true);
+		}
+		return only({ action: 'restart-purchase', label: recoverable ? 'Continue saved purchase' : 'Try again' }, true);
+	}
+	if (failureKind === 'transaction-not-sent' && hasTransaction) {
+		const copy = notSentRecoveryCopy(kind);
+		return {
+			primary: { action: 'retry-not-sent', label: copy.retry },
+			secondary: { action: 'discard-not-sent', label: copy.discard, danger: true },
+			note: NOT_SENT_RECOVERY_NOTE,
+			purchaseReceipt: false,
+		};
+	}
+	if (failureKind === 'transaction-rejected' && hasTransaction) {
+		return only({
+			action: 'discard-rejected-signature',
+			label: 'Discard rejected signature and sign again',
+			danger: true,
+		});
+	}
+	if (hasTransaction) return only({ action: 'resume-signed-transaction', label: 'Resume the signed transaction' });
+	return only({ action: 'return-to-form', label: 'Try again' });
+}
+
+/**
+ * Discards a signed NFT listing, cancellation or transfer whose dispatch never left, so it is not
+ * resumed on the next visit. Returns the message to show when another tab already changed the saved
+ * record, or null once the record and its signature are gone.
+ */
+export function discardUnsentAtomicSignature(
+	storage: Pick<Storage, 'getItem' | 'removeItem'>,
+	assetId: string,
+	owner: string,
+	kind: SignedOperationKind,
+	transactionId: string
+) {
+	return removeWalletRecoveryAndSignatures<any>(
+		storage,
+		operationStorageKey(assetId, owner),
+		(record) => record?.txId === transactionId,
+		[transactionId],
+		owner
+	)
+		? null
+		: notSentRecoveryCopy(kind).changed;
 }
 export function assetStateErrorMessage(error: unknown) {
 	const value = error instanceof Error ? error.message : String(error);

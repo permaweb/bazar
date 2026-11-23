@@ -13,7 +13,7 @@ import {
 import { createArweaveClient } from 'helpers/arweave';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
 import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
-import { accountAddress, sameAccount } from 'helpers/host-account';
+import { accountAddress, isWalletAddress, sameAccount } from 'helpers/host-account';
 
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
@@ -31,16 +31,15 @@ import {
 	waitForAssetState,
 } from './asset-marketplace';
 import { acquireAssetObserverNetwork } from './asset-observers';
-import { filledOrder } from './order-matching';
+import { filledOrder, MAXIMUM_ASSET_OFFER_PRICE } from './order-matching';
+
+export { MAXIMUM_ASSET_OFFER_PRICE };
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
 export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable';
 /** New listings impose no reservation reward floor; Arweave network rewards still apply. */
 export const DEFAULT_REGISTRATION_FEE = 0n;
-export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
-/** No asset offer may exceed the maximum 66 million AR supply. */
-export const MAXIMUM_ASSET_OFFER_PRICE = 66_000_000_000_000_000_000n;
 const DEFAULT_OFFER_DEADLINE = 20;
 const SIGNATURE_WINDOW_BLOCKS = 40;
 const PRICE_REQUEST_CONCURRENCY = 8;
@@ -105,6 +104,13 @@ export type PurchaseCostEstimate = {
 
 export type FungibleTransferBaseline = {
 	startingSlot: number;
+};
+
+/** The order a make-offer must open, keyed by its own transaction id. */
+export type ExactOfferExpectation = {
+	seller: string;
+	quantity: string;
+	asking: string;
 };
 
 async function mapBounded<T, Result>(
@@ -301,7 +307,7 @@ export class AssetTransactionClient {
 		expectedSigner?: string,
 		signal?: AbortSignal
 	): Promise<PreparedTransaction> {
-		if (!ADDRESS.test(processId) || !ADDRESS.test(recipient)) {
+		if (!ADDRESS.test(processId) || !isWalletAddress(recipient)) {
 			throw new TypeError('invalid-asset-transfer');
 		}
 		assertTokenQuantity(quantity);
@@ -394,6 +400,36 @@ export class AssetTransactionClient {
 				{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
 			)
 		).state;
+	}
+
+	/**
+	 * Decide a listing from its exact schedule slot, as cancellations and
+	 * transfers are: the make-offer either opened the expected order at that
+	 * slot, or the token process rejected it ('asset-offer-rejected'). Records
+	 * saved without a slot baseline keep using waitForOfferAcceptance.
+	 */
+	async waitForExactOffer(
+		processId: string,
+		transactionId: string,
+		expected: ExactOfferExpectation,
+		baseline: FungibleTransferBaseline,
+		signal?: AbortSignal
+	): Promise<AssetState> {
+		if (![processId, transactionId, expected.seller].every((value) => ADDRESS.test(value))) {
+			throw new TypeError('invalid-asset-offer-verification');
+		}
+		assertTokenQuantity(expected.quantity);
+		assertTokenQuantity(expected.asking);
+		return this.#waitForExactScheduledAction(
+			processId,
+			transactionId,
+			baseline,
+			(assignment) => assertExactOfferAssignment(assignment, processId, transactionId, expected),
+			(after, assignment) => hasExactOfferOrder(after, assignment, transactionId, expected),
+			'asset-offer-proof-mismatch',
+			'asset-offer-rejected',
+			signal
+		);
 	}
 
 	async waitForExactCancellation(
@@ -1094,6 +1130,12 @@ export class AssetTransactionClient {
 		if (typeof signedReward !== 'string' || !/^\d+$/.test(signedReward)) {
 			throw new Error('wallet-modified-transaction-fields');
 		}
+		// The reward floor is part of the intent: a reservation signed below an
+		// older order's minimum fee is rejected by the token device, so refuse it
+		// here before it is persisted or dispatched.
+		if (fields.rewardFloor && BigInt(signedReward) < BigInt(fields.rewardFloor)) {
+			throw new Error('wallet-modified-transaction-fields');
+		}
 		// Wander finalizes the network reward as part of the signed fields it
 		// returns. Keep the business intent strict, then make that exact signed
 		// reward immutable for persistence, recovery, and dispatch.
@@ -1298,6 +1340,65 @@ export function fungibleTransferAppliedAtSlot(
 ) {
 	assertExactFungibleTransferAssignment(assignment, processId, transactionId, sender, recipient, quantity);
 	return hasExactFungibleTransferReceipt(after, assignment, sender, recipient, quantity);
+}
+
+export function offerAppliedAtSlot(
+	after: AssetState,
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	expected: ExactOfferExpectation
+): boolean {
+	assertExactOfferAssignment(assignment, processId, transactionId, expected);
+	return hasExactOfferOrder(after, assignment, transactionId, expected);
+}
+
+export function assertExactOfferAssignment(
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	expected: ExactOfferExpectation
+): void {
+	const body = record(assignment.raw.body);
+	const commitment = record(record(body?.commitments)?.[transactionId]);
+	const committed = Array.isArray(commitment?.committed)
+		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
+		: new Set<string>();
+	if (
+		!assignment.transactionIds.includes(transactionId) ||
+		assignment.raw.process !== processId ||
+		body?.target !== processId ||
+		body?.action !== 'make-offer' ||
+		wireAmount(body?.['offer-quantity']) !== expected.quantity ||
+		wireAmount(body?.asking) !== expected.asking ||
+		wireAmount(body?.['minimum-fee']) === null ||
+		commitment?.['commitment-device'] !== 'tx@1.0' ||
+		!sameAccount(commitment.committer, expected.seller) ||
+		commitment['field-target'] !== processId ||
+		!['action', 'offer-quantity', 'asking', 'minimum-fee', 'target'].every((field) => committed.has(field))
+	)
+		throw new Error('asset-offer-proof-mismatch');
+}
+
+/** The make-offer applied iff its exact slot opened the signed order, fee included. */
+export function hasExactOfferOrder(
+	after: AssetState,
+	assignment: ProcessAssignment,
+	transactionId: string,
+	expected: ExactOfferExpectation
+): boolean {
+	if (assetStateSlot(after) !== assignment.slot) return false;
+	const order = after.orders[transactionId];
+	const minimumFee = wireAmount(record(assignment.raw.body)?.['minimum-fee']);
+	return Boolean(
+		order &&
+			minimumFee !== null &&
+			order.status === 'open' &&
+			sameAccount(order.creator, expected.seller) &&
+			order.quantity === expected.quantity &&
+			order.asking === expected.asking &&
+			order.minimumFee === minimumFee
+	);
 }
 
 export function cancelAppliedAtSlot(

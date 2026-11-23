@@ -41,7 +41,6 @@ type Marker = {
 export type Infinity3DLane = {
 	observerUrl: string;
 	label: string;
-	detail: string;
 	statusLabel: string;
 	stages: ObserverTooltipStage[];
 	progress: number;

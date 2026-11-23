@@ -168,15 +168,25 @@ export class AtomicAssetUploader {
 		const serializable =
 			typeof transaction.toJSON === 'function' ? transaction.toJSON() : JSON.parse(JSON.stringify(transaction));
 		serializable.id = transaction.id;
+		// The transaction is already signed with a fixed id, so re-posting it is
+		// idempotent (the gateway answers 208 for a tx it already holds). A dropped
+		// connection is retried like a bad status; abort still stops at once.
 		for (let attempt = 1; attempt <= this.#maxUploadAttempts; attempt += 1) {
-			const response = await this.#fetch(`${this.#gateway}/tx`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(serializable),
-				signal,
-			});
-			if ([200, 202, 208].includes(response.status)) return;
-			if (attempt === this.#maxUploadAttempts) throw new Error(`mint-upload-${response.status}`);
+			let failure: string;
+			try {
+				const response = await this.#fetch(`${this.#gateway}/tx`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(serializable),
+					signal,
+				});
+				if ([200, 202, 208].includes(response.status)) return;
+				failure = `mint-upload-${response.status}`;
+			} catch (cause) {
+				if (signal?.aborted || isAbortError(cause)) throw cause;
+				failure = 'mint-upload-network';
+			}
+			if (attempt === this.#maxUploadAttempts) throw new Error(failure);
 			await delay(attempt * 750, signal);
 		}
 	}
@@ -216,8 +226,13 @@ function byteLength(value: AssetUploadData): number {
 	return typeof value === 'string' ? new TextEncoder().encode(value).byteLength : value.byteLength;
 }
 
+function isAbortError(error: unknown): boolean {
+	return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError';
+}
+
 function delay(duration: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
+		if (signal?.aborted) return reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
 		const timer = setTimeout(resolve, duration);
 		signal?.addEventListener(
 			'abort',

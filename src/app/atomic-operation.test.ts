@@ -5,8 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { liveOrderOfAsset, parseAssetState } from 'api/asset-marketplace';
 
 import {
+	atomicListingPriceLabel,
+	atomicOperationActionLabel,
 	AtomicOperationErrorAlert,
 	atomicOperationFormError,
+	atomicOperationRecovery,
+	atomicOperationResult,
 	atomicOperationStateError,
 	atomicOperationValue,
 	atomicOrderCanBeBought,
@@ -16,10 +20,13 @@ import {
 	atomicPurchaseRecoveryStatus,
 	AtomicPurchaseSequence,
 	atomicPurchaseSequence,
+	discardUnsentAtomicSignature,
 	externalReservationTransaction,
 	pendingListingMessage,
 	purchaseStatusMessage,
+	winstonToAr,
 } from './App';
+import { operationStorageKey } from './operation-session';
 import { purchaseObservationResumeState } from './purchase-observation-retry';
 
 describe('atomic operation error semantics', () => {
@@ -62,7 +69,45 @@ describe('atomic operation error semantics', () => {
 	});
 });
 
+function withGermanBigIntGrouping(run: () => void) {
+	const original = BigInt.prototype.toLocaleString;
+	// de-DE groups with '.', which must never meet the fixed '.' decimal.
+	BigInt.prototype.toLocaleString = function (this: bigint) {
+		return this.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+	};
+	try {
+		run();
+	} finally {
+		BigInt.prototype.toLocaleString = original;
+	}
+}
+
 describe('atomic asset operation validation', () => {
+	it('formats AR prices with fixed comma grouping in every locale', () => {
+		withGermanBigIntGrouping(() => {
+			expect(winstonToAr('1234500000000000')).toBe('1,234.5');
+			expect(winstonToAr('1000000000000000')).toBe('1,000');
+		});
+	});
+
+	it('accepts a pasted AR price with surrounding whitespace', () => {
+		expect(atomicOperationValue('sell', ' 0.25 ')).toBe('0.25');
+		expect(atomicOperationFormError('sell', ' 0.25 ')).toBe('');
+		expect(atomicOperationFormError('sell', '0.25 ')).toBe('');
+		expect(atomicOperationFormError('sell', ' 0.0 ')).toContain('at least');
+	});
+
+	it('echoes the listing price as it is recorded on-chain', () => {
+		const sell = { kind: 'sell' } as any;
+		expect(atomicListingPriceLabel(' 0.50 ')).toBe('0.5 AR');
+		expect(atomicOperationActionLabel(sell, ' 1234.50 ')).toBe('List for 1,234.5 AR');
+		expect(atomicOperationActionLabel(sell, ' ')).toBe('Enter a listing price');
+		expect(atomicOperationResult('sell', 'Asset', '0.50')).toEqual({
+			title: 'Listing is live',
+			detail: 'Asset is offered for 0.5 AR.',
+		});
+	});
+
 	it('requires a positive AR price with at most twelve decimals', () => {
 		expect(atomicOperationFormError('sell', '')).toContain('AR price');
 		expect(atomicOperationFormError('sell', '0')).toContain('at least');
@@ -70,10 +115,41 @@ describe('atomic asset operation validation', () => {
 		expect(atomicOperationFormError('sell', '0.0000000000001')).toContain('valid AR amount');
 	});
 
+	it('enforces the makeOffer price cap inline, before any network work', () => {
+		expect(atomicOperationFormError('sell', '66000000')).toBe('');
+		expect(atomicOperationFormError('sell', ' 66000000.000000000000 ')).toBe('');
+		expect(atomicOperationFormError('sell', '66000000.000000000001')).toBe(
+			'Enter a price no higher than 66,000,000 AR.'
+		);
+		expect(atomicOperationFormError('sell', '66000001')).toBe('Enter a price no higher than 66,000,000 AR.');
+		expect(atomicOperationFormError('sell', '100000000')).toBe('Enter a price no higher than 66,000,000 AR.');
+	});
+
 	it('requires an exact Arweave recipient before transfer', () => {
 		expect(atomicOperationFormError('transfer', '')).toContain('43-character');
 		expect(atomicOperationFormError('transfer', 'too-short')).toContain('valid');
 		expect(atomicOperationFormError('transfer', 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc')).toBe('');
+	});
+
+	it('rejects a 43-character recipient whose last character makes it no wallet address', () => {
+		const mistyped = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB';
+		expect(atomicOperationFormError('transfer', mistyped)).toBe(
+			'This is not a valid Arweave wallet address. Check the last characters.'
+		);
+		expect(atomicOperationFormError('transfer', ` ${mistyped}\n`)).toContain('Check the last characters');
+		expect(atomicOperationFormError('transfer', 'not-an-address')).toBe(
+			'Enter a valid 43-character Arweave address.'
+		);
+	});
+
+	it('only offers "Send to" for a recipient the form accepts', () => {
+		const transfer = { kind: 'transfer' } as Parameters<typeof atomicOperationActionLabel>[0];
+		expect(atomicOperationActionLabel(transfer, 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB')).toBe(
+			'Enter a recipient'
+		);
+		expect(atomicOperationActionLabel(transfer, ' BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc ')).toMatch(
+			/^Send to BLyLiO.+KONwc$/
+		);
 	});
 
 	it('rejects a transfer back to the current owner', () => {
@@ -237,6 +313,39 @@ describe('atomic purchase failure trace', () => {
 		expect(sequence).toContain('aria-label="Asset purchase transaction sequence"');
 		expect(sequence).toContain('Reserve asset');
 		expect(sequence).toContain('Verify ownership');
+		expect(sequence.match(/aria-current="step"/g)).toHaveLength(1);
+		expect(sequence.match(/<li[^>]*aria-current="step"[^>]*>.*?<\/li>/)?.[0]).toContain('Pay seller');
+		expect(sequence.match(/<span class="sr-only">, completed<\/span>/g)).toHaveLength(2);
+		expect(sequence.match(/<span class="sr-only">, in progress<\/span>/g)).toHaveLength(1);
+		expect(sequence.match(/<span class="sr-only">, not started<\/span>/g)).toHaveLength(1);
+	});
+
+	it('names every NFT purchase step state for screen readers as the purchase advances', () => {
+		const stepStatus = (stage: string) =>
+			Array.from(
+				renderToStaticMarkup(React.createElement(AtomicPurchaseSequence, { state: { stage } as any })).matchAll(
+					/<strong>([^<]+)<\/strong><span class="sr-only">, ([^<]+)<\/span>/g
+				),
+				(match) => `${match[1]}: ${match[2]}`
+			);
+
+		expect(stepStatus('signing')).toEqual([
+			'Sign reservation: in progress',
+			'Reserve asset: not started',
+			'Pay seller: not started',
+			'Verify ownership: not started',
+		]);
+		expect(stepStatus('ownership-verifying')).toEqual([
+			'Sign reservation: completed',
+			'Reserve asset: completed',
+			'Pay seller: completed',
+			'Verify ownership: in progress',
+		]);
+		const complete = renderToStaticMarkup(
+			React.createElement(AtomicPurchaseSequence, { state: { stage: 'complete' } as any })
+		);
+		expect(stepStatus('complete').every((entry) => entry.endsWith(': completed'))).toBe(true);
+		expect(complete).not.toContain('aria-current');
 	});
 
 	it('keeps reservation signing active until the first NFT transaction is prepared', () => {
@@ -326,5 +435,147 @@ describe('atomic purchase failure trace', () => {
 		expect(atomicPurchaseFailureCode(expired)).toBe('asset-order-reservation-expired');
 		expect(atomicPurchaseHasTerminalReservationFailure(expired)).toBe(true);
 		expect(atomicPurchaseHasTerminalReservationFailure(paymentRejected)).toBe(false);
+	});
+});
+
+describe('atomic operation error recovery', () => {
+	const base = {
+		failureKind: 'other' as const,
+		hasTransaction: false,
+		purchaseFailureCode: null,
+		recoverable: false,
+	};
+	const actions = (recovery: ReturnType<typeof atomicOperationRecovery>) => [
+		recovery.primary.action,
+		recovery.secondary?.action,
+	];
+
+	it('sends a changed market to the updated asset before any other recovery', () => {
+		for (const kind of ['sell', 'buy', 'cancel', 'transfer'] as const) {
+			const recovery = atomicOperationRecovery({
+				...base,
+				kind,
+				failureKind: 'market-state-changed',
+				hasTransaction: true,
+				purchaseFailureCode: 'payment-dispatch-rejected',
+				recoverable: true,
+			});
+			expect(recovery).toEqual({
+				primary: { action: 'view-updated-asset', label: 'View updated asset' },
+				purchaseReceipt: false,
+			});
+		}
+	});
+
+	it('offers retry and discard for a signed listing, cancellation or transfer that was never sent', () => {
+		for (const [kind, noun] of [
+			['sell', 'listing'],
+			['cancel', 'cancellation'],
+			['transfer', 'transfer'],
+		] as const) {
+			const recovery = atomicOperationRecovery({
+				...base,
+				kind,
+				failureKind: 'transaction-not-sent',
+				hasTransaction: true,
+				recoverable: true,
+			});
+			expect(recovery).toEqual({
+				primary: { action: 'retry-not-sent', label: `Retry ${noun}` },
+				secondary: { action: 'discard-not-sent', label: `Discard ${noun}`, danger: true },
+				note: 'No transaction was submitted. Retry this signature or discard it to start over.',
+				purchaseReceipt: false,
+			});
+		}
+		expect(
+			actions(atomicOperationRecovery({ ...base, kind: 'sell', failureKind: 'transaction-not-sent' }))
+		).toEqual(['return-to-form', undefined]);
+	});
+
+	it('keeps rejected, saved and unsigned failures on their existing actions', () => {
+		expect(
+			atomicOperationRecovery({
+				...base,
+				kind: 'cancel',
+				failureKind: 'transaction-rejected',
+				hasTransaction: true,
+			}).primary
+		).toEqual({
+			action: 'discard-rejected-signature',
+			label: 'Discard rejected signature and sign again',
+			danger: true,
+		});
+		expect(atomicOperationRecovery({ ...base, kind: 'sell', hasTransaction: true }).primary).toEqual({
+			action: 'resume-signed-transaction',
+			label: 'Resume the signed transaction',
+		});
+		expect(
+			atomicOperationRecovery({ ...base, kind: 'transfer', failureKind: 'transaction-rejected' }).primary
+		).toEqual({ action: 'return-to-form', label: 'Try again' });
+		expect(atomicOperationRecovery({ ...base, kind: 'transfer', failureKind: null }).primary.action).toBe(
+			'return-to-form'
+		);
+	});
+
+	it('routes purchase failures classified as rejected to the purchase recovery for their code', () => {
+		const buy = (purchaseFailureCode: string | null, recoverable = false) =>
+			atomicOperationRecovery({
+				...base,
+				kind: 'buy',
+				failureKind: 'transaction-rejected',
+				hasTransaction: true,
+				purchaseFailureCode,
+				recoverable,
+			});
+		expect(buy('registration-dispatch-rejected')).toEqual({
+			primary: { action: 'view-current-listing', label: 'View current listing' },
+			purchaseReceipt: true,
+		});
+		expect(buy('asset-order-reservation-rejected').primary.action).toBe('start-fresh-purchase');
+		expect(buy('asset-order-reservation-expired').primary).toEqual({
+			action: 'start-fresh-purchase',
+			label: 'Start a new purchase',
+		});
+		expect(buy('payment-dispatch-rejected').primary).toEqual({
+			action: 'resign-seller-payment',
+			label: 'Sign a replacement seller payment',
+		});
+		expect(buy('asset-purchase-rejected', true).primary).toEqual({
+			action: 'restart-purchase',
+			label: 'Continue saved purchase',
+		});
+		expect(buy(null).primary).toEqual({ action: 'restart-purchase', label: 'Try again' });
+		expect(
+			atomicOperationRecovery({ ...base, kind: 'buy', failureKind: 'transaction-not-sent', hasTransaction: true })
+				.primary.action
+		).toBe('restart-purchase');
+	});
+
+	it('discards an unsent NFT signature unless another tab changed the saved record', () => {
+		const owner = 'W'.repeat(43);
+		const txId = 'T'.repeat(43);
+		const key = operationStorageKey('asset', owner);
+		const signatureKey = `bazar-signed-transaction:${txId}`;
+		const seed = (recordTxId: string) =>
+			new Map<string, string>([
+				[key, JSON.stringify({ kind: 'sell', txId: recordTxId })],
+				[signatureKey, JSON.stringify({ expectedSigner: owner, transaction: { id: txId } })],
+			]);
+		const storageOf = (values: Map<string, string>) => ({
+			getItem: (candidate: string) => values.get(candidate) ?? null,
+			removeItem: (candidate: string) => void values.delete(candidate),
+		});
+
+		const values = seed(txId);
+		expect(discardUnsentAtomicSignature(storageOf(values), 'asset', owner, 'sell', txId)).toBeNull();
+		expect(values.has(key)).toBe(false);
+		expect(values.has(signatureKey)).toBe(false);
+
+		const changed = seed('N'.repeat(43));
+		expect(discardUnsentAtomicSignature(storageOf(changed), 'asset', owner, 'sell', txId)).toBe(
+			'This saved listing changed in another tab. Close this panel and review the active action.'
+		);
+		expect(changed.has(key)).toBe(true);
+		expect(changed.has(signatureKey)).toBe(true);
 	});
 });

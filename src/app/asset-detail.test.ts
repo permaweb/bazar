@@ -188,4 +188,25 @@ describe('asset detail fallbacks', () => {
 			)
 		).toEqual([event('newest', 3), event('overlap', 2), event('oldest', 1)]);
 	});
+
+	it('keeps mined block, time and actor when an older page repeats the row undated', () => {
+		const mined = {
+			id: 'offer',
+			processId: assetId,
+			action: 'make-offer' as const,
+			actor: 'A'.repeat(43),
+			height: 1500,
+			timestamp: 1_700_000_000,
+			asking: '1',
+		};
+		const undated = { id: mined.id, processId: assetId, action: mined.action, actor: '', height: 0, timestamp: 0 };
+		const newer = { ...mined, id: 'newer', height: 1400, timestamp: 1_699_000_000 };
+		expect(mergeAssetActivityPages([mined, newer], [undated])).toEqual([mined, newer]);
+		// The opposite order still lets the older page's mined copy fill a pending current row.
+		expect(mergeAssetActivityPages([undated], [mined])[0]).toMatchObject({
+			actor: mined.actor,
+			height: 1500,
+			timestamp: 1_700_000_000,
+		});
+	});
 });

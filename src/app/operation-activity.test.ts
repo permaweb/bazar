@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
+
+import type { AssetOperationPhase } from 'components/AssetOperationStatus';
+import type { TransactionDialogPhase } from 'components/TransactionDialogControl';
 
 import {
 	atomicPurchaseRecoveryCanBeDiscarded,
+	backgroundOperationOutcome,
 	deriveFungibleOperationActivities,
 	deriveOperationActivities,
 	discoverFungibleOperationActivities,
@@ -12,18 +17,25 @@ import {
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
 	fungiblePurchaseRecoveryCanBeDiscarded,
+	initialOperationPhase,
 	loadFungibleOperationActivities,
 	loadOperationActivities,
 	mergeFungibleOperationActivities,
+	type Operation,
 	OPERATION_ACTIVITY_STORAGE_KEY,
 	type OperationActivity,
+	type OperationActivityPhase,
+	operationAfterProvenRejection,
+	operationConfirmationTarget,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	removeFungibleOperationActivity,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
+	settledWhileHidden,
 	upsertFungibleOperationActivity,
 } from './operation-activity';
+import { PURCHASE_REGISTRATION_TARGET } from './purchase-lifecycle';
 
 const owner = 'A'.repeat(43);
 const otherOwner = 'B'.repeat(43);
@@ -96,6 +108,16 @@ function activity(overrides: Partial<OperationActivity> = {}): OperationActivity
 	};
 }
 
+const savedListing = {
+	signer: owner,
+	txId: 'T'.repeat(43),
+	kind: 'sell',
+	value: '0.5',
+	asset: { id: 'asset-1', name: 'Permanent Strata #001' },
+	activityKind: 'atomic',
+	collectionId: 'collection-1',
+};
+
 describe('operation activity persistence', () => {
 	it('persists recoverable work while omitting forms and completed entries', () => {
 		const storage = new MemoryStorage();
@@ -144,6 +166,29 @@ describe('operation activity persistence', () => {
 		expect(restored.status).toBe('Resuming signed transaction…');
 	});
 
+	it("carries a listing's exact-slot baseline so its outcome can be decided at that slot", () => {
+		const storage = new MemoryStorage();
+		saveOperationActivities(storage, [activity()], [owner]);
+		storage.setItem(`bazar-operation:asset-1:${owner}`, JSON.stringify({ ...savedListing, startingSlot: 42 }));
+
+		const [restored] = loadOperationActivities(storage, owner);
+		expect(restored.operation).toEqual({ kind: 'sell', resumeId: 'T'.repeat(43), startingSlot: 42, value: '0.5' });
+		expect(discoverOperationActivities(storage, owner, [])).toMatchObject([
+			{ operation: { kind: 'sell', resumeId: 'T'.repeat(43), startingSlot: 42 } },
+		]);
+	});
+
+	it.each([undefined, -1, 1.5, '42'])('keeps a listing saved with startingSlot %s on the open-order wait', (slot) => {
+		const storage = new MemoryStorage();
+		saveOperationActivities(storage, [activity()], [owner]);
+		storage.setItem(`bazar-operation:asset-1:${owner}`, JSON.stringify({ ...savedListing, startingSlot: slot }));
+
+		const [restored] = loadOperationActivities(storage, owner);
+		expect(restored.operation).not.toHaveProperty('startingSlot');
+		const [discovered] = discoverOperationActivities(storage, owner, []);
+		expect(discovered.operation).toEqual({ kind: 'sell', resumeId: 'T'.repeat(43), value: '0.5' });
+	});
+
 	it('uses the latest purchase snapshot instead of restarting the purchase from scratch', () => {
 		const storage = new MemoryStorage();
 		const order = { orderId: 'O'.repeat(43) } as SwapOrder;
@@ -158,6 +203,48 @@ describe('operation activity persistence', () => {
 		const [restored] = loadOperationActivities(storage, owner);
 		expect(restored.operation).toEqual({ kind: 'buy', order, resume: snapshot });
 		expect(restored.status).toBe('Resuming purchase…');
+	});
+
+	it('seeds asset operations at the asset depth and purchases at the registration depth', () => {
+		expect(operationConfirmationTarget({ kind: 'sell' })).toBe(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+		expect(operationConfirmationTarget({ kind: 'transfer' })).toBe(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+		expect(operationConfirmationTarget({ kind: 'cancel' })).toBe(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+		expect(operationConfirmationTarget({ kind: 'buy' })).toBe(PURCHASE_REGISTRATION_TARGET);
+	});
+
+	it('restores a cached row without a stored target to its operation depth', () => {
+		const storage = new MemoryStorage();
+		const order = { orderId: 'O'.repeat(43) } as SwapOrder;
+		const sell = { ...activity(), confirmationTarget: undefined };
+		const buy = {
+			...activity({
+				id: 'buy',
+				asset: { id: 'asset-2', name: 'Permanent Strata #002', image: 'https://arweave.net/image-2' },
+				operation: { kind: 'buy', order },
+				createdAt: 50,
+			}),
+			confirmationTarget: undefined,
+		};
+		storage.setItem(OPERATION_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, activities: [sell, buy] }));
+		storage.setItem(
+			`bazar-operation:asset-1:${owner}`,
+			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'sell', value: '0.5' })
+		);
+		storage.setItem(
+			`bazar-purchase:asset-2:${owner}`,
+			JSON.stringify({
+				buyer: owner,
+				order,
+				snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } },
+			})
+		);
+
+		expect(
+			loadOperationActivities(storage, owner).map((item) => [item.operation.kind, item.confirmationTarget])
+		).toEqual([
+			['sell', ASSET_TRANSACTION_CONFIRMATION_TARGET],
+			['buy', PURCHASE_REGISTRATION_TARGET],
+		]);
 	});
 
 	it('drops cached activity when its durable recovery record is gone', () => {
@@ -366,6 +453,64 @@ function fungibleActivity(overrides: Partial<FungibleOperationActivitySummary> =
 	};
 }
 
+describe('fresh attempt after a proven rejection', () => {
+	const rejectedId = 'R'.repeat(43);
+	const recipient = 'C'.repeat(43);
+
+	it('drops the discarded signature and its slot baseline from a cancellation but keeps the order', () => {
+		const rejected: Operation = { kind: 'cancel', order, resumeId: rejectedId, startingSlot: 42 };
+
+		const fresh = operationAfterProvenRejection(rejected);
+
+		expect(fresh).toEqual({ kind: 'cancel', order });
+		expect('resumeId' in fresh).toBe(false);
+		expect('startingSlot' in fresh).toBe(false);
+	});
+
+	it('drops the discarded signature and its slot baseline from a transfer but keeps the recipient', () => {
+		const rejected: Operation = { kind: 'transfer', resumeId: rejectedId, startingSlot: 7, value: recipient };
+
+		expect(operationAfterProvenRejection(rejected)).toEqual({ kind: 'transfer', value: recipient });
+	});
+
+	it('drops a gateway-rejected listing signature but keeps the asking price', () => {
+		const rejected: Operation = { kind: 'sell', resumeId: rejectedId, value: '1.5' };
+
+		expect(operationAfterProvenRejection(rejected)).toEqual({ kind: 'sell', value: '1.5' });
+	});
+
+	it('keeps every fungible form field so the dialog can sign a replacement in place', () => {
+		expect(
+			operationAfterProvenRejection({
+				kind: 'transfer' as const,
+				quantity: '2.5',
+				recipient,
+				startingSlot: 9,
+				resumeId: rejectedId,
+			})
+		).toEqual({ kind: 'transfer', quantity: '2.5', recipient });
+		expect(
+			operationAfterProvenRejection({
+				kind: 'sell' as const,
+				quantity: '3',
+				unitPrice: '0.25',
+				resumeId: rejectedId,
+			})
+		).toEqual({ kind: 'sell', quantity: '3', unitPrice: '0.25' });
+		expect(
+			operationAfterProvenRejection({ kind: 'cancel' as const, order, startingSlot: 3, resumeId: rejectedId })
+		).toEqual({ kind: 'cancel', order });
+	});
+
+	it('leaves the rejected operation itself untouched', () => {
+		const rejected: Operation = { kind: 'cancel', order, resumeId: rejectedId, startingSlot: 42 };
+
+		operationAfterProvenRejection(rejected);
+
+		expect(rejected).toEqual({ kind: 'cancel', order, resumeId: rejectedId, startingSlot: 42 });
+	});
+});
+
 describe('fungible operation activity persistence', () => {
 	it('uses one active slot for asset mutations and a separate slot for purchases', () => {
 		const sell = fungibleOperationActivityId('asset-1', owner, 'sell');
@@ -493,5 +638,113 @@ describe('fungible operation activity persistence', () => {
 		expect(discoverFungibleOperationActivities(storage, owner, [])).toMatchObject([
 			{ asset: { id: 'asset-1', name: 'Weave Credit' }, collectionId: 'fungible-tokens' },
 		]);
+	});
+});
+
+describe('settled-while-hidden activity transition', () => {
+	const hidden = activity({ id: 'activity-1', phase: 'working' });
+
+	it('reports a hidden operation that completes so its result can be noticed', () => {
+		expect(backgroundOperationOutcome(hidden, { phase: 'done', status: 'Listing is live' }, null)).toEqual({
+			id: 'activity-1',
+			asset: hidden.asset,
+			collectionId: 'collection-1',
+			owner,
+			operation: { kind: 'sell', value: '0.5' },
+			status: 'Listing is live',
+			phase: 'done',
+		});
+		expect(backgroundOperationOutcome(hidden, { phase: 'done', status: 'Listing is live' }, 'other')).toMatchObject(
+			{
+				phase: 'done',
+			}
+		);
+	});
+
+	it('reports a hidden operation that fails with its failure status', () => {
+		expect(
+			backgroundOperationOutcome(hidden, { phase: 'error', status: 'Payment release failed' }, null)
+		).toMatchObject({ id: 'activity-1', phase: 'error', status: 'Payment release failed' });
+	});
+
+	it('leaves a visible operation to announce its own result', () => {
+		expect(
+			backgroundOperationOutcome(hidden, { phase: 'done', status: 'Listing is live' }, 'activity-1')
+		).toBeNull();
+		expect(backgroundOperationOutcome(hidden, { phase: 'error', status: 'Failed' }, 'activity-1')).toBeNull();
+	});
+
+	it('does not notice a result the user already saw once the finished panel is deactivated', () => {
+		const seen = activity({ phase: 'done', status: 'Listing is live' });
+		expect(backgroundOperationOutcome(seen, { phase: 'done', status: 'Listing is live' }, null)).toBeNull();
+	});
+
+	it('does not notify twice when a hidden error is re-reported', () => {
+		const failed = activity({ phase: 'error', status: 'Payment release failed' });
+		expect(backgroundOperationOutcome(failed, { phase: 'error', status: 'Still failing' }, null)).toBeNull();
+	});
+
+	it('ignores non-terminal progress and unknown activities', () => {
+		expect(
+			backgroundOperationOutcome(hidden, { phase: 'working', status: 'Watching Arweave confirmations…' }, null)
+		).toBeNull();
+		expect(backgroundOperationOutcome(undefined, { phase: 'done', status: 'Listing is live' }, null)).toBeNull();
+	});
+
+	it('applies the same transition to upload panels, where tracking is not terminal', () => {
+		const upload = { id: 'upload-1', phase: 'working' };
+		expect(settledWhileHidden(upload, 'done', null)).toBe('done');
+		expect(settledWhileHidden(upload, 'error', 'another-upload')).toBe('error');
+		expect(settledWhileHidden(upload, 'tracking', null)).toBeNull();
+		expect(settledWhileHidden(upload, 'done', 'upload-1')).toBeNull();
+		expect(settledWhileHidden({ id: 'upload-1', phase: 'error' }, 'error', null)).toBeNull();
+	});
+});
+
+type SameUnion<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+describe('initialOperationPhase', () => {
+	it.each([
+		{
+			label: 'saved, no new approvals',
+			kind: 'buy',
+			hasResume: true,
+			recoveryApprovalCount: 0,
+			expected: 'working',
+		},
+		{ label: 'saved, one approval', kind: 'buy', hasResume: true, recoveryApprovalCount: 1, expected: 'approval' },
+		{ label: 'saved, two approvals', kind: 'buy', hasResume: true, recoveryApprovalCount: 2, expected: 'approval' },
+		{ label: 'not saved', kind: 'buy', hasResume: false, recoveryApprovalCount: 0, expected: 'form' },
+	] as const)('opens a buy that is $label in $expected', ({ kind, hasResume, recoveryApprovalCount, expected }) => {
+		expect(initialOperationPhase({ kind, hasResume, hasResumeId: false, recoveryApprovalCount })).toBe(expected);
+	});
+
+	it('ignores a stray resumeId on a buy, which resumes only from its purchase snapshot', () => {
+		expect(
+			initialOperationPhase({ kind: 'buy', hasResume: false, hasResumeId: true, recoveryApprovalCount: 0 })
+		).toBe('form');
+	});
+
+	it.each(['sell', 'transfer', 'cancel'] as const)(
+		'opens a %s in working with a saved signature and at the form without one',
+		(kind) => {
+			expect(initialOperationPhase({ kind, hasResume: false, hasResumeId: true, recoveryApprovalCount: 0 })).toBe(
+				'working'
+			);
+			expect(
+				initialOperationPhase({ kind, hasResume: false, hasResumeId: false, recoveryApprovalCount: 0 })
+			).toBe('form');
+			expect(initialOperationPhase({ kind, hasResume: true, hasResumeId: false, recoveryApprovalCount: 2 })).toBe(
+				'form'
+			);
+		}
+	);
+
+	it('keeps the component phase aliases identical to the shared phase union', () => {
+		const aliasesMatch: [
+			SameUnion<OperationActivityPhase, TransactionDialogPhase>,
+			SameUnion<OperationActivityPhase, AssetOperationPhase>
+		] = [true, true];
+		expect(aliasesMatch).toEqual([true, true]);
 	});
 });

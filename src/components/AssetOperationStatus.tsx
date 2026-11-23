@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, ChevronRight, LoaderCircle } from 'lucide-react';
+import { AlertCircle, Check, ChevronRight, LoaderCircle } from 'lucide-react';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
@@ -14,7 +14,9 @@ export function assetOperationProgressTitle(kind: AssetOperationKind, phase: Ass
 		cancel: 'Listing cancellation',
 		transfer: 'Transfer',
 	}[kind];
-	return phase === 'error' ? `${subject} needs attention` : `${subject} in progress`;
+	if (phase === 'error') return `${subject} needs attention`;
+	if (phase === 'done') return `${subject} complete`;
+	return `${subject} in progress`;
 }
 
 export function assetOperationPendingActionLabel(kind: AssetOperationKind) {
@@ -40,6 +42,8 @@ export function AssetOperationStatus({ kind, phase, status, onView }: Props) {
 			<span className="asset-operation-status-icon" aria-hidden="true">
 				{failed ? (
 					<AlertCircle className="ui-icon" />
+				) : phase === 'done' ? (
+					<Check className="ui-icon" />
 				) : (
 					<LoaderCircle className="ui-icon operation-activity-loader" />
 				)}

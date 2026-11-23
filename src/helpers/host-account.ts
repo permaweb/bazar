@@ -1,6 +1,20 @@
 const RAW_ACCOUNT = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const HOST_ACCOUNT = /^uri-did-ar-([a-z0-9-]{43})([0-9a-z]{9})$/;
 
+/**
+ * A wallet address is 32 bytes as unpadded base64url: 43 characters whose last
+ * one carries only 2 data bits, so only 16 of 64 final characters are
+ * canonical. Process and token balances are keyed by the canonical form, so a
+ * transfer to any other 43-character string can never be spent.
+ */
+export function isWalletAddress(value: unknown): value is string {
+	return typeof value === 'string' && RAW_ACCOUNT.test(value);
+}
+
+/** Shown for 43 base64url characters that are not a canonical address. */
+export const NONCANONICAL_WALLET_ADDRESS_MESSAGE =
+	'This is not a valid Arweave wallet address. Check the last characters.';
+
 export function toHostAccount(raw43: string): string | null {
 	if (raw43.length !== 43 || !RAW_ACCOUNT.test(raw43)) return null;
 	let bits = 0;
@@ -35,6 +49,16 @@ export function accountAddress(account: string): string {
 
 export function displayAccount(account: string): string {
 	return ETHEREUM_HOST_ACCOUNT.exec(account)?.[1] ?? accountAddress(account);
+}
+
+/**
+ * The compact form of an account for labels: the address people recognise
+ * (displayAccount), then the same 7…5 shape the profile identity shows, so a
+ * host-form account never reads as "uri-di…".
+ */
+export function shortAccount(account: string): string {
+	const address = displayAccount(account);
+	return address.length <= 14 ? address : `${address.slice(0, 7)}…${address.slice(-5)}`;
 }
 
 export function sameAccount(left: unknown, right: unknown): boolean {

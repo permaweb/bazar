@@ -2,6 +2,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { toHostAccount } from 'helpers/host-account';
+
 import { WalletAddress, WalletIdentity } from './WalletAddress';
 
 const address = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
@@ -25,5 +27,12 @@ describe('wallet address rendering', () => {
 		expect(markup).toContain('class="wallet-identity"');
 		expect(markup).toContain(`>${address}</span>`);
 		expect(markup).not.toContain('<button');
+	});
+
+	it('shows the raw address, not the host form, for a host-form account', () => {
+		const host = toHostAccount(address)!;
+		const markup = renderToStaticMarkup(React.createElement(WalletIdentity, { address: host }));
+		expect(markup).toContain(`>${address}</span>`);
+		expect(markup).not.toContain('uri-did');
 	});
 });

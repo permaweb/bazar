@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CollectionActivityEvent, ResolvedAsset } from 'api/asset-discovery';
 import { parseAssetState } from 'api/asset-marketplace';
@@ -32,9 +33,13 @@ import {
 	collectionCardPriceLabel,
 	collectionDefaultsToListed,
 	CollectionDescription,
+	collectionListedFromSearch,
 	collectionListingScopeVersion,
 	collectionPriceRetryNotice,
 	collectionRecipientsWithoutListingCandidates,
+	CollectionTabs,
+	collectionViewFromSearch,
+	collectionViewSearch,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
 	compareCollectionAssetNames,
@@ -87,6 +92,7 @@ import {
 	homeMarketShowsInitialLoader,
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
+	HomeMarketTabs,
 	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
@@ -95,6 +101,7 @@ import {
 	homeSummaryRequestKeys,
 	homeSummaryWindow,
 	homeTabFromPathname,
+	homeTabHeading,
 	homeTabPath,
 	homeTokenPlaceholderRows,
 	homeTokenPriceChangeCurrent,
@@ -114,6 +121,7 @@ import {
 	pendingCollectionPriceAssets,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
+	PRESERVE_ROUTE_FOCUS,
 	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
@@ -123,6 +131,8 @@ import {
 	retainedCollectionAssetNames,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
+	routeFocusAction,
+	routeFocusPreserved,
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
 	tokenListingNoticeCopy,
@@ -287,6 +297,11 @@ describe('Home market summary retries', () => {
 			isFungiblePendingMint({ contentType: 'application/x.arweave-token', ticker: 'SIG' }, 'fungible-tokens')
 		).toBe(true);
 		expect(isFungiblePendingMint({ contentType: 'audio/mpeg' }, 'created-assets')).toBe(false);
+	});
+	it('gives each Home tab its own page heading, so each tab route gets its own document title', () => {
+		expect(homeTabHeading('discover')).toBe('Discover');
+		expect(homeTabHeading('collections')).toBe('Collections');
+		expect(homeTabHeading('activity')).toBe('Activity');
 	});
 	it('maps every Home tab to a hash-router subroute without dropping other query parameters', () => {
 		expect(homeTabFromPathname('/discover')).toBe('discover');
@@ -2290,6 +2305,23 @@ describe('Collection activity windows', () => {
 		);
 	});
 
+	it('keeps the mined row and its sort position when a later batch repeats it undated', () => {
+		const mined = {
+			id: 'offer',
+			processId: 'asset',
+			action: 'make-offer' as const,
+			actor: 'seller',
+			height: 1500,
+			timestamp: 1_700_000_000,
+		};
+		const older = { ...mined, id: 'older', height: 1400, timestamp: 1_699_000_000 };
+		const undated = { ...mined, actor: '', height: 0, timestamp: 0 };
+		expect(newestCollectionActivity([mined, older, undated])).toEqual([mined, older]);
+		const retained = new Map([[mined.id, mined]]);
+		retainNewestCollectionActivity(retained, [undated]);
+		expect(retained.get(mined.id)).toEqual(mined);
+	});
+
 	it('bounds the retained activity map while admitting newer late batches', () => {
 		const activity = new Map<string, CollectionActivityEvent>();
 		const events = Array.from({ length: 150 }, (_, index) => ({
@@ -2429,5 +2461,125 @@ describe('activity rows that need indexed names', () => {
 				byId.get(item.processId)
 			)
 		).toEqual([images.assets[0]]);
+	});
+});
+
+describe('Route focus policy', () => {
+	it('keeps focus on first load and moves it to main on a new view', () => {
+		expect(routeFocusAction(null, '/discover')).toBe('initial');
+		expect(routeFocusAction('/discover', '/discover')).toBe('initial');
+		expect(routeFocusAction('/discover', '/asset/a/b', { navigationType: 'PUSH' })).toBe('new-view');
+		expect(routeFocusAction('/discover', '/discover?q=art', { navigationType: 'PUSH' })).toBe('new-view');
+	});
+	it('treats a preserveFocus push or replace as an in-view update', () => {
+		expect(routeFocusAction('/discover', '/collections', { preserveFocus: true, navigationType: 'PUSH' })).toBe(
+			'in-view'
+		);
+		expect(routeFocusAction('/collections', '/activity', { preserveFocus: true, navigationType: 'REPLACE' })).toBe(
+			'in-view'
+		);
+		expect(routeFocusAction(null, '/collections', { preserveFocus: true, navigationType: 'PUSH' })).toBe('initial');
+	});
+	it('still moves focus when Back lands on an entry that stored preserveFocus', () => {
+		expect(routeFocusAction('/asset/a/b', '/collections', { preserveFocus: true, navigationType: 'POP' })).toBe(
+			'new-view'
+		);
+	});
+	it('reads preserveFocus only from a strict true flag in location.state', () => {
+		expect(routeFocusPreserved(PRESERVE_ROUTE_FOCUS.state)).toBe(true);
+		expect(routeFocusPreserved(null)).toBe(false);
+		expect(routeFocusPreserved({ fungibleOperationActivityId: 'x' })).toBe(false);
+		expect(routeFocusPreserved({ preserveFocus: 'yes' })).toBe(false);
+	});
+});
+
+describe('Home market tabs', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	it('renders one tab stop with the selected tab and the panel wiring', () => {
+		const html = renderToStaticMarkup(
+			React.createElement(HomeMarketTabs, { active: 'collections', onSelect() {} })
+		);
+		expect(html.match(/tabindex="0"/g)).toHaveLength(1);
+		expect(html.match(/tabindex="-1"/g)).toHaveLength(2);
+		expect(html).toMatch(/aria-selected="true"[^>]*id="home-collections-tab"[^>]*tabindex="0"/);
+		expect(html).toContain('aria-controls="home-activity-panel"');
+		expect(html).toContain('role="tablist"');
+	});
+	it('moves selection and focus with Arrow, Home and End keys', () => {
+		const focused: string[] = [];
+		vi.stubGlobal('window', { requestAnimationFrame: (callback: () => void) => callback() });
+		vi.stubGlobal('document', { getElementById: (id: string) => ({ focus: () => focused.push(id) }) });
+		const selected: string[] = [];
+		const tablist = HomeMarketTabs({ active: 'discover', onSelect: (tab) => selected.push(tab) });
+		const tabs = React.Children.toArray(
+			(tablist.props as { children: React.ReactNode }).children
+		) as React.ReactElement<{ onKeyDown(event: unknown): void }>[];
+		const press = (index: number, key: string) => {
+			let prevented = false;
+			tabs[index].props.onKeyDown({ key, preventDefault: () => (prevented = true) });
+			return prevented;
+		};
+		expect(press(0, 'ArrowRight')).toBe(true);
+		expect(press(0, 'ArrowLeft')).toBe(true);
+		expect(press(1, 'End')).toBe(true);
+		expect(press(2, 'Home')).toBe(true);
+		expect(press(2, 'ArrowDown')).toBe(true);
+		expect(press(0, 'Enter')).toBe(false);
+		expect(selected).toEqual(['collections', 'activity', 'activity', 'discover', 'discover']);
+		expect(focused).toEqual([
+			'home-collections-tab',
+			'home-activity-tab',
+			'home-activity-tab',
+			'home-discover-tab',
+			'home-discover-tab',
+		]);
+	});
+});
+
+describe('Collection listing view in the URL', () => {
+	it('reads ?view as items, offers or the collection default', () => {
+		expect(collectionViewFromSearch('?view=items')).toBe('items');
+		expect(collectionViewFromSearch('?q=a&view=offers')).toBe('offers');
+		expect(collectionViewFromSearch('?view=grid')).toBeNull();
+		expect(collectionViewFromSearch('')).toBeNull();
+		expect(collectionListedFromSearch('?view=items', 'arweave-names')).toBe(false);
+		expect(collectionListedFromSearch('', 'arweave-names')).toBe(true);
+		expect(collectionListedFromSearch('?view=offers', 'x')).toBe(true);
+		expect(collectionListedFromSearch('', 'x')).toBe(false);
+		expect(collectionListedFromSearch('?view=unknown', 'arweave-names')).toBe(true);
+	});
+	it('writes the view and keeps the other params', () => {
+		expect(collectionViewSearch('', 'items')).toBe('?view=items');
+		expect(collectionViewSearch('?q=moon+cat&view=offers', 'items')).toBe('?q=moon+cat&view=items');
+		const next = collectionViewSearch('?q=moon%20cat&gateway=g', 'offers');
+		expect(new URLSearchParams(next).get('q')).toBe('moon cat');
+		expect(new URLSearchParams(next).get('gateway')).toBe('g');
+		expect(collectionListedFromSearch(next, 'x')).toBe(true);
+	});
+	it('maps the tab buttons and the Show select to the same view', () => {
+		// Items tab and Show "All assets" both write items; Offers tab and "Listed for sale" both write offers.
+		for (const collectionId of ['arweave-names', 'x']) {
+			expect(collectionListedFromSearch(collectionViewSearch('', 'items'), collectionId)).toBe(false);
+			expect(collectionListedFromSearch(collectionViewSearch('', 'offers'), collectionId)).toBe(true);
+		}
+	});
+	it('links the Activity page Items tab to an explicit items view', () => {
+		const collection: Collection = {
+			id: 'arweave-names',
+			name: 'Arweave Names',
+			description: '',
+			kind: 'names',
+			assets: [],
+		};
+		const html = renderToStaticMarkup(
+			React.createElement(
+				MemoryRouter,
+				null,
+				React.createElement(CollectionTabs, { collection, active: 'activity' })
+			)
+		);
+		expect(html).toContain('href="/collection/arweave-names?view=items"');
+		expect(html).toContain('href="/collection/arweave-names?view=offers"');
+		expect(html).toContain('href="/collection/arweave-names/activity"');
 	});
 });
