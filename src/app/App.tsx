@@ -3028,6 +3028,87 @@ export function compareHomeCollections(
 	return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
 }
 
+export type HomeCollectionOrder = {
+	sort: HomeCollectionSort;
+	settled: boolean;
+	ids: readonly string[];
+};
+
+/**
+ * Keep the collections grid in a stable order while it loads. The first ranked order is kept; arrivals
+ * while loading are appended and refreshed collections update in place. The grid re-ranks only when the
+ * viewer picks another sort or once loading settles. A collection that arrives after the order settled
+ * (Bazar discovery keeps streaming after the catalogue loads) is merged into its ranked place, so a
+ * late newest collection still leads under Newest, and only the cards after it move.
+ */
+export function nextHomeCollectionOrder(
+	previous: HomeCollectionOrder | undefined,
+	rankedIds: readonly string[],
+	sort: HomeCollectionSort,
+	settled: boolean
+): HomeCollectionOrder {
+	if (!previous || previous.sort !== sort || (settled && !previous.settled)) {
+		return { sort, settled, ids: [...rankedIds] };
+	}
+	const present = new Set(rankedIds);
+	const retained = previous.ids.filter((id) => present.has(id));
+	const known = new Set(retained);
+	let ids: string[];
+	if (settled && previous.settled) {
+		// Place each newcomer right after the retained collection that precedes it in the ranking.
+		const leading: string[] = [];
+		const following = new Map<string, string[]>();
+		let anchor: string | undefined;
+		for (const id of rankedIds) {
+			if (known.has(id)) anchor = id;
+			else if (anchor === undefined) leading.push(id);
+			else following.set(anchor, [...(following.get(anchor) ?? []), id]);
+		}
+		ids = [...leading, ...retained.flatMap((id) => [id, ...(following.get(id) ?? [])])];
+	} else {
+		ids = [...retained, ...rankedIds.filter((id) => !known.has(id))];
+	}
+	if (
+		previous.settled === settled &&
+		ids.length === previous.ids.length &&
+		ids.every((id, index) => id === previous.ids[index])
+	)
+		return previous;
+	return { sort, settled, ids };
+}
+
+/** Glide grid cards from their previous slots when the order changes, instead of jumping. */
+function useGridReorderMotion(grid: React.RefObject<HTMLElement | null>, order: readonly string[]) {
+	const slots = React.useRef(new Map<string, { left: number; top: number }>());
+	const host = React.useRef<HTMLElement | null>(null);
+	React.useLayoutEffect(() => {
+		const container = grid.current;
+		if (!container) return;
+		// Slots recorded in an earlier grid (another tab visit) do not describe this one.
+		if (host.current !== container) slots.current = new Map();
+		host.current = container;
+		const origin = container.getBoundingClientRect();
+		const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+		const next = new Map<string, { left: number; top: number }>();
+		for (const card of container.querySelectorAll<HTMLElement>(':scope > [data-order-id]')) {
+			const rect = card.getBoundingClientRect();
+			const slot = { left: rect.left - origin.left, top: rect.top - origin.top };
+			const id = card.dataset.orderId ?? '';
+			next.set(id, slot);
+			const previous = slots.current.get(id);
+			if (!previous || reduceMotion || typeof card.animate !== 'function') continue;
+			const dx = previous.left - slot.left;
+			const dy = previous.top - slot.top;
+			if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+			card.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+				duration: 260,
+				easing: 'cubic-bezier(0.2, 0, 0, 1)',
+			});
+		}
+		slots.current = next;
+	}, [grid, order]);
+}
+
 export function compareHomeListingRecency(
 	leftAssetId: string,
 	rightAssetId: string,
@@ -3250,19 +3331,52 @@ function Home() {
 				: undefined,
 		[market.collections, normalizedQuery]
 	);
-	const collections = React.useMemo(() => {
-		const activity = new Map(Object.entries(collectionActivity));
-		return market.collections
-			.filter((collection) => {
+	const matchingCollections = React.useMemo(
+		() =>
+			market.collections.filter((collection) => {
 				if (collection.kind === 'tokens') return false;
 				if (!normalizedQuery) return true;
 				return (
 					`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
 					Boolean(homeSearchMatches?.get(collection)?.length)
 				);
-			})
-			.sort((left, right) => compareHomeCollections(left, right, collectionSort, activity));
-	}, [collectionActivity, collectionSort, homeSearchMatches, market.collections, normalizedQuery]);
+			}),
+		[homeSearchMatches, market.collections, normalizedQuery]
+	);
+	const collectionActivityKey = React.useMemo(
+		() =>
+			matchingCollections
+				.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
+				.sort()
+				.join('|'),
+		[matchingCollections]
+	);
+	const [collectionActivitySettledKey, setCollectionActivitySettledKey] = React.useState<string | null>(null);
+	const collectionOrderSettled =
+		!market.loading && (collectionSort !== 'recent' || collectionActivitySettledKey === collectionActivityKey);
+	const collectionGrid = React.useRef<HTMLDivElement>(null);
+	const rankedCollections = React.useMemo(() => {
+		const activity = new Map(Object.entries(collectionActivity));
+		return [...matchingCollections].sort((left, right) =>
+			compareHomeCollections(left, right, collectionSort, activity)
+		);
+	}, [collectionActivity, collectionSort, matchingCollections]);
+	const [storedCollectionOrder, setStoredCollectionOrder] = React.useState<HomeCollectionOrder>();
+	const collectionOrder = nextHomeCollectionOrder(
+		storedCollectionOrder,
+		rankedCollections.map((collection) => collection.id),
+		collectionSort,
+		collectionOrderSettled
+	);
+	// Derived from the previous order, so it is stored with a render-phase update (React discards it along
+	// with an abandoned render) rather than a ref mutation. nextHomeCollectionOrder returns its input when
+	// nothing changed, so this settles after one extra render.
+	if (collectionOrder !== storedCollectionOrder) setStoredCollectionOrder(collectionOrder);
+	const collections = React.useMemo(() => {
+		const byId = new Map(rankedCollections.map((collection) => [collection.id, collection]));
+		return collectionOrder.ids.flatMap((id) => byId.get(id) ?? []);
+	}, [collectionOrder, rankedCollections]);
+	useGridReorderMotion(collectionGrid, collectionOrder.ids);
 	const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
 	const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
 		Record<string, HomeListingActivity>
@@ -4072,17 +4186,10 @@ function Home() {
 		);
 		void Promise.all(requests).then(finishRetry);
 	}, [aoRoutingScope, collectionKey, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
-	const collectionActivityKey = React.useMemo(
-		() =>
-			collections
-				.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
-				.sort()
-				.join('|'),
-		[collections]
-	);
 	React.useEffect(() => {
 		if (!shouldLoadCollectionSummaries || collectionSort !== 'recent') return;
 		const controller = new AbortController();
+		const activityKey = collectionActivityKey;
 		void mapConcurrent(collections, 2, async (collection) => {
 			try {
 				const events = await discoverCollectionActivityBatched({
@@ -4106,7 +4213,12 @@ function Home() {
 				controller.signal.throwIfAborted();
 				// Creation time remains a truthful fallback when activity indexing is unavailable.
 			}
-		});
+		}).then(
+			() => {
+				if (!controller.signal.aborted) setCollectionActivitySettledKey(activityKey);
+			},
+			() => undefined
+		);
 		return () => controller.abort();
 	}, [collectionActivityKey, collectionSort, shouldLoadCollectionSummaries]);
 	const summaryFailures = [...Object.values(assetPrices), ...Object.values(collectionFloors)].filter(
@@ -4396,7 +4508,7 @@ function Home() {
 									role="tabpanel"
 								>
 									{collections.length || collectionResultsPending ? (
-										<div className="home-feature-grid">
+										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
 												const image = collection.assets.find((asset) => asset.image)?.image;
 												const tokenPreview =
@@ -4409,6 +4521,7 @@ function Home() {
 												return (
 													<Link
 														className={`home-feature-card feature-${index}`}
+														data-order-id={collection.id}
 														key={collection.id}
 														to={`/collection/${collection.id}`}
 													>
@@ -4507,7 +4620,10 @@ function Home() {
 													</Link>
 												);
 											})}
-											{collectionResultsPending ? (
+											{homeMarketShowsInitialLoader(
+												collectionResultsPending,
+												collections.length
+											) ? (
 												<HomeMarketGhostCard kind="collection" />
 											) : null}
 										</div>

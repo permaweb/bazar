@@ -196,6 +196,12 @@ const SHOW_TEST_CATALOGUE_ITEMS = testCatalogueItemsRequested();
 
 const HIDDEN_COLLECTION_ASSET_IDS = new Map<string, ReadonlySet<string>>();
 
+/**
+ * Hidden collections whose membership could not be read yet. Kept in memory only, so the persisted index never
+ * records an empty set; every later loadCollections run (including Retry) re-reads them in the background.
+ */
+const UNAVAILABLE_HIDDEN_COLLECTION_IDS = new Set<string>();
+
 export function isHiddenCollectionId(id: string): boolean {
 	return hiddenCollectionIds.has(id);
 }
@@ -206,22 +212,29 @@ export function isVisibleCollectionId(id: string): boolean {
 
 export function isVisibleAssetId(id: string): boolean {
 	if (SHOW_TEST_CATALOGUE_ITEMS) return true;
-	if (!hiddenCollectionAssetIndexComplete() || hiddenAssetIds.has(id)) return false;
+	return hiddenCollectionAssetIndexSettled() && !isKnownHiddenAssetId(id);
+}
+
+function isKnownHiddenAssetId(id: string): boolean {
+	if (SHOW_TEST_CATALOGUE_ITEMS) return false;
+	if (hiddenAssetIds.has(id)) return true;
 	for (const assetIds of HIDDEN_COLLECTION_ASSET_IDS.values()) {
-		if (assetIds.has(id)) return false;
+		if (assetIds.has(id)) return true;
 	}
-	return true;
+	return false;
 }
 
 function registerHiddenCollectionAssets(collections: Collection[]): void {
 	for (const collection of collections) {
 		if (!isHiddenCollectionId(collection.id)) continue;
 		HIDDEN_COLLECTION_ASSET_IDS.set(collection.id, new Set(collection.assets.map((asset) => asset.id)));
+		UNAVAILABLE_HIDDEN_COLLECTION_IDS.delete(collection.id);
 	}
 }
 
 export function replaceHiddenCollectionAssetIndex(index: Readonly<Record<string, readonly string[]>>): void {
 	HIDDEN_COLLECTION_ASSET_IDS.clear();
+	UNAVAILABLE_HIDDEN_COLLECTION_IDS.clear();
 	for (const collectionId of HIDDEN_COLLECTION_IDS) {
 		const assetIds = index[collectionId];
 		if (assetIds)
@@ -239,6 +252,17 @@ export function hiddenCollectionAssetIndexComplete(): boolean {
 	return (
 		SHOW_TEST_CATALOGUE_ITEMS ||
 		HIDDEN_COLLECTION_IDS.every((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId))
+	);
+}
+
+/** Every hidden manifest is either known or was unavailable this load and degrades to not hiding its members. */
+export function hiddenCollectionAssetIndexSettled(): boolean {
+	return (
+		SHOW_TEST_CATALOGUE_ITEMS ||
+		HIDDEN_COLLECTION_IDS.every(
+			(collectionId) =>
+				HIDDEN_COLLECTION_ASSET_IDS.has(collectionId) || UNAVAILABLE_HIDDEN_COLLECTION_IDS.has(collectionId)
+		)
 	);
 }
 
@@ -377,27 +401,60 @@ type CollectionSource = {
 	fallback?: () => Collection;
 };
 
-async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void> {
-	if (hiddenCollectionAssetIndexComplete()) return;
-	const missing = HIDDEN_COLLECTION_IDS.filter((collectionId) => !HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
-	await mapConcurrent(missing, 4, async (collectionId) => {
-		const transaction = await fetchJson<{ tags?: Array<{ name: string; value: string }> }>(
-			`tx/${collectionId}`,
-			signal,
-			true
-		);
-		const tags = Object.fromEntries(
-			(transaction.tags ?? []).map((tag) => [decodeBase64Url(tag.name), decodeBase64Url(tag.value)])
-		);
-		const manifestId = tags['initial-value'] ?? tags['reference-value'];
-		if (typeof manifestId !== 'string' || !ARWEAVE_ID.test(manifestId)) {
-			throw new Error('hidden-collection-reference-invalid');
+async function loadHiddenCollectionAssets(collectionId: string, signal?: AbortSignal): Promise<void> {
+	const transaction = await fetchJson<{ tags?: Array<{ name: string; value: string }> }>(
+		`tx/${collectionId}`,
+		signal,
+		true
+	);
+	const tags = Object.fromEntries(
+		(transaction.tags ?? []).map((tag) => [decodeBase64Url(tag.name), decodeBase64Url(tag.value)])
+	);
+	const manifestId = tags['initial-value'] ?? tags['reference-value'];
+	if (typeof manifestId !== 'string' || !ARWEAVE_ID.test(manifestId)) {
+		throw new Error('hidden-collection-reference-invalid');
+	}
+	registerHiddenCollectionAssets([
+		imageCollection(collectionId, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
+	]);
+}
+
+/** Read hidden-collection membership; a manifest that cannot be read degrades to not hiding its members. */
+async function loadHiddenCollectionMembership(collectionIds: readonly string[], signal?: AbortSignal): Promise<void> {
+	await mapConcurrent(collectionIds, 4, async (collectionId) => {
+		try {
+			await loadHiddenCollectionAssets(collectionId, signal);
+		} catch (cause) {
+			throwIfAborted(signal);
+			UNAVAILABLE_HIDDEN_COLLECTION_IDS.add(collectionId);
+			console.warn(
+				`Hidden collection ${collectionId} membership is unavailable; its assets are not hidden.`,
+				cause
+			);
 		}
-		registerHiddenCollectionAssets([
-			imageCollection(collectionId, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
-		]);
 	});
-	if (!hiddenCollectionAssetIndexComplete()) throw new Error('hidden-collection-index-unavailable');
+}
+
+/** Resolve membership not yet attempted; manifests already known to be unavailable do not hold visibility back. */
+async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void> {
+	if (hiddenCollectionAssetIndexSettled()) return;
+	await loadHiddenCollectionMembership(
+		HIDDEN_COLLECTION_IDS.filter(
+			(collectionId) =>
+				!HIDDEN_COLLECTION_ASSET_IDS.has(collectionId) && !UNAVAILABLE_HIDDEN_COLLECTION_IDS.has(collectionId)
+		),
+		signal
+	);
+}
+
+/** Re-read manifests that were unavailable on an earlier load. Resolves true when any of them is now known. */
+async function retryUnavailableHiddenCollections(signal?: AbortSignal): Promise<boolean> {
+	const unavailable = HIDDEN_COLLECTION_IDS.filter((collectionId) =>
+		UNAVAILABLE_HIDDEN_COLLECTION_IDS.has(collectionId)
+	);
+	if (!unavailable.length) return false;
+	await loadHiddenCollectionMembership(unavailable, signal);
+	return unavailable.some((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
 }
 
 export async function loadCollections(
@@ -406,15 +463,14 @@ export async function loadCollections(
 	onVisibilityReady?: () => void,
 	onBackgroundUnavailable?: (label: string) => void
 ): Promise<CollectionLoadResult> {
-	await ensureHiddenCollectionAssets(signal);
-	onVisibilityReady?.();
+	let visibilitySettled = false;
 	const sources: CollectionSource[] = [
 		{ label: 'Arweave names', load: (progress) => loadNames(signal, progress) },
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
 			fallback: () => ({
-				...fungibleTokenCollection(isVisibleAssetId(FUNGIBLE_TOKEN_ID) ? [defaultFungibleToken()] : []),
+				...fungibleTokenCollection(isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) ? [] : [defaultFungibleToken()]),
 				indexSource: 'compiled-fallback',
 			}),
 		},
@@ -427,13 +483,32 @@ export async function loadCollections(
 	let discoveredCollections: Collection[] = [];
 	const successes = new Array<boolean>(sources.length).fill(false);
 	const failures = new Array<boolean>(sources.length).fill(false);
-	const publish = () =>
-		onProgress?.(
-			deduplicateCollections([
-				...collections.filter((item): item is Collection => Boolean(item)),
-				...discoveredCollections,
-			])
-		);
+	const loadedCollections = () =>
+		deduplicateCollections([
+			...collections.filter((item): item is Collection => Boolean(item)),
+			...discoveredCollections,
+		]).map(withVisibleCollectionAssets);
+	// Sources start immediately; nothing is published until hidden membership is settled, so no hidden asset
+	// is ever shown while the index is still loading.
+	const publish = () => {
+		if (visibilitySettled) onProgress?.(loadedCollections());
+	};
+	// Started before ensureHiddenCollectionAssets so it only retries manifests that failed on an earlier load.
+	// It runs in the background: those members stay visible until it succeeds, then the next publish hides them.
+	void retryUnavailableHiddenCollections(signal).then(
+		(recovered) => {
+			if (recovered && !signal?.aborted && (successes.some(Boolean) || discoveredCollections.length)) publish();
+		},
+		() => undefined
+	);
+	const visibility = ensureHiddenCollectionAssets(signal).then(() => {
+		throwIfAborted(signal);
+		visibilitySettled = true;
+		onVisibilityReady?.();
+		if (successes.some(Boolean) || discoveredCollections.length) publish();
+	});
+	// Surface an abort through the awaited source path below instead of an unhandled rejection.
+	visibility.catch(() => undefined);
 	let discoveryUnavailable = false;
 	const discovery = operationWithDeadline(
 		(discoverySignal) =>
@@ -475,11 +550,9 @@ export async function loadCollections(
 			if (successes.some(Boolean)) publish();
 		})
 	);
+	await visibility;
 	if (!successes.some(Boolean) && !discoveredCollections.length) await discovery;
-	const loaded = deduplicateCollections([
-		...collections.filter((item): item is Collection => Boolean(item)),
-		...discoveredCollections,
-	]);
+	const loaded = loadedCollections();
 	if (!successes.some(Boolean) && !discoveredCollections.length) throw new Error('collection-indexes-unavailable');
 	return {
 		collections: loaded,
@@ -920,7 +993,7 @@ async function loadFungibleTokens(signal?: AbortSignal): Promise<Collection> {
 	const page = await loadFungibleTokenPage(undefined, signal);
 	const includeConfiguredToken =
 		ARWEAVE_ID.test(FUNGIBLE_TOKEN_ID) &&
-		isVisibleAssetId(FUNGIBLE_TOKEN_ID) &&
+		!isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) &&
 		!page.assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID);
 	const assets = includeConfiguredToken ? [defaultFungibleToken(), ...page.assets] : page.assets;
 	const total = page.hasMore ? Math.max(assets.length, page.total - page.hiddenAssetCount) : assets.length;
@@ -1059,7 +1132,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
 		// Some gateways represent an unbundled transaction as { id: "" }.
-		if (node.bundledIn?.id || !isVisibleAssetId(node.id)) {
+		if (node.bundledIn?.id || isKnownHiddenAssetId(node.id)) {
 			hiddenIndexedAssets += 1;
 			continue;
 		}
@@ -1103,7 +1176,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			throw new Error('fungible-index-schema');
 		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
 		for (const { node } of legacy.edges) {
-			if (node.bundledIn?.id || !isVisibleAssetId(node.id)) continue;
+			if (node.bundledIn?.id || isKnownHiddenAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
 			legacyAssets.set(node.id, {
@@ -1163,7 +1236,7 @@ async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collect
 		return namespace;
 	});
 	const [namespace, page] = await Promise.all([namespaceRequest, loadCarrierPage(undefined, signal)]);
-	const assets = carrierAssets(page, namespace).filter((asset) => isVisibleAssetId(asset.id));
+	const assets = carrierAssets(page, namespace).filter((asset) => !isKnownHiddenAssetId(asset.id));
 	return {
 		...namesNamespaceCollection(namespace),
 		assets,
@@ -1198,7 +1271,7 @@ export async function loadMoreCarrierNames(collection: Collection, signal?: Abor
 	}
 	const seen = new Set(collection.assets.map((asset) => asset.id));
 	const additions = carrierAssets(page, collection.namespace).filter(
-		(asset) => isVisibleAssetId(asset.id) && !seen.has(asset.id)
+		(asset) => !isKnownHiddenAssetId(asset.id) && !seen.has(asset.id)
 	);
 	const assets = [...collection.assets, ...additions];
 	return {

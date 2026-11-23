@@ -16,6 +16,7 @@ import {
 	HIDDEN_COLLECTION_IDS,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
+	hiddenCollectionAssetIndexSettled,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadBazarCollectionById,
@@ -47,6 +48,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 	replaceHiddenCollectionAssetIndex({});
 });
 
@@ -237,7 +239,7 @@ describe('collection index loading', () => {
 		expect(hiddenCollectionAssetIndexComplete()).toBe(true);
 	});
 
-	it('loads missing hidden-collection membership before marketplace sources', async () => {
+	it('loads missing hidden-collection membership before publishing marketplace sources', async () => {
 		replaceHiddenCollectionAssetIndex({});
 		const manifests = HIDDEN_COLLECTION_IDS.map((_, index) => `${index}`.repeat(43));
 		const assets = HIDDEN_COLLECTION_IDS.map((_, index) => `${index + 4}`.repeat(43));
@@ -270,6 +272,114 @@ describe('collection index loading', () => {
 		expect(visibilityReady).toHaveBeenCalledOnce();
 		for (const assetId of assets) expect(isVisibleAssetId(assetId)).toBe(false);
 		expect(fetcher.mock.calls.some(([input]) => String(input).includes('/compute'))).toBe(false);
+	});
+
+	it('loads the catalogue while hidden manifests load and degrades one unavailable manifest to no hiding', async () => {
+		replaceHiddenCollectionAssetIndex({});
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		const nameId = 'N'.repeat(43);
+		const manifests = HIDDEN_COLLECTION_IDS.map((_, index) => `${index}`.repeat(43));
+		const assets = HIDDEN_COLLECTION_IDS.map((_, index) => `${index + 4}`.repeat(43));
+		let carrierRequested!: () => void;
+		const carrierRequest = new Promise<void>((resolve) => {
+			carrierRequested = resolve;
+		});
+		// The second load's retry of the unavailable manifest only answers once the test releases it.
+		let manifestRecovered = false;
+		let releaseRetry!: () => void;
+		const retryReleased = new Promise<void>((resolve) => {
+			releaseRetry = resolve;
+		});
+		// The carrier index also returns a member of an unavailable and of a readable hidden manifest.
+		const carrierIds = [nameId, assets[0], assets[1]];
+		const namesNamespace = encodeJson({
+			manifest: 'arweave/paths',
+			version: '0.2.0',
+			paths: { alice: { id: nameId }, unindexed: { id: assets[0] }, hidden: { id: assets[1] } },
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				const body = typeof init?.body === 'string' ? init.body : '';
+				if (body.includes('CarrierAssets')) {
+					carrierRequested();
+					return Response.json({
+						data: {
+							transactions: {
+								count: carrierIds.length,
+								pageInfo: { hasNextPage: false },
+								edges: carrierIds.map((id, index) => ({
+									cursor: `carrier-cursor-${index}`,
+									node: { id, tags: [{ name: 'name', value: id }] },
+								})),
+							},
+						},
+					});
+				}
+				if (url.includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namesNamespace);
+				for (const [index, collectionId] of HIDDEN_COLLECTION_IDS.entries()) {
+					if (url.endsWith(`/tx/${collectionId}`)) {
+						// Hidden membership only answers after the catalogue sources have started.
+						await carrierRequest;
+						if (index === 0 && manifestRecovered) await retryReleased;
+						return Response.json({
+							tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifests[index]) }],
+						});
+					}
+					if (url.includes(`/tx/${manifests[index]}/data`)) {
+						if (index === 0 && !manifestRecovered) return new Response('missing', { status: 404 });
+						return new Response(encodeUtf8Json({ name: `Hidden ${index}`, assets: [assets[index]] }));
+					}
+				}
+				return new Response('unavailable', { status: 503 });
+			})
+		);
+		const progress: string[][] = [];
+		const published: string[][] = [];
+		const onProgress = (collections: Collection[]) => {
+			progress.push(collections.map((collection) => collection.id));
+			published.push(collections.flatMap((collection) => collection.assets.map((asset) => asset.id)));
+		};
+		const visibilityReady = vi.fn(() => {
+			expect(progress).toEqual([]);
+		});
+		const namesAssetIds = (collections: Collection[]) =>
+			collections.find((collection) => collection.id === 'arweave-names')?.assets.map((asset) => asset.id);
+
+		const result = await loadCollections(undefined, onProgress, visibilityReady);
+
+		expect(result.collections.map((collection) => collection.id)).toContain('arweave-names');
+		// The readable manifest's member is never published, even though the carrier page arrived first.
+		expect(namesAssetIds(result.collections)).toEqual([nameId, assets[0]]);
+		expect(published.length).toBeGreaterThan(0);
+		for (const assetIds of published) expect(assetIds).not.toContain(assets[1]);
+		expect(progress.at(-1)).toContain('arweave-names');
+		expect(visibilityReady).toHaveBeenCalledOnce();
+		expect(warn).toHaveBeenCalledOnce();
+		expect(String(warn.mock.calls[0][0])).toContain(HIDDEN_COLLECTION_IDS[0]);
+		expect(hiddenCollectionAssetIndexComplete()).toBe(false);
+		expect(hiddenCollectionAssetIndexSettled()).toBe(true);
+		expect(hiddenCollectionAssetIndex()).not.toHaveProperty(HIDDEN_COLLECTION_IDS[0]);
+		expect(isVisibleAssetId(assets[0])).toBe(true);
+		for (const assetId of assets.slice(1)) expect(isVisibleAssetId(assetId)).toBe(false);
+		for (const assetId of HIDDEN_ASSET_IDS) expect(isVisibleAssetId(assetId)).toBe(false);
+
+		// A later load (for example Retry) re-reads the unavailable manifest without waiting for it.
+		manifestRecovered = true;
+		progress.length = 0;
+		published.length = 0;
+		const retryReady = vi.fn();
+		const retried = await loadCollections(undefined, onProgress, retryReady);
+		expect(retryReady).toHaveBeenCalledOnce();
+		expect(namesAssetIds(retried.collections)).toEqual([nameId, assets[0]]);
+
+		releaseRetry();
+		await vi.waitFor(() => expect(hiddenCollectionAssetIndexComplete()).toBe(true));
+		expect(isVisibleAssetId(assets[0])).toBe(false);
+		await vi.waitFor(() => expect(published.at(-1)).not.toContain(assets[0]));
+		expect(published.at(-1)).toContain(nameId);
+		expect(warn).toHaveBeenCalledOnce();
 	});
 
 	it('batch-enriches ID-only manifests with permanent Atomic Asset names', async () => {
