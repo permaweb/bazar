@@ -287,8 +287,10 @@ import {
 	purchaseObservationPendingState,
 	purchaseObservationResumeState,
 	purchaseObservationRetryDelay,
+	type PurchaseObservationRetryKind,
 	purchaseObservationRetryKind,
 	purchaseObservationRetryMessage,
+	shouldClearRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
 import {
@@ -10772,6 +10774,8 @@ function OperationDialog({
 				const network = observerLease.network;
 				if (signal.aborted) throw signal.reason;
 				let observationRetryAttempt = 0;
+				// Set while the "checking again" copy is shown; the retried run clears it once it moves past that step.
+				let retryCheckingKind: PurchaseObservationRetryKind | null = null;
 				let completedSnapshot: PurchaseSnapshot | null = null;
 				const persistPurchaseSnapshot = (snapshot: PurchaseSnapshot) => {
 					onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
@@ -10856,6 +10860,10 @@ function OperationDialog({
 					const update = (state: PurchaseState) => {
 						if (signal.aborted || recoveryConflict) return;
 						setPurchaseState(state);
+						if (retryCheckingKind && shouldClearRetryMessage(retryCheckingKind, state)) {
+							retryCheckingKind = null;
+							setMessage('');
+						}
 						const snapshot = purchase.snapshot();
 						if (hasRecoverablePurchase(snapshot)) {
 							try {
@@ -10883,6 +10891,7 @@ function OperationDialog({
 						setMessage(purchaseObservationRetryMessage(finalState, delay));
 						await waitForPurchaseObservationRetry(delay, signal);
 						setMessage(purchaseObservationCheckingMessage(retryKind));
+						retryCheckingKind = retryKind;
 						continue;
 					}
 					if (finalState.stage !== 'complete' || !finalState.success) {
