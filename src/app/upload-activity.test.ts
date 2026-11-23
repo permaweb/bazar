@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ObserverView } from 'weave-wrangler';
 
 import type { MintActivity } from 'api/mint-activity';
 
-import { type UploadActivity, uploadActivitySyncSteps } from './App';
+import {
+	observeUploadActivityTransactions,
+	type UploadActivity,
+	type UploadObserverAvailability,
+	uploadActivityObserverKey,
+	uploadActivitySyncSteps,
+} from './App';
 
 const processId = 'P'.repeat(43);
 const owner = 'O'.repeat(43);
@@ -74,5 +80,110 @@ describe('upload observer lanes', () => {
 			'bravo.example',
 			'charlie.example',
 		]);
+	});
+});
+
+describe('upload observer watch lifecycle', () => {
+	const artworkId = 'W'.repeat(43);
+	const transactions = () => [
+		{ id: artworkId, label: 'Artwork transaction' },
+		{ id: processId, label: 'Asset transaction' },
+	];
+
+	function stubRuntime(ready: Promise<unknown> = Promise.resolve()) {
+		const watchers: Array<{ id: string; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }> = [];
+		const release = vi.fn();
+		const acquireAssetObserverNetwork = vi.fn(() => ({
+			ready,
+			release,
+			network: {
+				watch: (id: string) => {
+					const watcher = {
+						id,
+						start: vi.fn(),
+						stop: vi.fn(),
+						views: () => [],
+						consensus: () => undefined,
+						on: () => () => undefined,
+					};
+					watchers.push(watcher);
+					return watcher;
+				},
+			},
+		}));
+		const loadRuntime = vi.fn(async () => ({ acquireAssetObserverNetwork } as any));
+		return { acquireAssetObserverNetwork, loadRuntime, release, watchers };
+	}
+
+	function handlers() {
+		const availability: UploadObserverAvailability[] = [];
+		return {
+			availability,
+			onObservation: vi.fn(),
+			onAvailability: (next: UploadObserverAvailability) => availability.push(next),
+		};
+	}
+
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+	it('keys the watch on transaction ids, so equal rebuilt arrays do not restart discovery', () => {
+		expect(uploadActivityObserverKey(transactions())).toBe(uploadActivityObserverKey(transactions()));
+		expect(
+			uploadActivityObserverKey(transactions().map((transaction) => ({ ...transaction, label: 'Renamed' })))
+		).toBe(uploadActivityObserverKey(transactions()));
+		expect(uploadActivityObserverKey([{ id: processId, label: 'Asset transaction' }])).not.toBe(
+			uploadActivityObserverKey(transactions())
+		);
+		expect(uploadActivityObserverKey([])).toBe('');
+	});
+
+	it('moves loading -> watching and starts one watcher per transaction', async () => {
+		const runtime = stubRuntime();
+		const events = handlers();
+		const stop = observeUploadActivityTransactions([artworkId, processId], runtime.loadRuntime, events);
+		await settle();
+
+		expect(events.availability).toEqual(['loading', 'watching']);
+		expect(runtime.acquireAssetObserverNetwork).toHaveBeenCalledTimes(1);
+		expect(runtime.watchers.map((watcher) => watcher.id)).toEqual([artworkId, processId]);
+		expect(runtime.watchers.every((watcher) => watcher.start.mock.calls.length === 1)).toBe(true);
+		expect(runtime.release).not.toHaveBeenCalled();
+
+		stop();
+		expect(runtime.watchers.every((watcher) => watcher.stop.mock.calls.length === 1)).toBe(true);
+		expect(runtime.release).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports unavailable and releases the lease when observer discovery fails', async () => {
+		const runtime = stubRuntime(Promise.reject(new Error('No AO peer is configured.')));
+		const events = handlers();
+		observeUploadActivityTransactions([processId], runtime.loadRuntime, events);
+		await settle();
+
+		expect(events.availability).toEqual(['loading', 'unavailable']);
+		expect(runtime.release).toHaveBeenCalledTimes(1);
+		expect(runtime.watchers).toHaveLength(0);
+	});
+
+	it('reports unavailable when the observer runtime itself cannot load', async () => {
+		const events = handlers();
+		observeUploadActivityTransactions([processId], () => Promise.reject(new Error('chunk failed')), events);
+		await settle();
+
+		expect(events.availability).toEqual(['loading', 'unavailable']);
+	});
+
+	it('stays silent after cleanup, so a closed panel never flips to unavailable', async () => {
+		let rejectReady: (cause: Error) => void = () => undefined;
+		const runtime = stubRuntime(new Promise((_, reject) => (rejectReady = reject)));
+		const events = handlers();
+		const stop = observeUploadActivityTransactions([processId], runtime.loadRuntime, events);
+		await settle();
+		stop();
+		rejectReady(new Error('discovery failed'));
+		await settle();
+
+		expect(events.availability).toEqual(['loading']);
+		expect(runtime.release).toHaveBeenCalledTimes(1);
 	});
 });
