@@ -610,7 +610,7 @@ describe('Home market summary retries', () => {
 		expect(assetDetailMembershipVerified('large-collection', new Set(), false)).toBe(false);
 	});
 
-	it('restarts listing support as progressively loaded collections expand', () => {
+	it('changes listing support as progressively loaded collections expand', () => {
 		const first: Collection = {
 			id: 'fungible',
 			name: 'Tokens',

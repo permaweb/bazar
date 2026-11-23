@@ -1456,7 +1456,13 @@ export async function resolveAssetCandidates(
 	return resolver.finish();
 }
 
-export function createAssetCandidateResolver(collections: Collection[], options: ResolutionOptions = {}) {
+export function createAssetCandidateResolver(
+	collections: Collection[] | (() => Collection[]),
+	options: ResolutionOptions = {}
+) {
+	// A getter lets a long-running crawl classify late reads against collections
+	// that finished loading after the resolver was created.
+	const currentCollections = typeof collections === 'function' ? collections : () => collections;
 	const pending: AssetCandidate[] = [];
 	const resolved: ResolvedAsset[] = [];
 	const concurrency = Math.max(1, Math.min(16, Math.floor(options.concurrency ?? ASSET_RESOLUTION_CONCURRENCY)));
@@ -1465,7 +1471,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		if (options.requireHolderBalances && !assetBalanceStateAvailable(computed.state)) {
 			throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
 		}
-		return supportedAsset(candidate, computed, collections);
+		return supportedAsset(candidate, computed, currentCollections());
 	};
 	let active = 0;
 	let sealed = false;

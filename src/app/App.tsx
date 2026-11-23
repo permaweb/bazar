@@ -59,12 +59,10 @@ import {
 	discoverWalletAssetCandidates,
 	isLiveListing,
 	loadBazarAtomicAssetById,
-	partitionAssetCandidateSupport,
 	type PendingAssetOffer,
 	resolveAssetCandidates,
 	type ResolvedAsset,
 	searchBazarAtomicAssetsByName,
-	verifyAssetCandidateSupport,
 	walletAssetGroups,
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
@@ -214,6 +212,7 @@ import { useWallet } from 'providers/WalletProvider';
 import './styles.css';
 
 import { createGlobalActivityPager, type GlobalActivityFilter } from './global-activity';
+import { createHomeListingCrawl, type HomeListingCrawl } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
 	marketplaceCodedError,
@@ -3310,6 +3309,7 @@ function Home() {
 	);
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
+	const homeListingCrawlRef = React.useRef<HomeListingCrawl>();
 	const loadedAssetLimit = React.useMemo(
 		() =>
 			market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
@@ -3556,10 +3556,13 @@ function Home() {
 			let computeFailures = 0;
 			let computeCircuitFailure: unknown;
 			let discoveryFailure: unknown;
-			const collections = marketCollectionsRef.current;
-			const resolver = createAssetCandidateResolver(collections, {
+			// Collections are read through the ref so streaming collections refine
+			// support in place instead of restarting the GraphQL crawl and resolver.
+			const crawl = createHomeListingCrawl({
 				signal: controller.signal,
+				collections: () => marketCollectionsRef.current,
 				concurrency: 8,
+				discover: (onPage, signal) => discoverMarketActivity({ listingsOnly: true, signal, onPage }),
 				read: (processId, signal) =>
 					readAssetStateCached(processId, {
 						signal,
@@ -3570,6 +3573,10 @@ function Home() {
 					}),
 				onRevalidated: (result, candidate, cause) => {
 					if (controller.signal.aborted || cause) return;
+					publications.push({ processId: candidate.processId, result });
+				},
+				onReclassified: (result, candidate) => {
+					if (controller.signal.aborted) return;
 					publications.push({ processId: candidate.processId, result });
 				},
 				onSettled: (result, candidate, cause) => {
@@ -3589,38 +3596,16 @@ function Home() {
 					recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
 					publications.push({ processId: candidate.processId, result });
 				},
+				onDiscoveryFailure: (cause) => {
+					if (computeCircuitFailure === undefined) discoveryFailure = cause;
+				},
+				onIndexFailure: (cause) => {
+					indexFailure ??= cause;
+				},
 			});
-			let supportTail = Promise.resolve();
-			const publishCandidates = (candidates: AssetCandidate[]) => {
-				const { supported, unverified } = partitionAssetCandidateSupport(candidates, collections);
-				resolver.enqueue(supported);
-				if (unverified.length) {
-					supportTail = supportTail.then(async () => {
-						try {
-							const verification = await verifyAssetCandidateSupport(unverified, collections, {
-								signal: controller.signal,
-								onVerified: (verified) => resolver.enqueue(verified),
-							});
-							indexFailure ??= verification.unavailable[0]?.error;
-						} catch (cause) {
-							if (controller.signal.aborted) throw cause;
-							indexFailure ??= cause;
-						}
-					});
-				}
-			};
+			homeListingCrawlRef.current = crawl;
 			try {
-				await discoverMarketActivity({
-					listingsOnly: true,
-					signal: controller.signal,
-					onPage: publishCandidates,
-				});
-			} catch (cause) {
-				if (computeCircuitFailure === undefined) discoveryFailure = cause;
-			}
-			try {
-				await supportTail;
-				await resolver.finish();
+				await crawl.finished;
 				controller.signal.throwIfAborted();
 				const failure =
 					discoveryFailure ??
@@ -3656,17 +3641,14 @@ function Home() {
 		})();
 		return () => {
 			disposed = true;
+			homeListingCrawlRef.current = undefined;
 			controller.abort();
 			publications.cancel();
 		};
-	}, [
-		aoRoutingScope,
-		listingSupportVersion,
-		market.error,
-		marketShellReady,
-		portableHomeRetry,
-		shouldLoadAssetSummaries,
-	]);
+	}, [aoRoutingScope, market.error, marketShellReady, portableHomeRetry, shouldLoadAssetSummaries]);
+	React.useEffect(() => {
+		homeListingCrawlRef.current?.supportChanged();
+	}, [listingSupportVersion]);
 	React.useEffect(() => {
 		if (
 			!liveHomeListingShells.length ||
