@@ -85,6 +85,7 @@ import {
 	useOperationActivity,
 	winstonToAr,
 } from '../app/App';
+import { activeMintPhaseLabel, collectionMintPhaseLabel, mintPhaseLabel } from '../app/mint-phase-labels';
 import { useDialogFocus } from '../app/useDialogFocus';
 import udlLogo from '../assets/udl.svg';
 
@@ -865,22 +866,6 @@ function UdlGrantField({
 	);
 }
 
-function mintPhaseStatus(phase: MintPhase) {
-	return {
-		'signing-asset': 'Waiting for approval of the atomic asset in your wallet…',
-		'uploading-asset': 'Uploading the atomic asset to Arweave…',
-		'signing-artwork': 'Waiting for approval of the album artwork in your wallet…',
-		'uploading-artwork': 'Uploading album artwork to Arweave…',
-	}[phase];
-}
-
-function collectionMintPhaseLabel(phase: CollectionMintPhase) {
-	if (phase.kind === 'asset') {
-		return `Asset ${phase.index + 1} of ${phase.total}: ${mintPhaseStatus(phase.phase)}`;
-	}
-	return `${phase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${phase.phase}…`;
-}
-
 /**
  * Debounced, abortable mint-cost estimate shared by the three create modes.
  * The flag is true only while a request is in flight: the returned cleanup
@@ -1638,7 +1623,7 @@ export default function CreateRoute() {
 					onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 					onPhase: (nextPhase) => {
 						setPhase(nextPhase);
-						updateUpload(uploadId, mintPhaseStatus(nextPhase));
+						updateUpload(uploadId, mintPhaseLabel(nextPhase));
 					},
 				}
 			);
@@ -1675,7 +1660,7 @@ export default function CreateRoute() {
 				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (nextPhase) => {
 					setPhase(nextPhase);
-					updateUpload(uploadId, mintPhaseStatus(nextPhase));
+					updateUpload(uploadId, mintPhaseLabel(nextPhase));
 				},
 			});
 			completeMint(minted.asset, uploadId);
@@ -1687,34 +1672,7 @@ export default function CreateRoute() {
 		}
 	};
 	const working = submission !== null || phase !== null || collectionPhase !== null || fungibleSubmitting;
-	const phaseLabel = fungiblePhase
-		? {
-				'signing-logo': 'Approve the token logo in your wallet…',
-				'uploading-logo': 'Uploading the token logo to Arweave…',
-				signing: 'Approve the token process in your wallet…',
-				uploading: 'Submitting the token process to Arweave…',
-		  }[fungiblePhase]
-		: collectionPhase
-		? collectionPhase.kind === 'asset'
-			? `Asset ${collectionPhase.index + 1} of ${collectionPhase.total}: ${
-					{
-						'signing-asset': 'approve atomic asset',
-						'uploading-asset': 'uploading atomic asset',
-						'signing-artwork': 'approve artwork upload',
-						'uploading-artwork': 'uploading artwork',
-					}[collectionPhase.phase]
-			  }…`
-			: `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${
-					collectionPhase.phase
-			  }…`
-		: phase
-		? {
-				'signing-asset': 'Approve the atomic asset in your wallet…',
-				'uploading-asset': 'Uploading the atomic asset to Arweave…',
-				'signing-artwork': 'Approve the album artwork in your wallet…',
-				'uploading-artwork': 'Uploading album artwork to Arweave…',
-		  }[phase]
-		: '';
+	const phaseLabel = activeMintPhaseLabel({ fungible: fungiblePhase, collection: collectionPhase, asset: phase });
 	const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
 	const activeEstimateFailure = estimateFailures[mode] ?? null;
 	const estimateStatus = mintEstimateStatus({

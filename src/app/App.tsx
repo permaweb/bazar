@@ -95,7 +95,7 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
-import type { CollectionMintPhase, MintUploadTransaction } from 'api/asset-mint';
+import type { MintUploadTransaction } from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
@@ -269,6 +269,7 @@ import {
 	purchaseQuoteFailure,
 	type SignedOperationKind,
 } from './marketplace-error';
+import { collectionMintPhaseLabel } from './mint-phase-labels';
 import {
 	atomicOperationActivityId,
 	atomicPurchaseRecoveryCanBeDiscarded,
@@ -6506,7 +6507,7 @@ function CollectionView() {
 				onAssetMinted: (index, asset) => paidAssets.record((value) => ({ ...value, [index]: asset })),
 				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (phase) => {
-					const status = collectionAppendPhaseLabel(phase);
+					const status = collectionMintPhaseLabel(phase, { extending: true });
 					setAppendStatus(status);
 					updateUpload(uploadId, status);
 				},
@@ -8120,16 +8121,6 @@ export function CollectionAppendDialog({
 			</section>
 		</div>
 	);
-}
-
-function collectionAppendPhaseLabel(phase: CollectionMintPhase) {
-	if (phase.kind === 'asset') {
-		const action = phase.phase.startsWith('signing') ? 'Approve in your wallet' : 'Uploading to Arweave';
-		return `Asset ${phase.index + 1} of ${phase.total} · ${action}`;
-	}
-	if (phase.kind === 'manifest')
-		return phase.phase === 'signing' ? 'Approve the new manifest' : 'Publishing manifest';
-	return phase.phase === 'signing' ? 'Approve the collection update' : 'Updating collection carrier';
 }
 
 function CollectionResultStatus({ message }: { message: string }) {
