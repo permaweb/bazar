@@ -544,7 +544,7 @@ export default function ProfileRoute() {
 				onRetry={view.canRetry ? () => setRetry((value) => value + 1) : undefined}
 				profile={summary}
 			>
-				{view.status !== 'invalid' ? <MyAssetsRoute address={address} embedded /> : null}
+				{view.status !== 'invalid' ? <MyAssetsRoute address={address} /> : null}
 			</ProfilePage>
 			<ProfileEditDialog
 				onClose={() => setEditOpen(false)}
