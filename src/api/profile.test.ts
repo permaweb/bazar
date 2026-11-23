@@ -51,6 +51,19 @@ describe('Account-0.3 profiles', () => {
 		expect(graphql.query).toContain(ACCOUNT_PROFILE_PROTOCOL);
 	});
 
+	it("reads a stored AR.IO /<id> avatar through that gateway's /raw route", () => {
+		const avatar = (value: string) =>
+			profileAvatarUrl({ address, avatar: value } as any, 'https://gateway.example');
+		// Saved before content URLs were built by gateway kind; the AR.IO sandbox answers 200 with no bytes.
+		expect(avatar(`https://bazar.arweave.net/${avatarId}`)).toBe(`https://bazar.arweave.net/raw/${avatarId}`);
+		expect(avatar(`https://ardrive.net/${avatarId}`)).toBe(`https://ardrive.net/raw/${avatarId}`);
+		expect(avatar(`https://arweave.net/raw/${avatarId}`)).toBe(`https://arweave.net/raw/${avatarId}`);
+		// HyperBEAM and other hosts serve /<id> directly; other paths and queries are kept as written.
+		expect(avatar(`https://mystical.computer/${avatarId}`)).toBe(`https://mystical.computer/${avatarId}`);
+		expect(avatar(`https://arweave.net/${avatarId}?v=2`)).toBe(`https://arweave.net/${avatarId}?v=2`);
+		expect(avatar('https://images.example/me.png')).toBe('https://images.example/me.png');
+	});
+
 	it('deduplicates concurrent reads for one address', async () => {
 		const other = 'B'.repeat(43);
 		const fetcher = vi.fn(async () => Response.json({ data: { transactions: { edges: [] } } }));
