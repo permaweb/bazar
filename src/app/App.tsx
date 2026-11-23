@@ -93,8 +93,9 @@ import {
 	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
+	readAssetDetailState,
 	readAssetStateCached,
-	readAssetStateWithDeadline,
+	readCurrentAssetState,
 } from 'api/asset-state-store';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
 import {
@@ -8334,15 +8335,25 @@ export function verifiedAssetForDetail(
 		: resolvedAsset;
 }
 
+export const ASSET_STATE_UNAVAILABLE_HEADING = 'Live state unavailable';
+
+/**
+ * Loading-shell identity for an asset page. Until the collection is known the
+ * kind and device stay undefined so the shell renders a neutral skeleton
+ * instead of guessing a collection such as Arweave names / carrier@1.0.
+ */
 export function assetDetailLoadingPresentation(collection: Collection | undefined, collectionId: string) {
-	const kind =
+	const kind: Collection['kind'] | undefined =
 		collection?.kind ??
 		(collectionId === FUNGIBLE_TOKEN_COLLECTION_ID
 			? 'tokens'
 			: collectionId === CREATED_COLLECTION_ID
 			? 'images'
-			: 'names');
-	return { kind, device: kind === 'names' ? 'carrier@1.0' : 'token@1.0' } as const;
+			: collectionId === 'arweave-names'
+			? 'names'
+			: undefined);
+	const device = kind === 'names' ? 'carrier@1.0' : kind ? 'token@1.0' : undefined;
+	return { kind, device } as const;
 }
 
 export function mergeAssetDetailMetadata(
@@ -8378,11 +8389,12 @@ export function assetStateRecoveryUrl(
 	return error && usesPermawebOsAo(location, scope) ? bazarAoTransportUrl(location.href) : null;
 }
 
-function AssetDetailLoadingShell({
+export function AssetDetailLoadingShell({
 	asset,
 	collection,
 	collectionId,
 	error,
+	errorHeading = ASSET_STATE_UNAVAILABLE_HEADING,
 	onRetry,
 	secondaryAction,
 }: {
@@ -8390,6 +8402,7 @@ function AssetDetailLoadingShell({
 	collection?: Collection;
 	collectionId: string;
 	error?: string | null;
+	errorHeading?: string;
 	onRetry?: () => void;
 	secondaryAction?: ErrorPanelAction;
 }) {
@@ -8398,7 +8411,13 @@ function AssetDetailLoadingShell({
 	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
 	const collectionName =
 		(collection ? (kind === 'tokens' ? collectionDisplayName(collection) : collection.name) : undefined) ??
-		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
+		(kind === 'tokens'
+			? 'Fungible tokens'
+			: kind === 'images'
+			? CREATED_COLLECTION_NAME
+			: kind === 'names'
+			? 'Arweave names'
+			: undefined);
 
 	if (kind === 'tokens') {
 		return (
@@ -8439,7 +8458,12 @@ function AssetDetailLoadingShell({
 					</div>
 				</header>
 				{error ? (
-					<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
+					<ErrorPanel
+						heading={errorHeading}
+						message={error}
+						onRetry={onRetry}
+						secondaryAction={secondaryAction}
+					/>
 				) : (
 					<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
 						<span aria-hidden="true" /> Computing current state…
@@ -8549,8 +8573,10 @@ function AssetDetailLoadingShell({
 								<Link className="asset-collection-link" to={`/collection/${collection.id}`}>
 									{collectionName}
 								</Link>
-							) : (
+							) : collectionName ? (
 								<span className="asset-collection-link">{collectionName}</span>
+							) : (
+								<span aria-hidden="true" className="layout-placeholder asset-loading-kicker" />
 							)}
 						</div>
 						{asset ? (
@@ -8559,15 +8585,32 @@ function AssetDetailLoadingShell({
 							<span className="layout-placeholder layout-placeholder-title" />
 						)}
 						<div className="asset-owner-line">
-							<span>Loading ownership and market state</span>
+							<span>
+								{error
+									? 'Ownership and market state unavailable'
+									: 'Loading ownership and market state'}
+							</span>
 						</div>
 						<div className="asset-token-tags" aria-hidden="true">
-							<span>{device}</span>
-							<span>Arweave</span>
-							<span>Supply 1</span>
+							{device ? (
+								<>
+									<span>{device}</span>
+									<span>Arweave</span>
+									<span>Supply 1</span>
+								</>
+							) : (
+								Array.from({ length: 3 }, (_, index) => (
+									<span className="layout-placeholder asset-loading-tag" key={index} />
+								))
+							)}
 						</div>
 						{error ? (
-							<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
+							<ErrorPanel
+								heading={errorHeading}
+								message={error}
+								onRetry={onRetry}
+								secondaryAction={secondaryAction}
+							/>
 						) : (
 							<div
 								aria-live="polite"
@@ -8746,7 +8789,7 @@ function SetProfilePictureButton({
 		setError('');
 		setStatus('checking');
 		try {
-			const current = await readAssetStateWithDeadline(assetId, { maxAge: 0 });
+			const current = await readCurrentAssetState(assetId);
 			if (
 				current.state.totalSupply !== '1' ||
 				current.state.denomination > 0 ||
@@ -8817,6 +8860,8 @@ function AssetView() {
 		key: string;
 		state: AssetState | null;
 		loading: boolean;
+		refreshing: boolean;
+		current: boolean;
 		error: string | null;
 		provider: string;
 		verifiedAt: number | null;
@@ -8824,6 +8869,8 @@ function AssetView() {
 		key: liveResultKey,
 		state: prefetchedState?.state ?? null,
 		loading: true,
+		refreshing: true,
+		current: false,
 		error: null,
 		provider: prefetchedState?.provider ?? '',
 		verifiedAt: prefetchedState?.verifiedAt ?? null,
@@ -8833,6 +8880,8 @@ function AssetView() {
 	const state = liveResultIsCurrent ? liveResult.state : prefetchedState?.state ?? null;
 	const error = liveResultIsCurrent ? liveResult.error : null;
 	const loading = !liveResultIsCurrent || liveResult.loading;
+	const refreshing = !liveResultIsCurrent || liveResult.refreshing;
+	const stateCurrent = liveResultIsCurrent && liveResult.current;
 	const provider = liveResultIsCurrent ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResultIsCurrent ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute =
@@ -8968,13 +9017,15 @@ function AssetView() {
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
 	const readLiveState = React.useCallback(
-		async (_force: boolean) => {
+		async (current: boolean) => {
 			requestRef.current?.abort();
 			if (!canResolveAsset) {
 				setLiveResult({
 					key: liveResultKey,
 					state: null,
 					loading: false,
+					refreshing: false,
+					current: false,
 					error: null,
 					provider: '',
 					verifiedAt: null,
@@ -8984,58 +9035,53 @@ function AssetView() {
 			const controller = new AbortController();
 			requestRef.current = controller;
 			const cached = cachedAssetState(assetId);
-			setLiveResult((current) => {
-				const isCurrent = current.key === liveResultKey;
+			setLiveResult((previous) => {
+				const isCurrent = previous.key === liveResultKey;
+				const state = isCurrent ? previous.state : cached?.state ?? null;
 				return {
 					key: liveResultKey,
-					state: isCurrent ? current.state : cached?.state ?? null,
-					loading: true,
+					state,
+					// Known state stays interactive while current state is requested;
+					// commerce actions read /now themselves before signing.
+					loading: !state || current,
+					refreshing: true,
+					current: false,
 					error: null,
-					provider: isCurrent ? current.provider : cached?.provider ?? '',
-					verifiedAt: isCurrent ? current.verifiedAt : cached?.verifiedAt ?? null,
+					provider: isCurrent ? previous.provider : cached?.provider ?? '',
+					verifiedAt: isCurrent ? previous.verifiedAt : cached?.verifiedAt ?? null,
 				};
 			});
 			try {
-				const result = await readAssetStateCached(assetId, {
-					maxAge: 0,
-					cacheTtlMs: 20_000,
-					force: true,
+				await readAssetDetailState(assetId, {
+					current,
 					signal: controller.signal,
-				});
-				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult({
-						key: liveResultKey,
-						state: result.state,
-						loading: Boolean(result.revalidation),
-						error: null,
-						provider: result.provider,
-						verifiedAt: result.verifiedAt ?? Date.now(),
-					});
-				}
-				if (result.revalidation) {
-					const fresh = await result.revalidation;
-					if (requestRef.current === controller && !controller.signal.aborted) {
+					onUpdate: (update) => {
+						if (requestRef.current !== controller || controller.signal.aborted) return;
 						setLiveResult({
 							key: liveResultKey,
-							state: fresh.state,
+							state: update.result.state,
 							loading: false,
+							refreshing: update.refreshing,
+							current: update.current,
 							error: null,
-							provider: fresh.provider,
-							verifiedAt: fresh.verifiedAt ?? Date.now(),
+							provider: update.result.provider,
+							verifiedAt: update.result.verifiedAt ?? Date.now(),
 						});
-					}
-				}
+					},
+				});
 			} catch (cause) {
 				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult((current) => {
-						const isCurrent = current.key === liveResultKey;
+					setLiveResult((previous) => {
+						const isCurrent = previous.key === liveResultKey;
 						return {
 							key: liveResultKey,
-							state: isCurrent ? current.state : null,
+							state: isCurrent ? previous.state : null,
 							loading: false,
+							refreshing: false,
+							current: false,
 							error: assetStateErrorMessage(cause),
-							provider: isCurrent ? current.provider : '',
-							verifiedAt: isCurrent ? current.verifiedAt : null,
+							provider: isCurrent ? previous.provider : '',
+							verifiedAt: isCurrent ? previous.verifiedAt : null,
 						};
 					});
 				}
@@ -9047,6 +9093,7 @@ function AssetView() {
 	const refreshAsset = React.useCallback(async () => {
 		invalidateAssetState(assetId);
 		setActivityRetry((value) => value + 1);
+		// After an action, only current state may replace what the page shows.
 		await readLiveState(true);
 	}, [assetId, readLiveState]);
 	React.useEffect(() => {
@@ -9273,7 +9320,8 @@ function AssetView() {
 		if (recoverySuppressed) resumeButtonRef.current?.focus();
 	}, [recoverySuppressed]);
 	React.useEffect(() => {
-		if (!wallet.address || operation || recoverySuppressed || !state) return;
+		// Recovery may discard signed local work, so it waits for current state.
+		if (!wallet.address || operation || recoverySuppressed || !state || !stateCurrent) return;
 		if (state.totalSupply !== '1' || state.denomination > 0) return;
 		const walletAddress = wallet.address;
 		const activeClaimKey = operationClaimStorageKey(assetId, walletAddress);
@@ -9430,7 +9478,7 @@ function AssetView() {
 			}
 		})().catch(() => undefined);
 		return () => controller.abort();
-	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
+	}, [assetId, openOperation, operation, recoverySuppressed, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
 	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
 	const stateRecoveryAction = recoveryUrl
@@ -9451,16 +9499,28 @@ function AssetView() {
 		);
 	}
 	if (!collection && (collectionLookup.error || market.error))
-		return (
+		return shellAsset ? (
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={collectionLookup.error || market.error!}
+				errorHeading="Collection unavailable"
+				onRetry={collectionLookup.retry}
+			/>
+		) : (
 			<RouteState title="Asset unavailable">
 				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection && directAtomicRoute && error)
 		return (
-			<RouteState title="Asset unavailable">
-				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
-			</RouteState>
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={detailError ?? error}
+				onRetry={load}
+				secondaryAction={stateRecoveryAction}
+			/>
 		);
 	if (!collection)
 		return (
@@ -9481,6 +9541,11 @@ function AssetView() {
 						  market.notice ||
 						  'Current collection membership could not be verified.'
 				}
+				errorHeading={
+					market.loading || collectionLookup.loading
+						? ASSET_STATE_UNAVAILABLE_HEADING
+						: 'Collection membership unavailable'
+				}
 				onRetry={market.loading || collectionLookup.loading ? load : collectionLookup.retry}
 				secondaryAction={
 					(market.loading || collectionLookup.loading) && detailError ? stateRecoveryAction : undefined
@@ -9490,9 +9555,14 @@ function AssetView() {
 	const asset = verifiedAsset;
 	if (!asset && error)
 		return (
-			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
-			</RouteState>
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collection={collection}
+				collectionId={collectionId}
+				error={detailError ?? error}
+				onRetry={load}
+				secondaryAction={stateRecoveryAction}
+			/>
 		);
 	if (!asset && !loading)
 		return (
@@ -9555,6 +9625,7 @@ function AssetView() {
 					onAskLoadMore={() => void loadOlderAssetAsks()}
 					onAskRetry={() => setAskRetry((value) => value + 1)}
 					loading={loading}
+					stateCurrent={stateCurrent}
 					error={error}
 					provider={provider}
 					verifiedAt={verifiedAt}
@@ -9682,7 +9753,7 @@ function AssetView() {
 							{asset.name}
 						</h1>
 						<div className="asset-owner-line">
-							<span>{loading || error ? 'Last known owner' : 'Owned by'}</span>
+							<span>{loading || refreshing || error ? 'Last known owner' : 'Owned by'}</span>
 							{owner ? (
 								<WalletAddress address={owner} label="owner" />
 							) : (
@@ -9697,7 +9768,12 @@ function AssetView() {
 						</div>
 						{loading ? <Loading label="Computing current state…" /> : null}
 						{error ? (
-							<ErrorPanel message={error} onRetry={load} secondaryAction={stateRecoveryAction} />
+							<ErrorPanel
+								heading={ASSET_STATE_UNAVAILABLE_HEADING}
+								message={error}
+								onRetry={load}
+								secondaryAction={stateRecoveryAction}
+							/>
 						) : null}
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
@@ -10116,7 +10192,7 @@ function AssetView() {
 							<StateVerification
 								provider={provider}
 								verifiedAt={verifiedAt}
-								refreshing={loading}
+								refreshing={loading || refreshing}
 								failed={Boolean(error)}
 							/>
 							<dl className="asset-blockchain-details">
@@ -10459,7 +10535,7 @@ function OperationDialog({
 			);
 			claimRef.current = operationClaim;
 			if (freshOperation) {
-				const { state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 });
+				const { state: freshState } = await readCurrentAssetState(asset.id, { signal });
 				const stateError = atomicOperationStateError(
 					operation.kind,
 					freshState,
@@ -12236,5 +12312,23 @@ export function assetStateErrorMessage(error: unknown) {
 		}
 		return `${host} could not be reached. Retry live state or review the AO Core settings in the header.`;
 	}
-	return errorMessage(error);
+	if (/^HTTP 4\d\d(?:\b|$)/i.test(value)) {
+		return `The configured AO peers do not serve live state for this asset (${value}). Retry, or review the AO Core settings in the header.`;
+	}
+	if (
+		error instanceof SyntaxError ||
+		[
+			'invalid-asset-state',
+			'invalid-asset-state-link',
+			'invalid-asset-state-trie',
+			'asset-state-link-limit',
+		].includes(value)
+	) {
+		return 'The configured AO peers answered, but not with this asset’s process state. Retry, or review the AO Core settings in the header.';
+	}
+	const friendly = errorMessage(error);
+	if (friendly !== value.replaceAll('-', ' ')) return friendly;
+	return `Live state for this asset could not be read through the configured AO peers${
+		value ? ` (${value})` : ''
+	}. Retry, or review the AO Core settings in the header.`;
 }

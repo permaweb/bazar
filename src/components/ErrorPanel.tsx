@@ -9,15 +9,16 @@ export type ErrorPanelAction = {
 };
 
 export function ErrorPanel({
+	heading = 'Unable to load',
 	message,
 	onRetry,
 	secondaryAction,
 }: {
+	heading?: string;
 	message: string;
 	onRetry?: () => void;
 	secondaryAction?: ErrorPanelAction;
 }) {
-	const heading = 'Unable to load';
 	return (
 		<div className={`error-panel${onRetry ? ' retry-notice' : ''}`}>
 			<strong>{heading}</strong>

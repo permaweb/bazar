@@ -15,6 +15,27 @@ export const DISPLAY_STATE_CACHE = {
 	staleWhileRevalidate: 86_400,
 } as const;
 
+/** Asset pages paint from bounded compute state before current state arrives. */
+export const ASSET_DETAIL_DISPLAY_READ = {
+	...DISPLAY_STATE_CACHE,
+	cacheTtlMs: 20_000,
+} as const;
+
+/** Current (`/now`) state for asset pages and commerce preflight. */
+export const ASSET_DETAIL_CURRENT_READ = {
+	maxAge: 0,
+	cacheTtlMs: 20_000,
+	force: true,
+} as const;
+
+export type AssetDetailStateUpdate = {
+	result: ComputeResult;
+	/** True only when the state came from a current (`/now`) read. */
+	current: boolean;
+	/** True while a current read is still expected to replace this state. */
+	refreshing: boolean;
+};
+
 type CacheEntry = {
 	expiresAt: number;
 	result: ComputeResult;
@@ -64,6 +85,44 @@ export function readAssetStateWithDeadline(
 		timeoutMs: DISPLAY_STATE_TIMEOUT_MS,
 		timeoutError: DISPLAY_STATE_TIMEOUT_ERROR,
 	});
+}
+
+/**
+ * Read state immediately before a buy, list, cancel or transfer. Commerce
+ * preflight always asks the selected peers for current state and never accepts
+ * cached or stale-while-revalidate compute state.
+ */
+export function readCurrentAssetState(processId: string, options: { signal?: AbortSignal } = {}) {
+	return readAssetStateWithDeadline(processId, { signal: options.signal, maxAge: 0 });
+}
+
+/**
+ * Read state for an asset page: publish bounded `compute&max-age` state first
+ * so the page renders, then replace it with current (`/now`) state. A failed
+ * display read is reported without starting a `/now` read against peers that
+ * already failed. `current: true` skips straight to `/now` after an action.
+ */
+export async function readAssetDetailState(
+	processId: string,
+	options: {
+		current?: boolean;
+		onUpdate(update: AssetDetailStateUpdate): void;
+		signal?: AbortSignal;
+	}
+): Promise<void> {
+	const { onUpdate, signal } = options;
+	if (!options.current) {
+		const display = await readAssetStateCached(processId, { ...ASSET_DETAIL_DISPLAY_READ, signal });
+		signal?.throwIfAborted();
+		onUpdate({ result: display, current: false, refreshing: true });
+	}
+	const current = await readAssetStateCached(processId, { ...ASSET_DETAIL_CURRENT_READ, signal });
+	signal?.throwIfAborted();
+	onUpdate({ result: current, current: !current.revalidation, refreshing: Boolean(current.revalidation) });
+	if (!current.revalidation) return;
+	const fresh = await current.revalidation;
+	signal?.throwIfAborted();
+	onUpdate({ result: fresh, current: true, refreshing: false });
 }
 
 function sharedStateOperationWithDeadline<Result>(
