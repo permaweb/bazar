@@ -68,6 +68,7 @@ import {
 	homeSearchAssets,
 	homeSummaryRequestKeys,
 	homeTabFromPathname,
+	homeTabHeading,
 	homeTabPath,
 	homeTokenPriceChangeLabel,
 	homeTokenPriceChangePercent,
@@ -238,6 +239,11 @@ describe('Home market summary retries', () => {
 			isFungiblePendingMint({ contentType: 'application/x.arweave-token', ticker: 'SIG' }, 'fungible-tokens')
 		).toBe(true);
 		expect(isFungiblePendingMint({ contentType: 'audio/mpeg' }, 'created-assets')).toBe(false);
+	});
+	it('gives each Home tab its own page heading, so each tab route gets its own document title', () => {
+		expect(homeTabHeading('discover')).toBe('Discover');
+		expect(homeTabHeading('collections')).toBe('Collections');
+		expect(homeTabHeading('activity')).toBe('Activity');
 	});
 	it('maps every Home tab to a hash-router subroute without dropping other query parameters', () => {
 		expect(homeTabFromPathname('/discover')).toBe('discover');
