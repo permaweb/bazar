@@ -3,8 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { CollectionActivityEvent, ResolvedAsset } from 'api/asset-discovery';
+import { parseAssetState } from 'api/asset-marketplace';
 import {
 	type Collection,
+	compiledFungibleTokenCollection,
+	fungibleAssetFromState,
 	HIDDEN_COLLECTION_IDS,
 	hiddenCollectionAssetIndex,
 	replaceHiddenCollectionAssetIndex,
@@ -13,6 +16,7 @@ import {
 import {
 	AssetCardArtwork,
 	assetDetailCanResolve,
+	assetDetailMembership,
 	assetDetailMembershipVerified,
 	COLLECTION_PRICE_DISPLAY_DEADLINE_MS,
 	collectionActivityScanAnnouncement,
@@ -107,6 +111,7 @@ import {
 	retryableHomeSummaryKeys,
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
+	tokenListingNoticeCopy,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
 	visibleActivityAssets,
@@ -859,6 +864,46 @@ describe('Home market summary retries', () => {
 		expect(fallbackIds).toEqual([]);
 		expect(assetDetailMembershipVerified(fallback.id, new Set(fallbackIds), false)).toBe(false);
 		expect(verifiedCollectionIdsFrom([{ ...fallback, indexSource: 'reference' }])).toEqual(['collection']);
+	});
+
+	it('shows a token from its live contract when only the token index is unavailable', () => {
+		const tokenId = 'T'.repeat(43);
+		const contract = {
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			name: 'Live token',
+			'total-supply': '1000',
+			denomination: 3,
+			balances: { ['W'.repeat(43)]: '1000' },
+			orders: {},
+		};
+		const fallback = compiledFungibleTokenCollection();
+		const live = Boolean(fungibleAssetFromState(tokenId, parseAssetState(contract)));
+		expect(fallback.indexSource).toBe('compiled-fallback');
+		expect(live).toBe(true);
+
+		// The index read failed: the page renders from live state with a listing notice.
+		expect(assetDetailMembership(fallback, new Set(), false, live)).toBe('live');
+		// The index answered: nothing to flag.
+		expect(assetDetailMembership(fallback, new Set([fallback.id]), false, live)).toBe('verified');
+		// A process that does not declare the swap contract stays on the loading shell.
+		const noSwap = { ...contract, 'swap-device': 'other-swap@1.0' };
+		expect(fungibleAssetFromState(tokenId, parseAssetState(noSwap))).toBeUndefined();
+		expect(assetDetailMembership(fallback, new Set(), false, false)).toBe('unverified');
+		// Image membership is defined by its index only, so a live state never stands in for it.
+		const images: Collection = { id: 'images', name: 'Images', description: '', kind: 'images', assets: [] };
+		expect(assetDetailMembership(images, new Set(), false, true)).toBe('unverified');
+		expect(assetDetailMembership(undefined, new Set(), true, false)).toBe('verified');
+	});
+
+	it('words the token listing notice as a pending check, then as an unverified listing', () => {
+		expect(tokenListingNoticeCopy(true).compact).toBe('Checking the Bazar listing…');
+		expect(tokenListingNoticeCopy(false).compact).toBe('Bazar listing could not be verified right now.');
+		expect(tokenListingNoticeCopy(false).message).toContain('read from live state');
 	});
 
 	it('keeps collection members out of the standalone created-assets collection', () => {

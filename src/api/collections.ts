@@ -479,10 +479,7 @@ export async function loadCollections(
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
-			fallback: () => ({
-				...fungibleTokenCollection(isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) ? [] : [defaultFungibleToken()]),
-				indexSource: 'compiled-fallback',
-			}),
+			fallback: compiledFungibleTokenCollection,
 		},
 		...IMAGE_COLLECTIONS.map(({ reference, manifest }, index) => ({
 			label: `Permanent artwork collection ${index + 1}`,
@@ -1389,6 +1386,14 @@ function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection 
 		kind: 'tokens',
 		assets,
 		total: Math.max(count, assets.length),
+	};
+}
+
+/** The token collection without its index: only the configured token, marked as a compiled fallback. */
+export function compiledFungibleTokenCollection(): Collection {
+	return {
+		...fungibleTokenCollection(isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) ? [] : [defaultFungibleToken()]),
+		indexSource: 'compiled-fallback',
 	};
 }
 
