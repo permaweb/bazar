@@ -261,6 +261,27 @@ export function quoteClearsError(reset: QuoteErrorReset, inputs: readonly unknow
 
 type CreateMode = 'asset' | 'collection' | 'fungible';
 
+/**
+ * Props for a file dropzone button. While a mint is working the dropzone is locked with
+ * aria-disabled and ignores clicks and dropped files, but stays an enabled element: some engines
+ * do not deliver drag events to a disabled control, and then nothing would preventDefault a file
+ * dropped mid-upload, so the browser would open it and unload the page during a paid mint.
+ */
+export function fileDropzoneProps(working: boolean, openPicker: () => void, acceptFiles: (files: File[]) => void) {
+	return {
+		'aria-disabled': working || undefined,
+		onClick: () => {
+			if (!working) openPicker();
+		},
+		onDragOver: (event: { preventDefault(): void }) => event.preventDefault(),
+		onDrop: (event: { preventDefault(): void; dataTransfer: { files?: ArrayLike<File> | null } }) => {
+			event.preventDefault();
+			if (working) return;
+			acceptFiles(Array.from(event.dataTransfer.files ?? []));
+		},
+	};
+}
+
 export function MintSubmitButton({
 	blocked,
 	connected,
@@ -358,12 +379,107 @@ export function MintRecoveryActions({
 	);
 }
 
+/** The success card's subject. Each tab owns its own result, so this never mixes tabs. */
+export type MintOutcome =
+	| { kind: 'asset'; asset: MintedAsset }
+	| { kind: 'collection'; collection: CollectionMintResult };
+
+/**
+ * The success card for the selected tab only. A result from another tab stays in its own slot
+ * (and returns when that tab is selected again) but never hides this tab's submit button. The
+ * token result is shown by FungibleMintDialog, so the Token tab has no card here.
+ */
+export function visibleMintOutcome(
+	mode: CreateMode,
+	results: { result: MintedAsset | null; collectionResult: CollectionMintResult | null }
+): MintOutcome | null {
+	if (mode === 'asset' && results.result) return { kind: 'asset', asset: results.result };
+	if (mode === 'collection' && results.collectionResult)
+		return { kind: 'collection', collection: results.collectionResult };
+	return null;
+}
+
+export function mintOutcomeReceipt(outcome: MintOutcome): MintTransactionReceiptEntry[] {
+	if (outcome.kind === 'collection') {
+		return [
+			{ label: 'View collection manifest', transactionId: outcome.collection.manifestId },
+			{ label: 'View collection process', transactionId: outcome.collection.processId },
+		];
+	}
+	return [
+		...(outcome.asset.artworkId ? [{ label: 'Artwork transaction', transactionId: outcome.asset.artworkId }] : []),
+		{ label: 'Asset transaction', transactionId: outcome.asset.id },
+	];
+}
+
+export function MintOutcomeCard({
+	onCreateAnother,
+	onNavigate,
+	outcome,
+	ready,
+}: {
+	onCreateAnother: () => void;
+	onNavigate: (path: string) => void;
+	outcome: MintOutcome;
+	/** Whether the minted asset is readable yet. Collections are shown as submitted. */
+	ready: boolean;
+}) {
+	const propagating = outcome.kind === 'asset' && !ready;
+	return (
+		<div className={`mint-success${propagating ? ' propagating' : ''}`}>
+			<span>{propagating ? <InfinityIcon aria-hidden="true" /> : <Check aria-hidden="true" />}</span>
+			<div>
+				<strong>{outcome.kind === 'asset' && ready ? 'Live on Bazar' : 'Submitted to Arweave'}</strong>
+				<p>
+					{outcome.kind === 'collection'
+						? 'The collection receipt is ready to verify.'
+						: ready
+						? 'The asset is available through the selected gateway.'
+						: 'Submitted and accepted by Arweave. It is safe to leave this page; Bazar will keep watching in Activity.'}
+				</p>
+				<MintTransactionReceipt entries={mintOutcomeReceipt(outcome)} />
+			</div>
+			<div className="mint-success-actions">
+				{propagating ? (
+					<Button type="button" size="custom" onClick={() => onNavigate('/')}>
+						Continue browsing <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+					</Button>
+				) : null}
+				<Button
+					type="button"
+					size="custom"
+					disabled={propagating}
+					onClick={() =>
+						onNavigate(
+							outcome.kind === 'collection'
+								? `/collection/${outcome.collection.collection.id}`
+								: `/asset/${CREATED_COLLECTION_ID}/${outcome.asset.id}`
+						)
+					}
+				>
+					View {outcome.kind === 'collection' ? 'collection' : ready ? 'asset' : 'when available'}{' '}
+					{propagating ? (
+						<InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
+					) : (
+						<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+					)}
+				</Button>
+				<Button type="button" size="custom" onClick={onCreateAnother}>
+					Create another
+				</Button>
+			</div>
+		</div>
+	);
+}
+
 type FungibleMintDialogProps = {
 	confirmFailed?: boolean;
 	error: string | null;
 	logoPreview: string;
 	name: string;
 	onClearError: () => void;
+	/** Clears the finished token so the Token tab offers a new mint. */
+	onCreateAnother: () => void;
 	onNavigate: (path: string) => void;
 	onVisibleChange: (visible: boolean) => void;
 	phase: FungibleMintPhase | null;
@@ -384,6 +500,7 @@ export function FungibleMintDialog({
 	logoPreview,
 	name,
 	onClearError,
+	onCreateAnother,
 	onNavigate,
 	onVisibleChange,
 	phase,
@@ -566,6 +683,9 @@ export function FungibleMintDialog({
 							size="custom"
 						>
 							Dispatch to holders <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</Button>
+						<Button onClick={onCreateAnother} size="custom">
+							Create another token
 						</Button>
 					</div>
 				) : null}
@@ -1144,8 +1264,10 @@ export default function CreateRoute() {
 	const submitMint = async () => {
 		if (!wallet.address) return;
 		setError(null);
-		setResult(null);
-		setCollectionResult(null);
+		// Only this tab's previous result is replaced; another tab keeps its card and receipt.
+		if (mode === 'asset') setResult(null);
+		if (mode === 'collection') setCollectionResult(null);
+		if (mode === 'fungible') setFungibleResult(null);
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
 		if (mode !== 'fungible') {
 			beginUpload({
@@ -1156,7 +1278,6 @@ export default function CreateRoute() {
 				status: 'Preparing secure wallet approvals…',
 			});
 		}
-		setFungibleResult(null);
 		// What this run pays for reaches state only if it fails, so the quote,
 		// signature count and notice keep describing the attempt in flight.
 		let keepPaidProgress = () => {};
@@ -1308,17 +1429,20 @@ export default function CreateRoute() {
 		: '';
 	const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
 	const activeUploadBytes = mode === 'asset' && estimate ? estimate.assetBytes + estimate.artworkBytes : null;
-	const receiptEntries: MintTransactionReceiptEntry[] = collectionResult
-		? [
-				{ label: 'View collection manifest', transactionId: collectionResult.manifestId },
-				{ label: 'View collection process', transactionId: collectionResult.processId },
-		  ]
-		: result
-		? [
-				...(result.artworkId ? [{ label: 'Artwork transaction', transactionId: result.artworkId }] : []),
-				{ label: 'Asset transaction', transactionId: result.id },
-		  ]
-		: [];
+	const outcome = visibleMintOutcome(mode, { result, collectionResult });
+	/** Leaves the selected tab's finished result and clears its media so the next mint starts fresh. */
+	const createAnother = () => {
+		if (working) return;
+		if (mode === 'fungible') {
+			setFungibleResult(null);
+			setFungibleOperationError(null);
+			setFungibleDialogVisible(false);
+			return;
+		}
+		if (mode === 'collection') selectCollectionFiles([]);
+		else selectFile(null);
+		if (fileInput.current) fileInput.current.value = '';
+	};
 
 	return (
 		<section className="create-page">
@@ -1340,6 +1464,7 @@ export default function CreateRoute() {
 				active={mode}
 				ariaLabel="Create type"
 				className="create-mode"
+				disabled={working}
 				idPrefix="create-mode"
 				onChange={(nextMode) => {
 					setMode(nextMode);
@@ -1408,14 +1533,14 @@ export default function CreateRoute() {
 							}`}
 							type="button"
 							size="custom"
-							onClick={() => fileInput.current?.click()}
-							onDragOver={(event) => event.preventDefault()}
-							onDrop={(event) => {
-								event.preventDefault();
-								if (mode === 'collection')
-									selectCollectionFiles(Array.from(event.dataTransfer.files ?? []));
-								else selectFile(event.dataTransfer.files?.[0] ?? null);
-							}}
+							{...fileDropzoneProps(
+								working,
+								() => fileInput.current?.click(),
+								(files) => {
+									if (mode === 'collection') selectCollectionFiles(files);
+									else selectFile(files[0] ?? null);
+								}
+							)}
 						>
 							{mode === 'collection' && collectionPreviews.length ? (
 								<span className="collection-preview-grid">
@@ -1461,6 +1586,7 @@ export default function CreateRoute() {
 					<input
 						ref={fileInput}
 						className="mint-file-input"
+						disabled={working}
 						type="file"
 						multiple={mode === 'collection'}
 						accept={
@@ -1518,7 +1644,12 @@ export default function CreateRoute() {
 								{artworkPreview ? <img src={artworkPreview} alt="Album artwork preview" /> : null}
 							</div>
 							<div>
-								<Button type="button" onClick={() => artworkInput.current?.click()} size="custom">
+								<Button
+									type="button"
+									disabled={working}
+									onClick={() => artworkInput.current?.click()}
+									size="custom"
+								>
 									<Upload className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 									{artwork ? 'Replace artwork' : 'Add artwork'}
 								</Button>
@@ -1527,6 +1658,7 @@ export default function CreateRoute() {
 										type="button"
 										size="custom"
 										variant="danger"
+										disabled={working}
 										onClick={() => {
 											artworkRevision.current += 1;
 											setArtwork(null);
@@ -1540,6 +1672,7 @@ export default function CreateRoute() {
 							<input
 								ref={artworkInput}
 								className="mint-file-input"
+								disabled={working}
 								type="file"
 								accept="image/png,image/jpeg,image/webp,image/gif"
 								onChange={(event) => {
@@ -1563,6 +1696,7 @@ export default function CreateRoute() {
 										type="button"
 										size="icon"
 										aria-label={`Remove ${item.name}`}
+										disabled={working}
 										onClick={() =>
 											selectCollectionFiles(
 												collectionFiles.filter((_, heldIndex) => heldIndex !== index)
@@ -1574,7 +1708,12 @@ export default function CreateRoute() {
 									</Button>
 								</div>
 							))}
-							<Button type="button" onClick={() => fileInput.current?.click()} size="custom">
+							<Button
+								type="button"
+								disabled={working}
+								onClick={() => fileInput.current?.click()}
+								size="custom"
+							>
 								<Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Add images
 							</Button>
 						</div>
@@ -1681,12 +1820,11 @@ export default function CreateRoute() {
 									className={`fungible-logo-dropzone${logoPreview ? ' has-file' : ''}`}
 									type="button"
 									size="custom"
-									onClick={() => logoInput.current?.click()}
-									onDragOver={(event) => event.preventDefault()}
-									onDrop={(event) => {
-										event.preventDefault();
-										selectLogo(event.dataTransfer.files?.[0] ?? null);
-									}}
+									{...fileDropzoneProps(
+										working,
+										() => logoInput.current?.click(),
+										(files) => selectLogo(files[0] ?? null)
+									)}
 								>
 									{logoPreview && logo ? (
 										<>
@@ -1710,6 +1848,7 @@ export default function CreateRoute() {
 								<input
 									ref={logoInput}
 									className="mint-file-input"
+									disabled={working}
 									id="mint-logo"
 									type="file"
 									accept="image/png,image/jpeg,image/webp,image/gif"
@@ -1730,6 +1869,7 @@ export default function CreateRoute() {
 											type="button"
 											size="custom"
 											variant="danger"
+											disabled={working}
 											onClick={() => selectLogo(null)}
 										>
 											<X className="ui-icon ui-icon--sm" aria-hidden="true" /> Remove
@@ -2230,54 +2370,13 @@ export default function CreateRoute() {
 							<span>{error}</span>
 						</div>
 					) : null}
-					{result || collectionResult ? (
-						<div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
-							<span>
-								{result && !resultReady ? (
-									<InfinityIcon aria-hidden="true" />
-								) : (
-									<Check aria-hidden="true" />
-								)}
-							</span>
-							<div>
-								<strong>{result && resultReady ? 'Live on Bazar' : 'Submitted to Arweave'}</strong>
-								<p>
-									{collectionResult
-										? 'The collection receipt is ready to verify.'
-										: resultReady
-										? 'The asset is available through the selected gateway.'
-										: 'Submitted and accepted by Arweave. It is safe to leave this page; Bazar will keep watching in Activity.'}
-								</p>
-								<MintTransactionReceipt entries={receiptEntries} />
-							</div>
-							<div className="mint-success-actions">
-								{result && !resultReady ? (
-									<Button type="button" size="custom" onClick={() => navigate('/')}>
-										Continue browsing{' '}
-										<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-									</Button>
-								) : null}
-								<Button
-									type="button"
-									size="custom"
-									disabled={Boolean(result && !resultReady)}
-									onClick={() =>
-										navigate(
-											collectionResult
-												? `/collection/${collectionResult.collection.id}`
-												: `/asset/${CREATED_COLLECTION_ID}/${result!.id}`
-										)
-									}
-								>
-									View {collectionResult ? 'collection' : resultReady ? 'asset' : 'when available'}{' '}
-									{result && !resultReady ? (
-										<InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
-									) : (
-										<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-									)}
-								</Button>
-							</div>
-						</div>
+					{outcome ? (
+						<MintOutcomeCard
+							onCreateAnother={createAnother}
+							onNavigate={navigate}
+							outcome={outcome}
+							ready={resultReady}
+						/>
 					) : mode === 'fungible' && (fungibleSubmitting || fungibleResult || fungibleOperationError) ? (
 						<Button
 							className="mint-submit"
@@ -2329,6 +2428,7 @@ export default function CreateRoute() {
 					logoPreview={logoPreview}
 					name={name}
 					onClearError={() => setFungibleOperationError(null)}
+					onCreateAnother={createAnother}
 					onNavigate={navigate}
 					onVisibleChange={setFungibleDialogVisible}
 					phase={fungiblePhase}

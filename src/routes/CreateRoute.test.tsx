@@ -4,11 +4,19 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
 
+import type { CollectionMintResult, MintedAsset } from 'api/asset-mint';
+
+import { Button } from 'components/Button';
+import { SegmentedTabs } from 'components/SegmentedTabs';
+
 import {
+	fileDropzoneProps,
 	FungibleMintDialog,
 	fungibleMintStage,
 	isMintLiveFor,
 	MINT_LIVE_EVENT,
+	MintOutcomeCard,
+	mintOutcomeReceipt,
 	MintRecoveryActions,
 	MintRecoveryCost,
 	MintSubmitButton,
@@ -17,6 +25,7 @@ import {
 	resumeMintDraft,
 	runSingleFlight,
 	subscribeMintLive,
+	visibleMintOutcome,
 } from './CreateRoute';
 
 const tokenResult = {
@@ -40,6 +49,7 @@ function dialogMarkup(overrides: Partial<React.ComponentProps<typeof FungibleMin
 			logoPreview: '',
 			name: 'Signal',
 			onClearError: () => undefined,
+			onCreateAnother: () => undefined,
 			onNavigate: () => undefined,
 			onVisibleChange: () => undefined,
 			phase: null,
@@ -69,6 +79,7 @@ describe('fungible mint presentation', () => {
 				logoPreview: 'blob:token-logo',
 				name: 'Signal',
 				onClearError: () => undefined,
+				onCreateAnother: () => undefined,
 				onNavigate: () => undefined,
 				onVisibleChange: () => undefined,
 				phase: null,
@@ -97,6 +108,8 @@ describe('fungible mint presentation', () => {
 		expect(markup).toContain('Token live on Bazar');
 		expect(markup).toContain('Token logo transaction');
 		expect(markup).not.toContain('mint-success');
+		// A finished token is not a dead end: the done state offers the next mint.
+		expect(markup).toContain('Create another token');
 	});
 
 	it('says a submitted token is waiting for the scheduler, not already minted', () => {
@@ -124,6 +137,148 @@ describe('fungible mint presentation', () => {
 		expect(markup).toContain('Token live on Bazar');
 		expect(markup).toContain('Dispatch to holders');
 		expect(markup).not.toContain('Bazar could not confirm');
+	});
+});
+
+describe('create result per tab', () => {
+	const asset = { id: 'A'.repeat(43), artworkId: 'R'.repeat(43) } as unknown as MintedAsset;
+	const collection = {
+		collection: { id: 'C'.repeat(43) },
+		manifestId: 'M'.repeat(43),
+		processId: 'P'.repeat(43),
+	} as unknown as CollectionMintResult;
+
+	it('shows a result only on the tab that produced it', () => {
+		expect(visibleMintOutcome('fungible', { result: asset, collectionResult: null })).toBeNull();
+		expect(visibleMintOutcome('collection', { result: asset, collectionResult: null })).toBeNull();
+		expect(visibleMintOutcome('asset', { result: null, collectionResult: collection })).toBeNull();
+		expect(visibleMintOutcome('fungible', { result: null, collectionResult: collection })).toBeNull();
+		expect(visibleMintOutcome('asset', { result: null, collectionResult: null })).toBeNull();
+	});
+
+	it('keeps each tab result for its own tab', () => {
+		const both = { result: asset, collectionResult: collection };
+		expect(visibleMintOutcome('asset', both)).toEqual({ kind: 'asset', asset });
+		expect(visibleMintOutcome('collection', both)).toEqual({ kind: 'collection', collection });
+	});
+
+	it('builds the receipt from the selected tab even when another tab also has a result', () => {
+		const assetOutcome = visibleMintOutcome('asset', { result: asset, collectionResult: collection })!;
+		expect(mintOutcomeReceipt(assetOutcome)).toEqual([
+			{ label: 'Artwork transaction', transactionId: asset.artworkId },
+			{ label: 'Asset transaction', transactionId: asset.id },
+		]);
+		const collectionOutcome = visibleMintOutcome('collection', { result: asset, collectionResult: collection })!;
+		expect(mintOutcomeReceipt(collectionOutcome).map(({ transactionId }) => transactionId)).toEqual([
+			collection.manifestId,
+			collection.processId,
+		]);
+	});
+
+	const card = (outcome: NonNullable<ReturnType<typeof visibleMintOutcome>>, ready: boolean) =>
+		renderToStaticMarkup(
+			React.createElement(MintOutcomeCard, {
+				onCreateAnother: () => undefined,
+				onNavigate: () => undefined,
+				outcome,
+				ready,
+			})
+		);
+
+	it('offers Create another on a submitted, live and collection result', () => {
+		const submitted = card({ kind: 'asset', asset }, false);
+		expect(submitted).toContain('Submitted to Arweave');
+		expect(submitted).toContain('Continue browsing');
+		expect(submitted).toContain('View when available');
+		expect(submitted).toContain('Create another');
+
+		const live = card({ kind: 'asset', asset }, true);
+		expect(live).toContain('Live on Bazar');
+		expect(live).toContain('View asset');
+		expect(live).not.toContain('disabled');
+		expect(live).toContain('Create another');
+
+		const minted = card({ kind: 'collection', collection }, false);
+		expect(minted).toContain('The collection receipt is ready to verify.');
+		expect(minted).toContain('View collection');
+		expect(minted).not.toContain('disabled');
+		expect(minted).not.toContain('Asset transaction');
+		expect(minted).toContain('Create another');
+	});
+});
+
+describe('create type tabs', () => {
+	const tabs = (disabled?: boolean) =>
+		renderToStaticMarkup(
+			React.createElement(SegmentedTabs, {
+				active: 'asset',
+				ariaLabel: 'Create type',
+				disabled,
+				idPrefix: 'create-mode',
+				onChange: () => undefined,
+				tabs: [
+					{ value: 'asset', label: 'Unique 1/1' },
+					{ value: 'fungible', label: 'Token' },
+				],
+			})
+		);
+
+	it('locks every tab while a mint is running', () => {
+		expect(tabs(true).match(/disabled=""/g)).toHaveLength(2);
+		expect(tabs()).not.toContain('disabled');
+	});
+});
+
+describe('create file dropzones', () => {
+	const dropped = [new File(['a'], 'a.png', { type: 'image/png' }), new File(['b'], 'b.png', { type: 'image/png' })];
+	const dropEvent = () => ({ preventDefault: vi.fn(), dataTransfer: { files: dropped } });
+
+	it('stays an enabled element with aria-disabled while a mint is working', () => {
+		const markup = (working: boolean) =>
+			renderToStaticMarkup(
+				React.createElement(
+					Button,
+					{ className: 'mint-dropzone', ...fileDropzoneProps(working, vi.fn(), vi.fn()) },
+					'Choose media'
+				)
+			);
+		// A disabled control may never receive drag events, leaving the browser default (open
+		// the dropped file, unloading the page) in charge mid-upload.
+		expect(markup(true)).not.toContain('disabled=""');
+		expect(markup(true)).toContain('aria-disabled="true"');
+		expect(markup(false)).not.toContain('disabled');
+	});
+
+	it('swallows a drop during a mint without navigating or changing the selection', () => {
+		const openPicker = vi.fn();
+		const acceptFiles = vi.fn();
+		const props = fileDropzoneProps(true, openPicker, acceptFiles);
+
+		const over = { preventDefault: vi.fn() };
+		props.onDragOver(over);
+		expect(over.preventDefault).toHaveBeenCalledTimes(1);
+
+		const drop = dropEvent();
+		props.onDrop(drop);
+		expect(drop.preventDefault).toHaveBeenCalledTimes(1);
+		expect(acceptFiles).not.toHaveBeenCalled();
+
+		props.onClick();
+		expect(openPicker).not.toHaveBeenCalled();
+	});
+
+	it('accepts the dropped files and opens the picker while idle', () => {
+		const openPicker = vi.fn();
+		const acceptFiles = vi.fn();
+		const props = fileDropzoneProps(false, openPicker, acceptFiles);
+
+		const drop = dropEvent();
+		props.onDrop(drop);
+		expect(drop.preventDefault).toHaveBeenCalledTimes(1);
+		expect(acceptFiles).toHaveBeenCalledWith(dropped);
+
+		props.onClick();
+		expect(openPicker).toHaveBeenCalledTimes(1);
 	});
 });
 
