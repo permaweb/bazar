@@ -1021,6 +1021,151 @@ export async function enrichImageCollectionAssetMetadata(
 	return snapshot();
 }
 
+/** Upper bound for one exact-ID name lookup; visible pages are 8-30 cards, so a page is one request. */
+export const INDEXED_ASSET_NAME_BATCH_SIZE = 100;
+
+/** A display name from the permanent index, with the asset's media when it is a Bazar Atomic Asset. */
+export type IndexedAssetName = Pick<AssetSummary, 'id' | 'name'> & Partial<AssetSummary>;
+
+export type IndexedAssetNameOptions = {
+	signal?: AbortSignal;
+	fetch?: typeof fetch;
+	retryDelaysMs?: readonly number[];
+};
+
+/**
+ * Name precedence for one indexed transaction: a valid Bazar Atomic Asset (its `name` tag, then
+ * the legacy `title` tag, with its media) first; otherwise a bare `name` or `title` tag. Anything
+ * else yields nothing, so the caller keeps its short-ID placeholder as the last resort.
+ */
+function indexedAssetName(node: AtomicAssetIndexNode): IndexedAssetName | undefined {
+	const atomic = indexedAtomicAsset(node);
+	if (atomic) return atomic;
+	if (typeof node.id !== 'string' || !ARWEAVE_ID.test(node.id) || !Array.isArray(node.tags)) return undefined;
+	const tags = new Map<string, string>();
+	for (const tag of node.tags as Array<{ name?: unknown; value?: unknown }>) {
+		if (tag && typeof tag.name === 'string' && typeof tag.value === 'string') {
+			tags.set(tag.name.toLowerCase(), tag.value.trim());
+		}
+	}
+	const name = tags.get('name') || tags.get('title');
+	return name ? { id: node.id, name } : undefined;
+}
+
+const INDEXED_ASSET_NAMES_QUERY = `query BazarAssetNamesByIds($ids: [ID!]!, $first: Int!, $after: String) {
+	transactions(ids: $ids, first: $first, after: $after) {
+		pageInfo { hasNextPage }
+		edges { cursor node { id tags { name value } } }
+	}
+}`;
+
+/**
+ * Resolve display names for the asset IDs a page is showing, in one GraphQL request per page.
+ *
+ * `first` matches the batch, so arweave.net answers every ID at once (measured 2026-11-23: 30
+ * and 60 IDs in one `ids` filter, all returned, `hasNextPage: false`; its default `first` of 10
+ * is what truncated earlier batches). A truncated answer is still followed by cursor on the
+ * index that issued it. IDs the index does not know are omitted. A batch that fails outright
+ * throws only when nothing at all was resolved, so the caller may retry later.
+ */
+export async function loadIndexedAssetNames(
+	ids: readonly string[],
+	options: IndexedAssetNameOptions = {}
+): Promise<Map<string, IndexedAssetName>> {
+	const { signal } = options;
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const retryDelaysMs = options.retryDelaysMs ?? ASSET_INDEX_RETRY_DELAYS_MS;
+	const unique = [...new Set(ids)].filter((id) => ARWEAVE_ID.test(id) && isVisibleAssetId(id));
+	const found = new Map<string, IndexedAssetName>();
+	let failure: unknown;
+	for (let offset = 0; offset < unique.length; offset += INDEXED_ASSET_NAME_BATCH_SIZE) {
+		const batch = unique.slice(offset, offset + INDEXED_ASSET_NAME_BATCH_SIZE);
+		const wanted = new Set(batch);
+		let after: string | null = null;
+		let endpoints = graphqlEndpointList();
+		const visited = new Set<string>();
+		try {
+			for (let page = 0; page < batch.length; page += 1) {
+				const { response, body, endpoint } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
+					fetcher,
+					INDEXED_ASSET_NAMES_QUERY,
+					{ ids: batch, first: batch.length, after },
+					signal,
+					retryDelaysMs,
+					endpoints
+				);
+				const connection: AtomicAssetIndexConnection | undefined = body?.data?.transactions;
+				if (!response.ok || body?.errors?.length || !Array.isArray(connection?.edges)) {
+					if (page === 0) throw new Error(`asset-name-index-${response.status}`);
+					break;
+				}
+				for (const edge of connection.edges) {
+					const entry = indexedAssetName(edge?.node ?? {});
+					if (entry && wanted.has(entry.id)) found.set(entry.id, entry);
+				}
+				const next: unknown = connection.edges.at(-1)?.cursor;
+				if (
+					connection.pageInfo?.hasNextPage !== true ||
+					batch.every((id) => found.has(id)) ||
+					typeof next !== 'string' ||
+					!next ||
+					visited.has(next)
+				)
+					break;
+				visited.add(next);
+				after = next;
+				endpoints = [endpoint];
+			}
+		} catch (cause) {
+			throwIfAborted(signal);
+			failure ??= cause;
+		}
+	}
+	if (failure !== undefined && !found.size) throw failure;
+	return found;
+}
+
+/** True for the short-ID title an ID-only manifest entry starts with (or a blank name). */
+export function isPlaceholderAssetName(asset: Pick<AssetSummary, 'id' | 'name'>): boolean {
+	return !asset.name.trim() || asset.name === shortId(asset.id);
+}
+
+/** Take a resolved display name over a short-ID placeholder, never the other way round. */
+export function preferResolvedAssetName<T extends Pick<AssetSummary, 'id' | 'name'>>(
+	asset: T,
+	current: Pick<AssetSummary, 'id' | 'name'> | undefined
+): T {
+	if (!current || current.id !== asset.id || !isPlaceholderAssetName(asset) || isPlaceholderAssetName(current))
+		return asset;
+	return { ...asset, name: current.name };
+}
+
+/**
+ * Merge indexed names into the loaded image collections, replacing only short-ID placeholders.
+ * Returns the same array when nothing changed so store updates stay referentially stable.
+ */
+export function withIndexedAssetNames(
+	collections: Collection[],
+	indexed: ReadonlyMap<string, IndexedAssetName>
+): Collection[] {
+	if (!indexed.size) return collections;
+	let changed = false;
+	const next = collections.map((collection) => {
+		if (collection.kind !== 'images') return collection;
+		let touched = false;
+		const assets = collection.assets.map((asset) => {
+			const entry = indexed.get(asset.id);
+			if (!entry || !isPlaceholderAssetName(asset) || isPlaceholderAssetName(entry)) return asset;
+			touched = true;
+			return { ...asset, ...entry, id: asset.id };
+		});
+		if (!touched) return collection;
+		changed = true;
+		return { ...collection, assets };
+	});
+	return changed ? next : collections;
+}
+
 function throwIfAborted(signal?: AbortSignal) {
 	if (!signal?.aborted) return;
 	throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError');

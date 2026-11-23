@@ -87,12 +87,14 @@ import {
 	reconcileHomeListingAssets,
 	recordHomeListingComputeResult,
 	restartCollectionPriceDeadlines,
+	retainedCollectionAssetNames,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
+	visibleActivityAssets,
 	withoutDuplicatedCreatedAssets,
 } from './App';
 import {
@@ -1962,5 +1964,64 @@ describe('Collection live listing truth', () => {
 		expect(iterations).toBe(1);
 		expect(merged).toHaveLength(10_000);
 		expect(new Set(merged.map((result) => result.asset.id)).size).toBe(10_000);
+	});
+});
+
+describe('collection snapshots published from the index walk', () => {
+	const id = 'VFeEyvnoB-u249MgGQHN5Jcwvs7CAwycw826ztrXpT0';
+	const placeholder = { id, name: 'VFeEyvn…trXpT0' };
+	const dumdumz = (name: string, manifestId = 'M'.repeat(43)): Collection => ({
+		id: 'cNdMdSIuIlF3YM2j81y1k_HiaA60r4wp552w2JiWx4I',
+		name: 'Dumdumz',
+		description: '',
+		kind: 'images',
+		manifestId,
+		assets: [{ ...placeholder, name }],
+	});
+
+	it('keeps names that arrived after the snapshot was taken', () => {
+		const retained = retainedCollectionAssetNames([dumdumz('88')], dumdumz(placeholder.name));
+		expect(retained.assets[0].name).toBe('88');
+	});
+
+	it('adopts newer names and a changed manifest as published', () => {
+		expect(retainedCollectionAssetNames([dumdumz(placeholder.name)], dumdumz('88')).assets[0].name).toBe('88');
+		const moved = dumdumz(placeholder.name, 'N'.repeat(43));
+		expect(retainedCollectionAssetNames([dumdumz('88')], moved)).toBe(moved);
+		const fresh = dumdumz(placeholder.name);
+		expect(retainedCollectionAssetNames([], fresh)).toBe(fresh);
+	});
+});
+
+describe('activity rows that need indexed names', () => {
+	it('returns only image-collection assets behind the visible rows', () => {
+		const imageId = 'I'.repeat(43);
+		const nameId = 'N'.repeat(43);
+		const images: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Dumdumz',
+			description: '',
+			kind: 'images',
+			assets: [{ id: imageId, name: 'IIIIIII…IIIIII' }],
+		};
+		const names: Collection = {
+			id: 'arweave-names',
+			name: 'Arweave Names',
+			description: '',
+			kind: 'names',
+			assets: [{ id: nameId, name: 'example' }],
+			namespace: { manifestId: 'M'.repeat(43), namesById: { [nameId]: 'example' } },
+		};
+		const event = (processId: string) => ({ processId } as CollectionActivityEvent);
+		const byId = new Map([
+			[imageId, images],
+			[nameId, names],
+		]);
+
+		expect(
+			visibleActivityAssets([event(imageId), event(nameId), event('U'.repeat(43))], (item) =>
+				byId.get(item.processId)
+			)
+		).toEqual([images.assets[0]]);
 	});
 });

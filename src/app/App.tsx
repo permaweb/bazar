@@ -108,6 +108,7 @@ import {
 	FUNGIBLE_TOKEN_ID,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
+	type IndexedAssetName,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadBazarCollectionById,
@@ -115,7 +116,9 @@ import {
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	preferResolvedAssetName,
 	replaceHiddenCollectionAssetIndex,
+	withIndexedAssetNames,
 	withVisibleCollectionAssets,
 } from 'api/collections';
 import {
@@ -210,6 +213,7 @@ import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
+import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -352,6 +356,8 @@ type MarketContextValue = {
 	collections: Collection[];
 	searchAssets: SearchAsset[];
 	rememberSearchAssets(assets: SearchAsset[]): void;
+	/** Merge indexed display names into loaded collections; only short-ID placeholders change. */
+	rememberIndexedAssets(indexed: ReadonlyMap<string, IndexedAssetName>): void;
 	verifiedCollectionIds: ReadonlySet<string>;
 	visibilityReady: boolean;
 	loading: boolean;
@@ -404,6 +410,16 @@ export function withoutDuplicatedCreatedAssets(collections: Collection[]): Colle
 	});
 }
 
+/**
+ * A collection published from an older snapshot (the collection-wide index walk) must not turn
+ * names that arrived meanwhile back into short IDs; same-manifest image snapshots keep them.
+ */
+export function retainedCollectionAssetNames(current: Collection[], collection: Collection): Collection {
+	const previous = current.find((item) => item.id === collection.id);
+	if (!previous || previous.kind !== 'images' || collection.kind !== 'images') return collection;
+	return mergeCollectionSnapshots([previous], [collection])[0] ?? collection;
+}
+
 export function verifiedCollectionIdsFrom(collections: Collection[]) {
 	return collections
 		.filter((collection) => collection.indexSource !== 'compiled-fallback')
@@ -414,6 +430,7 @@ export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
 	searchAssets: [],
 	rememberSearchAssets: () => undefined,
+	rememberIndexedAssets: () => undefined,
 	verifiedCollectionIds: new Set(),
 	visibilityReady: false,
 	loading: true,
@@ -443,6 +460,7 @@ export function App() {
 		collections: initialMarketCollections(),
 		searchAssets: [],
 		rememberSearchAssets: () => undefined,
+		rememberIndexedAssets: () => undefined,
 		verifiedCollectionIds: new Set(),
 		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
@@ -596,11 +614,18 @@ export function App() {
 		setMarket((current) => ({
 			...current,
 			collections: marketCatalogueCollections([
-				collection,
+				retainedCollectionAssetNames(current.collections, collection),
 				...current.collections.filter((item) => item.id !== collection.id),
 			]),
 			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
+	}, []);
+	const rememberIndexedAssets = React.useCallback((indexed: ReadonlyMap<string, IndexedAssetName>) => {
+		if (!indexed.size) return;
+		setMarket((current) => {
+			const collections = withIndexedAssetNames(current.collections, indexed);
+			return collections === current.collections ? current : { ...current, collections };
+		});
 	}, []);
 	const rememberSearchAssets = React.useCallback((assets: SearchAsset[]) => {
 		if (!assets.length) return;
@@ -615,10 +640,20 @@ export function App() {
 			addCreatedAsset,
 			addCollection,
 			rememberSearchAssets,
+			rememberIndexedAssets,
 			setPageRefreshing,
 			retry,
 		}),
-		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, rememberSearchAssets, retry]
+		[
+			addCollection,
+			addCreatedAsset,
+			loadMore,
+			market,
+			pageRefreshing,
+			rememberIndexedAssets,
+			rememberSearchAssets,
+			retry,
+		]
 	);
 
 	return (
@@ -3451,8 +3486,9 @@ function Home() {
 				.map(({ asset, collection, activity }) => {
 					const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
 					const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+					const named = preferResolvedAssetName(asset, currentAsset);
 					return {
-						asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+						asset: currentAsset?.image && !named.image ? { ...named, image: currentAsset.image } : named,
 						collection: currentCollection ?? collection,
 						activity,
 					};
@@ -3586,6 +3622,14 @@ function Home() {
 		...discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
 	];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
+	// Only the Uniques actually on screen: the overview preview, or the current page of the full grid.
+	useIndexedAssetNames(
+		(assetType === 'all'
+			? discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW)
+			: assetPagination.items
+		).flatMap(({ asset, collection }) => (collection.kind === 'images' ? [asset] : [])),
+		market.rememberIndexedAssets
+	);
 	const visibleDiscoverTokens =
 		assetType === 'all'
 			? discoverTokenPagination.items
@@ -4870,7 +4914,19 @@ export function globalActivityRevealDescription(
 	} events.`;
 }
 
+/** Image-collection assets behind the activity rows a list is showing, for batched name lookup. */
+export function visibleActivityAssets(
+	events: readonly CollectionActivityEvent[],
+	resolveCollection: (event: CollectionActivityEvent) => Collection | undefined
+): AssetSummary[] {
+	return events.flatMap((event) => {
+		const collection = resolveCollection(event);
+		return collection?.kind === 'images' ? collectionAsset(collection, event.processId) ?? [] : [];
+	});
+}
+
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
+	const { rememberIndexedAssets } = React.useContext(MarketContext);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
 	const [activityLimit, setActivityLimit] = React.useState(20);
 	const [request, setRequest] = React.useState({ kind: 'initial' as 'initial' | 'more', id: 0 });
@@ -4930,6 +4986,12 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
 
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
+	useIndexedAssetNames(
+		visibleActivityAssets(filteredEvents.slice(0, activityLimit), (event) =>
+			globalActivityCollection(collections, event.processId)
+		),
+		rememberIndexedAssets
+	);
 	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
 		{ value: 'all', label: 'All' },
 		{ value: 'make-offer', label: 'Listings' },
@@ -6166,7 +6228,12 @@ function CollectionView() {
 	const visibleAssets = React.useMemo(
 		() =>
 			listedOnly
-				? listed.map((result) => result.asset)
+				? listed.map((result) =>
+						preferResolvedAssetName(
+							result.asset,
+							collection ? collectionAsset(collection, result.asset.id) : undefined
+						)
+				  )
 				: collection && deferredQuery.trim()
 				? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
 				: collection?.assets ?? [],
@@ -6243,6 +6310,7 @@ function CollectionView() {
 	);
 	const progressiveRevealRef = useProgressiveReveal(limit < filtered.length, revealNextAssetPage);
 	const visiblePriceAssets = filtered.slice(0, limit);
+	useIndexedAssetNames(collection?.kind === 'images' ? visiblePriceAssets : [], market.rememberIndexedAssets);
 	const visiblePriceKey = visiblePriceAssets.map((asset) => asset.id).join(',');
 	const visibleUnavailablePrices = visiblePriceAssets.filter(
 		(asset) => cardPrices[asset.id]?.status === 'unavailable'
@@ -7684,6 +7752,10 @@ function CollectionActivityView() {
 	const activityWindowVersion = React.useMemo(
 		() => collection?.assets.map((asset) => asset.id).join('.') ?? '',
 		[collection?.assets]
+	);
+	useIndexedAssetNames(
+		visibleActivityAssets(events.slice(0, activityLimit), () => collection),
+		market.rememberIndexedAssets
 	);
 
 	React.useEffect(() => {
