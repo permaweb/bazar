@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Check, Copy, LogOut, Monitor, Moon, Sun, SunDim, UserRound, Wallet } from 'lucide-react';
 
 import { useTheme } from 'providers/ThemeProvider';
-import { useWallet } from 'providers/WalletProvider';
+import { useWallet, type WalletBalanceStatus } from 'providers/WalletProvider';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
@@ -91,6 +91,9 @@ export function WalletMenu() {
 							if (!wallet.address) {
 								wallet.openConnectDialog(event.currentTarget);
 								return;
+							}
+							if (!open && walletBalancesNeedRetry(wallet.arBalanceStatus, wallet.aoBalanceStatus)) {
+								wallet.refreshBalances();
 							}
 							setOpen((current) => !current);
 							setError('');
@@ -207,6 +210,11 @@ function shortAddress(address: string) {
 
 export function walletMenuLabel(address?: string | null, displayName?: string | null) {
 	return displayName?.trim() || (address ? shortAddress(address) : 'Connect');
+}
+
+/** Opening the menu retries a balance that last read as 'Unavailable'. */
+export function walletBalancesNeedRetry(arStatus: WalletBalanceStatus, aoStatus: WalletBalanceStatus) {
+	return arStatus === 'error' || aoStatus === 'error';
 }
 
 export function arBalanceLabel(balance: bigint | null, status: 'idle' | 'loading' | 'ready' | 'error'): string {

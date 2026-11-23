@@ -10,6 +10,8 @@ import {
 	readVisibleWalletBalances,
 	resolveBrowserWallet,
 	restoreBrowserWalletConnection,
+	type VisibleWalletBalance,
+	type VisibleWalletBalances,
 } from 'api/wallet';
 
 import { Button } from 'components/Button';
@@ -25,14 +27,29 @@ type GeneratedWallet = {
 	jwk: WalletJwk;
 };
 
+export type WalletBalanceStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+export type WalletTokenBalanceState = {
+	balance: bigint | null;
+	denomination: number;
+	status: WalletBalanceStatus;
+};
+
+export type WalletBalanceState = {
+	ar: WalletTokenBalanceState;
+	ao: WalletTokenBalanceState;
+};
+
 type WalletContextValue = {
 	address: string | null;
 	arBalance: bigint | null;
 	arBalanceDenomination: number;
-	arBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
+	arBalanceStatus: WalletBalanceStatus;
 	aoBalance: bigint | null;
 	aoBalanceDenomination: number;
-	aoBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
+	aoBalanceStatus: WalletBalanceStatus;
+	/** Re-read the visible balances for the connected wallet, keeping the last value shown meanwhile. */
+	refreshBalances(): void;
 	connect(walletId: BrowserWalletId): Promise<void>;
 	disconnect(): Promise<void>;
 	generateLocalWallet(): Promise<GeneratedWallet>;
@@ -47,18 +64,79 @@ const BROWSER_WALLET_KEY = 'bazar:browser-wallet';
 const LEGACY_PERMAWEB_OS_WALLET_ID = 'the-fold';
 const LOCAL_WALLET_ADAPTER = Symbol('bazar-local-wallet-adapter');
 
+/**
+ * Window events after which the visible wallet balances are re-read for the same address.
+ * 'bazar:asset-operation-finished' fires when an App-tracked buy, sell, transfer or mint reaches done.
+ */
+export const WALLET_BALANCE_REFRESH_EVENTS = ['aoFetchLoaded', 'bazar:asset-operation-finished'] as const;
+
+export function subscribeWalletBalanceRefresh(
+	target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>,
+	refreshBalances: () => void
+) {
+	const listener = () => refreshBalances();
+	for (const event of WALLET_BALANCE_REFRESH_EVENTS) target.addEventListener(event, listener);
+	return () => {
+		for (const event of WALLET_BALANCE_REFRESH_EVENTS) target.removeEventListener(event, listener);
+	};
+}
+
+const WALLET_TOKEN_IDLE: WalletTokenBalanceState = { balance: null, denomination: 12, status: 'idle' };
+export const IDLE_WALLET_BALANCES: WalletBalanceState = { ar: WALLET_TOKEN_IDLE, ao: WALLET_TOKEN_IDLE };
+
+/**
+ * Visible balance state machine, per token:
+ *   any              -- address cleared -->              idle
+ *   any              -- address changed (read starts) --> AR loading, AO idle, values cleared
+ *   ready            -- same-address refresh starts -->  ready (last value stays visible)
+ *   error            -- same-address refresh starts -->  loading
+ *   loading | idle   -- read resolves -->                ready | error (AO without a read: idle)
+ *   ready            -- background refresh fails -->     ready (a failed re-read never hides a known value)
+ * Omit `result` when a read starts; pass it when the read resolves.
+ */
+export function walletBalanceTransition(
+	previous: WalletBalanceState,
+	event: { address: string | null; previousAddress: string | null; result?: VisibleWalletBalances }
+): WalletBalanceState {
+	if (!event.address) return IDLE_WALLET_BALANCES;
+	const sameAddress = event.address === event.previousAddress;
+	if (!event.result) {
+		if (!sameAddress) return { ar: { ...WALLET_TOKEN_IDLE, status: 'loading' }, ao: WALLET_TOKEN_IDLE };
+		return { ar: retryTokenBalance(previous.ar), ao: retryTokenBalance(previous.ao) };
+	}
+	return {
+		ar: settleTokenBalance(previous.ar, event.result.ar, 'error', sameAddress),
+		ao: settleTokenBalance(previous.ao, event.result.ao, 'idle', sameAddress),
+	};
+}
+
+function retryTokenBalance(previous: WalletTokenBalanceState): WalletTokenBalanceState {
+	return previous.status === 'error' ? { ...previous, balance: null, status: 'loading' } : previous;
+}
+
+function settleTokenBalance(
+	previous: WalletTokenBalanceState,
+	read: VisibleWalletBalance | undefined,
+	missingStatus: 'idle' | 'error',
+	sameAddress: boolean
+): WalletTokenBalanceState {
+	const keepPrevious = sameAddress && previous.status === 'ready';
+	if (!read) return keepPrevious ? previous : { ...WALLET_TOKEN_IDLE, status: missingStatus };
+	if (read.atomicBalance === null) {
+		return keepPrevious ? previous : { balance: null, denomination: read.denomination, status: 'error' };
+	}
+	return { balance: read.atomicBalance, denomination: read.denomination, status: 'ready' };
+}
+
 const WalletContext = React.createContext<WalletContextValue | null>(null);
 let rememberedBrowserWallet: Window['arweaveWallet'];
 
 export function WalletProvider({ children }: React.PropsWithChildren) {
 	const [address, setAddress] = React.useState<string | null>(null);
-	const [arBalance, setArBalance] = React.useState<bigint | null>(null);
-	const [arBalanceDenomination, setArBalanceDenomination] = React.useState(12);
-	const [arBalanceStatus, setArBalanceStatus] = React.useState<WalletContextValue['arBalanceStatus']>('idle');
-	const [aoBalance, setAoBalance] = React.useState<bigint | null>(null);
-	const [aoBalanceDenomination, setAoBalanceDenomination] = React.useState(12);
-	const [aoBalanceStatus, setAoBalanceStatus] = React.useState<WalletContextValue['aoBalanceStatus']>('idle');
+	const [balances, setBalances] = React.useState<WalletBalanceState>(IDLE_WALLET_BALANCES);
+	const balanceAddress = React.useRef<string | null>(null);
 	const [balanceRevision, setBalanceRevision] = React.useState(0);
+	const refreshBalances = React.useCallback(() => setBalanceRevision((revision) => revision + 1), []);
 	const [connectDialogOpen, setConnectDialogOpen] = React.useState(false);
 	const connectDialogTrigger = React.useRef<HTMLElement | null>(null);
 	const addressRequests = React.useRef(
@@ -97,42 +175,31 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			}
 		});
 		const refreshWallet = () => {
-			setBalanceRevision((revision) => revision + 1);
+			refreshBalances();
 			void refresh();
 		};
-		const refreshNetworkBalances = () => setBalanceRevision((revision) => revision + 1);
 		window.addEventListener('walletSwitch', refreshWallet);
 		window.addEventListener('permawebConnectLoaded', refreshWallet);
-		window.addEventListener('aoFetchLoaded', refreshNetworkBalances);
+		const unsubscribeBalanceRefresh = subscribeWalletBalanceRefresh(window, refreshBalances);
 		return () => {
 			cancelled = true;
 			window.removeEventListener('walletSwitch', refreshWallet);
 			window.removeEventListener('permawebConnectLoaded', refreshWallet);
-			window.removeEventListener('aoFetchLoaded', refreshNetworkBalances);
+			unsubscribeBalanceRefresh();
 			addressRequests.current.invalidate();
 		};
-	}, [refresh]);
+	}, [refresh, refreshBalances]);
 
 	React.useEffect(() => {
-		setArBalance(null);
-		setAoBalance(null);
-		if (!address) {
-			setArBalanceStatus('idle');
-			setAoBalanceStatus('idle');
-			return;
-		}
+		const previousAddress = balanceAddress.current;
+		balanceAddress.current = address;
+		setBalances((current) => walletBalanceTransition(current, { address, previousAddress }));
+		if (!address) return;
 
 		const controller = new AbortController();
-		setArBalanceStatus('loading');
-		setAoBalanceStatus('idle');
-		void readVisibleWalletBalances(address, { signal: controller.signal }).then((balances) => {
+		void readVisibleWalletBalances(address, { signal: controller.signal }).then((result) => {
 			if (controller.signal.aborted) return;
-			setArBalance(balances.ar.atomicBalance);
-			setArBalanceDenomination(balances.ar.denomination);
-			setArBalanceStatus(balances.ar.atomicBalance === null ? 'error' : 'ready');
-			setAoBalance(balances.ao?.atomicBalance ?? null);
-			setAoBalanceDenomination(balances.ao?.denomination ?? 12);
-			setAoBalanceStatus(balances.ao ? (balances.ao.atomicBalance === null ? 'error' : 'ready') : 'idle');
+			setBalances((current) => walletBalanceTransition(current, { address, previousAddress, result }));
 		});
 		return () => controller.abort();
 	}, [address, balanceRevision]);
@@ -140,12 +207,13 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const value = React.useMemo<WalletContextValue>(
 		() => ({
 			address,
-			arBalance,
-			arBalanceDenomination,
-			arBalanceStatus,
-			aoBalance,
-			aoBalanceDenomination,
-			aoBalanceStatus,
+			arBalance: balances.ar.balance,
+			arBalanceDenomination: balances.ar.denomination,
+			arBalanceStatus: balances.ar.status,
+			aoBalance: balances.ao.balance,
+			aoBalanceDenomination: balances.ao.denomination,
+			aoBalanceStatus: balances.ao.status,
+			refreshBalances,
 			connect: async (walletId) => {
 				const wallet = browserWallet(walletId);
 				const commit = addressRequests.current.begin();
@@ -158,7 +226,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				window.arweaveWallet = wallet;
 				storeBrowserWalletPreference(walletId);
 				commit(nextAddress);
-				setBalanceRevision((revision) => revision + 1);
+				refreshBalances();
 			},
 			disconnect: async () => {
 				const commit = addressRequests.current.begin();
@@ -217,7 +285,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				  }
 				: {}),
 		}),
-		[address, aoBalance, aoBalanceDenomination, aoBalanceStatus, arBalance, arBalanceDenomination, arBalanceStatus]
+		[address, balances, refreshBalances]
 	);
 
 	return (

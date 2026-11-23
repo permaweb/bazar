@@ -864,6 +864,7 @@ export default function CreateRoute() {
 			collectionId: CREATED_COLLECTION_ID,
 			transactionIds: [asset.artworkId, asset.id].filter((id): id is string => Boolean(id)),
 		});
+		wallet.refreshBalances();
 	};
 	const mint = async () => {
 		if (!wallet.address) {
@@ -908,6 +909,7 @@ export default function CreateRoute() {
 				setFungibleResult(minted);
 				setFungiblePhase(null);
 				setFungibleSubmitting(false);
+				wallet.refreshBalances();
 				return;
 			}
 			if (mode === 'collection') {
@@ -931,6 +933,7 @@ export default function CreateRoute() {
 					assetIds: minted.collection.assets.map((asset) => asset.id),
 					transactionIds: [minted.manifestId, minted.processId],
 				});
+				wallet.refreshBalances();
 				return;
 			}
 			if (!file) return;

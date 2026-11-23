@@ -209,6 +209,7 @@ export default function DispatchRoute() {
 				},
 			});
 			dispatchActivity(sender, 'done', '', startedAt);
+			wallet.refreshBalances();
 		} catch (cause) {
 			if (!controller.signal.aborted) {
 				setRunError(dispatchErrorMessage(cause));
