@@ -877,10 +877,25 @@ function recallContentLabel(content: ArweaveAcceptedProof['recallSamples'][numbe
 	return content?.contentLength === undefined ? type : `${type} · ${formatBytes(content.contentLength, language)}`;
 }
 
-function miningStatus(telemetry: ArweaveMiningTelemetry, language: any): string {
-	if (!telemetry.checked) return language.transactionSyncMiningChecking;
-	if (!telemetry.available) return language.transactionSyncMiningUnavailable;
-	return language.transactionSyncMiningSource.replace('{source}', telemetry.sourceLabel);
+export function miningStatus(
+	telemetry: Pick<ArweaveMiningTelemetry, 'status' | 'sourceLabel' | 'acceptedProofs'>,
+	language: any,
+	now = Date.now()
+): string {
+	switch (telemetry.status) {
+		case 'checking':
+			return language.transactionSyncMiningChecking;
+		case 'unavailable':
+			return language.transactionSyncMiningUnavailable;
+		case 'stale': {
+			if (!telemetry.acceptedProofs.length) return language.transactionSyncMiningUnavailable;
+			const lastBlockAt = Math.max(...telemetry.acceptedProofs.map((proof) => proof.observedAt));
+			const seconds = Math.max(0, Math.round((now - lastBlockAt) / 1_000));
+			return language.transactionSyncMiningStale.replace('{seconds}', seconds.toLocaleString());
+		}
+		case 'live':
+			return language.transactionSyncMiningSource.replace('{source}', telemetry.sourceLabel);
+	}
 }
 
 function miningProofDetail(proof: ArweaveAcceptedProof, language: any): string {
