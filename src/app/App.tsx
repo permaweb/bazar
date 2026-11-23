@@ -265,6 +265,7 @@ import {
 	removeWalletRecordIf,
 	removeWalletRecoveryAndSignatures,
 	repairRejectedPurchase,
+	savedPurchaseContinuation,
 	shouldAutomaticallyResumePurchase,
 	storeWalletRecordIf,
 	storeWalletRecordOrThrow,
@@ -10675,7 +10676,7 @@ function OperationDialog({
 		void submit();
 	}, []);
 
-	async function submit() {
+	async function submit(savedPurchase?: PurchaseSnapshot | null) {
 		const validation = atomicOperationFormError(operation.kind, operationValue, owner);
 		if (validation) {
 			setMessage(validation);
@@ -10690,7 +10691,8 @@ function OperationDialog({
 		try {
 			let currentPurchaseSnapshot =
 				operation.kind === 'buy'
-					? latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
+					? savedPurchase ??
+					  latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
 					: null;
 			const freshOperation =
 				operation.kind === 'buy'
@@ -11220,42 +11222,47 @@ function OperationDialog({
 		);
 	}, [activityConfirmations, asset.id, confirmationTarget, onUpdate, reportedStatus, taskId, visiblePhase]);
 	const restartPurchase = () => {
-		if (operation.kind !== 'buy' || !recoverable) {
+		// The failed run has already ended and released its claim and network
+		// lease; submit() re-acquires both. Continue in this visible dialog so the
+		// activity stays listed, instead of closing (which removes it).
+		const continuation =
+			operation.kind === 'buy'
+				? savedPurchaseContinuation(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
+				: null;
+		if (operation.kind !== 'buy' || !continuation) {
 			setMessage('');
 			setFailureKind(null);
 			setPhase('form');
 			return;
 		}
-		if (purchaseState) {
-			const snapshot = purchaseSnapshot(purchaseState);
-			if (hasRecoverablePurchase(snapshot)) {
-				const record = {
-					asset: { id: asset.id, name: asset.name },
-					activityKind: 'atomic',
-					buyer: owner,
-					collectionId,
-					gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
-					order: operation.order,
-					snapshot,
-					createdAt: submittedAtRef.current ?? Date.now(),
-				};
-				storeWalletRecordIf<any>(
-					localStorage,
-					atomicPurchaseStorageKey(asset.id, owner),
-					record,
-					(current) =>
-						current?.buyer === owner &&
-						current?.order?.orderId === operation.order.orderId &&
-						current?.snapshot?.registration?.id === snapshot.registration?.id,
-					true
-				);
-			}
+		const { snapshot } = continuation;
+		storeWalletRecordIf<any>(
+			localStorage,
+			atomicPurchaseStorageKey(asset.id, owner),
+			{
+				asset: { id: asset.id, name: asset.name },
+				activityKind: 'atomic',
+				buyer: owner,
+				collectionId,
+				gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
+				order: operation.order,
+				snapshot,
+				createdAt: submittedAtRef.current ?? Date.now(),
+			},
+			(current) =>
+				current?.buyer === owner &&
+				current?.order?.orderId === operation.order.orderId &&
+				current?.snapshot?.registration?.id === snapshot.registration?.id,
+			true
+		);
+		onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
+		if (continuation.phase === 'approval') {
+			setMessage('');
+			setFailureKind(null);
+			setPhase('approval');
+			return;
 		}
-		attemptRef.current.abort();
-		purchaseRef.current?.abandon();
-		networkRef.current?.release();
-		networkRef.current = null;
-		onClose(false);
+		void submit(snapshot);
 	};
 	const startFreshPurchase = () => {
 		if (operation.kind !== 'buy') return;
@@ -11398,7 +11405,7 @@ function OperationDialog({
 						<Button
 							className="wide"
 							data-dialog-initial
-							onClick={() => void submit()}
+							onClick={() => void submit(operation.kind === 'buy' ? operation.resume : undefined)}
 							type="button"
 							size="custom"
 							variant="primary"
