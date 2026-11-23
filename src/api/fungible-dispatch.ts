@@ -14,6 +14,10 @@ const QUANTITY = /^[1-9]\d*$/;
 
 export const DISPATCH_PLAN_PREFIX = 'bazar-fungible-dispatch:';
 export const DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED = 'dispatch-signed-transaction-recovery-required';
+/** A restored (possibly already posted) signed transfer was definitively rejected; its row needs a decision. */
+export const DISPATCH_SIGNED_TRANSACTION_REJECTED = 'dispatch-signed-transaction-rejected';
+/** The gateway's definitive 400/422 code (weave-wrangler TransactionDispatchRejectedError). */
+const TRANSACTION_DISPATCH_REJECTED = 'transaction-dispatch-rejected';
 export const DEFAULT_DISPATCH_BATCH_SIZE = 100;
 /** Above this total (0.1 AR) the UI collects confirmation before signing. */
 export const DISPATCH_COST_CONFIRMATION_WINSTON = 100_000_000_000n;
@@ -24,9 +28,66 @@ export type HolderRow = { address: string; quantity: string };
 
 export type ParsedHolderList = { rows: HolderRow[]; errors: string[] };
 
-export type DispatchRowStatus = 'unsent' | 'posted' | 'settled';
+/**
+ * Row lifecycle:
+ * - unsent: not signed yet, or signed (transactionId set) and maybe posted.
+ * - posted: the gateway accepted the transfer; waiting for settlement.
+ * - settled: terminal; the recipient balance rose by the quantity.
+ * - rejected: terminal until the user decides. The gateway definitively
+ *   rejected a restored signed transfer (transactionId kept for review).
+ *   runDispatch skips it; only discardRejectedDispatchSignature moves it on,
+ *   to 'settled' when the balance already rose, otherwise back to plain
+ *   'unsent' so the next resume signs a replacement for that holder only.
+ */
+export const DISPATCH_ROW_STATUSES = ['unsent', 'posted', 'settled', 'rejected'] as const;
+
+export type DispatchRowStatus = (typeof DISPATCH_ROW_STATUSES)[number];
 
 export type DispatchRow = HolderRow & { status: DispatchRowStatus; transactionId?: string };
+
+/** Rows runDispatch still works on. Settled and rejected rows are terminal for a run. */
+export function dispatchRowPending(row: Pick<DispatchRow, 'status'>): boolean {
+	return row.status === 'unsent' || row.status === 'posted';
+}
+
+export type DispatchPlanProgress = {
+	settled: number;
+	posted: number;
+	rejected: number;
+	/** Rows a resume would work on (unsent or posted). */
+	pending: number;
+	/** Every row settled. A plan with rejected rows is never complete. */
+	complete: boolean;
+};
+
+export function dispatchPlanProgress(plan: Pick<DispatchPlan, 'rows'>): DispatchPlanProgress {
+	const count = (status: DispatchRowStatus) => plan.rows.filter((row) => row.status === status).length;
+	const settled = count('settled');
+	return {
+		settled,
+		posted: count('posted'),
+		rejected: count('rejected'),
+		pending: plan.rows.filter(dispatchRowPending).length,
+		complete: plan.rows.length > 0 && settled === plan.rows.length,
+	};
+}
+
+/** Thrown at the end of a run that left rows 'rejected'; names the rows that need a decision. */
+export class DispatchSignedTransactionRejectedError extends Error {
+	readonly code = DISPATCH_SIGNED_TRANSACTION_REJECTED;
+	readonly addresses: string[];
+	constructor(addresses: string[]) {
+		super(DISPATCH_SIGNED_TRANSACTION_REJECTED);
+		this.name = 'DispatchSignedTransactionRejectedError';
+		this.addresses = addresses;
+	}
+}
+
+function isDefinitiveDispatchRejection(cause: unknown): boolean {
+	return Boolean(
+		cause && typeof cause === 'object' && (cause as { code?: unknown }).code === TRANSACTION_DISPATCH_REJECTED
+	);
+}
 
 export type DispatchPlan = {
 	processId: string;
@@ -283,8 +344,10 @@ export function isDispatchPlan(value: unknown): value is DispatchPlan {
 			(row) =>
 				ADDRESS.test(row.address) &&
 				QUANTITY.test(row.quantity) &&
-				['unsent', 'posted', 'settled'].includes(row.status) &&
+				(DISPATCH_ROW_STATUSES as readonly string[]).includes(row.status) &&
 				(row.transactionId === undefined || ADDRESS.test(row.transactionId)) &&
+				// A rejected row keeps the rejected signature's id for review.
+				(row.status !== 'rejected' || row.transactionId !== undefined) &&
 				row.address in plan.baseline
 		)
 	);
@@ -355,6 +418,15 @@ export type DispatchRunOptions = {
  * its id remains authoritative for manual review: the transaction may already
  * have been posted before a crash, so Bazar must never sign a replacement.
  *
+ * Definitive gateway rejection (400/422, 'transaction-dispatch-rejected'):
+ * - signed in this run: no earlier post can exist, so the row drops the
+ *   rejected signature (record and id) and stays plain 'unsent'; the error is
+ *   rethrown and the next resume signs a replacement for that holder only.
+ * - restored from storage: it may have been posted before a crash, so the id
+ *   and signed record are kept and the row becomes 'rejected'. The run carries
+ *   on with the other rows, then throws DispatchSignedTransactionRejectedError.
+ *   Only discardRejectedDispatchSignature (an explicit user action) clears it.
+ *
  * Settlement is balance-based: a row is settled once its recipient's live
  * balance has risen by at least its quantity over the plan baseline.
  */
@@ -373,7 +445,7 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 	};
 	persist();
 
-	const pending = () => plan.rows.filter((row) => row.status !== 'settled');
+	const pending = () => plan.rows.filter(dispatchRowPending);
 	while (pending().length) {
 		options.signal?.throwIfAborted();
 		const batch = pending().slice(0, batchSize);
@@ -382,6 +454,7 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 			options.signal?.throwIfAborted();
 			if (row.status === 'posted') continue;
 			let prepared;
+			const restored = Boolean(row.transactionId);
 			if (row.transactionId) {
 				try {
 					prepared = client.restore(row.transactionId, plan.sender);
@@ -413,28 +486,44 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 			}
 			// dispatch() throws on rejection; 'accepted' and 'duplicate' (208,
 			// e.g. a resumed re-post of an already-seen transfer) both succeed.
-			await prepared.dispatch(options.signal ?? new AbortController().signal);
+			try {
+				await prepared.dispatch(options.signal ?? new AbortController().signal);
+			} catch (cause) {
+				if (!isDefinitiveDispatchRejection(cause)) throw cause;
+				if (!restored) {
+					// Signed moments ago and never accepted anywhere: drop it.
+					storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${prepared.id}`);
+					delete row.transactionId;
+					persist();
+					throw cause;
+				}
+				// Restored: may have been posted before a crash. Keep it for a
+				// user decision and carry on with the other rows.
+				row.status = 'rejected';
+				persist();
+				continue;
+			}
 			row.status = 'posted';
 			persist();
 		}
 
 		// One settlement poller for the whole batch: read state once per tick
 		// and settle every row whose recipient balance has risen enough.
+		if (!batch.some((row) => row.status === 'posted')) continue;
 		await waitForAssetState(
 			plan.processId,
 			(state) => {
 				let changed = false;
 				for (const row of batch) {
 					if (row.status !== 'posted') continue;
-					const target = BigInt(plan.baseline[row.address] ?? '0') + BigInt(row.quantity);
-					if (BigInt(liquidBalanceOf(state, row.address)) >= target) {
+					if (balanceSettled(plan, row, state)) {
 						row.status = 'settled';
 						if (row.transactionId) storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${row.transactionId}`);
 						changed = true;
 					}
 				}
 				if (changed) persist();
-				return batch.every((row) => row.status === 'settled');
+				return batch.every((row) => row.status !== 'posted');
 			},
 			{
 				signal: options.signal,
@@ -446,5 +535,57 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 			}
 		);
 	}
+	const rejected = plan.rows.filter((row) => row.status === 'rejected');
+	if (rejected.length) throw new DispatchSignedTransactionRejectedError(rejected.map((row) => row.address));
 	return plan;
+}
+
+function balanceSettled(plan: DispatchPlan, row: DispatchRow, state: AssetState): boolean {
+	const target = BigInt(plan.baseline[row.address] ?? '0') + BigInt(row.quantity);
+	return BigInt(liquidBalanceOf(state, row.address)) >= target;
+}
+
+export type DiscardRejectedSignatureOptions = {
+	storage?: StorageLike;
+	signal?: AbortSignal;
+	/** Fresh, complete holder state; an incomplete table must never authorise a replacement. */
+	readCurrentState?: (
+		processId: string,
+		options: { signal?: AbortSignal; maxAge: 0 }
+	) => Promise<{ state: AssetState }>;
+};
+
+/**
+ * The explicit user decision for a 'rejected' row. Reads fresh holder state
+ * first: when the recipient balance already rose by the row quantity, the
+ * transfer evidently landed, so the row is marked 'settled' and nothing will be
+ * re-signed. Otherwise only that row's rejected signature (id and signed
+ * record) is deleted and it returns to plain 'unsent', so the next resume
+ * signs a replacement for that holder behind the usual fresh-state gate.
+ * Every other row, and every other signed record, is left untouched.
+ */
+export async function discardRejectedDispatchSignature(
+	initial: DispatchPlan,
+	address: string,
+	options: DiscardRejectedSignatureOptions = {}
+): Promise<{ plan: DispatchPlan; outcome: 'settled' | 'discarded' }> {
+	if (!isDispatchPlan(initial)) throw new TypeError('invalid-dispatch-plan');
+	const storage = options.storage ?? globalThis.window?.localStorage;
+	const plan: DispatchPlan = { ...initial, rows: initial.rows.map((row) => ({ ...row })) };
+	const row = plan.rows.find((candidate) => candidate.address === address);
+	if (!row || row.status !== 'rejected') throw new Error('dispatch-row-not-rejected');
+	const readCurrentState = options.readCurrentState ?? readAssetState;
+	const { state } = await readCurrentState(plan.processId, { signal: options.signal, maxAge: 0 });
+	options.signal?.throwIfAborted();
+	if (state.holderBalancesAvailable !== true) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+	const outcome = balanceSettled(plan, row, state) ? 'settled' : 'discarded';
+	if (row.transactionId) storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${row.transactionId}`);
+	if (outcome === 'settled') {
+		row.status = 'settled';
+	} else {
+		row.status = 'unsent';
+		delete row.transactionId;
+	}
+	saveDispatchPlan(plan, storage);
+	return { plan, outcome };
 }

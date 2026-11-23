@@ -5,8 +5,10 @@ import {
 	createDispatchPlan,
 	discardDispatchPlan,
 	dispatchDiscardConfirmation,
+	dispatchPlanProgress,
 	type DispatchRow,
 	dispatchRowInFlight,
+	dispatchRowPending,
 	estimateDispatchCost,
 	isDispatchPlan,
 	loadDispatchPlan,
@@ -132,6 +134,46 @@ describe('dispatch plan persistence', () => {
 		expect(isDispatchPlan({ ...plan, baseline: {} })).toBe(false);
 		expect(isDispatchPlan({ ...plan, rows: [{ ...plan.rows[0], status: 'weird' }] })).toBe(false);
 		expect(isDispatchPlan({ ...plan, sender: 'short' })).toBe(false);
+	});
+
+	it('accepts a rejected row only while it keeps the rejected transaction id', () => {
+		const txA = 'T'.repeat(43);
+		const rejected = { ...plan.rows[0], status: 'rejected' as const, transactionId: txA };
+		expect(isDispatchPlan({ ...plan, rows: [rejected] })).toBe(true);
+		expect(isDispatchPlan({ ...plan, rows: [{ ...plan.rows[0], status: 'rejected' }] })).toBe(false);
+		const storage = memoryStorage();
+		saveDispatchPlan({ ...plan, rows: [rejected] }, storage);
+		expect(loadDispatchPlan(processId, storage)?.rows[0]).toEqual(rejected);
+	});
+});
+
+describe('dispatch row lifecycle', () => {
+	const txA = 'T'.repeat(43);
+
+	it('treats settled and rejected rows as terminal for a run', () => {
+		expect(dispatchRowPending({ status: 'unsent' })).toBe(true);
+		expect(dispatchRowPending({ status: 'posted' })).toBe(true);
+		expect(dispatchRowPending({ status: 'settled' })).toBe(false);
+		expect(dispatchRowPending({ status: 'rejected' })).toBe(false);
+	});
+
+	it('counts rejected rows apart from settled ones and never calls a plan with rejected rows complete', () => {
+		const rows: DispatchRow[] = [
+			{ address: addressA, quantity: '1', status: 'settled', transactionId: txA },
+			{ address: addressB, quantity: '1', status: 'rejected', transactionId: txA },
+		];
+		expect(dispatchPlanProgress({ rows })).toEqual({
+			settled: 1,
+			posted: 0,
+			rejected: 1,
+			pending: 0,
+			complete: false,
+		});
+		expect(dispatchPlanProgress({ rows: [rows[0]] }).complete).toBe(true);
+	});
+
+	it('keeps a rejected row in the discard confirmation: its signature may have been posted', () => {
+		expect(dispatchRowInFlight({ status: 'rejected', transactionId: txA })).toBe(true);
 	});
 });
 

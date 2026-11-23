@@ -15,9 +15,13 @@ import {
 	createDispatchPlan,
 	DEFAULT_DISPATCH_BATCH_SIZE,
 	discardDispatchPlan,
+	discardRejectedDispatchSignature,
 	DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED,
+	DISPATCH_SIGNED_TRANSACTION_REJECTED,
 	dispatchDiscardConfirmation,
 	type DispatchPlan,
+	dispatchPlanProgress,
+	type DispatchRowStatus,
 	estimateDispatchCost,
 	fetchTransferReward,
 	loadDispatchPlan,
@@ -51,8 +55,24 @@ function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'tick
 	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || 'tokens'}`;
 }
 
+/** Gateway answers that say "try again later", not "this transaction is invalid". */
+const TRANSIENT_GATEWAY_DISPATCH = /^transaction-dispatch-(5\d\d|408|425|429)\b/;
+const GATEWAY_DISPATCH_STATUS = /^transaction-dispatch-(\d{3})\b/;
+
 export function dispatchErrorMessage(cause: unknown): string {
 	const message = cause instanceof Error ? cause.message : String(cause);
+	const code = cause && typeof cause === 'object' ? (cause as { code?: unknown }).code : undefined;
+	if (code === 'transaction-dispatch-rejected') {
+		return 'Arweave rejected a transfer Bazar had just signed, so it was never accepted. Bazar deleted that signature. Resume signs a replacement for this holder only.';
+	}
+	if (code === DISPATCH_SIGNED_TRANSACTION_REJECTED) {
+		const addresses = (cause as { addresses?: unknown }).addresses;
+		const rows =
+			Array.isArray(addresses) && addresses.length > 1
+				? `${addresses.length} rows marked Rejected`
+				: 'the row marked Rejected';
+		return `Arweave rejected the saved signed transfer for ${rows}. It may have been posted before an interruption, so Bazar will not replace it on its own. Discard this row's rejected signature to sign a replacement; Bazar first checks whether the recipient balance already rose and marks the row settled instead.`;
+	}
 	switch (message) {
 		case 'dispatch-insufficient-token-balance':
 			return 'Your token balance is smaller than the total quantity in the holder list.';
@@ -73,11 +93,39 @@ export function dispatchErrorMessage(cause: unknown): string {
 		case 'wallet-account-changed':
 			return 'The connected wallet changed mid-dispatch. Reconnect the wallet that started this dispatch and resume.';
 	}
-	if (message.startsWith('transaction-dispatch-')) return `Arweave rejected a transfer: ${message}`;
+	// Never echo the gateway body (often HTML); the signed transfer is kept either way.
+	if (TRANSIENT_GATEWAY_DISPATCH.test(message)) {
+		return `The Arweave gateway is temporarily unavailable (HTTP ${
+			GATEWAY_DISPATCH_STATUS.exec(message)?.[1]
+		}). Nothing was re-signed: Resume retries the same signed transfer.`;
+	}
+	const status = GATEWAY_DISPATCH_STATUS.exec(message)?.[1];
+	if (status) {
+		return `The Arweave gateway did not accept the transfer (HTTP ${status}). Nothing was re-signed: Resume retries the same signed transfer.`;
+	}
 	return message || 'Dispatch failed.';
 }
 
-const STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
+const STATUS_LABEL: Record<DispatchRowStatus, string> = {
+	unsent: 'Unsent',
+	posted: 'Posted',
+	settled: 'Settled',
+	rejected: 'Rejected',
+};
+
+export function rejectedSignatureConfirmation(address: string): string {
+	return (
+		`Arweave rejected the saved signed transfer to ${shortAddress(address)}.\n\n` +
+		'Bazar reads fresh holder balances first. If this recipient already received the amount, the row is marked settled and nothing is re-signed. ' +
+		"Otherwise only this row's rejected signature is deleted, and Resume signs a replacement for this holder.\n\nContinue?"
+	);
+}
+
+export function rejectedSignatureOutcomeMessage(outcome: 'settled' | 'discarded'): string {
+	return outcome === 'settled'
+		? 'The recipient balance already rose by this amount, so Bazar marked the row settled instead of signing a replacement.'
+		: 'Rejected signature deleted. Resume signs a replacement for this holder only.';
+}
 
 export default function DispatchRoute() {
 	const { processId = '' } = useParams();
@@ -147,9 +195,15 @@ export default function DispatchRoute() {
 	);
 	const estimate = parsed?.rows.length && reward !== null ? estimateDispatchCost(parsed.rows, reward) : null;
 	const needsCostApproval = Boolean(estimate && requiresCostConfirmation(estimate.totalWinston));
-	const planSettled = plan ? plan.rows.filter((row) => row.status === 'settled').length : 0;
-	const planPosted = plan ? plan.rows.filter((row) => row.status === 'posted').length : 0;
-	const planComplete = Boolean(plan && planSettled === plan.rows.length);
+	const progress = plan ? dispatchPlanProgress(plan) : null;
+	const planSettled = progress?.settled ?? 0;
+	const planPosted = progress?.posted ?? 0;
+	const planRejected = progress?.rejected ?? 0;
+	const planPending = progress?.pending ?? 0;
+	const planComplete = Boolean(progress?.complete);
+	const [discardingRow, setDiscardingRow] = React.useState<string | null>(null);
+	const [rowNotice, setRowNotice] = React.useState<string | null>(null);
+	const busy = running || discardingRow !== null;
 	const senderMismatch = Boolean(plan && wallet.address && plan.sender !== wallet.address);
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const balance = state && wallet.address && balanceStateAvailable ? liquidBalanceOf(state, wallet.address) : null;
@@ -194,6 +248,7 @@ export default function DispatchRoute() {
 		abortRef.current = controller;
 		setRunning(true);
 		setRunError(null);
+		setRowNotice(null);
 		const sender = dispatchPlan.sender;
 		const total = dispatchPlan.rows.length;
 		const startedAt = Date.now();
@@ -245,20 +300,41 @@ export default function DispatchRoute() {
 	};
 
 	const resume = async () => {
-		if (!plan || running || senderMismatch) return;
+		if (!plan || busy || senderMismatch) return;
 		await execute(plan);
+	};
+
+	const discardRejected = async (address: string) => {
+		if (!plan || busy) return;
+		// Fail closed without a DOM confirm, like discarding the plan.
+		if (!(globalThis.window?.confirm?.(rejectedSignatureConfirmation(address)) ?? false)) return;
+		setDiscardingRow(address);
+		setRunError(null);
+		setRowNotice(null);
+		try {
+			const result = await discardRejectedDispatchSignature(plan, address, {
+				readCurrentState: readAssetStateWithDeadline,
+			});
+			setPlan(result.plan);
+			setRowNotice(rejectedSignatureOutcomeMessage(result.outcome));
+		} catch (cause) {
+			setRunError(dispatchErrorMessage(cause));
+		} finally {
+			setDiscardingRow(null);
+		}
 	};
 
 	const discardConfirmation = dispatchDiscardConfirmation(plan);
 
 	const discard = () => {
-		if (running) return;
+		if (busy) return;
 		// Fail closed without a DOM confirm: in-flight rows are never forgotten silently.
 		if (discardConfirmation && !(globalThis.window?.confirm?.(discardConfirmation) ?? false)) return;
 		if (plan) dispatchActivity(plan.sender, 'done', '', 0);
 		discardDispatchPlan(processId);
 		setPlan(null);
 		setRunError(null);
+		setRowNotice(null);
 	};
 
 	if (!validId) {
@@ -344,26 +420,29 @@ export default function DispatchRoute() {
 									? 'Dispatch complete'
 									: running
 									? 'Dispatching…'
+									: planRejected && !planPending
+									? 'Dispatch needs a decision'
 									: 'Saved dispatch in progress'}
 							</strong>
 							<span>
 								{planSettled} of {plan.rows.length} settled
-								{planPosted ? ` · ${planPosted} posted, awaiting settlement` : ''} · started from{' '}
+								{planPosted ? ` · ${planPosted} posted, awaiting settlement` : ''}
+								{planRejected ? ` · ${planRejected} rejected` : ''} · started from{' '}
 								{shortAddress(plan.sender)}
 							</span>
 						</div>
 						<div>
-							{!planComplete ? (
+							{planPending ? (
 								<Button
 									type="button"
 									size="custom"
 									onClick={() => void resume()}
-									disabled={running || senderMismatch}
+									disabled={busy || senderMismatch}
 								>
 									{running ? 'Working…' : 'Resume'}
 								</Button>
 							) : null}
-							<Button type="button" size="custom" variant="danger" onClick={discard} disabled={running}>
+							<Button type="button" size="custom" variant="danger" onClick={discard} disabled={busy}>
 								{planComplete ? 'Clear' : discardConfirmation ? 'Discard plan…' : 'Discard plan'}
 							</Button>
 						</div>
@@ -413,6 +492,29 @@ export default function DispatchRoute() {
 												<Check className="ui-icon ui-icon--sm" aria-hidden="true" />
 											) : null}{' '}
 											{STATUS_LABEL[row.status]}
+											{row.status === 'rejected' ? (
+												<>
+													{' '}
+													<Button
+														type="button"
+														size="custom"
+														variant="danger"
+														onClick={() => void discardRejected(row.address)}
+														disabled={busy}
+														aria-label={
+															discardingRow === row.address
+																? undefined
+																: `Discard rejected signature for ${shortAddress(
+																		row.address
+																  )}`
+														}
+													>
+														{discardingRow === row.address
+															? 'Checking balance…'
+															: 'Discard rejected signature…'}
+													</Button>
+												</>
+											) : null}
 										</td>
 									</tr>
 								))}
@@ -600,6 +702,12 @@ export default function DispatchRoute() {
 				</div>
 			)}
 
+			{plan && rowNotice ? (
+				<div className="mint-notice" role="status">
+					<Info className="ui-icon" aria-hidden="true" />
+					<span>{rowNotice}</span>
+				</div>
+			) : null}
 			{plan && runError ? (
 				<div className="inline-error">
 					<span>{runError}</span>
