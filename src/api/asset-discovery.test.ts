@@ -3808,3 +3808,120 @@ describe('batched market activity in an index outage', () => {
 		expect(fetcher).toHaveBeenCalledTimes(2 + 4);
 	});
 });
+
+describe("a standalone mint found through the wallet's own mint record", () => {
+	const wallet = 'kaYP9bJtpqON8Kyy3RbqnqdtDBDUsPTQTNUCvZtKiFI';
+	const processId = 'MINT'.repeat(10) + 'abc';
+	const mintTags = [
+		['content-type', 'image/png'],
+		['hint-ui-style', 'non-fungible'],
+		['device', 'process@1.0'],
+		['execution-device', 'token@1.0'],
+		['swap-device', 'arweave-swap@1.0'],
+		['scheduler-device', 'arweave-scheduler@1.0'],
+		['scheduler-mode', 'all'],
+		['initial-holder', wallet],
+		['total-supply', '1'],
+		['denomination', '0'],
+		['ticker', 'ASSET'],
+		['name', 'Standalone Mint'],
+	].map(([name, value]) => ({ name, value }));
+	const tokens: Collection = {
+		id: 'fungible-tokens',
+		name: 'Tokens',
+		description: 'Tokens',
+		kind: 'tokens',
+		assets: [],
+	};
+
+	async function scanCandidate(): Promise<AssetCandidate> {
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					initiallyHeld: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: 'initial-1',
+								node: {
+									id: processId,
+									tags: mintTags,
+									block: { height: 2048287, timestamp: 1795444746 },
+								},
+							},
+						],
+					},
+					marketActions: empty,
+					receivedTransfers: empty,
+				},
+			})
+		);
+		const [candidate] = await discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			graphql: arweaveGraphqlEndpoint(),
+			retryDelaysMs: [],
+		});
+		return candidate;
+	}
+
+	it('keeps the mint media type and needs no second index query', async () => {
+		const candidate = await scanCandidate();
+
+		expect(candidate.mintContentType).toBe('image/png');
+		expect(partitionAssetCandidateSupport([candidate], [tokens])).toEqual({
+			supported: [candidate],
+			unverified: [],
+		});
+		const noIndex = vi.fn(async () => new Response('down', { status: 503 }));
+		await expect(
+			verifyAssetCandidateSupport([candidate], [tokens], { fetch: noIndex as typeof fetch })
+		).resolves.toEqual({ supported: [candidate], unavailable: [] });
+		expect(noIndex).not.toHaveBeenCalled();
+	});
+
+	it('rebuilds the asset from multipart live state with the scan media type, without the verification cache', () => {
+		const state = parseAssetState({
+			'content-type': 'multipart/form-data; boundary="x"',
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			ticker: 'ASSET',
+			name: 'Standalone Mint',
+			'total-supply': '1',
+			denomination: 0,
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+
+		expect(bazarAtomicAssetFromState(processId, state)).toBeNull();
+		expect(bazarAtomicAssetFromState(processId, state, 'image/png')).toMatchObject({
+			asset: { id: processId, name: 'Standalone Mint', contentType: 'image/png' },
+			collection: { id: 'created-assets' },
+		});
+	});
+
+	it('keeps the mint media type in a stored scan', async () => {
+		const candidate = await scanCandidate();
+		const values = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => void values.set(key, value),
+			removeItem: (key: string) => void values.delete(key),
+		};
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
+		scan.heads = { initiallyHeld: processId, marketActions: null, receivedTransfers: null };
+		scan.found.set(processId, candidate);
+
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)?.found.get(processId)?.mintContentType).toBe(
+			'image/png'
+		);
+	});
+});

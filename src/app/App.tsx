@@ -10664,7 +10664,8 @@ function AssetView() {
 		directAtomicRoute,
 		directFungibleRoute,
 	});
-	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
+	const directAtomicAsset =
+		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, indexedAtomic?.asset.contentType) : null;
 	const liveFungibleAsset = directFungibleRoute && state ? fungibleAssetFromState(assetId, state) : undefined;
 	// A token route whose live state meets the fungible contract does not wait for the token index.
 	const liveFungibleRoute = Boolean(liveFungibleAsset);

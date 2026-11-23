@@ -50,6 +50,13 @@ export type AssetCandidate = {
 	swapDevice?: string;
 	schedulerDevice?: string;
 	schedulerMode?: string;
+	/**
+	 * The media type from the candidate's own mint record, set only when the wallet scan returned that
+	 * record (an initial-holder match) and it passed the standalone Bazar mint check. Such a candidate
+	 * needs no second index query, and its live state, served as a multipart message for a process that
+	 * keeps its media as data, gets its real media type back from here.
+	 */
+	mintContentType?: string;
 };
 
 export type ResolvedAsset = {
@@ -716,13 +723,14 @@ function encodeStoredWalletCandidate(candidate: AssetCandidate): StoredWalletCan
 		candidate.swapDevice ?? null,
 		candidate.schedulerDevice ?? null,
 		candidate.schedulerMode ?? null,
+		candidate.mintContentType ?? null,
 	];
 	while (stored.at(-1) === null) stored.pop();
 	return stored;
 }
 
 function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandidate | undefined {
-	if (!Array.isArray(value) || value.length < 4 || value.length > 12) return undefined;
+	if (!Array.isArray(value) || value.length < 4 || value.length > 13) return undefined;
 	const [
 		processId,
 		height,
@@ -736,6 +744,7 @@ function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandida
 		swapDevice,
 		schedulerDevice,
 		schedulerMode,
+		mintContentType,
 	] = value;
 	if (
 		typeof processId !== 'string' ||
@@ -754,9 +763,16 @@ function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandida
 			activity !== null &&
 			activity !== 0 &&
 			(!Array.isArray(activity) || activity.some((id) => typeof id !== 'string' || !ADDRESS.test(id)))) ||
-		[device, collection, processDevice, assetType, swapDevice, schedulerDevice, schedulerMode].some(
-			(item) => item !== undefined && item !== null && typeof item !== 'string'
-		)
+		[
+			device,
+			collection,
+			processDevice,
+			assetType,
+			swapDevice,
+			schedulerDevice,
+			schedulerMode,
+			mintContentType,
+		].some((item) => item !== undefined && item !== null && typeof item !== 'string')
 	)
 		return undefined;
 	return {
@@ -776,6 +792,7 @@ function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandida
 		...(typeof swapDevice === 'string' ? { swapDevice } : {}),
 		...(typeof schedulerDevice === 'string' ? { schedulerDevice } : {}),
 		...(typeof schedulerMode === 'string' ? { schedulerMode } : {}),
+		...(typeof mintContentType === 'string' ? { mintContentType } : {}),
 	};
 }
 
@@ -1986,7 +2003,13 @@ export function partitionAssetCandidateSupport(
 	const unverified: AssetCandidate[] = [];
 	const index = candidateCollectionIndex(collections);
 	for (const candidate of restrictAssetCandidatesWithIndex(candidates, index)) {
-		if (index.byAssetId.has(candidate.processId) || candidateMatchesFungibleContract(candidate)) {
+		if (
+			index.byAssetId.has(candidate.processId) ||
+			candidateMatchesFungibleContract(candidate) ||
+			// The wallet scan returned this candidate's own mint record and it passed the standalone mint
+			// check, which is what the second index query would verify.
+			Boolean(candidate.mintContentType)
+		) {
 			supported.push(candidate);
 		} else {
 			unverified.push(candidate);
@@ -2088,7 +2111,11 @@ function supportedAsset(
 	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
 		const indexed = collectionAsset(indexedCollection, activity.processId, computed.state);
-		const liveAtomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state)?.asset;
+		const liveAtomicAsset = bazarAtomicAssetFromState(
+			activity.processId,
+			computed.state,
+			activity.mintContentType
+		)?.asset;
 		// The name does not depend on the media type, which a multipart HTTP response can hide,
 		// so an ID-only manifest entry still gets its title when the full live record is rejected.
 		const liveName = liveAtomicAsset?.name || computed.state.name.trim();
@@ -2126,7 +2153,7 @@ function supportedAsset(
 		};
 	}
 
-	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state);
+	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state, activity.mintContentType);
 	if (atomicAsset) {
 		return { ...atomicAsset, state: computed.state, provider: computed.provider, activity };
 	}
@@ -2141,7 +2168,9 @@ function supportedAsset(
 
 export function bazarAtomicAssetFromState(
 	processId: string,
-	state: AssetState
+	state: AssetState,
+	/** The media type from a verified mint record, used when the live state is multipart framing. */
+	mintContentType?: string
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
 		!isVisibleAssetId(processId) ||
@@ -2158,12 +2187,12 @@ export function bazarAtomicAssetFromState(
 	) {
 		return null;
 	}
-	const mintContentType = /^multipart\//i.test(String(state.raw['content-type'] ?? ''))
-		? verifiedMintContentTypes.get(processId)
+	const multipartContentType = /^multipart\//i.test(String(state.raw['content-type'] ?? ''))
+		? mintContentType ?? verifiedMintContentTypes.get(processId)
 		: undefined;
 	const asset = assetFromMintState(
 		processId,
-		mintContentType ? { ...state.raw, 'content-type': mintContentType } : state.raw
+		multipartContentType ? { ...state.raw, 'content-type': multipartContentType } : state.raw
 	);
 	if (!asset) return null;
 	const name = String(state.raw['base-collection'] ?? '').trim() || CREATED_COLLECTION_NAME;
@@ -2210,6 +2239,9 @@ function candidateFromNode(
 					swapDevice: tags['swap-device'],
 					schedulerDevice: tags['scheduler-device'],
 					schedulerMode: tags['scheduler-mode'],
+					...(tags['content-type'] && atomicProcessNode(node)
+						? { mintContentType: tags['content-type'] }
+						: {}),
 			  }
 			: {}),
 	};
@@ -2281,6 +2313,9 @@ function mergeCandidate(found: Map<string, AssetCandidate>, next: AssetCandidate
 		swapDevice: current.swapDevice ?? next.swapDevice,
 		schedulerDevice: current.schedulerDevice ?? next.schedulerDevice,
 		schedulerMode: current.schedulerMode ?? next.schedulerMode,
+		...(current.mintContentType ?? next.mintContentType
+			? { mintContentType: current.mintContentType ?? next.mintContentType }
+			: {}),
 	});
 }
 
