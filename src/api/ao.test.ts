@@ -828,6 +828,31 @@ describe('Bazar configured AO peer order', () => {
 		]);
 	});
 
+	it.each([
+		['HEAD', ''],
+		['GET', '/serialize~json@1.0'],
+	] as const)(
+		'falls through a linked-table %s message read that the first peer answers 404',
+		async (method, tail) => {
+			vi.stubGlobal(
+				'window',
+				browserWindow(undefined, '?node=https://partial.example,https://complete.example', false)
+			);
+			const requested = transport(async (url) =>
+				url.startsWith('https://partial.example/')
+					? new Response('not_found', { status: 404 })
+					: new Response('{"device":"json@1.0"}', { headers: { device: 'json@1.0' } })
+			);
+			const path = `/${ids[2]}~message@1.0${tail}`;
+
+			const response = await aoFetch()(path, { method });
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get('device')).toBe('json@1.0');
+			expect(reads(requested)).toEqual([`https://partial.example${path}`, `https://complete.example${path}`]);
+		}
+	);
+
 	it('serves a single-peer selection and fails, rather than hangs, when it cannot answer a message', async () => {
 		vi.stubGlobal('window', browserWindow(undefined, '?node=https://only.example', false));
 		const requested = transport(async (url) =>
