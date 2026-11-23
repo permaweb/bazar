@@ -1588,6 +1588,78 @@ export function uploadActivitySyncSteps(
 	});
 }
 
+/**
+ * Identity of an upload panel's observer watch. Providers rebuild the
+ * transaction list on every render, so the watch is keyed on the ids it
+ * observes rather than on the array identity.
+ */
+export function uploadActivityObserverKey(transactions: UploadActivity['transactions']) {
+	return transactions.map((transaction) => transaction.id).join('|');
+}
+
+/** idle -> loading -> watching | unavailable; the panel shows a note only when unavailable. */
+export type UploadObserverAvailability = 'idle' | 'loading' | 'watching' | 'unavailable';
+
+/**
+ * Starts one observer watch per transaction on the shared observer network and
+ * returns the cleanup. A runtime, peer-configuration or discovery failure
+ * releases the lease and reports `unavailable` instead of leaving the panel
+ * waiting on lanes that will never arrive.
+ */
+export function observeUploadActivityTransactions(
+	transactionIds: string[],
+	loadRuntime: () => Promise<Pick<typeof import('api/asset-observers'), 'acquireAssetObserverNetwork'>>,
+	handlers: {
+		onObservation(transactionId: string, observation: UploadObserverState[string]): void;
+		onAvailability(availability: UploadObserverAvailability): void;
+	}
+): () => void {
+	let cancelled = false;
+	let lease: AssetObserverNetworkLease | undefined;
+	const watchers: Array<{ stop(): void }> = [];
+	const unsubscribe: Array<() => void> = [];
+	const observe = async () => {
+		handlers.onAvailability('loading');
+		const runtime = await loadRuntime();
+		if (cancelled) return;
+		lease = runtime.acquireAssetObserverNetwork();
+		await lease.ready;
+		if (cancelled) return;
+		for (const transactionId of transactionIds) {
+			const watcher = lease.network.watch(transactionId, {
+				target: 1,
+				minObservers: 3,
+				propagation: 'all',
+				notFoundTimeout: 180_000,
+			});
+			const publish = (consensus = watcher.consensus()) => {
+				if (cancelled) return;
+				handlers.onObservation(transactionId, { views: watcher.views(), consensus });
+			};
+			unsubscribe.push(
+				watcher.on('view', () => publish()),
+				watcher.on('consensus', publish)
+			);
+			watchers.push(watcher);
+			watcher.start();
+		}
+		if (!cancelled) handlers.onAvailability('watching');
+	};
+	void observe().catch(() => {
+		// After cleanup the lease is already released and the panel is gone.
+		if (cancelled) return;
+		lease?.release();
+		lease = undefined;
+		handlers.onAvailability('unavailable');
+	});
+	return () => {
+		cancelled = true;
+		for (const off of unsubscribe) off();
+		for (const watcher of watchers) watcher.stop();
+		lease?.release();
+	};
+}
+
 function UploadActivityPanel({
 	activity,
 	relatedMintActivities,
@@ -1604,6 +1676,7 @@ function UploadActivityPanel({
 	const navigate = useNavigate();
 	const [hiding, setHiding] = React.useState(false);
 	const [observerState, setObserverState] = React.useState<UploadObserverState>({});
+	const [observerAvailability, setObserverAvailability] = React.useState<UploadObserverAvailability>('idle');
 	const hideTimerRef = React.useRef<number | null>(null);
 	const titleId = React.useId();
 	const working = activity.phase === 'working' || activity.phase === 'tracking';
@@ -1646,51 +1719,22 @@ function UploadActivityPanel({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
+	const observerKey = uploadActivityObserverKey(activity.transactions);
+	const transactionsRef = React.useRef(activity.transactions);
+	transactionsRef.current = activity.transactions;
 	React.useEffect(() => {
-		if (!visible || !working || !activity.transactions.length) return;
-		let cancelled = false;
-		let lease: AssetObserverNetworkLease | undefined;
-		const watchers: Array<{ stop(): void }> = [];
-		const unsubscribe: Array<() => void> = [];
-		const observe = async () => {
-			const runtime = await loadAssetObserverRuntime();
-			if (cancelled) return;
-			lease = runtime.acquireAssetObserverNetwork();
-			await lease.ready;
-			if (cancelled) return;
-			for (const transaction of activity.transactions) {
-				const watcher = lease.network.watch(transaction.id, {
-					target: 1,
-					minObservers: 3,
-					propagation: 'all',
-					notFoundTimeout: 180_000,
-				});
-				const publish = (consensus = watcher.consensus()) => {
-					if (cancelled) return;
-					setObserverState((current) => ({
-						...current,
-						[transaction.id]: { views: watcher.views(), consensus },
-					}));
-				};
-				unsubscribe.push(
-					watcher.on('view', () => publish()),
-					watcher.on('consensus', publish)
-				);
-				watchers.push(watcher);
-				watcher.start();
+		setObserverAvailability('idle');
+		if (!visible || !working || !observerKey) return;
+		return observeUploadActivityTransactions(
+			transactionsRef.current.map((transaction) => transaction.id),
+			loadAssetObserverRuntime,
+			{
+				onObservation: (transactionId, observation) =>
+					setObserverState((current) => ({ ...current, [transactionId]: observation })),
+				onAvailability: setObserverAvailability,
 			}
-		};
-		void observe().catch(() => {
-			lease?.release();
-			lease = undefined;
-		});
-		return () => {
-			cancelled = true;
-			for (const off of unsubscribe) off();
-			for (const watcher of watchers) watcher.stop();
-			lease?.release();
-		};
-	}, [activity.transactions, visible, working]);
+		);
+	}, [observerKey, visible, working]);
 	React.useEffect(
 		() => () => {
 			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
@@ -1771,6 +1815,12 @@ function UploadActivityPanel({
 						<p className="sr-only" aria-live="polite" role="status">
 							{displayedStatus}
 						</p>
+						{observerAvailability === 'unavailable' ? (
+							<p aria-atomic="true" className="upload-observer-note" role="status">
+								<strong>Live observer view unavailable.</strong> Transaction tracking continues, and
+								this panel updates when Bazar confirms the upload.
+							</p>
+						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}

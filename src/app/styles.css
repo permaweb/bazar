@@ -10159,6 +10159,16 @@ body input:focus-visible {
 .upload-activity-panel > .wide {
 	margin-top: var(--space-4);
 }
+.upload-observer-note {
+	margin: 0 0 var(--space-4);
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.55;
+}
+.upload-observer-note strong {
+	color: var(--ink);
+	font-weight: 500;
+}
 .fungible-mint-dialog .operation-working {
 	display: grid;
 	gap: 18px;
