@@ -362,7 +362,9 @@ export function ArweaveTransactionSync({
 				>
 					<>
 						<S.RaceShell $height={420} $embedded={false}>
-							<React.Suspense fallback={<TransactionRendererFallback lanes={cableLanes} />}>
+							<React.Suspense
+								fallback={<TransactionRendererFallback lanes={cableLanes} variant="loading" />}
+							>
 								<TransactionSequenceCable3D
 									lanes={cableLanes}
 									ariaLabel={`${language.transactionSyncRacePrototypeInfinityCable}: ${subject}`}
