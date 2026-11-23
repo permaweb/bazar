@@ -65,6 +65,13 @@ describe('CollectionAppendDialog', () => {
 		expect(markup).toMatch(/<input[^>]*data-dialog-initial="true"[^>]*type="file"/);
 	});
 
+	it("says whether added assets carry the collection's license tags", () => {
+		expect(render({ licensed: true }).markup).toContain(
+			'Added assets carry the same license tags as this collection.'
+		);
+		expect(render().markup).toContain('Added assets carry no license tags.');
+	});
+
 	it('closes on Escape only while no append is in progress', () => {
 		const idle = render();
 		idle.onEscape?.();

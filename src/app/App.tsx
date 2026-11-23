@@ -6482,6 +6482,8 @@ function CollectionView() {
 				owner: ownedCollection.owner,
 				createdAt: ownedCollection.createdAt,
 				manifestId: collection.manifestId ?? ownedCollection.manifestId,
+				// License terms come from the local record only, matching the dialog's license copy.
+				udl: ownedCollection.udl,
 			};
 			const paidAssets = pendingMintProgress(appendProgressKey, reusedAppendAssets);
 			keepPaidProgress = () => {
@@ -7378,6 +7380,7 @@ function CollectionView() {
 					error={appendError}
 					estimate={appendEstimate}
 					files={appendFiles}
+					licensed={Boolean(ownedCollection.udl)}
 					onClose={() => setAppendOpen(false)}
 					onRetryEstimate={() => setAppendEstimateRetry((count) => count + 1)}
 					onSelectFiles={(files) => {
@@ -7959,6 +7962,7 @@ export function CollectionAppendDialog({
 	error,
 	estimate,
 	files,
+	licensed = false,
 	onClose,
 	onRetryEstimate,
 	onSelectFiles,
@@ -7973,6 +7977,8 @@ export function CollectionAppendDialog({
 	error: string | null;
 	estimate: CollectionAppendEstimateState;
 	files: File[];
+	/** Whether the local collection record carries license terms; added assets inherit exactly those. */
+	licensed?: boolean;
 	onClose(): void;
 	onRetryEstimate(): void;
 	onSelectFiles(files: File[]): void;
@@ -8020,7 +8026,10 @@ export function CollectionAppendDialog({
 				</div>
 				<p className="append-collection-copy">
 					Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
-					collection carrier.
+					collection carrier.{' '}
+					{licensed
+						? 'Added assets carry the same license tags as this collection.'
+						: 'Added assets carry no license tags.'}
 				</p>
 				<label className={`mint-dropzone${files.length ? ' has-file' : ''}`}>
 					<input

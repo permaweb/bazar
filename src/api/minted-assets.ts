@@ -8,6 +8,7 @@ import {
 } from 'helpers/asset-media';
 import { arweaveDataUrl, permanentContentGatewayFromLocation } from 'helpers/config';
 
+import type { UdlTerms } from './asset-mint';
 import type { AssetSummary, Collection } from './collections';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -33,6 +34,11 @@ export type MintedCollection = Collection & {
 	manifestId: string;
 	owner: string;
 	createdAt: number;
+	/**
+	 * License terms the collection was minted with. Assets added later carry these same terms;
+	 * absent means the collection has no license tags (or was stored before terms were recorded).
+	 */
+	udl?: UdlTerms;
 };
 
 /** Collection assets an earlier, failed run already minted (and paid for), by file index. */
@@ -231,6 +237,9 @@ function isMintedCollection(value: unknown): value is MintedCollection {
 		typeof collection.description === 'string' &&
 		Array.isArray(collection.assets) &&
 		collection.assets.every(isMintedAsset) &&
-		Number.isSafeInteger(collection.createdAt)
+		Number.isSafeInteger(collection.createdAt) &&
+		// Shape only: the grant rules live in asset-mint, which checks them before any upload.
+		(collection.udl === undefined ||
+			(!!collection.udl && typeof collection.udl === 'object' && !Array.isArray(collection.udl)))
 	);
 }
