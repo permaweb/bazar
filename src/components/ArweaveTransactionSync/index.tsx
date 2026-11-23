@@ -21,7 +21,12 @@ import {
 	timelineLayout,
 	transitionKey,
 } from './raceTimeline';
-import { confirmationLifecycleState, confirmationProgressValue, sequencePhaseBounds } from './sequence';
+import {
+	confirmationLifecycleState,
+	confirmationProgressValue,
+	confirmationProgressWidth,
+	sequencePhaseBounds,
+} from './sequence';
 import * as S from './styles';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
 import { TransactionRendererFallback, TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
@@ -160,7 +165,7 @@ export function ArweaveTransactionSync({
 		estimatedProgress.key === progressKey
 			? Math.max(confirmedProgress, estimatedProgress.value)
 			: confirmedProgress;
-	const displayedProgress = Math.min(progressActive ? 99 : 100, Math.max(progressActive ? 2 : 0, continuousProgress));
+	const displayedProgress = confirmationProgressWidth(continuousProgress, progressActive, Boolean(active?.hasError));
 	const observedSteps = useLiveObserverResponses(steps);
 	const telemetrySessionKey = transactionSyncSessionKey(observedSteps);
 	const telemetrySessionRef = React.useRef({ key: telemetrySessionKey, startedAt: startedAt ?? Date.now() });
@@ -1108,18 +1113,10 @@ function infinity3DLane(
 		state: phase.event?.state ?? 'unknown',
 		hasError: Boolean(phase.event?.error),
 	}));
-	const phaseDetail = phases
-		.map((phase) => `${phase.step.label} ${phase.confirmations}/${phase.step.target}`)
-		.join(' · ');
-	const detail = `${lane.observer.label} · ${phaseDetail} · ${statusLabel} · ${observerProtocolDetail(
-		lane.observer,
-		language
-	)}`;
 
 	return {
 		observerUrl: lane.observer.url,
 		label: lane.observer.label,
-		detail,
 		statusLabel,
 		stages,
 		progress: activePhase?.progress ?? 0,
@@ -1258,26 +1255,6 @@ function protocolEventContext(event: LaneEvent, language: any): string {
 	return parts.join(' · ');
 }
 
-function observerProtocolDetail(observer: Observer, language: any): string {
-	const unknown = language.transactionSyncProtocolUnknown;
-	const sourceKey =
-		observer.source === 'seed'
-			? 'transactionSyncObserverSourceSeed'
-			: observer.source === 'local'
-			? 'transactionSyncObserverSourceLocal'
-			: observer.source === 'hyperbeam'
-			? 'transactionSyncObserverSourceHyperbeam'
-			: 'transactionSyncObserverSourcePeer';
-	const summary = language.transactionSyncProtocolObserver
-		.replace('{source}', language[sourceKey])
-		.replace('{height}', observer.height === undefined ? unknown : observer.height.toLocaleString())
-		.replace('{release}', observer.release === undefined ? unknown : String(observer.release))
-		.replace('{failures}', String(observer.failures));
-	return observer.discoveredBy
-		? `${summary} · ${language.transactionSyncProtocolDiscoveredBy.replace('{observer}', observer.discoveredBy)}`
-		: summary;
-}
-
 function useObserverTimelines(steps: ArweaveSyncStep[]): Map<string, Timeline> {
 	const [timelines, setTimelines] = React.useState<Map<string, Timeline>>(() => new Map());
 
@@ -1371,18 +1348,6 @@ export function updateObserverTimeline(current: Timeline, views: ObserverView[])
 	}
 
 	return changed ? { ...current, lanes } : current;
-}
-
-function eventKey(event: LaneEvent): string {
-	return [
-		event.updatedAt,
-		event.state,
-		event.confirmations,
-		event.blockId,
-		event.blockHeight,
-		event.httpStatus,
-		event.error,
-	].join(':');
 }
 
 function laneEventLabel(event: LaneEvent, language: any): string {
