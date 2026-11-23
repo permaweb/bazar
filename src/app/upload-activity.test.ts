@@ -1,9 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
 import type { ObserverView } from 'weave-wrangler';
 
 import type { MintActivity } from 'api/mint-activity';
 
-import { type UploadActivity, uploadActivitySyncSteps } from './App';
+vi.mock('./useDialogFocus', async (importOriginal) => ({
+	...(await importOriginal<typeof import('./useDialogFocus')>()),
+	useDialogFocus: () => ({ current: null }),
+}));
+
+import { type UploadActivity, UploadActivityPanel, uploadActivitySyncSteps } from './App';
 
 const processId = 'P'.repeat(43);
 const owner = 'O'.repeat(43);
@@ -74,5 +82,43 @@ describe('upload observer lanes', () => {
 			'bravo.example',
 			'charlie.example',
 		]);
+	});
+});
+
+describe('upload result announcements', () => {
+	const render = (activity: UploadActivity) =>
+		renderToStaticMarkup(
+			React.createElement(
+				MemoryRouter,
+				null,
+				React.createElement(UploadActivityPanel, {
+					activity,
+					relatedMintActivities: [],
+					visible: true,
+					onHide: () => undefined,
+					onClose: () => undefined,
+				})
+			)
+		);
+
+	it('reads a failed upload as an alert, not a polite status', () => {
+		const markup = render({
+			...upload,
+			phase: 'error',
+			status: 'The wallet rejected the signature request.',
+			transactionIds: [],
+			transactions: [],
+		});
+
+		expect(markup).toContain('Upload needs attention');
+		expect(markup).toContain('<p role="alert">The wallet rejected the signature request.</p>');
+		expect(markup).not.toContain('aria-live="polite"');
+	});
+
+	it('keeps a finished upload as a polite status', () => {
+		const markup = render({ ...upload, phase: 'done', status: 'Submitted to Arweave.', collectionId: 'c' });
+
+		expect(markup).toContain('<p aria-live="polite" role="status">Submitted to Arweave.</p>');
+		expect(markup).not.toContain('role="alert"');
 	});
 });

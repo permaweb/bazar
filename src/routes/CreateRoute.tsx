@@ -489,6 +489,86 @@ function collectionMintPhaseLabel(phase: CollectionMintPhase) {
 	return `${phase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${phase.phase}…`;
 }
 
+/** Element id of the form control a mint error is about; it gets aria-invalid and focus. */
+export type MintFormField =
+	| 'mint-name'
+	| 'mint-description'
+	| 'mint-ticker'
+	| 'mint-supply'
+	| 'mint-denomination'
+	| 'mint-logo-picker'
+	| 'mint-file-picker';
+
+/** The form's error state: the message shown and the one field it marks invalid, if any. */
+export type MintFormError = { message: string; field: MintFormField | null };
+
+const MINT_ERROR_FIELDS: Record<string, MintFormField> = {
+	'mint-name-invalid': 'mint-name',
+	'mint-description-invalid': 'mint-description',
+	'mint-ticker-invalid': 'mint-ticker',
+	'mint-supply-invalid': 'mint-supply',
+	'mint-supply-too-large': 'mint-supply',
+	'mint-denomination-invalid': 'mint-denomination',
+	'mint-logo-type-unsupported': 'mint-logo-picker',
+	'mint-logo-size-invalid': 'mint-logo-picker',
+	'mint-file-required': 'mint-file-picker',
+	'mint-file-type-unsupported': 'mint-file-picker',
+	'mint-file-size-invalid': 'mint-file-picker',
+	'mint-collection-files-required': 'mint-file-picker',
+	'mint-collection-files-limit': 'mint-file-picker',
+};
+
+/** Maps a mint validation error code to the field it is about; null when it is not about one field. */
+export function mintErrorField(code: string): MintFormField | null {
+	return MINT_ERROR_FIELDS[code] ?? null;
+}
+
+/** Builds the form error state from a thrown cause or an error code, keeping the code's field. */
+export function mintFormError(cause: unknown, message = mintErrorMessage(cause)): MintFormError {
+	return { message, field: mintErrorField(cause instanceof Error ? cause.message : String(cause)) };
+}
+
+export function mintFieldErrorProps(error: MintFormError | null, field: MintFormField, errorId: string) {
+	return error?.field === field ? { 'aria-describedby': errorId, 'aria-invalid': true as const } : {};
+}
+
+/**
+ * Announces the Create form's own outcome. The error is an alert tied to its field by id; the polite
+ * status only says "Submitted to Arweave" because "Live on Bazar" is announced by the global mint notice.
+ */
+export function MintFormFeedback({
+	collectionResult,
+	error,
+	errorId,
+	result,
+	resultReady,
+}: {
+	collectionResult: boolean;
+	error: MintFormError | null;
+	errorId: string;
+	result: boolean;
+	resultReady: boolean;
+}) {
+	return (
+		<>
+			{error ? (
+				<div className="inline-error" id={errorId} role="alert">
+					<span>{error.message}</span>
+				</div>
+			) : null}
+			<OperationOutcomeAnnouncement
+				active={collectionResult || (result && !resultReady)}
+				title="Submitted to Arweave"
+				detail={
+					collectionResult
+						? 'The collection receipt is ready to verify.'
+						: 'Submitted and accepted by Arweave. It is safe to leave this page; Bazar will keep watching in Activity.'
+				}
+			/>
+		</>
+	);
+}
+
 export default function CreateRoute() {
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
@@ -537,7 +617,9 @@ export default function CreateRoute() {
 	const udlPreset = UDL_PRESET_OPTIONS.find(({ value }) => udlTermsMatchPreset(udlTerms, value))?.value ?? null;
 	const [phase, setPhase] = React.useState<MintPhase | null>(null);
 	const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
-	const [error, setError] = React.useState<string | null>(null);
+	const [error, setError] = React.useState<MintFormError | null>(null);
+	const errorId = React.useId();
+	const focusErrorField = React.useRef(false);
 	const [result, setResult] = React.useState<MintedAsset | null>(null);
 	const [resultReady, setResultReady] = React.useState(false);
 	const [collectionResult, setCollectionResult] = React.useState<CollectionMintResult | null>(null);
@@ -596,6 +678,12 @@ export default function CreateRoute() {
 	React.useEffect(() => {
 		setDraft(wallet.address ? getMintDraft(wallet.address) : null);
 	}, [wallet.address]);
+	React.useEffect(() => {
+		// A blocked submit moves focus to the invalid field so a repeated identical error is still heard.
+		if (!focusErrorField.current) return;
+		focusErrorField.current = false;
+		if (error?.field) document.getElementById(error.field)?.focus();
+	}, [error]);
 	React.useEffect(() => {
 		if (!logo) {
 			setLogoPreview('');
@@ -697,7 +785,6 @@ export default function CreateRoute() {
 		const controller = new AbortController();
 		const timer = window.setTimeout(() => {
 			setEstimating(true);
-			setError(null);
 			void new AssetMintClient()
 				.estimate(
 					{
@@ -714,10 +801,12 @@ export default function CreateRoute() {
 				)
 				.then(
 					(nextEstimate) => {
-						if (!controller.signal.aborted) setEstimate(nextEstimate);
+						if (controller.signal.aborted) return;
+						setEstimate(nextEstimate);
+						setError(null);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(mintFormError(cause));
 					}
 				)
 				.finally(() => {
@@ -737,15 +826,16 @@ export default function CreateRoute() {
 		const controller = new AbortController();
 		const timer = window.setTimeout(() => {
 			setEstimating(true);
-			setError(null);
 			void new CollectionMintClient()
 				.estimate({ files: collectionFiles, name, description, udl: activeUdl }, controller.signal)
 				.then(
 					(nextEstimate) => {
-						if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
+						if (controller.signal.aborted) return;
+						setCollectionEstimate(nextEstimate);
+						setError(null);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(mintFormError(cause));
 					}
 				)
 				.finally(() => {
@@ -765,15 +855,16 @@ export default function CreateRoute() {
 		const controller = new AbortController();
 		const timer = window.setTimeout(() => {
 			setEstimating(true);
-			setError(null);
 			void new AssetMintClient()
 				.estimateFungible(fungibleInput, logo ?? undefined, controller.signal)
 				.then(
 					(nextEstimate) => {
-						if (!controller.signal.aborted) setFungibleEstimate(nextEstimate);
+						if (controller.signal.aborted) return;
+						setFungibleEstimate(nextEstimate);
+						setError(null);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(mintFormError(cause));
 					}
 				)
 				.finally(() => {
@@ -833,7 +924,11 @@ export default function CreateRoute() {
 	const selectCollectionFiles = (next: File[]) => {
 		setCollectionFiles(next.slice(0, 10));
 		setCollectionEstimate(null);
-		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
+		setError(
+			next.length > 10
+				? mintFormError('mint-collection-files-limit', 'Collections support up to 10 images at a time.')
+				: null
+		);
 		setCollectionResult(null);
 	};
 	const selectLogo = (next: File | null) => {
@@ -844,7 +939,7 @@ export default function CreateRoute() {
 				setLogo(null);
 				setLogoTxId('');
 				setFungibleEstimate(null);
-				setError(mintErrorMessage(cause));
+				setError(mintFormError(cause));
 				if (logoInput.current) logoInput.current.value = '';
 				return;
 			}
@@ -870,16 +965,24 @@ export default function CreateRoute() {
 			wallet.openConnectDialog();
 			return;
 		}
-		if (mode === 'asset' && !file) return setError('Choose an image, MP3, or WAV file to continue.');
-		if (mode === 'collection' && !collectionFiles.length) return setError('Choose at least one collection image.');
+		const rejectMint = (next: MintFormError) => {
+			focusErrorField.current = true;
+			setError(next);
+		};
+		if (mode === 'asset' && !file) return rejectMint(mintFormError('mint-file-required'));
+		if (mode === 'collection' && !collectionFiles.length)
+			return rejectMint(mintFormError('mint-collection-files-required', 'Choose at least one collection image.'));
 		if (mode === 'fungible' && !fungibleReady) {
 			try {
 				validateFungibleMintInput(fungibleInput);
 				if (logo) validateFungibleLogo(logo);
 			} catch (cause) {
-				return setError(mintErrorMessage(cause));
+				return rejectMint(mintFormError(cause));
 			}
-			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
+			return rejectMint({
+				message: 'Complete the token name, ticker, total supply, and decimal places to continue.',
+				field: null,
+			});
 		}
 		setError(null);
 		setResult(null);
@@ -965,7 +1068,7 @@ export default function CreateRoute() {
 			setFungibleSubmitting(false);
 			if (mode === 'fungible') setFungibleOperationError(message);
 			else {
-				setError(message);
+				setError(mintFormError(cause, message));
 				failUpload(uploadId, message);
 			}
 		}
@@ -993,7 +1096,7 @@ export default function CreateRoute() {
 		} catch (cause) {
 			const message = mintErrorMessage(cause);
 			setPhase(null);
-			setError(message);
+			setError(mintFormError(cause, message));
 			failUpload(uploadId, message);
 		}
 	};
@@ -1127,6 +1230,8 @@ export default function CreateRoute() {
 						</div>
 					) : (
 						<Button
+							{...mintFieldErrorProps(error, 'mint-file-picker', errorId)}
+							id="mint-file-picker"
 							className={`mint-dropzone${mode === 'asset' && preview ? ' has-file' : ''}${
 								mode === 'collection' && collectionPreviews.length ? ' has-file collection-files' : ''
 							}`}
@@ -1317,6 +1422,7 @@ export default function CreateRoute() {
 							{mode === 'asset' ? 'Name' : mode === 'collection' ? 'Collection name' : 'Token name'}
 						</label>
 						<input
+							{...mintFieldErrorProps(error, 'mint-name', errorId)}
 							id="mint-name"
 							maxLength={80}
 							placeholder={
@@ -1341,6 +1447,7 @@ export default function CreateRoute() {
 							<small>Optional</small>
 						</label>
 						<textarea
+							{...mintFieldErrorProps(error, 'mint-description', errorId)}
 							id="mint-description"
 							maxLength={600}
 							placeholder={
@@ -1362,6 +1469,7 @@ export default function CreateRoute() {
 							<div className="create-field">
 								<label htmlFor="mint-ticker">Ticker</label>
 								<input
+									{...mintFieldErrorProps(error, 'mint-ticker', errorId)}
 									id="mint-ticker"
 									maxLength={MAX_FUNGIBLE_TICKER_LENGTH}
 									placeholder="WEAVE"
@@ -1375,6 +1483,7 @@ export default function CreateRoute() {
 							<div className="create-field">
 								<label htmlFor="mint-supply">Total supply</label>
 								<input
+									{...mintFieldErrorProps(error, 'mint-supply', errorId)}
 									id="mint-supply"
 									inputMode="numeric"
 									maxLength={MAX_FUNGIBLE_WHOLE_SUPPLY.toString().length}
@@ -1387,6 +1496,7 @@ export default function CreateRoute() {
 							<div className="create-field">
 								<label htmlFor="mint-denomination">Decimal places</label>
 								<input
+									{...mintFieldErrorProps(error, 'mint-denomination', errorId)}
 									id="mint-denomination"
 									inputMode="numeric"
 									min="0"
@@ -1402,6 +1512,8 @@ export default function CreateRoute() {
 									Token logo <small>Optional</small>
 								</label>
 								<Button
+									{...mintFieldErrorProps(error, 'mint-logo-picker', errorId)}
+									id="mint-logo-picker"
 									className={`fungible-logo-dropzone${logoPreview ? ' has-file' : ''}`}
 									type="button"
 									size="custom"
@@ -1939,11 +2051,13 @@ export default function CreateRoute() {
 								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and carrier process to Arweave.'}
 						</span>
 					</div>
-					{error ? (
-						<div className="inline-error">
-							<span>{error}</span>
-						</div>
-					) : null}
+					<MintFormFeedback
+						collectionResult={Boolean(collectionResult)}
+						error={error}
+						errorId={errorId}
+						result={Boolean(result)}
+						resultReady={resultReady}
+					/>
 					{result || collectionResult ? (
 						<div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
 							<span>
@@ -2013,6 +2127,7 @@ export default function CreateRoute() {
 						</Button>
 					) : (
 						<Button
+							aria-describedby={error ? errorId : undefined}
 							className="mint-submit"
 							type="submit"
 							size="custom"

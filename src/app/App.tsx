@@ -1461,7 +1461,7 @@ export function uploadActivitySyncSteps(
 	});
 }
 
-function UploadActivityPanel({
+export function UploadActivityPanel({
 	activity,
 	relatedMintActivities,
 	visible,
@@ -1670,9 +1670,13 @@ function UploadActivityPanel({
 										: 'Live on Bazar'
 									: 'Upload needs attention'}
 							</strong>
-							<p aria-live="polite" role="status">
-								{displayedStatus}
-							</p>
+							{activity.phase === 'error' ? (
+								<p role="alert">{displayedStatus}</p>
+							) : (
+								<p aria-live="polite" role="status">
+									{displayedStatus}
+								</p>
+							)}
 						</div>
 					</div>
 				) : null}
