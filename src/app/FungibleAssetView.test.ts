@@ -51,6 +51,7 @@ import {
 	MatchedListingsReview,
 	nextSettlementAnnouncement,
 	orderbookCumulativeDepths,
+	purchasableOrdersFor,
 	purchaseAmountMatch,
 	purchaseQuoteIdentity,
 	PurchaseRoute,
@@ -59,6 +60,7 @@ import {
 	restartFungibleOperationActivity,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
+	unsafeExcludedQuantityFor,
 	visibleOrderbookRows,
 	waitForSettlementBatch,
 } from './FungibleAssetView';
@@ -547,6 +549,51 @@ describe('fungible operation error semantics', () => {
 		const quote = purchaseAmountMatch([purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')], '3', state);
 		expect(quote.match).toBeNull();
 		expect(quote.error).toBe('Only 2 $WEAVE is currently available.');
+	});
+
+	it('leaves out listings whose reservation fee is above the purchase limit', () => {
+		const buyer = 'z'.repeat(43);
+		const atLimit = { ...purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2'), minimumFee: '10000000000' };
+		const overLimit = { ...purchaseOrder('2'.repeat(43), 'b'.repeat(43), '3', '3'), minimumFee: '10000000001' };
+		const own = purchaseOrder('3'.repeat(43), buyer, '4', '4');
+
+		expect(purchasableOrdersFor([atLimit, overLimit, own], buyer).map((order) => order.orderId)).toEqual([
+			atLimit.orderId,
+		]);
+		expect(unsafeExcludedQuantityFor([atLimit, overLimit, own], buyer)).toBe('3');
+		expect(unsafeExcludedQuantityFor([atLimit, own], buyer)).toBe('0');
+	});
+
+	it('fills from safe listings when the cheapest listing has an unsafe reservation fee', () => {
+		const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
+		const unsafeCheapest = {
+			...purchaseOrder('1'.repeat(43), 'a'.repeat(43), '5', '5'),
+			minimumFee: '10000000001',
+		};
+		const safe = purchaseOrder('2'.repeat(43), 'b'.repeat(43), '5', '10');
+		const quote = purchaseAmountMatch(purchasableOrdersFor([unsafeCheapest, safe], 'z'.repeat(43)), '3', state);
+
+		expect(quote.error).toBe('');
+		expect(quote.match?.fills.map((fill) => fill.order.orderId)).toEqual([safe.orderId]);
+	});
+
+	it('explains listings excluded for an unsafe reservation fee apart from the buyer’s own', () => {
+		const composer = renderToStaticMarkup(
+			React.createElement(FungiblePurchaseComposer, {
+				availableQuantity: '5',
+				excludedQuantity: '2',
+				unsafeExcludedQuantity: '3',
+				error: '',
+				match: null,
+				onChange: () => undefined,
+				onMax: () => undefined,
+				quantity: '',
+				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+			})
+		);
+
+		expect(composer).toContain('2 $WEAVE from your listing excluded');
+		expect(composer).toContain('3 $WEAVE excluded: reservation fee above Bazar&#x27;s limit');
 	});
 
 	it('presents listing quantity and unit price as one connected composer', () => {
