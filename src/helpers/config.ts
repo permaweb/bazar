@@ -190,20 +190,36 @@ export function usesPermawebOsAo(
 	);
 }
 
-export function fallbackAoPeersFromLocation(
+/** Upstream-neutral compute peers tried after the serving origin when no AO peer is selected or configured. */
+export const DEFAULT_COMPUTE_GATEWAYS: readonly string[] = Object.freeze(['https://arweave.net']);
+
+export type AoPeerPlan = {
+	peers: string[];
+	/** Last-resort peers are a priority order; selected or configured peers share reads by hashpath. */
+	ordered: boolean;
+};
+
+export function aoPeerPlanFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
-): string[] {
+): AoPeerPlan {
 	const requested = location && queryValue(location, 'node')?.trim();
 	const override = requested && normalizeComputeGateways(requested, location?.protocol);
-	if (override) return override;
+	if (override) return { peers: override, ordered: false };
 
 	if (configuredComputeGateway) {
 		const configured = normalizeComputeGateways(configuredComputeGateway);
 		if (!configured) throw new TypeError('invalid-compute-gateways');
-		return configured;
+		return { peers: configured, ordered: false };
 	}
 
-	return location && ['http:', 'https:'].includes(location.protocol) ? [locationOrigin(location)] : [];
+	if (!location || !['http:', 'https:'].includes(location.protocol)) return { peers: [], ordered: false };
+	return { peers: [...new Set([locationOrigin(location), ...DEFAULT_COMPUTE_GATEWAYS])], ordered: true };
+}
+
+export function fallbackAoPeersFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+): string[] {
+	return aoPeerPlanFromLocation(location).peers;
 }
 
 export async function loadPermawebOsNetworkPolicy(

@@ -2,7 +2,7 @@ import { type AoCacheMetadata, type AoCacheStatus, cacheMetadata, createAo } fro
 
 import {
 	AO_WALLET_CONNECTION_EVENT,
-	fallbackAoPeersFromLocation,
+	aoPeerPlanFromLocation,
 	gatewaysFromLocation,
 	loadPermawebOsNetworkPolicy,
 	refreshPermawebOsNetworkPolicy,
@@ -36,18 +36,26 @@ function permawebOsAoFetch(): AoPeerFetch | undefined {
 }
 
 function directAoFetch(): BazarAoPeerFetch {
-	const peers = fallbackAoPeersFromLocation();
-	const signature = peers.join('\n');
+	const { peers, ordered } = aoPeerPlanFromLocation();
+	const signature = `${ordered ? 'ordered' : 'by-base'}\n${peers.join('\n')}`;
 	if (bazarTransport?.peers !== signature) {
-		bazarTransport = { peers: signature, fetcher: createBazarAoFetch(peers) };
+		bazarTransport = { peers: signature, fetcher: createBazarAoFetch(peers, undefined, { ordered }) };
 	}
 	return bazarTransport.fetcher;
 }
 
-export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): BazarAoPeerFetch {
+/**
+ * `ordered` tries peers in the given priority order; otherwise reads are spread
+ * across the peers by hashpath base.
+ */
+export function createBazarAoFetch(
+	nodes: Nodes,
+	override?: typeof fetch,
+	options: { ordered?: boolean } = {}
+): BazarAoPeerFetch {
 	const peers = Object.freeze(nodeList(nodes));
 	const client = createAo(
-		peerConfig(peers, override ? false : 'discover'),
+		peerConfig(peers, override ? false : 'discover', options.ordered === true),
 		admitProcessStateReads(override ?? ((input, init) => globalThis.fetch(input, init)))
 	);
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
@@ -137,12 +145,13 @@ export function warmAoFetch(onNetworkPolicy?: () => void): () => void {
 		globalThis.window?.removeEventListener?.(AO_WALLET_CONNECTION_EVENT, walletChanged);
 	};
 }
-function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
+function peerConfig(peers: readonly string[], rateLimit: 'discover' | false, ordered: boolean) {
 	const nodes = peers.map((prefix) => ({ prefix, 'rate-limit': rateLimit } as const));
+	const strategy = ordered ? ('All' as const) : ('By-Base' as const);
 	const readRoute = (method: 'GET' | 'HEAD') => ({
 		template: { method },
 		nodes,
-		strategy: 'By-Base' as const,
+		strategy,
 		choose: nodes.length,
 		'admissible-status': [200, 201, 202, 204, 206, 304],
 		'fallback-on-cooldown': true,
@@ -155,7 +164,7 @@ function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
 					routes: [
 						readRoute('GET'),
 						readRoute('HEAD'),
-						{ template: '*', nodes, strategy: 'By-Base' as const, choose: nodes.length },
+						{ template: '*', nodes, strategy, choose: nodes.length },
 					],
 			  }
 			: {}),

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+	aoPeerPlanFromLocation,
 	aoRoutingScopeFromLocation,
 	arweaveClientConfig,
 	arweaveDataFallbackUrls,
@@ -11,6 +12,7 @@ import {
 	bazarAoTransportUrl,
 	currentPermawebOsNetworkPolicy,
 	DEFAULT_ARWEAVE_GATEWAY,
+	DEFAULT_COMPUTE_GATEWAYS,
 	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
 	gatewaysFromLocation,
@@ -53,17 +55,35 @@ describe('Arweave gateway routing', () => {
 		vi.resetModules();
 	});
 
-	it('uses the serving origin for AO in hosted and local sessions', () => {
-		expect(fallbackAoPeersFromLocation(location())).toEqual(['https://bazar.arweave.net']);
+	it('tries the serving origin first, then the default compute peers, in hosted and local sessions', () => {
+		expect(DEFAULT_COMPUTE_GATEWAYS).toEqual(['https://arweave.net']);
+		expect(fallbackAoPeersFromLocation(location())).toEqual(['https://bazar.arweave.net', 'https://arweave.net']);
 		expect(
 			fallbackAoPeersFromLocation(location({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' }))
-		).toEqual(['http://127.0.0.1:3000']);
+		).toEqual(['http://127.0.0.1:3000', 'https://arweave.net']);
+		expect(aoPeerPlanFromLocation(location())).toEqual({
+			peers: ['https://bazar.arweave.net', 'https://arweave.net'],
+			ordered: true,
+		});
+		expect(fallbackAoPeersFromLocation(location({ hostname: 'arweave.net' }))).toEqual(['https://arweave.net']);
+		expect(fallbackAoPeersFromLocation(location({ protocol: 'file:' }))).toEqual([]);
+	});
+
+	it('gives a URL peer selection precedence over the default compute peers', () => {
+		const selected = location({ search: `?node=${encodeURIComponent('https://compute.example, alpha.example')}` });
+		expect(aoPeerPlanFromLocation(selected)).toEqual({
+			peers: ['https://compute.example', 'https://alpha.example'],
+			ordered: false,
+		});
 	});
 
 	it('honors a configured AO peer and gives the URL override precedence', async () => {
 		vi.stubEnv('VITE_COMPUTE_GATEWAY', 'http://127.0.0.1:3101/path');
-		const { fallbackAoPeersFromLocation: configuredPeers } = await import('./config');
+		const { aoPeerPlanFromLocation: configuredPlan, fallbackAoPeersFromLocation: configuredPeers } = await import(
+			'./config'
+		);
 		expect(configuredPeers(location())).toEqual(['http://127.0.0.1:3101']);
+		expect(configuredPlan(location())).toEqual({ peers: ['http://127.0.0.1:3101'], ordered: false });
 		expect(configuredPeers(location({ search: '?node=https://compute.example' }))).toEqual([
 			'https://compute.example',
 		]);

@@ -267,8 +267,8 @@ describe('PermawebOS AO transport boundary', () => {
 		vi.stubGlobal('window', browserWindow());
 
 		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
-		expect(direct.peers).toEqual(['https://bazar.example']);
-		expect(aoPeers()).toEqual(['https://bazar.example']);
+		expect(direct.peers).toEqual(['https://bazar.example', 'https://arweave.net']);
+		expect(aoPeers()).toEqual(['https://bazar.example', 'https://arweave.net']);
 		await direct('/process~process@1.0/now?max-age=60', { method: 'GET' });
 		expect(nativeFetch).toHaveBeenCalledWith(
 			'https://bazar.example/process~process@1.0/now?max-age=60',
@@ -495,5 +495,52 @@ describe('Bazar AO.js process state admissibility', () => {
 
 		expect(response.headers.get('at-slot')).toBe('7');
 		expect(requested).toContain('https://compute.example/~meta@1.0/info/format~hyperbuddy@1.0');
+	});
+});
+
+describe('Bazar default compute peers', () => {
+	const tokenId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+	const processState = () =>
+		new Response(null, {
+			headers: { 'at-slot': '65', 'content-type': 'multipart/form-data; boundary="state"' },
+		});
+
+	it('tries the serving origin before the default peers for every process', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://arweave.net'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				requested.push(String(input));
+				return processState();
+			}) as typeof fetch,
+			{ ordered: true }
+		);
+
+		for (const processId of [tokenId, 'A'.repeat(43), 'B'.repeat(43), 'C'.repeat(43), 'D'.repeat(43)]) {
+			await routed(`/${processId}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+		}
+		expect(requested).toHaveLength(5);
+		expect(requested.every((url) => url.startsWith('https://bazar.example/'))).toBe(true);
+	});
+
+	it('falls back to the next default peer when the serving origin has no compute', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://arweave.net'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				requested.push(String(input));
+				return String(input).startsWith('https://bazar.example/')
+					? new Response('Not Found', { status: 404 })
+					: processState();
+			}) as typeof fetch,
+			{ ordered: true }
+		);
+
+		const response = await routed(`/${tokenId}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+		expect(response.headers.get('at-slot')).toBe('65');
+		expect(requested).toEqual([
+			`https://bazar.example/${tokenId}~process@1.0/compute&max-age=60`,
+			`https://arweave.net/${tokenId}~process@1.0/compute&max-age=60`,
+		]);
 	});
 });
