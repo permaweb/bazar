@@ -162,8 +162,10 @@ import {
 	purchaseObservationPendingState,
 	purchaseObservationResumeState,
 	purchaseObservationRetryDelay,
+	type PurchaseObservationRetryKind,
 	purchaseObservationRetryKind,
 	purchaseObservationRetryMessage,
+	shouldClearRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
 import { useDialogFocus } from './useDialogFocus';
@@ -2822,6 +2824,8 @@ function FungibleOperationDialog({
 				},
 			};
 			let observationRetryAttempt = 0;
+			// Set while this lot's "checking again" copy is shown; cleared once its retried run moves past that step.
+			let retryCheckingKind: PurchaseObservationRetryKind | null = null;
 			while (true) {
 				const purchase = new SwapPurchase(network, coordinatedAdapter, {
 					registrationTarget: PURCHASE_REGISTRATION_TARGET,
@@ -2836,6 +2840,12 @@ function FungibleOperationDialog({
 				const update = (purchaseState: PurchaseState) => {
 					if (attemptRef.current.signal.aborted || recoveryConflict) return;
 					purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseState);
+					if (retryCheckingKind && shouldClearRetryMessage(retryCheckingKind, purchaseState)) {
+						// The message is shared by every lot: only clear the copy this lot set.
+						const checking = purchaseObservationCheckingMessage(retryCheckingKind);
+						retryCheckingKind = null;
+						setMessage((current) => (current === checking ? '' : current));
+					}
 					const previousSnapshot = entry.snapshot;
 					entry.snapshot = latestRecoverableSnapshot(previousSnapshot, purchase.snapshot());
 					if (entry.snapshot === previousSnapshot) return;
@@ -2902,6 +2912,7 @@ function FungibleOperationDialog({
 				setMessage(purchaseObservationRetryMessage(finalState, delay));
 				await waitForPurchaseObservationRetry(delay, signal);
 				setMessage(purchaseObservationCheckingMessage(retryKind));
+				retryCheckingKind = retryKind;
 			}
 		});
 

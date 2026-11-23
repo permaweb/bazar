@@ -7,6 +7,7 @@ import {
 	purchaseObservationRetryDelay,
 	purchaseObservationRetryKind,
 	purchaseObservationRetryMessage,
+	shouldClearRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
 
@@ -80,6 +81,45 @@ describe('purchase observation retries', () => {
 		expect(registrationOnly?.payment?.dispatched).toBe(false);
 		expect(paymentSent?.stage).toBe('payment-propagating');
 		expect(paymentSent?.txId).toBe('P'.repeat(43));
+	});
+
+	it('keeps the reservation "checking again" copy until the retried run moves past registration', () => {
+		const keep = [
+			'idle',
+			'signing',
+			'dispatching-registration',
+			'registration-propagating',
+			'registration-confirming',
+		];
+		const clear = [
+			'registration-accepting',
+			'signing-payment',
+			'dispatching-payment',
+			'payment-propagating',
+			'payment-confirming',
+			'ownership-verifying',
+			'complete',
+			'failed',
+		];
+
+		for (const stage of keep) expect(shouldClearRetryMessage('registration', { stage } as any), stage).toBe(false);
+		for (const stage of clear) expect(shouldClearRetryMessage('registration', { stage } as any), stage).toBe(true);
+	});
+
+	it('keeps the payment "checking again" copy until the retried run moves past payment confirmation', () => {
+		const keep = [
+			'idle',
+			'registration-propagating',
+			'registration-accepting',
+			'signing-payment',
+			'payment-propagating',
+			'payment-confirming',
+		];
+		const clear = ['ownership-verifying', 'complete', 'failed'];
+
+		for (const stage of keep) expect(shouldClearRetryMessage('payment', { stage } as any), stage).toBe(false);
+		for (const stage of clear) expect(shouldClearRetryMessage('payment', { stage } as any), stage).toBe(true);
+		expect(shouldClearRetryMessage('payment', null)).toBe(false);
 	});
 
 	it('cancels a pending retry when the operation is abandoned', async () => {

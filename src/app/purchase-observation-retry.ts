@@ -1,4 +1,4 @@
-import type { Consensus, PurchaseSnapshot, PurchaseState, PurchaseTransaction } from 'weave-wrangler';
+import type { Consensus, PurchaseSnapshot, PurchaseStage, PurchaseState, PurchaseTransaction } from 'weave-wrangler';
 
 import { purchaseFailureCode } from './purchase-lifecycle';
 
@@ -75,6 +75,43 @@ export function purchaseObservationCheckingMessage(kind: PurchaseObservationRetr
 	return kind === 'payment'
 		? 'Checking the exact submitted seller payment again. No replacement payment or wallet approval is being created.'
 		: 'Checking the exact submitted reservation again. The signed seller payment remains held and no new wallet approval is needed.';
+}
+
+/** Position of each live purchase stage; the exhaustive record makes a new upstream stage a type error. */
+const PURCHASE_STAGE_ORDER: Record<PurchaseStage, number> = {
+	idle: 0,
+	signing: 1,
+	'dispatching-registration': 2,
+	'registration-propagating': 3,
+	'registration-confirming': 4,
+	'registration-accepting': 5,
+	'signing-payment': 6,
+	'dispatching-payment': 7,
+	'payment-propagating': 8,
+	'payment-confirming': 9,
+	'ownership-verifying': 10,
+	complete: 11,
+	failed: 12,
+};
+
+/** The last stage at which the "checking again" copy still describes what the retried run is doing. */
+const RETRY_CHECKING_LAST_STAGE: Record<PurchaseObservationRetryKind, PurchaseStage> = {
+	registration: 'registration-confirming',
+	payment: 'payment-confirming',
+};
+
+/**
+ * Whether a retried run has moved past the step the "checking again" message describes, so the
+ * message should give way to the live stage status. A new SwapPurchase run first emits `idle`, so
+ * the message is kept until the stage actually advances beyond the retried observation.
+ */
+export function shouldClearRetryMessage(
+	kind: PurchaseObservationRetryKind,
+	state: Pick<PurchaseState, 'stage'> | null | undefined
+): boolean {
+	if (!state) return false;
+	if (state.stage === 'complete' || state.stage === 'failed') return true;
+	return PURCHASE_STAGE_ORDER[state.stage] > PURCHASE_STAGE_ORDER[RETRY_CHECKING_LAST_STAGE[kind]];
 }
 
 export function waitForPurchaseObservationRetry(delayMs: number, signal: AbortSignal): Promise<void> {
