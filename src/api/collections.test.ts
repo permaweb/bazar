@@ -319,10 +319,22 @@ describe('collection index loading', () => {
 			});
 		});
 
-		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
+		const progress: Collection[] = [];
+		const enriched = await enrichImageCollectionAssetMetadata(
+			collection,
+			undefined,
+			fetcher as typeof fetch,
+			undefined,
+			(partial) => progress.push(partial)
+		);
 
 		expect(enriched.assets[0].name).toBe('Color 1');
 		expect(enriched.assets[204].name).toBe('Color 205');
+		// Each GraphQL page publishes its titles immediately instead of waiting for the full walk.
+		expect(
+			progress.map((partial) => partial.assets.filter((asset) => asset.name.startsWith('Color ')).length)
+		).toEqual([100, 200, 205]);
+		expect(progress.at(-1)).toBe(enriched);
 		expect(enriched.assets[0].image).toBe(`https://arweave.net/${ids[0]}`);
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables)).toEqual([
@@ -330,6 +342,53 @@ describe('collection index loading', () => {
 			{ collection: ['HTML Colors'], after: '99' },
 			{ collection: ['HTML Colors'], after: '199' },
 		]);
+	});
+
+	it('titles indexed assets from a title tag when no name tag exists', async () => {
+		const owner = 'O'.repeat(43);
+		const id = 'T'.repeat(43);
+		const collection: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Titled collection',
+			description: '',
+			kind: 'images',
+			assets: [{ id, name: `${id.slice(0, 7)}…${id.slice(-6)}` }],
+		};
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: '0',
+								node: {
+									id,
+									tags: [
+										{ name: 'device', value: 'process@1.0' },
+										{ name: 'execution-device', value: 'token@1.0' },
+										{ name: 'swap-device', value: 'arweave-swap@1.0' },
+										{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+										{ name: 'scheduler-mode', value: 'all' },
+										{ name: 'initial-holder', value: owner },
+										{ name: 'total-supply', value: '1' },
+										{ name: 'denomination', value: '0' },
+										{ name: 'ticker', value: 'ASSET' },
+										{ name: 'Title', value: 'Sunrise' },
+										{ name: 'hint-ui-style', value: 'non-fungible' },
+										{ name: 'content-type', value: 'image/png' },
+									],
+								},
+							},
+						],
+					},
+				},
+			})
+		);
+
+		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
+
+		expect(enriched.assets[0].name).toBe('Sunrise');
 	});
 
 	it('falls back to exact IDs when a collection name is not indexed on every asset', async () => {

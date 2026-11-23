@@ -5633,10 +5633,16 @@ function CollectionView() {
 		if (metadataEnrichmentScopes.current.has(metadataEnrichmentScope)) return;
 		metadataEnrichmentScopes.current.add(metadataEnrichmentScope);
 		const controller = new AbortController();
-		void enrichImageCollectionAssetMetadata(target, controller.signal).then(
-			(enriched) => {
-				if (!controller.signal.aborted && enriched !== target) market.addCollection(enriched);
-			},
+		// Publish each indexed page as it arrives so cards take their tag titles
+		// immediately rather than showing truncated process IDs until the walk ends.
+		let published = target;
+		const publish = (enriched: Collection) => {
+			if (controller.signal.aborted || enriched === published) return;
+			published = enriched;
+			market.addCollection(enriched);
+		};
+		void enrichImageCollectionAssetMetadata(target, controller.signal, undefined, undefined, publish).then(
+			publish,
 			() => undefined
 		);
 		return () => {
