@@ -4,6 +4,7 @@ import {
 	arweaveDataUrl,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
+	isArIoContentGateway,
 } from 'helpers/config';
 
 import { signedTransactionSignerAddress } from './arweave-transaction-signature';
@@ -72,9 +73,26 @@ export function profileDisplayName(profile: AccountProfile | null | undefined): 
 
 export function profileAvatarUrl(profile: AccountProfile | null | undefined, gateway = arweaveGatewayFromLocation()) {
 	if (!profile?.avatar) return undefined;
-	if (!profile.avatar.startsWith('ar://')) return profile.avatar;
+	if (!profile.avatar.startsWith('ar://')) return storedAvatarUrl(profile.avatar);
 	const id = profile.avatar.slice(5);
 	return ARWEAVE_ID.test(id) ? arweaveDataUrl(id, gateway) : undefined;
+}
+
+/**
+ * Profiles saved before content URLs were built by gateway kind store an AR.IO `/<id>` URL
+ * (e.g. https://bazar.arweave.net/<id>). AR.IO redirects that to a sandbox subdomain that answers
+ * 200 with an empty body for process-with-data items, so the avatar never renders; read the same
+ * gateway's `/raw/<id>` route instead, as artwork does for a requested AR.IO URL.
+ */
+function storedAvatarUrl(value: string): string {
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		return value;
+	}
+	const id = url.pathname.match(/^\/([A-Za-z0-9_-]{43})$/)?.[1];
+	return id && !url.search && !url.hash && isArIoContentGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
 }
 
 export async function readAccountProfile(
