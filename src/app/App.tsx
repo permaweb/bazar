@@ -3286,12 +3286,73 @@ export function homeTokenPriceChangeLabel(change: number | null | 'unavailable')
 /** How long a token row may say "Checking…" for its 24h change before it shows "—". */
 export const HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS = 8_000;
 
-/** Visible token rows whose 24h change has not been read yet. */
+export type HomeTokenPriceChange = number | null | 'unavailable';
+
+/** One token row's 24h change: the value, when it was read, and when a read for it last settled. */
+export type HomeTokenPriceChangeEntry = { value: HomeTokenPriceChange; readAt: number; checkedAt: number };
+
+/** A visible row's 24h change is read again once it is this old. */
+export const HOME_TOKEN_CHANGE_REFRESH_MS = 3 * 60_000;
+/** A 24h change older than this is no longer shown as current. */
+export const HOME_TOKEN_CHANGE_MAX_AGE_MS = 6 * 60_000;
+/** A failed read (or failed refresh) is tried again after this while its row stays visible. */
+export const HOME_TOKEN_CHANGE_RETRY_MS = 60_000;
+
+const NO_TOKEN_PRICE_CHANGES: Readonly<Record<string, HomeTokenPriceChangeEntry>> = Object.freeze({});
+
+/** When a row's 24h change is due to be read: now if never read, else after its refresh or retry time. */
+export function homeTokenPriceChangeDueAt(entry: HomeTokenPriceChangeEntry | undefined) {
+	if (!entry) return Number.NEGATIVE_INFINITY;
+	if (entry.value === 'unavailable') return entry.checkedAt + HOME_TOKEN_CHANGE_RETRY_MS;
+	return Math.max(entry.readAt + HOME_TOKEN_CHANGE_REFRESH_MS, entry.checkedAt + HOME_TOKEN_CHANGE_RETRY_MS);
+}
+
+/** What a row may show now: a value read within the max age, otherwise "unavailable" ("—"). */
+export function homeTokenPriceChangeCurrent(
+	entry: HomeTokenPriceChangeEntry | undefined,
+	now: number
+): HomeTokenPriceChange | undefined {
+	if (!entry) return undefined;
+	if (entry.value === 'unavailable' || now - entry.readAt > HOME_TOKEN_CHANGE_MAX_AGE_MS) return 'unavailable';
+	return entry.value;
+}
+
+/** A failed read keeps a value that is still within its max age (and retries it); otherwise it is "unavailable". */
+export function homeTokenPriceChangeFailed(
+	previous: HomeTokenPriceChangeEntry | undefined,
+	now: number
+): HomeTokenPriceChangeEntry {
+	if (previous && homeTokenPriceChangeCurrent(previous, now) !== 'unavailable')
+		return { ...previous, checkedAt: now };
+	return { value: 'unavailable', readAt: now, checkedAt: now };
+}
+
+/** Visible token rows whose 24h change has never been read, or is due for a refresh or retry. */
 export function homeTokenPriceChangeRequests(
 	tokenIds: readonly string[],
-	known: Readonly<Record<string, number | null | 'unavailable'>>
+	known: Readonly<Record<string, HomeTokenPriceChangeEntry>>,
+	now = Date.now()
 ) {
-	return [...new Set(tokenIds)].filter((tokenId) => tokenId && known[tokenId] === undefined);
+	return [...new Set(tokenIds)].filter((tokenId) => tokenId && homeTokenPriceChangeDueAt(known[tokenId]) <= now);
+}
+
+/** The next time a visible row needs a read or stops being current, or null when nothing is pending. */
+export function homeTokenPriceChangeNextCheck(
+	tokenIds: readonly string[],
+	known: Readonly<Record<string, HomeTokenPriceChangeEntry>>,
+	now: number
+) {
+	let next: number | null = null;
+	for (const tokenId of new Set(tokenIds)) {
+		const entry = known[tokenId];
+		if (!entry) continue;
+		const expiresAt =
+			entry.value === 'unavailable' ? Number.POSITIVE_INFINITY : entry.readAt + HOME_TOKEN_CHANGE_MAX_AGE_MS + 1;
+		for (const at of [homeTokenPriceChangeDueAt(entry), expiresAt]) {
+			if (at > now && Number.isFinite(at)) next = next === null ? at : Math.min(next, at);
+		}
+	}
+	return next;
 }
 
 /** A late value still replaces "—"; the deadline only ends the spinner. */
@@ -3831,11 +3892,13 @@ function Home() {
 	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
 	const [tokenPriceChangeState, setTokenPriceChangeState] = React.useState<{
 		scope: string;
-		values: Record<string, number | null | 'unavailable'>;
+		values: Record<string, HomeTokenPriceChangeEntry>;
 	}>({ scope: homeListingSnapshotScope, values: {} });
 	// Values read for another index or AO routing scope are dropped, not shown.
 	const tokenPriceChanges =
-		tokenPriceChangeState.scope === homeListingSnapshotScope ? tokenPriceChangeState.values : {};
+		tokenPriceChangeState.scope === homeListingSnapshotScope
+			? tokenPriceChangeState.values
+			: NO_TOKEN_PRICE_CHANGES;
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : summaryWindow;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
@@ -3906,52 +3969,95 @@ function Home() {
 		},
 		[assetSummaryQueue]
 	);
-	const tokenPriceChangesRef = React.useRef(tokenPriceChanges);
-	tokenPriceChangesRef.current = tokenPriceChanges;
+	// Reads in flight survive rows moving or paging; only a scope change or leaving Home cancels them.
+	const tokenPriceChangeReads = React.useRef({ ids: new Set<string>(), controllers: new Set<AbortController>() });
+	const [tokenPriceChangeClock, setTokenPriceChangeClock] = React.useState(0);
 	React.useEffect(() => {
-		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) return;
-		// Rows that move or page in and out keep the change already read for them.
-		const tokenIds = homeTokenPriceChangeRequests(visibleDiscoverTokenKey.split(','), tokenPriceChangesRef.current);
-		if (!tokenIds.length) return;
-		const scope = homeListingSnapshotScope;
-		const publish = (values: Record<string, number | null | 'unavailable'>) =>
-			setTokenPriceChangeState((current) => ({
-				scope,
-				values: { ...(current.scope === scope ? current.values : {}), ...values },
-			}));
-		const controller = new AbortController();
-		const eventLimit = 200;
-		void discoverCollectionActivity({
-			actions: ['make-offer'],
-			limit: eventLimit,
-			recipients: tokenIds,
-			signal: controller.signal,
-		}).then(
-			(events) => {
-				if (controller.signal.aborted) return;
-				const now = Date.now();
-				const windowComplete = events.length < eventLimit;
-				publish(
-					Object.fromEntries(
-						tokenIds.map((tokenId) => [
-							tokenId,
-							homeTokenPriceChangePercent(
-								events.filter((event) => event.processId === tokenId),
-								now,
-								windowComplete
-							),
-						])
-					)
-				);
-			},
-			() => {
-				if (!controller.signal.aborted) {
-					publish(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable' as const])));
-				}
-			}
+		const reads = tokenPriceChangeReads.current;
+		return () => {
+			for (const controller of reads.controllers) controller.abort();
+			reads.controllers.clear();
+			reads.ids.clear();
+		};
+	}, [homeListingSnapshotScope]);
+	React.useEffect(() => {
+		// A tab coming back re-checks what its visible rows show.
+		const resume = () => {
+			if (document.visibilityState === 'visible') setTokenPriceChangeClock((clock) => clock + 1);
+		};
+		document.addEventListener('visibilitychange', resume);
+		return () => document.removeEventListener('visibilitychange', resume);
+	}, []);
+	React.useEffect(() => {
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey || document.visibilityState === 'hidden') return;
+		const visibleIds = visibleDiscoverTokenKey.split(',');
+		const now = Date.now();
+		const reads = tokenPriceChangeReads.current;
+		// Rows that move or page in and out keep a change while it is current; a due row is read again.
+		const tokenIds = homeTokenPriceChangeRequests(visibleIds, tokenPriceChanges, now).filter(
+			(tokenId) => !reads.ids.has(tokenId)
 		);
-		return () => controller.abort();
-	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
+		if (tokenIds.length) {
+			const scope = homeListingSnapshotScope;
+			const publish = (
+				next: (tokenId: string, previous: HomeTokenPriceChangeEntry | undefined) => HomeTokenPriceChangeEntry
+			) =>
+				setTokenPriceChangeState((current) => {
+					const values = { ...(current.scope === scope ? current.values : {}) };
+					for (const tokenId of tokenIds) values[tokenId] = next(tokenId, values[tokenId]);
+					return { scope, values };
+				});
+			const controller = new AbortController();
+			reads.controllers.add(controller);
+			for (const tokenId of tokenIds) reads.ids.add(tokenId);
+			const settle = () => {
+				reads.controllers.delete(controller);
+				for (const tokenId of tokenIds) reads.ids.delete(tokenId);
+			};
+			const eventLimit = 200;
+			void discoverCollectionActivity({
+				actions: ['make-offer'],
+				limit: eventLimit,
+				recipients: tokenIds,
+				signal: controller.signal,
+			}).then(
+				(events) => {
+					if (controller.signal.aborted) return;
+					settle();
+					const readAt = Date.now();
+					const windowComplete = events.length < eventLimit;
+					publish((tokenId) => ({
+						value: homeTokenPriceChangePercent(
+							events.filter((event) => event.processId === tokenId),
+							readAt,
+							windowComplete
+						),
+						readAt,
+						checkedAt: readAt,
+					}));
+				},
+				() => {
+					if (controller.signal.aborted) return;
+					settle();
+					const failedAt = Date.now();
+					publish((_tokenId, previous) => homeTokenPriceChangeFailed(previous, failedAt));
+				}
+			);
+		}
+		const next = homeTokenPriceChangeNextCheck(visibleIds, tokenPriceChanges, now);
+		if (next === null) return;
+		const timer = window.setTimeout(
+			() => setTokenPriceChangeClock((clock) => clock + 1),
+			Math.max(0, next - Date.now())
+		);
+		return () => window.clearTimeout(timer);
+	}, [
+		homeListingSnapshotScope,
+		shouldLoadAssetSummaries,
+		tokenPriceChangeClock,
+		tokenPriceChanges,
+		visibleDiscoverTokenKey,
+	]);
 	const overdueTokenPriceChanges = useHomeDisplayDeadlines(
 		homeListingSnapshotScope,
 		visibleDiscoverTokens.map(({ asset }) => asset.id).filter((id) => tokenPriceChanges[id] === undefined),
@@ -4744,7 +4850,7 @@ function Home() {
 		<div className="token-market-list" ref={listRef} role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
-				const change = tokenPriceChanges[asset.id];
+				const change = homeTokenPriceChangeCurrent(tokenPriceChanges[asset.id], Date.now());
 				return (
 					<TokenMarketRow
 						asset={{ ...asset, image: assetImages[asset.id] ?? asset.image }}

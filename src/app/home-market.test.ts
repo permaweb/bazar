@@ -53,6 +53,9 @@ import {
 	HOME_DISCOVER_UNIQUE_PREVIEW,
 	HOME_SUMMARY_AUTO_RETRY_LIMIT,
 	HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS,
+	HOME_TOKEN_CHANGE_MAX_AGE_MS,
+	HOME_TOKEN_CHANGE_REFRESH_MS,
+	HOME_TOKEN_CHANGE_RETRY_MS,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
@@ -88,7 +91,11 @@ import {
 	homeTabFromPathname,
 	homeTabPath,
 	homeTokenPlaceholderRows,
+	homeTokenPriceChangeCurrent,
+	homeTokenPriceChangeDueAt,
+	homeTokenPriceChangeFailed,
 	homeTokenPriceChangeLabel,
+	homeTokenPriceChangeNextCheck,
 	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
 	homeTokenPriceChangeRequests,
@@ -1314,11 +1321,48 @@ describe('Home market summary retries', () => {
 		expect(homeSummaryAutoRetryDue({ ...due, computeCircuitOpen: true })).toBe(false);
 	});
 
-	it('reads each token row 24h change once and ends its spinner at the display deadline', () => {
+	it('refreshes token 24h changes within a bounded age and retries failures instead of caching them', () => {
+		const read = (value: number | null | 'unavailable', at = 0) => ({ value, readAt: at, checkedAt: at });
+		// A good value is read again after the refresh time and never shown past the max age.
+		expect(HOME_TOKEN_CHANGE_REFRESH_MS).toBeLessThan(HOME_TOKEN_CHANGE_MAX_AGE_MS);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS - 1)).toEqual([]);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS)).toEqual(['a']);
+		expect(homeTokenPriceChangeCurrent(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS)).toBe(4);
+		expect(homeTokenPriceChangeCurrent(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS + 1)).toBe('unavailable');
+		expect(homeTokenPriceChangeCurrent(undefined, 0)).toBeUndefined();
+		// "Unavailable" is not kept for the session: it is retried while the row stays visible.
+		expect(homeTokenPriceChangeRequests(['a'], { a: read('unavailable') }, HOME_TOKEN_CHANGE_RETRY_MS - 1)).toEqual(
+			[]
+		);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read('unavailable') }, HOME_TOKEN_CHANGE_RETRY_MS)).toEqual([
+			'a',
+		]);
+		// A failed refresh keeps a still-current value, retries it soon, and lets it lapse at the max age.
+		const refreshedFailure = homeTokenPriceChangeFailed(read(4), HOME_TOKEN_CHANGE_REFRESH_MS);
+		expect(refreshedFailure).toEqual({ value: 4, readAt: 0, checkedAt: HOME_TOKEN_CHANGE_REFRESH_MS });
+		expect(homeTokenPriceChangeDueAt(refreshedFailure)).toBe(
+			HOME_TOKEN_CHANGE_REFRESH_MS + HOME_TOKEN_CHANGE_RETRY_MS
+		);
+		expect(homeTokenPriceChangeFailed(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS + 1).value).toBe('unavailable');
+		expect(homeTokenPriceChangeFailed(undefined, 5).value).toBe('unavailable');
+		// The next check is the earliest refresh, retry or expiry among visible rows; unread rows are asked now.
+		expect(homeTokenPriceChangeNextCheck(['a', 'b', 'c'], { a: read(4), b: read('unavailable', 10) }, 100)).toBe(
+			10 + HOME_TOKEN_CHANGE_RETRY_MS
+		);
+		expect(homeTokenPriceChangeNextCheck(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS + 5)).toBe(
+			HOME_TOKEN_CHANGE_MAX_AGE_MS + 1
+		);
+		expect(homeTokenPriceChangeNextCheck(['c'], {}, 0)).toBeNull();
+	});
+
+	it('reads each token row 24h change once while current and ends its spinner at the display deadline', () => {
 		expect(HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS).toBe(8_000);
-		// Rows that reorder or page back in keep the value already read.
-		expect(homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: 1.5, c: 'unavailable' })).toEqual(['b']);
-		expect(homeTokenPriceChangeRequests(['a'], { a: null })).toEqual([]);
+		const read = (value: number | null | 'unavailable', at = 0) => ({ value, readAt: at, checkedAt: at });
+		// Rows that reorder or page back in keep the value already read while it is current.
+		expect(
+			homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: read(1.5), c: read('unavailable') }, 1_000)
+		).toEqual(['b']);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(null) }, 1_000)).toEqual([]);
 		expect(homeTokenPriceChangePending(undefined, false)).toBe(true);
 		expect(homeTokenPriceChangePending(undefined, true)).toBe(false);
 		expect(homeTokenPriceChangeLabel(null)).toBe('—');
