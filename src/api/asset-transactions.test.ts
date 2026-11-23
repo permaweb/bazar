@@ -385,6 +385,16 @@ describe('fungible asset transactions', () => {
 		});
 	});
 
+	it('refuses to sign a transfer to a 43-character recipient that is not a canonical address', async () => {
+		const subject = client();
+		const mistyped = `${recipient.slice(0, 42)}B`;
+		await expect(subject.client.transfer(processId, mistyped, '12500000000000', seller)).rejects.toThrow(
+			'invalid-asset-transfer'
+		);
+		expect(subject.requests).toEqual([]);
+		expect(subject.storage.length).toBe(0);
+	});
+
 	it('verifies the base64url tag representation emitted by Arweave transaction JSON', async () => {
 		const subject = client();
 		const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);

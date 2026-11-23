@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { accountAddress, displayAccount, fromHostAccount, sameAccount, toHostAccount } from './host-account';
+import {
+	accountAddress,
+	displayAccount,
+	fromHostAccount,
+	isWalletAddress,
+	sameAccount,
+	toHostAccount,
+} from './host-account';
 import vectors from './host-account.vectors.json';
 
 describe('HyperBEAM host account encoding', () => {
@@ -53,5 +60,36 @@ describe('HyperBEAM host account encoding', () => {
 		expect(displayAccount(`uri-did-pkh-eip155-1-${ethereum}`)).toBe(ethereum);
 		const nonCanonical = 'uri-did-pkh-eip155-1-0xBD8EE4A54FA820421B272E0D51C48068AED08C4F';
 		expect(displayAccount(nonCanonical)).toBe(nonCanonical);
+	});
+});
+
+describe('wallet address check', () => {
+	it.each(vectors.valid)('accepts the canonical address $raw', ({ raw }) => {
+		expect(isWalletAddress(raw)).toBe(true);
+	});
+
+	it('accepts exactly the 16 canonical final characters', () => {
+		const prefix = vectors.valid[2].raw.slice(0, 42);
+		const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+		const accepted = [...alphabet].filter((last) => isWalletAddress(`${prefix}${last}`));
+		expect(accepted.join('')).toBe('AEIMQUYcgkosw048');
+	});
+
+	it.each([
+		'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB',
+		'b'.repeat(43),
+		'a'.repeat(42),
+		`${'A'.repeat(43)}\n`,
+		` ${'A'.repeat(43)}`,
+		'0xbd8ee4a54fa820421b272e0d51c48068aed08c4f',
+		vectors.valid[0].host,
+	])('rejects %j', (value) => {
+		expect(isWalletAddress(value)).toBe(false);
+	});
+
+	it('rejects non-strings', () => {
+		expect(isWalletAddress(undefined)).toBe(false);
+		expect(isWalletAddress(null)).toBe(false);
+		expect(isWalletAddress(42)).toBe(false);
 	});
 });

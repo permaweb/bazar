@@ -100,7 +100,7 @@ describe('fungible operation working status', () => {
 	});
 });
 
-const BUYER = 'b'.repeat(43);
+const BUYER = 'g'.repeat(43);
 const ORDER_ID = 'o'.repeat(43);
 const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
@@ -1483,6 +1483,13 @@ describe('fungible transfer recipient validation', () => {
 		expect(fungibleTransferRecipientError(BUYER, BUYER)).toContain('different wallet');
 		expect(fungibleTransferRecipientError('c'.repeat(43), BUYER)).toBe('');
 		expect(fungibleTransferRecipientError(`  ${'c'.repeat(43)}\n`, BUYER)).toBe('');
+	});
+
+	it('rejects a 43-character recipient whose last character makes it no wallet address', () => {
+		const message = 'This is not a valid Arweave wallet address. Check the last characters.';
+		expect(fungibleTransferRecipientError('BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB', BUYER)).toBe(message);
+		expect(fungibleTransferRecipientError('b'.repeat(43), BUYER)).toBe(message);
+		expect(fungibleTransferRecipientError('BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc', BUYER)).toBe('');
 	});
 
 	it('names the exact recipient before an irreversible transfer', () => {

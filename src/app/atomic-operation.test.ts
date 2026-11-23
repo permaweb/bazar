@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { liveOrderOfAsset, parseAssetState } from 'api/asset-marketplace';
 
 import {
+	atomicOperationActionLabel,
 	AtomicOperationErrorAlert,
 	atomicOperationFormError,
 	atomicOperationStateError,
@@ -74,6 +75,27 @@ describe('atomic asset operation validation', () => {
 		expect(atomicOperationFormError('transfer', '')).toContain('43-character');
 		expect(atomicOperationFormError('transfer', 'too-short')).toContain('valid');
 		expect(atomicOperationFormError('transfer', 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc')).toBe('');
+	});
+
+	it('rejects a 43-character recipient whose last character makes it no wallet address', () => {
+		const mistyped = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB';
+		expect(atomicOperationFormError('transfer', mistyped)).toBe(
+			'This is not a valid Arweave wallet address. Check the last characters.'
+		);
+		expect(atomicOperationFormError('transfer', ` ${mistyped}\n`)).toContain('Check the last characters');
+		expect(atomicOperationFormError('transfer', 'not-an-address')).toBe(
+			'Enter a valid 43-character Arweave address.'
+		);
+	});
+
+	it('only offers "Send to" for a recipient the form accepts', () => {
+		const transfer = { kind: 'transfer' } as Parameters<typeof atomicOperationActionLabel>[0];
+		expect(atomicOperationActionLabel(transfer, 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB')).toBe(
+			'Enter a recipient'
+		);
+		expect(atomicOperationActionLabel(transfer, ' BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc ')).toMatch(
+			/^Send to BLyLiO.+KONwc$/
+		);
 	});
 
 	it('rejects a transfer back to the current owner', () => {

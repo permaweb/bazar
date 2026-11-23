@@ -21,7 +21,7 @@ import {
 const processId = 'P'.repeat(43);
 const sender = 'S'.repeat(43);
 const recipientA = 'A'.repeat(43);
-const recipientB = 'B'.repeat(43);
+const recipientB = 'E'.repeat(43);
 const transactionA = 'T'.repeat(43);
 const transactionB = 'U'.repeat(43);
 

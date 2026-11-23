@@ -203,7 +203,7 @@ import {
 	prefersPermawebOsAo,
 	usesPermawebOsAo,
 } from 'helpers/config';
-import { sameAccount } from 'helpers/host-account';
+import { isWalletAddress, NONCANONICAL_WALLET_ADDRESS_MESSAGE, sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
@@ -12311,6 +12311,7 @@ export function atomicOperationFormError(kind: Operation['kind'], value: string,
 		const recipient = value.trim();
 		if (!recipient) return 'Enter the recipient’s 43-character Arweave address.';
 		if (!ARWEAVE_ADDRESS.test(recipient)) return 'Enter a valid 43-character Arweave address.';
+		if (!isWalletAddress(recipient)) return NONCANONICAL_WALLET_ADDRESS_MESSAGE;
 		if (owner && recipient === owner)
 			return 'Choose a different wallet. An asset cannot be transferred to its current owner.';
 	}
@@ -12418,11 +12419,11 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
 }
 
-function atomicOperationActionLabel(operation: Operation, value: string) {
+export function atomicOperationActionLabel(operation: Operation, value: string) {
 	if (operation.kind === 'buy') return `Buy for ${winstonToAr(operation.order.asking)} AR`;
 	if (operation.kind === 'sell') return value ? `List for ${value} AR` : 'Enter a listing price';
 	if (operation.kind === 'cancel') return 'Cancel listing and return asset';
-	return ARWEAVE_ADDRESS.test(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
+	return isWalletAddress(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
 }
 
 function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
