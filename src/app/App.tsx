@@ -192,6 +192,7 @@ import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
+	transactionActivityHeading,
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/TransactionDialogControl';
@@ -2705,6 +2706,9 @@ function OperationActivityControl() {
 		visibleMintActivities.filter(
 			(activity) => activity.phase !== 'complete' && !mintActivityNeedsAttention(activity)
 		).length;
+	const approvalCount =
+		visibleActivities.filter((activity) => activity.phase === 'approval').length +
+		visibleFungibleActivities.filter((activity) => activity.phase === 'approval').length;
 	const clearUploadIssues = () => {
 		if (!attentionMintActivities.length) return;
 		const count = attentionMintActivities.length;
@@ -2766,13 +2770,11 @@ function OperationActivityControl() {
 						<div>
 							<strong>Transaction activity</strong>
 							<span>
-								{attentionMintActivities.length
-									? `${attentionMintActivities.length.toLocaleString()} ${
-											attentionMintActivities.length === 1 ? 'upload needs' : 'uploads need'
-									  } attention`
-									: workingCount
-									? `${workingCount} running in the background`
-									: 'No transactions running'}
+								{transactionActivityHeading({
+									uploadAttention: attentionMintActivities.length,
+									approval: approvalCount,
+									working: workingCount,
+								})}
 							</span>
 						</div>
 						{attentionMintActivities.length ? (
