@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	arBalanceLabel,
 	tokenBalanceLabel,
+	walletBalancesNeedRetry,
 	walletMenuDangerAction,
 	walletMenuLabel,
 	WalletMenuPanel,
@@ -26,6 +27,15 @@ function withGermanBigIntGrouping(run: () => void) {
 		BigInt.prototype.toLocaleString = original;
 	}
 }
+
+describe('wallet menu balance retry', () => {
+	it('retries on open only when a balance reads as Unavailable', () => {
+		expect(walletBalancesNeedRetry('error', 'idle')).toBe(true);
+		expect(walletBalancesNeedRetry('ready', 'error')).toBe(true);
+		expect(walletBalancesNeedRetry('ready', 'ready')).toBe(false);
+		expect(walletBalancesNeedRetry('loading', 'idle')).toBe(false);
+	});
+});
 
 describe('wallet menu identity', () => {
 	it('shows only a known profile name and preserves the address fallback', () => {

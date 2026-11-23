@@ -7,6 +7,7 @@ import { groupDecimalAmount } from 'helpers/token-display';
 import { useTheme } from 'providers/ThemeProvider';
 import {
 	useWallet,
+	type WalletBalanceStatus,
 	WALLET_DISCONNECT_UNCONFIRMED_MESSAGE,
 	type WalletConnectionStatus,
 	walletDisconnectPlan,
@@ -140,6 +141,9 @@ export function WalletMenu() {
 							if (!wallet.address) {
 								wallet.openConnectDialog(event.currentTarget);
 								return;
+							}
+							if (!open && walletBalancesNeedRetry(wallet.arBalanceStatus, wallet.aoBalanceStatus)) {
+								wallet.refreshBalances();
 							}
 							setOpen((current) => !current);
 							setError('');
@@ -390,6 +394,11 @@ export function walletMenuDangerAction(kind: WalletKind | null) {
 				needsConfirm: plan.confirm,
 				showsExport: false,
 		  };
+}
+
+/** Opening the menu retries a balance that last read as 'Unavailable'. */
+export function walletBalancesNeedRetry(arStatus: WalletBalanceStatus, aoStatus: WalletBalanceStatus) {
+	return arStatus === 'error' || aoStatus === 'error';
 }
 
 export function arBalanceLabel(balance: bigint | null, status: 'idle' | 'loading' | 'ready' | 'error'): string {

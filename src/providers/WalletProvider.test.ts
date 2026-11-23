@@ -16,6 +16,7 @@ import {
 	createLatestAddressCommitter,
 	disconnectBrowserWallet,
 	generatedKeyfileBackupStep,
+	IDLE_WALLET_BALANCES,
 	InvalidLocalWalletError,
 	isValidWalletJwk,
 	LOCAL_WALLET_UNLOCK_FAILED_MESSAGE,
@@ -27,7 +28,10 @@ import {
 	restoreBrowserWalletAfterDisconnect,
 	storedLocalWalletFailureAction,
 	subscribeToWalletProviderEvents,
+	subscribeWalletBalanceRefresh,
 	unlockStoredLocalWallet,
+	type WalletBalanceState,
+	walletBalanceTransition,
 	walletConnectionState,
 	walletDialogClosesForAddress,
 	walletDialogDismissible,
@@ -36,6 +40,109 @@ import {
 	walletKindOf,
 	walletProviderLoadedAction,
 } from './WalletProvider';
+
+describe('wallet balance state machine', () => {
+	const address = 'a'.repeat(43);
+	const other = 'b'.repeat(43);
+	const AR = 1_000_000_000_000n;
+	const ready = (ar: bigint, ao?: bigint): WalletBalanceState => ({
+		ar: { balance: ar, denomination: 12, status: 'ready' },
+		ao: ao === undefined ? IDLE_WALLET_BALANCES.ao : { balance: ao, denomination: 12, status: 'ready' },
+	});
+
+	it('starts loading with no value when a wallet connects', () => {
+		const loading = walletBalanceTransition(IDLE_WALLET_BALANCES, { address, previousAddress: null });
+		expect(loading.ar).toEqual({ balance: null, denomination: 12, status: 'loading' });
+		expect(loading.ao.status).toBe('idle');
+		expect(
+			walletBalanceTransition(loading, {
+				address,
+				previousAddress: null,
+				result: { ar: { atomicBalance: 5n * AR, denomination: 12 } },
+			})
+		).toEqual(ready(5n * AR));
+	});
+
+	it('keeps the last balance visible while a same-address refresh is pending, then shows the new one', () => {
+		const pending = walletBalanceTransition(ready(5n * AR, 3n), { address, previousAddress: address });
+		expect(pending).toEqual(ready(5n * AR, 3n));
+		expect(
+			walletBalanceTransition(pending, {
+				address,
+				previousAddress: address,
+				result: {
+					ar: { atomicBalance: 4n * AR, denomination: 12 },
+					ao: { atomicBalance: 2n, denomination: 12 },
+				},
+			})
+		).toEqual(ready(4n * AR, 2n));
+	});
+
+	it('does not replace a known balance with an error from a background refresh', () => {
+		expect(
+			walletBalanceTransition(ready(5n * AR, 3n), {
+				address,
+				previousAddress: address,
+				result: { ar: { atomicBalance: null, denomination: 12, error: 'timeout' } },
+			})
+		).toEqual(ready(5n * AR, 3n));
+	});
+
+	it('clears balances and starts loading when the address changes', () => {
+		const switched = walletBalanceTransition(ready(5n * AR, 3n), { address: other, previousAddress: address });
+		expect(switched.ar).toEqual({ balance: null, denomination: 12, status: 'loading' });
+		expect(switched.ao).toEqual(IDLE_WALLET_BALANCES.ao);
+		expect(
+			walletBalanceTransition(switched, {
+				address: other,
+				previousAddress: address,
+				result: { ar: { atomicBalance: null, denomination: 12 } },
+			}).ar.status
+		).toBe('error');
+	});
+
+	it('lets an Unavailable balance recover through a refresh', () => {
+		const failed: WalletBalanceState = {
+			ar: { balance: null, denomination: 12, status: 'error' },
+			ao: { balance: null, denomination: 12, status: 'error' },
+		};
+		const retrying = walletBalanceTransition(failed, { address, previousAddress: address });
+		expect(retrying.ar.status).toBe('loading');
+		expect(retrying.ao.status).toBe('loading');
+		expect(
+			walletBalanceTransition(retrying, {
+				address,
+				previousAddress: address,
+				result: {
+					ar: { atomicBalance: 5n * AR, denomination: 12 },
+					ao: { atomicBalance: 7n, denomination: 12 },
+				},
+			})
+		).toEqual(ready(5n * AR, 7n));
+	});
+
+	it('returns to idle when the wallet disconnects', () => {
+		expect(walletBalanceTransition(ready(5n * AR), { address: null, previousAddress: address })).toEqual(
+			IDLE_WALLET_BALANCES
+		);
+	});
+});
+
+describe('wallet balance refresh events', () => {
+	it('re-reads balances when an App-tracked operation finishes or AO fetch loads, until unsubscribed', () => {
+		const target = new EventTarget();
+		const refresh = vi.fn();
+		const unsubscribe = subscribeWalletBalanceRefresh(target, refresh);
+
+		target.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: 'asset-id' }));
+		target.dispatchEvent(new Event('aoFetchLoaded'));
+		expect(refresh).toHaveBeenCalledTimes(2);
+
+		unsubscribe();
+		target.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: 'asset-id' }));
+		expect(refresh).toHaveBeenCalledTimes(2);
+	});
+});
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;

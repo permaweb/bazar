@@ -582,6 +582,7 @@ export default function DispatchRoute() {
 				},
 			});
 			finish({ kind: 'complete' });
+			wallet.refreshBalances();
 		} catch (cause) {
 			if (controller.signal.aborted) {
 				// The page unmounted mid-run. The plan is saved; replace the

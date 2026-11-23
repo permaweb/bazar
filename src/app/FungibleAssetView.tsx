@@ -1190,6 +1190,7 @@ export function FungibleAssetView({
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery) || signedRecoveryLocksAsset;
 	const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
 	const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
+	const refreshWalletBalances = wallet.refreshBalances;
 	const handleOperationActivityChange = React.useCallback(
 		(
 			id: string,
@@ -1200,9 +1201,12 @@ export function FungibleAssetView({
 			setOperationActivities((current) =>
 				current.map((activity) => (activity.id === id ? { ...activity, phase: update.phase } : activity))
 			);
-			if (update.phase === 'done') void onRefresh();
+			if (update.phase === 'done') {
+				void onRefresh();
+				refreshWalletBalances();
+			}
 		},
-		[onRefresh, publishOperationActivity]
+		[onRefresh, publishOperationActivity, refreshWalletBalances]
 	);
 
 	React.useEffect(() => {
