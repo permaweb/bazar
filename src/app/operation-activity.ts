@@ -57,6 +57,26 @@ export function operationAfterProvenRejection<T extends ResumableOperation>(
 
 export type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
+/**
+ * Phase an operation dialog opens in. A saved buy resumes straight into
+ * 'working', or into 'approval' when recovery still needs new signatures; a
+ * sell, transfer or cancel with a saved signature resumes into 'working'.
+ * Anything else starts at the form. Inputs are primitives so the atomic and
+ * fungible dialogs, whose operation shapes differ, share one rule.
+ */
+export function initialOperationPhase(input: {
+	kind: FungibleOperationKind;
+	hasResume: boolean;
+	hasResumeId: boolean;
+	recoveryApprovalCount: number;
+}): OperationActivityPhase {
+	if (input.kind === 'buy') {
+		if (!input.hasResume) return 'form';
+		return input.recoveryApprovalCount > 0 ? 'approval' : 'working';
+	}
+	return input.hasResumeId ? 'working' : 'form';
+}
+
 export type OperationActivity = {
 	id: string;
 	asset: AssetSummary;
