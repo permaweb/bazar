@@ -243,6 +243,7 @@ export function ProfileEditDialog({
 						<input
 							autoComplete="nickname"
 							autoFocus
+							data-dialog-initial
 							disabled={busy}
 							maxLength={64}
 							onChange={(event) => setDisplayName(event.target.value)}

@@ -56,6 +56,30 @@ describe('ProfileRoute', () => {
 	});
 });
 
+describe('profile editor initial focus', () => {
+	it('marks the name field, not the header Close button, as the dialog initial focus target', () => {
+		// React 18 never writes `autofocus` on a client render, so useDialogFocus
+		// only finds the field through data-dialog-initial; without it, focus
+		// falls to the first focusable element, "Close profile editor".
+		const markup = renderToStaticMarkup(
+			<ProfileEditDialog
+				onClose={() => undefined}
+				onSave={async () => undefined}
+				open
+				profile={profile}
+				restoreTarget={() => null}
+			/>
+		);
+		const initialTargets = markup.match(/<[a-z]+\b[^>]*\bdata-dialog-initial\b[^>]*>/g) ?? [];
+
+		expect(initialTargets).toHaveLength(1);
+		expect(initialTargets[0]).toMatch(/^<input\b/);
+		expect(initialTargets[0]).toContain('autoComplete="nickname"');
+		expect(initialTargets[0]).toContain('placeholder="How people will see you"');
+		expect(markup).toContain('aria-label="Close profile editor"');
+	});
+});
+
 describe('profile save announcements', () => {
 	it('mounts an empty polite status region in the editor before any save phase arrives', () => {
 		const markup = renderToStaticMarkup(
