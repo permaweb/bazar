@@ -489,6 +489,33 @@ function collectionMintPhaseLabel(phase: CollectionMintPhase) {
 	return `${phase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${phase.phase}…`;
 }
 
+/**
+ * Debounced, abortable mint-cost estimate shared by the three create modes.
+ * The flag is true only while a request is in flight: the returned cleanup
+ * cancels the timer and the request and clears the flag, so a cancelled
+ * estimate never leaves the cost line on 'Checking…'. A request that settles
+ * after being cancelled leaves the flag alone, so it cannot clear the flag of
+ * a newer request. `run` must handle its own rejection.
+ */
+export function scheduleEstimate(
+	run: (signal: AbortSignal) => Promise<unknown>,
+	setEstimating: (estimating: boolean) => void,
+	delay = 250
+): () => void {
+	const controller = new AbortController();
+	const timer = setTimeout(() => {
+		setEstimating(true);
+		void run(controller.signal).finally(() => {
+			if (!controller.signal.aborted) setEstimating(false);
+		});
+	}, delay);
+	return () => {
+		clearTimeout(timer);
+		controller.abort();
+		setEstimating(false);
+	};
+}
+
 export default function CreateRoute() {
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
@@ -694,11 +721,9 @@ export default function CreateRoute() {
 			setEstimate(null);
 			return;
 		}
-		const controller = new AbortController();
-		const timer = window.setTimeout(() => {
-			setEstimating(true);
+		return scheduleEstimate((signal) => {
 			setError(null);
-			void new AssetMintClient()
+			return new AssetMintClient()
 				.estimate(
 					{
 						file,
@@ -710,80 +735,53 @@ export default function CreateRoute() {
 						duration: audioMetadata.duration,
 						udl: activeUdl,
 					},
-					controller.signal
+					signal
 				)
 				.then(
 					(nextEstimate) => {
-						if (!controller.signal.aborted) setEstimate(nextEstimate);
+						if (!signal.aborted) setEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!signal.aborted) setError(mintErrorMessage(cause));
 					}
-				)
-				.finally(() => {
-					if (!controller.signal.aborted) setEstimating(false);
-				});
-		}, 250);
-		return () => {
-			window.clearTimeout(timer);
-			controller.abort();
-		};
+				);
+		}, setEstimating);
 	}, [activeUdl, artwork, audioMetadata, description, file, mode, name]);
 	React.useEffect(() => {
 		if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
 			setCollectionEstimate(null);
 			return;
 		}
-		const controller = new AbortController();
-		const timer = window.setTimeout(() => {
-			setEstimating(true);
+		return scheduleEstimate((signal) => {
 			setError(null);
-			void new CollectionMintClient()
-				.estimate({ files: collectionFiles, name, description, udl: activeUdl }, controller.signal)
+			return new CollectionMintClient()
+				.estimate({ files: collectionFiles, name, description, udl: activeUdl }, signal)
 				.then(
 					(nextEstimate) => {
-						if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
+						if (!signal.aborted) setCollectionEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!signal.aborted) setError(mintErrorMessage(cause));
 					}
-				)
-				.finally(() => {
-					if (!controller.signal.aborted) setEstimating(false);
-				});
-		}, 250);
-		return () => {
-			window.clearTimeout(timer);
-			controller.abort();
-		};
+				);
+		}, setEstimating);
 	}, [activeUdl, collectionFiles, description, mode, name]);
 	React.useEffect(() => {
 		if (mode !== 'fungible' || !fungibleReady) {
 			setFungibleEstimate(null);
 			return;
 		}
-		const controller = new AbortController();
-		const timer = window.setTimeout(() => {
-			setEstimating(true);
+		return scheduleEstimate((signal) => {
 			setError(null);
-			void new AssetMintClient()
-				.estimateFungible(fungibleInput, logo ?? undefined, controller.signal)
-				.then(
-					(nextEstimate) => {
-						if (!controller.signal.aborted) setFungibleEstimate(nextEstimate);
-					},
-					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
-					}
-				)
-				.finally(() => {
-					if (!controller.signal.aborted) setEstimating(false);
-				});
-		}, 250);
-		return () => {
-			window.clearTimeout(timer);
-			controller.abort();
-		};
+			return new AssetMintClient().estimateFungible(fungibleInput, logo ?? undefined, signal).then(
+				(nextEstimate) => {
+					if (!signal.aborted) setFungibleEstimate(nextEstimate);
+				},
+				(cause) => {
+					if (!signal.aborted) setError(mintErrorMessage(cause));
+				}
+			);
+		}, setEstimating);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [mode, fungibleReady, name, description, ticker, wholeSupply, denomination, logo, logoTxId]);
 
