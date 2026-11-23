@@ -99,8 +99,16 @@ describe('atomic asset uploader', () => {
 
 		function failureUploader(
 			steps: PostStep[],
-			overrides: { balance?: string; signer?: string; signedId?: string; onPost?: () => void } = {}
+			overrides: {
+				balance?: string;
+				signer?: string;
+				signedId?: string;
+				activeAddress?: string;
+				verified?: boolean;
+				onPost?: () => void;
+			} = {}
 		) {
+			const urls: string[] = [];
 			const posts: string[] = [];
 			const created: Array<Record<string, unknown>> = [];
 			const signTransaction = vi.fn(async (held: ReturnType<typeof transaction>) => {
@@ -112,6 +120,7 @@ describe('atomic asset uploader', () => {
 				gateway: 'https://gateway.example',
 				fetch: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 					const url = String(input);
+					urls.push(url);
 					if (url.includes('/price/')) return new Response('1');
 					if (url.includes('/wallet/')) return new Response(overrides.balance ?? '100');
 					posts.push(url);
@@ -127,9 +136,15 @@ describe('atomic asset uploader', () => {
 					}),
 					signTransaction,
 					ownerToAddress: vi.fn(async () => overrides.signer ?? owner),
+					...(overrides.activeAddress === undefined
+						? {}
+						: { getActiveAddress: vi.fn(async () => overrides.activeAddress!) }),
+					...(overrides.verified === undefined
+						? {}
+						: { verifyTransaction: vi.fn(async () => overrides.verified!) }),
 				},
 			});
-			return { uploader, posts, created, signTransaction };
+			return { uploader, posts, created, signTransaction, urls };
 		}
 
 		async function settle<T>(promise: Promise<T>) {
@@ -210,9 +225,30 @@ describe('atomic asset uploader', () => {
 
 		it('refuses to post when the wallet signed with a different account', async () => {
 			const { uploader, posts } = failureUploader([], { signer: 'X'.repeat(43) });
+			const onTransaction = vi.fn();
+
+			await expect(uploader.upload(request, owner, { onTransaction })).rejects.toThrow('wallet-account-changed');
+			expect(posts).toHaveLength(0);
+			expect(onTransaction).not.toHaveBeenCalled();
+		});
+
+		it('refuses to price or sign once the wallet has switched to another account', async () => {
+			const { uploader, urls, signTransaction } = failureUploader([], { activeAddress: 'X'.repeat(43) });
 
 			await expect(uploader.upload(request, owner)).rejects.toThrow('wallet-account-changed');
+			expect(urls).toEqual([]);
+			expect(signTransaction).not.toHaveBeenCalled();
+		});
+
+		it('refuses to post when the wallet signature does not verify', async () => {
+			const { uploader, posts } = failureUploader([], { verified: false });
+			const onTransaction = vi.fn();
+
+			await expect(uploader.upload(request, owner, { onTransaction })).rejects.toThrow(
+				'wallet-returned-invalid-signature'
+			);
 			expect(posts).toHaveLength(0);
+			expect(onTransaction).not.toHaveBeenCalled();
 		});
 
 		it('refuses to post when the wallet returns an unsigned transaction', async () => {
