@@ -25,6 +25,7 @@ import {
 	removeWalletRecordIf,
 	removeWalletRecoveryAndSignatures,
 	repairRejectedPurchase,
+	savedPurchaseContinuation,
 	shouldAutomaticallyResumePurchase,
 	storeWalletRecordIf,
 	storeWalletRecordOrThrow,
@@ -223,6 +224,37 @@ describe('wallet-bound operation sessions', () => {
 			registration: { id: REGISTRATION_ID, dispatched: true },
 		});
 		expect(latestPurchaseSnapshot(original, null)).toBe(original);
+	});
+
+	it('continues a saved purchase in place from its newest recoverable snapshot', () => {
+		const reserved = { registration: { id: REGISTRATION_ID, dispatched: true } };
+		const paid = {
+			registration: { id: REGISTRATION_ID, dispatched: true },
+			payment: { id: PAYMENT_ID, dispatched: true },
+		};
+
+		// Every signature saved: resume watching at once, like a reopened recovery.
+		expect(savedPurchaseContinuation(reserved, paid)).toEqual({ phase: 'working', snapshot: paid });
+		expect(savedPurchaseContinuation(paid, null)).toEqual({ phase: 'working', snapshot: paid });
+		// The seller payment still needs a wallet approval: ask in the same dialog first.
+		expect(savedPurchaseContinuation(undefined, reserved)).toEqual({ phase: 'approval', snapshot: reserved });
+	});
+
+	it('continues the saved reservation when the failed run left no usable payment', () => {
+		const reserved = { registration: { id: REGISTRATION_ID, dispatched: true } };
+		const unsignedPayment = { registration: reserved.registration, payment: { id: '', dispatched: false } };
+
+		expect(hasRecoverablePurchase(unsignedPayment)).toBe(false);
+		expect(savedPurchaseContinuation(reserved, unsignedPayment)).toEqual({
+			phase: 'approval',
+			snapshot: reserved,
+		});
+	});
+
+	it('has nothing to continue without a signed reservation', () => {
+		expect(savedPurchaseContinuation(undefined, null)).toBeNull();
+		expect(savedPurchaseContinuation({ payment: { id: PAYMENT_ID, dispatched: false } }, {})).toBeNull();
+		expect(savedPurchaseContinuation({ registration: { id: 'short', dispatched: false } }, null)).toBeNull();
 	});
 
 	it('removes only exact signed transaction records after live-state success', () => {
