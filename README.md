@@ -100,8 +100,9 @@ by default, sharing AO.js peer and rate-limit state with other applications.
 The AO Core control in the header can disable that transport and use Bazar's own
 AO.js client instead. Bazar routes AO requests to root-relative paths on the
 origin serving the app by default. In local development, Vite proxies those
-same-origin AO requests to `https://arweave.net` by default. To use another
-AO-Core node, set its origin when starting Vite:
+same-origin AO requests to `https://mystical.computer`, a stock HyperBEAM v0.11.1
+node, by default. To use another AO-Core node, such as `https://arweave.net`, set
+its origin when starting Vite:
 
 ```sh
 AO_CORE_PROXY_TARGET=http://127.0.0.1:3101 npm run start
@@ -133,6 +134,17 @@ http://127.0.0.1:3000/?arweave-node=http://127.0.0.1:1984#/asset/…
 
 The AO peer pool and Arweave gateway selection are independent. Transactions
 are signed by the connected wallet and submitted through the selected Arweave gateway.
+
+### Analytics
+
+Builds and the dev server load no analytics script by default. To include one,
+set `VITE_ANALYTICS_SRC` to its HTTPS URL when building, or in `.env.local`:
+
+```sh
+VITE_ANALYTICS_SRC='https://stats.forward.computer/~analytics@1.0/script?key=0IQ2BPbwAoLoHaNyABbfLClzA4siDxLEOkOpcol_Jg4' npm run build
+```
+
+Vite then adds it to `index.html` as an `async` script at the end of `<body>`.
 
 ### HyperBEAM device configuration
 
