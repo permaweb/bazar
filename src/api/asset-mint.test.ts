@@ -968,3 +968,119 @@ describe('asset mint contract', () => {
 		]);
 	});
 });
+
+describe('mint high-cost gate', () => {
+	const highPrice = '100000000001';
+	const draft = {
+		owner,
+		name: 'Long recording',
+		description: '',
+		contentType: 'audio/mpeg',
+		mediaId,
+		createdAt: 123,
+	};
+	const gatedClients = () => {
+		const sign = vi.fn();
+		const createTransaction = vi.fn();
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'POST') return new Response('', { status: 200 });
+			if (url === `https://content.example/${mediaId}`) return new Response(new Uint8Array([1, 2, 3]));
+			if (url.includes('/price/')) return new Response(highPrice);
+			if (url.includes('/wallet/')) return new Response('1000000000000000');
+			return new Response('', { status: 404 });
+		});
+		const options = {
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			gateway: 'https://gateway.example',
+			permanentContentGateway: 'https://content.example',
+			storage: storage(),
+			wallet: { getActiveAddress: vi.fn(async () => owner), sign } as any,
+		};
+		const posted = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+		return {
+			asset: new AssetMintClient(options),
+			collection: new CollectionMintClient(options),
+			createTransaction,
+			posted,
+			sign,
+		};
+	};
+	const image = () => new File([new Uint8Array([1])], 'signal.png', { type: 'image/png' });
+
+	it('rejects a fresh, resumed, collection or append mint above 0.1 AR before any wallet prompt', async () => {
+		const clients = gatedClients();
+		const collection = {
+			id: 'C'.repeat(43),
+			manifestId: 'O'.repeat(43),
+			owner,
+			createdAt: 1,
+			name: 'Happy agents',
+			description: '',
+			kind: 'images' as const,
+			assets: [],
+			total: 0,
+		};
+
+		await expect(clients.asset.mint({ name: 'Signal', description: '', file: image() }, owner)).rejects.toThrow(
+			'mint-high-cost-confirmation-required'
+		);
+		await expect(clients.asset.resume(draft, owner)).rejects.toThrow('mint-high-cost-confirmation-required');
+		await expect(
+			clients.collection.mint({ name: 'Happy agents', description: '', files: [image()] }, owner)
+		).rejects.toThrow('mint-high-cost-confirmation-required');
+		await expect(clients.collection.append(collection, [image()], owner)).rejects.toThrow(
+			'mint-high-cost-confirmation-required'
+		);
+
+		expect(clients.sign).not.toHaveBeenCalled();
+		expect(clients.createTransaction).not.toHaveBeenCalled();
+		expect(clients.posted()).toEqual([]);
+	});
+
+	it('prices a saved draft re-upload from the reported media size without downloading it', async () => {
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === `https://content.example/${mediaId}` && init?.method === 'HEAD')
+				return new Response(null, { headers: { 'content-length': '52428800' } });
+			if (url === 'https://gateway.example/price/52428800') return new Response(highPrice);
+			return new Response('', { status: 404 });
+		});
+		const client = new AssetMintClient({
+			fetch: fetchMock as typeof fetch,
+			gateway: 'https://gateway.example',
+			permanentContentGateway: 'https://content.example',
+			storage: storage(),
+		});
+
+		await expect(client.estimateResume(draft)).resolves.toEqual({
+			assetReward: 100_000_000_001n,
+			assetBytes: 52_428_800,
+		});
+		expect(fetchMock.mock.calls.map(([input, init]) => [String(input), init?.method])).toEqual([
+			[`https://content.example/${mediaId}`, 'HEAD'],
+			['https://gateway.example/price/52428800', undefined],
+		]);
+	});
+
+	it('does not price a draft whose media size is missing or over the media limit', async () => {
+		const client = (headers: Record<string, string>, status = 200) =>
+			new AssetMintClient({
+				fetch: vi.fn(async () => new Response(null, { status, headers })) as typeof fetch,
+				gateway: 'https://gateway.example',
+				permanentContentGateway: 'https://content.example',
+				storage: storage(),
+			});
+
+		await expect(client({}).estimateResume(draft)).rejects.toThrow('mint-media-invalid');
+		await expect(client({ 'content-length': String(101 * 1024 * 1024) }).estimateResume(draft)).rejects.toThrow(
+			'mint-media-invalid'
+		);
+		await expect(client({}, 404).estimateResume(draft)).rejects.toThrow('mint-media-unavailable-404');
+	});
+});

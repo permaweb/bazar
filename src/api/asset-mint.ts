@@ -132,6 +132,12 @@ export type MintEstimate = {
 	transactionCount: number;
 };
 
+/** The network cost of the single re-upload that finishing a saved draft makes. */
+export type MintResumeEstimate = {
+	assetReward: bigint;
+	assetBytes: number;
+};
+
 export type MintDraft = {
 	owner: string;
 	name: string;
@@ -415,6 +421,24 @@ export class AssetMintClient {
 			...(draft.udl ? { udl: draft.udl } : {}),
 		};
 		return this.#publishAtomicAsset(data, assetInput, owner, options);
+	}
+
+	/**
+	 * Prices the re-upload `resume` makes for a saved draft, from the media size the content
+	 * gateway reports, so the recovery panel can show the cost before the creator finishes.
+	 */
+	async estimateResume(draft: MintDraft, signal?: AbortSignal): Promise<MintResumeEstimate> {
+		validateMintDraft(draft);
+		const response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#permanentContentGateway), {
+			method: 'HEAD',
+			signal,
+		});
+		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
+		const assetBytes = Number(response.headers.get('content-length'));
+		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
+		if (!Number.isSafeInteger(assetBytes) || assetBytes <= 0 || assetBytes > maxBytes)
+			throw new Error('mint-media-invalid');
+		return { assetReward: await this.#uploader.price(assetBytes, signal), assetBytes };
 	}
 
 	async #publishAtomicAsset(
