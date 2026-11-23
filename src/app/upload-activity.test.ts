@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { ObserverView } from 'weave-wrangler';
 
+import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import type { MintActivity } from 'api/mint-activity';
 
-import { type UploadActivity, uploadActivitySyncSteps } from './App';
+import {
+	mintActivityMenuCopy,
+	type UploadActivity,
+	uploadActivityEyebrow,
+	uploadActivityFromMintActivity,
+	uploadActivitySyncSteps,
+} from './App';
 
 const processId = 'P'.repeat(43);
 const owner = 'O'.repeat(43);
@@ -74,5 +81,49 @@ describe('upload observer lanes', () => {
 			'bravo.example',
 			'charlie.example',
 		]);
+	});
+});
+
+describe('mint activity labels', () => {
+	const logoId = 'L'.repeat(43);
+	const tokenMint: MintActivity = {
+		...mint,
+		asset: {
+			...mint.asset,
+			name: 'Test Token',
+			contentType: 'application/x.arweave-token',
+			ticker: 'TEST',
+		},
+		collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
+		transactionIds: [logoId, processId],
+	};
+
+	it('labels a token mint restored from Activity as a token, not an artwork upload', () => {
+		const activity = uploadActivityFromMintActivity(tokenMint);
+
+		expect(activity.transactions).toEqual([
+			{ id: logoId, label: 'Token logo transaction' },
+			{ id: processId, label: 'Token process transaction' },
+		]);
+		expect(uploadActivityEyebrow(activity)).toBe('Token mint');
+		expect(mintActivityMenuCopy(tokenMint)).toEqual({
+			kind: 'Token mint',
+			attention: 'This token mint has not reached live process state.',
+		});
+	});
+
+	it('keeps the artwork and asset labels for an atomic asset mint', () => {
+		const artworkId = 'A'.repeat(43);
+		const assetMint: MintActivity = { ...mint, transactionIds: [artworkId, processId] };
+		const activity = uploadActivityFromMintActivity(assetMint);
+
+		expect(activity).toMatchObject({ kind: 'asset', phase: 'tracking', assetId: processId });
+		expect(activity.transactions.map((transaction) => transaction.label)).toEqual([
+			'Artwork transaction',
+			'Asset transaction',
+		]);
+		expect(uploadActivityEyebrow(activity)).toBe('Asset upload');
+		expect(uploadActivityEyebrow({ kind: 'collection' })).toBe('Collection upload');
+		expect(mintActivityMenuCopy(assetMint).kind).toBe('Upload');
 	});
 });
