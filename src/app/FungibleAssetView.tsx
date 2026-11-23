@@ -43,6 +43,7 @@ import {
 	dispatchAndConfirm,
 	type PreparedPurchase,
 	type PurchaseBatchPreparationEvent,
+	purchaseOrderSafetyError,
 } from 'api/asset-transactions';
 import type { AssetSummary, Collection } from 'api/collections';
 import {
@@ -756,10 +757,11 @@ export function FungibleAssetView({
 	const visibleActivityRows = activity.slice(0, activityLimit);
 	const openOrders = React.useMemo(() => orders.filter((order) => order.status === 'open'), [orders]);
 	const purchasableOrders = React.useMemo(
-		() =>
-			openOrders.filter(
-				(order) => !sameAccount(order.creator, wallet.address) && !sameAccount(order.recipient, wallet.address)
-			),
+		() => purchasableOrdersFor(openOrders, wallet.address),
+		[openOrders, wallet.address]
+	);
+	const unsafeExcludedQuantity = React.useMemo(
+		() => unsafeExcludedQuantityFor(openOrders, wallet.address),
 		[openOrders, wallet.address]
 	);
 	const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
@@ -1296,7 +1298,12 @@ export function FungibleAssetView({
 								{purchasableOrders.length ? (
 									<FungiblePurchaseComposer
 										availableQuantity={purchasableQuantity.toString()}
-										excludedQuantity={(BigInt(forSale) - purchasableQuantity).toString()}
+										excludedQuantity={(
+											BigInt(forSale) -
+											purchasableQuantity -
+											BigInt(unsafeExcludedQuantity)
+										).toString()}
+										unsafeExcludedQuantity={unsafeExcludedQuantity}
 										error={purchaseAmountResult.error}
 										match={purchaseAmountResult.match}
 										onChange={(quantity) => {
@@ -1314,7 +1321,14 @@ export function FungibleAssetView({
 									<div className="asset-buy-summary asset-buy-summary-empty">
 										<span>Purchase amount</span>
 										<h1>No purchasable listings</h1>
-										<small>No open listings are available to this wallet.</small>
+										<small>
+											{BigInt(unsafeExcludedQuantity) > 0n
+												? `${tokenLabel(
+														unsafeExcludedQuantity,
+														state
+												  )} is listed with a reservation fee above Bazar's limit, so it can't be bought here.`
+												: 'No open listings are available to this wallet.'}
+										</small>
 									</div>
 								)}
 							</div>
@@ -3945,6 +3959,28 @@ export function MatchedListingsReview({
 	);
 }
 
+function ownOrder(order: SwapOrder, walletAddress: unknown) {
+	return sameAccount(order.creator, walletAddress) || sameAccount(order.recipient, walletAddress);
+}
+
+/**
+ * Open orders this wallet can buy: not its own, and with a reservation fee the
+ * purchase path accepts. An order that fails purchaseOrderSafetyError is left out
+ * whole, even though a small enough partial fill of it would pass, because the
+ * matcher would otherwise pick it first and block every larger buy.
+ */
+export function purchasableOrdersFor(openOrders: SwapOrder[], walletAddress: unknown): SwapOrder[] {
+	return openOrders.filter((order) => !ownOrder(order, walletAddress) && purchaseOrderSafetyError(order) === null);
+}
+
+/** Quantity in other sellers' open orders left out because their reservation fee is unsafe. */
+export function unsafeExcludedQuantityFor(openOrders: SwapOrder[], walletAddress: unknown): string {
+	return openOrders
+		.filter((order) => !ownOrder(order, walletAddress) && purchaseOrderSafetyError(order) !== null)
+		.reduce((total, order) => total + BigInt(order.quantity), 0n)
+		.toString();
+}
+
 export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state: AssetState) {
 	if (!quantity.trim()) return { match: null, error: '' };
 	try {
@@ -3975,6 +4011,7 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 export function FungiblePurchaseComposer({
 	availableQuantity,
 	excludedQuantity = '0',
+	unsafeExcludedQuantity = '0',
 	error,
 	match,
 	onChange,
@@ -3984,6 +4021,7 @@ export function FungiblePurchaseComposer({
 }: {
 	availableQuantity: string;
 	excludedQuantity?: string;
+	unsafeExcludedQuantity?: string;
 	error: string;
 	match: ReturnType<typeof matchOrderFills>;
 	onChange(quantity: string): void;
@@ -4023,6 +4061,12 @@ export function FungiblePurchaseComposer({
 					{tokenLabel(availableQuantity, state)} available to buy
 					{BigInt(excludedQuantity) > 0n
 						? ` · ${tokenLabel(excludedQuantity, state)} from your listing excluded`
+						: ''}
+					{BigInt(unsafeExcludedQuantity) > 0n
+						? ` · ${tokenLabel(
+								unsafeExcludedQuantity,
+								state
+						  )} excluded: reservation fee above Bazar's limit`
 						: ''}
 				</small>
 			</div>
