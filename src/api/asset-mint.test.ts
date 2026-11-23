@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	assetFromMintState,
@@ -23,6 +23,7 @@ import {
 	type MintProgress,
 	mintProgressKey,
 	normalizeUploadTags,
+	ORDINARY_MINT_COST_MAX_WINSTON,
 	type PendingMintProgress,
 	pendingMintProgress,
 	reusableMintProgress,
@@ -1024,6 +1025,299 @@ describe('asset mint contract', () => {
 			}
 			expect(reusableMintProgress(progress, '')).toBeUndefined();
 			expect(reusableMintProgress(null, key)).toBeUndefined();
+		});
+	});
+
+	describe('money-path guards stop a mint before it spends or records anything', () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		// Every transaction prices at `price` and the wallet holds `balance`. POST /tx
+		// answers each of `postStatuses` in turn, then 200. Sign call N returns the
+		// Nth capital letter as its id; calls listed in `rejectSignAt` are refused.
+		function moneyHarness(
+			options: {
+				price?: string;
+				balance?: string;
+				activeAddress?: string;
+				signer?: string;
+				postStatuses?: number[];
+				rejectSignAt?: number[];
+			} = {}
+		) {
+			const store = storage();
+			const urls: string[] = [];
+			const posts: string[] = [];
+			const created: any[] = [];
+			const createTransaction = vi.fn(async (attributes: Record<string, unknown>) => {
+				const transaction: any = { id: '', owner: '', attributes, chunks: { chunks: [{}] }, addTag: vi.fn() };
+				transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+				transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+				created.push(transaction);
+				return transaction;
+			});
+			let signed = 0;
+			const sign = vi.fn(async () => {
+				signed += 1;
+				if (options.rejectSignAt?.includes(signed)) throw new Error('User rejected the signature');
+				return {
+					id: String.fromCharCode(64 + signed).repeat(43),
+					owner: 'signed-owner',
+					tags: [],
+					signature: 's',
+				};
+			});
+			const statuses = [...(options.postStatuses ?? [])];
+			const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				urls.push(url);
+				if (init?.method === 'POST') {
+					posts.push(url);
+					return new Response('', { status: statuses.shift() ?? 200 });
+				}
+				if (url.startsWith('https://content.example/')) return new Response(new Uint8Array([7, 8, 9]));
+				return url.includes('/wallet/')
+					? new Response(options.balance ?? '1000')
+					: new Response(options.price ?? '1');
+			}) as typeof fetch;
+			const clientOptions = {
+				arweave: {
+					createTransaction,
+					transactions: {},
+					wallets: { ownerToAddress: vi.fn(async () => options.signer ?? owner) },
+				},
+				fetch: fetchMock,
+				gateway: 'https://gateway.example',
+				permanentContentGateway: 'https://content.example',
+				storage: store,
+				wallet: { getActiveAddress: vi.fn(async () => options.activeAddress ?? owner), sign } as any,
+			};
+			const balanceChecks = () => urls.filter((url) => url.includes('/wallet/'));
+			const typed = (type: string) =>
+				created.filter((transaction) =>
+					transaction.addTag.mock.calls.some((call: string[]) => call[0] === 'type' && call[1] === type)
+				);
+			return { balanceChecks, clientOptions, createTransaction, created, posts, sign, store, typed, urls };
+		}
+
+		const id = (letter: string) => letter.repeat(43);
+		const image = () => new File([new Uint8Array(4)], 'signal.png', { type: 'image/png' });
+		const mintInput = () => ({ name: 'Permanent signal', description: '', file: image() });
+		const draft = {
+			owner,
+			name: 'Recovered signal',
+			description: '',
+			contentType: 'image/png',
+			mediaId,
+			createdAt: 123,
+		};
+		const collection = {
+			id: 'C'.repeat(43),
+			manifestId: 'O'.repeat(43),
+			owner,
+			createdAt: 1,
+			name: 'Happy agents',
+			description: 'A collection',
+			kind: 'images' as const,
+			assets: [],
+			total: 0,
+		};
+		const fungibleInput = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			denomination: '12',
+		};
+		const overCeiling = (ORDINARY_MINT_COST_MAX_WINSTON + 1n).toString();
+		const plentiful = (ORDINARY_MINT_COST_MAX_WINSTON * 10n).toString();
+
+		/** Runs `promise` to completion while stepping the uploader's fake retry delays. */
+		async function settleWithTimers<T>(promise: Promise<T>) {
+			let done = false;
+			const outcome = promise
+				.then(
+					(value) => ({ value } as { value: T; error?: undefined }),
+					(error: unknown) => ({ error: error as Error } as { value?: undefined; error: Error })
+				)
+				.finally(() => {
+					done = true;
+				});
+			for (let step = 0; !done; step += 1) {
+				if (step > 200) throw new Error('mint did not settle');
+				await new Promise((resolve) => setImmediate(resolve));
+				await vi.advanceTimersByTimeAsync(250);
+			}
+			return outcome;
+		}
+
+		it('stops a mint the wallet cannot pay for before the wallet is asked to sign', async () => {
+			const harness = moneyHarness({ price: '5', balance: '4' });
+			const onTransaction = vi.fn();
+
+			await expect(
+				new AssetMintClient(harness.clientOptions).mint(mintInput(), owner, { onTransaction })
+			).rejects.toThrow('mint-insufficient-balance');
+
+			expect(harness.balanceChecks()).toEqual([`https://gateway.example/wallet/${owner}/balance`]);
+			expect(harness.createTransaction).not.toHaveBeenCalled();
+			expect(harness.sign).not.toHaveBeenCalled();
+			expect(harness.posts).toEqual([]);
+			expect(onTransaction).not.toHaveBeenCalled();
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintActivities(harness.store)).toEqual([]);
+		});
+
+		it('mints when the balance covers the price exactly', async () => {
+			const harness = moneyHarness({ price: '5', balance: '5' });
+
+			await new AssetMintClient(harness.clientOptions).mint(mintInput(), owner);
+
+			expect(harness.sign).toHaveBeenCalledOnce();
+			expect(loadMintedAssets(harness.store)).toMatchObject([{ id: id('A') }]);
+		});
+
+		it.each(['mint', 'resume'] as const)(
+			'asks for high-cost confirmation on %s before the balance check or any signature',
+			async (run) => {
+				const harness = moneyHarness({ price: overCeiling, balance: plentiful });
+				const client = new AssetMintClient(harness.clientOptions);
+				const attempt = (allowHighCost?: boolean) =>
+					run === 'mint'
+						? client.mint(mintInput(), owner, { allowHighCost })
+						: client.resume(draft, owner, { allowHighCost });
+
+				await expect(attempt()).rejects.toThrow('mint-high-cost-confirmation-required');
+				expect(harness.balanceChecks()).toEqual([]);
+				expect(harness.createTransaction).not.toHaveBeenCalled();
+				expect(harness.sign).not.toHaveBeenCalled();
+				expect(harness.posts).toEqual([]);
+
+				// The same run goes ahead once the creator confirms the cost.
+				await expect(attempt(true)).resolves.toMatchObject({ processId: id('A') });
+				expect(harness.balanceChecks()).toHaveLength(1);
+				expect(harness.sign).toHaveBeenCalledOnce();
+			}
+		);
+
+		it('mints at exactly the ordinary cost ceiling without asking for confirmation', async () => {
+			const harness = moneyHarness({ price: ORDINARY_MINT_COST_MAX_WINSTON.toString(), balance: plentiful });
+
+			await expect(new AssetMintClient(harness.clientOptions).mint(mintInput(), owner)).resolves.toMatchObject({
+				processId: id('A'),
+			});
+		});
+
+		it.each(['mint', 'append'] as const)(
+			'asks for high-cost confirmation when the whole collection %s crosses the ceiling',
+			async (run) => {
+				// Each of the three transactions is under the ceiling on its own; together they are not.
+				const harness = moneyHarness({
+					price: (ORDINARY_MINT_COST_MAX_WINSTON / 2n).toString(),
+					balance: plentiful,
+				});
+				const client = new CollectionMintClient(harness.clientOptions);
+				const files = [image()];
+
+				await expect(
+					run === 'mint'
+						? client.mint({ name: 'Costly', description: '', files }, owner)
+						: client.append(collection, files, owner)
+				).rejects.toThrow('mint-high-cost-confirmation-required');
+
+				expect(harness.urls.length).toBeGreaterThan(0);
+				expect(harness.balanceChecks()).toEqual([]);
+				expect(harness.createTransaction).not.toHaveBeenCalled();
+				expect(harness.sign).not.toHaveBeenCalled();
+				expect(loadMintedCollections(harness.store)).toEqual([]);
+			}
+		);
+
+		it.each(['mint', 'resume', 'mintFungible'] as const)(
+			'refuses %s for a switched wallet account before pricing or signing',
+			async (run) => {
+				const harness = moneyHarness({ activeAddress: 'X'.repeat(43) });
+				const client = new AssetMintClient(harness.clientOptions);
+
+				await expect(
+					run === 'mint'
+						? client.mint(mintInput(), owner)
+						: run === 'resume'
+						? client.resume(draft, owner)
+						: client.mintFungible(fungibleInput, owner)
+				).rejects.toThrow('wallet-account-changed');
+
+				expect(harness.urls).toEqual([]);
+				expect(harness.sign).not.toHaveBeenCalled();
+			}
+		);
+
+		it('does not post or record a mint the wallet signed with another account', async () => {
+			const harness = moneyHarness({ signer: 'X'.repeat(43) });
+			const onTransaction = vi.fn();
+
+			await expect(
+				new AssetMintClient(harness.clientOptions).mint(mintInput(), owner, { onTransaction })
+			).rejects.toThrow('wallet-account-changed');
+
+			expect(harness.sign).toHaveBeenCalledOnce();
+			expect(harness.posts).toEqual([]);
+			expect(onTransaction).not.toHaveBeenCalled();
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintActivities(harness.store)).toEqual([]);
+		});
+
+		it('keeps no asset or activity when every POST attempt is refused', async () => {
+			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+			const harness = moneyHarness({ postStatuses: [400, 400, 400, 400] });
+
+			const outcome = await settleWithTimers(new AssetMintClient(harness.clientOptions).mint(mintInput(), owner));
+
+			expect(outcome.error?.message).toBe('mint-upload-400');
+			expect(harness.posts).toEqual(Array(3).fill('https://gateway.example/tx'));
+			expect(harness.sign).toHaveBeenCalledOnce();
+			expect(loadMintedAssets(harness.store)).toEqual([]);
+			expect(loadMintActivities(harness.store)).toEqual([]);
+		});
+
+		it('records the asset once a retried POST lands', async () => {
+			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+			const harness = moneyHarness({ postStatuses: [503] });
+
+			const outcome = await settleWithTimers(new AssetMintClient(harness.clientOptions).mint(mintInput(), owner));
+
+			expect(outcome.value).toMatchObject({ processId: id('A') });
+			expect(harness.posts).toHaveLength(2);
+			expect(loadMintedAssets(harness.store)).toMatchObject([{ id: id('A') }]);
+			expect(loadMintActivities(harness.store, owner)).toMatchObject([{ transactionIds: [id('A')] }]);
+		});
+
+		it('reuses an uploaded token logo when the fungible process signature is refused', async () => {
+			const harness = moneyHarness({ rejectSignAt: [2] });
+			const client = new AssetMintClient(harness.clientOptions);
+			const logo = new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' });
+			const onLogoUploaded = vi.fn();
+
+			await expect(client.mintFungible(fungibleInput, owner, { logo, onLogoUploaded })).rejects.toThrow(
+				'User rejected the signature'
+			);
+			expect(onLogoUploaded.mock.calls).toEqual([[id('A')]]);
+			expect(loadMintActivities(harness.store)).toEqual([]);
+			const createdBeforeRetry = harness.createTransaction.mock.calls.length;
+
+			const retry = await client.mintFungible({ ...fungibleInput, logo: id('A') }, owner, {
+				logo,
+				onLogoUploaded,
+			});
+
+			expect(harness.createTransaction.mock.calls.length - createdBeforeRetry).toBe(1);
+			expect(harness.sign).toHaveBeenCalledTimes(3);
+			expect(harness.typed('Token-Logo')).toHaveLength(1);
+			expect(harness.created.at(-1).addTag).toHaveBeenCalledWith('logo', id('A'));
+			expect(onLogoUploaded).toHaveBeenCalledOnce();
+			expect(retry).toMatchObject({ processId: id('C'), logo: id('A') });
+			expect(loadMintActivities(harness.store, owner)).toMatchObject([{ transactionIds: [id('A'), id('C')] }]);
 		});
 	});
 
