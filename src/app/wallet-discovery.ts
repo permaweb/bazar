@@ -36,6 +36,12 @@ export type WalletDiscoveryOptions = {
 	signal: AbortSignal;
 	/** Read on every classification so collections that stream in later are honoured. */
 	collections: () => Collection[];
+	/**
+	 * False while collections are still streaming in. The run then holds its
+	 * finish while candidates wait on a collection, so it never reports done
+	 * (or an empty wallet) before every collection had a chance to classify them.
+	 */
+	collectionsLoaded?: () => boolean;
 	failures: WalletDiscoveryFailures;
 	/** Pages the wallet's candidate history into `onPage` and returns every candidate found. */
 	discover: (
@@ -153,6 +159,7 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 		lateResolver.enqueue(candidates);
 	};
 	let supportTail = Promise.resolve();
+	let wake: (() => void) | undefined;
 	const resolvePage = (page: AssetCandidate[]) => {
 		let reopened = 0;
 		let reopenedFailures = 0;
@@ -338,6 +345,9 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 		reclassify();
 		// Newly loaded collection indexes can name candidates that are still being checked.
 		options.onResultsChanged();
+		const resume = wake;
+		wake = undefined;
+		resume?.();
 	};
 
 	const finished = (async () => {
@@ -357,10 +367,22 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 			if (!discoveryFailure) options.onDiscoveryComplete?.();
 			resolvePage(discoveredCandidates.filter((candidate) => !session.screened.has(candidate.processId)));
 			let resolutionFailure: unknown;
-			try {
-				await supportTail;
-			} catch (cause) {
-				resolutionFailure = cause;
+			for (;;) {
+				try {
+					await supportTail;
+				} catch (cause) {
+					resolutionFailure = cause;
+					break;
+				}
+				const waiting = held.size + excluded.size + unclassified.size;
+				if (discoveryFailure || options.collectionsLoaded?.() !== false || !waiting) break;
+				// Candidates still depend on collections that are streaming in;
+				// supportChanged() wakes the run once they change.
+				await new Promise<void>((resolve) => {
+					wake = resolve;
+					signal.addEventListener('abort', () => resolve(), { once: true });
+				});
+				if (!active()) return;
 			}
 			sealed = true;
 			try {

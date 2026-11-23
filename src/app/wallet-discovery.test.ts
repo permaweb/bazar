@@ -249,4 +249,41 @@ describe('wallet discovery run', () => {
 		expect(previews()).toEqual([['Asset B', 'unavailable']]);
 		expect(test.status()).toMatchObject({ phase: 'done', total: 2, resolved: 2, failures: 1 });
 	});
+
+	it('holds its finish while streaming collections may still classify held candidates', async () => {
+		let loaded = false;
+		let finished = false;
+		const test = harness([], async (_scan, onPage) => {
+			onPage([candidate(assetA, 30)]);
+			return [candidate(assetA, 30)];
+		});
+		test.options.collectionsLoaded = () => loaded;
+		const discovery = runWalletDiscovery(test.options);
+		void discovery.finished.then(() => (finished = true));
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(finished).toBe(false);
+		expect(test.status().phase).not.toBe('done');
+		expect(test.reads).toEqual([]);
+
+		test.setCollections([images([assetA])]);
+		loaded = true;
+		discovery.supportChanged();
+		await discovery.finished;
+
+		expect(test.reads).toEqual([assetA]);
+		expect(test.resolvedIds()).toEqual([assetA]);
+		expect(test.status()).toMatchObject({ phase: 'done', total: 1, resolved: 1 });
+	});
+
+	it('does not wait on streaming collections when no candidate depends on them', async () => {
+		const test = harness([images([assetA])], async (_scan, onPage) => {
+			onPage([candidate(assetA, 30)]);
+			return [];
+		});
+		test.options.collectionsLoaded = () => false;
+		await runWalletDiscovery(test.options).finished;
+
+		expect(test.status()).toMatchObject({ phase: 'done', total: 1, resolved: 1 });
+	});
 });

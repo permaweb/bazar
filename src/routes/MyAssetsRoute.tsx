@@ -99,6 +99,8 @@ export default function MyAssetsRoute({
 	const collectionsReady = market.collections.length > 0;
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
+	const marketLoadingRef = React.useRef(market.loading);
+	marketLoadingRef.current = market.loading;
 	const walletSupportVersion = React.useMemo(
 		() => homeListingSupportVersion(market.collections),
 		[market.collections]
@@ -167,6 +169,7 @@ export default function MyAssetsRoute({
 			session,
 			signal: controller.signal,
 			collections: () => marketCollectionsRef.current,
+			collectionsLoaded: () => !marketLoadingRef.current,
 			failures: {
 				compute: failedCandidates.current,
 				support: supportFailures.current,
@@ -207,7 +210,7 @@ export default function MyAssetsRoute({
 	}, [collectionsReady, discoveryRetry, discoveryScope, market.error, retry]);
 	React.useEffect(() => {
 		walletDiscovery.current?.supportChanged();
-	}, [walletSupportVersion]);
+	}, [market.loading, walletSupportVersion]);
 	React.useEffect(() => {
 		if (
 			!failedRetry ||
