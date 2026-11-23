@@ -121,8 +121,13 @@ import {
 	advanceMintActivity,
 	loadMintActivities,
 	MINT_ACTIVITY_CHANGE_EVENT,
+	MINT_ACTIVITY_STALLED_STATUS,
 	type MintActivity,
 	mintActivityNeedsAttention,
+	mintActivityObservationDelay,
+	mintActivityTrackingState,
+	mintActivityWatchPlan,
+	nextMintActivityStalledAt,
 	removeMintActivities,
 	removeMintActivity,
 	upsertMintActivity,
@@ -743,7 +748,7 @@ type OperationActivityContextValue = {
 
 const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
 
-async function observeMintActivity(
+export async function observeMintActivity(
 	activity: MintActivity,
 	onPhase: (phase: MintActivity['phase']) => void,
 	signal: AbortSignal
@@ -765,7 +770,10 @@ async function observeMintActivity(
 			if (signal.aborted) throw cause;
 		}
 
-		let retryDelay = 4_000;
+		// Re-read each iteration: a watch that outlives the attention threshold slows down
+		// for the whole iteration instead of stopping.
+		const observationDelay = mintActivityObservationDelay(activity, Date.now());
+		let retryDelay = observationDelay;
 		if (!mined) {
 			try {
 				const response = await fetch(
@@ -779,7 +787,7 @@ async function observeMintActivity(
 						onPhase('mined');
 					}
 				} else if (response.status === 429) {
-					retryDelay = retryAfterDelay(response.headers.get('retry-after'), 4_000);
+					retryDelay = retryAfterDelay(response.headers.get('retry-after'), observationDelay);
 				}
 			} catch (cause) {
 				if (signal.aborted) throw cause;
@@ -814,6 +822,40 @@ function waitForBackgroundObservation(milliseconds: number, signal: AbortSignal)
 	});
 }
 
+/** Re-render once when the next tracked upload turns 'stalled', so every view flips on time. */
+function useMintActivityStalledRerender(activities: MintActivity[]) {
+	const [, rerender] = React.useReducer((count: number) => count + 1, 0);
+	const next = nextMintActivityStalledAt(activities, Date.now());
+	React.useEffect(() => {
+		if (next === null) return;
+		const timer = window.setTimeout(rerender, Math.max(0, next - Date.now()));
+		return () => window.clearTimeout(timer);
+	}, [next]);
+}
+
+/** The Activity panel view of a mint that has no runtime upload activity (for example after reload). */
+export function mintActivityUploadActivity(activity: MintActivity, now = Date.now()): UploadActivity {
+	const stalled = mintActivityTrackingState(activity, now) === 'stalled';
+	return {
+		id: activity.id,
+		owner: activity.owner,
+		kind: 'asset',
+		name: activity.asset.name,
+		// A stalled watch is still running, but the panel stops presenting it as live progress so it
+		// matches the Activity menu and can offer explicit actions.
+		phase: stalled ? 'error' : 'tracking',
+		status: stalled ? MINT_ACTIVITY_STALLED_STATUS : activity.status,
+		createdAt: activity.createdAt,
+		transactionIds: activity.transactionIds,
+		transactions: activity.transactionIds.map((id, index) => ({
+			id,
+			label: index === activity.transactionIds.length - 1 ? 'Asset transaction' : 'Artwork transaction',
+		})),
+		assetId: activity.asset.id,
+		collectionId: activity.collectionId,
+	};
+}
+
 function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const navigate = useNavigate();
 	const wallet = useWallet();
@@ -826,6 +868,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const [activeId, setActiveId] = React.useState<string | null>(null);
 	const [activeUploadId, setActiveUploadId] = React.useState<string | null>(null);
 	const [activeMintId, setActiveMintId] = React.useState<string | null>(null);
+	const [mintWatchRevision, setMintWatchRevision] = React.useState(0);
 	const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
 	const [recoveryValidationRetry, setRecoveryValidationRetry] = React.useState(0);
 	const fungibleRuntimeActivitiesRef = React.useRef<FungibleOperationActivitySummary[]>([]);
@@ -911,13 +954,12 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		return () => window.removeEventListener('bazar:mint-live', completeUpload);
 	}, []);
 	React.useEffect(() => {
-		for (const activity of mintActivities) {
-			if (
-				mintWatchersRef.current.has(activity.id) ||
-				activity.phase === 'complete' ||
-				mintActivityNeedsAttention(activity)
-			)
-				continue;
+		const plan = mintActivityWatchPlan(mintActivities, mintWatchersRef.current.keys());
+		for (const id of plan.stop) {
+			mintWatchersRef.current.get(id)?.abort();
+			mintWatchersRef.current.delete(id);
+		}
+		for (const activity of plan.start) {
 			const controller = new AbortController();
 			mintWatchersRef.current.set(activity.id, controller);
 			void observeMintActivity(
@@ -944,18 +986,23 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				controller.signal
 			)
 				.catch(() => undefined)
-				.finally(() => mintWatchersRef.current.delete(activity.id));
+				.finally(() => {
+					// A restarted watch ("Check again") owns the slot now; leave it in place.
+					if (mintWatchersRef.current.get(activity.id) === controller)
+						mintWatchersRef.current.delete(activity.id);
+				});
 		}
-		const active = new Set(
-			mintActivities.filter((activity) => !mintActivityNeedsAttention(activity)).map((activity) => activity.id)
-		);
-		for (const [id, controller] of mintWatchersRef.current) {
-			if (!active.has(id)) {
-				controller.abort();
-				mintWatchersRef.current.delete(id);
-			}
-		}
-	}, [mintActivities]);
+	}, [mintActivities, mintWatchRevision]);
+	const checkMintActivityAgain = React.useCallback((id: string) => {
+		mintWatchersRef.current.get(id)?.abort();
+		mintWatchersRef.current.delete(id);
+		setMintWatchRevision((revision) => revision + 1);
+	}, []);
+	const stopTrackingMintActivity = React.useCallback((id: string) => {
+		setActiveMintId((current) => (current === id ? null : current));
+		removeMintActivity(localStorage, id);
+	}, []);
+	useMintActivityStalledRerender(mintActivities);
 	React.useEffect(
 		() => () => {
 			for (const controller of mintWatchersRef.current.values()) controller.abort();
@@ -1394,30 +1441,14 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				)
 				.map((activity) => (
 					<UploadActivityPanel
-						activity={{
-							id: activity.id,
-							owner: activity.owner,
-							kind: 'asset',
-							name: activity.asset.name,
-							phase: 'tracking',
-							status: activity.status,
-							createdAt: activity.createdAt,
-							transactionIds: activity.transactionIds,
-							transactions: activity.transactionIds.map((id, index) => ({
-								id,
-								label:
-									index === activity.transactionIds.length - 1
-										? 'Asset transaction'
-										: 'Artwork transaction',
-							})),
-							assetId: activity.asset.id,
-							collectionId: activity.collectionId,
-						}}
+						activity={mintActivityUploadActivity(activity)}
 						key={activity.id}
 						relatedMintActivities={[activity]}
 						visible={activeMintId === activity.id}
 						onHide={() => setActiveMintId(null)}
 						onClose={() => setActiveMintId(null)}
+						onCheckAgain={() => checkMintActivityAgain(activity.id)}
+						onStopTracking={() => stopTrackingMintActivity(activity.id)}
 					/>
 				))}
 		</OperationActivityContext.Provider>
@@ -1461,18 +1492,24 @@ export function uploadActivitySyncSteps(
 	});
 }
 
-function UploadActivityPanel({
+export function UploadActivityPanel({
 	activity,
 	relatedMintActivities,
 	visible,
 	onHide,
 	onClose,
+	onCheckAgain,
+	onStopTracking,
 }: {
 	activity: UploadActivity;
 	relatedMintActivities: MintActivity[];
 	visible: boolean;
 	onHide(): void;
 	onClose(): void;
+	/** Background mint tracking only: restart the watch now. */
+	onCheckAgain?(): void;
+	/** Background mint tracking only: drop the local activity (nothing on Arweave changes). */
+	onStopTracking?(): void;
 }) {
 	const navigate = useNavigate();
 	const [hiding, setHiding] = React.useState(false);
@@ -1674,6 +1711,23 @@ function UploadActivityPanel({
 								{displayedStatus}
 							</p>
 						</div>
+					</div>
+				) : null}
+				{activity.phase === 'error' && onCheckAgain && onStopTracking ? (
+					<div className="upload-activity-actions">
+						<Button
+							data-dialog-initial
+							onClick={onCheckAgain}
+							size="custom"
+							type="button"
+							variant="primary"
+						>
+							Check again
+						</Button>
+						<Button onClick={onStopTracking} size="custom" type="button" variant="ghost">
+							Stop tracking
+						</Button>
+						<p>Stop tracking removes this item from Activity only. Nothing is deleted from Arweave.</p>
 					</div>
 				) : null}
 				{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
@@ -2453,6 +2507,7 @@ function OperationActivityControl() {
 	const visibleMintActivities = mintActivities.filter(
 		(activity) => activity.owner === wallet.address && !linkedUploadAssets.has(activity.asset.id)
 	);
+	useMintActivityStalledRerender(visibleMintActivities);
 	const attentionMintActivities = visibleMintActivities.filter((activity) => mintActivityNeedsAttention(activity));
 	const activityCount =
 		visibleActivities.length +
@@ -2709,9 +2764,7 @@ function OperationActivityControl() {
 													: mintActivityPhaseLabel(activity.phase)}
 											</small>
 											<span>
-												{needsAttention
-													? 'This upload has not reached live process state.'
-													: activity.status}
+												{needsAttention ? MINT_ACTIVITY_STALLED_STATUS : activity.status}
 												{pinnedGateway ? ' Tracking is pinned to the original gateways.' : ''}
 											</span>
 										</span>
@@ -8869,6 +8922,7 @@ function PendingAssetView() {
 		loadMintActivities(localStorage).find((candidate) => candidate.asset.id === assetId);
 	const finalPath = `/asset/${activity?.collectionId ?? collectionId}/${assetId}`;
 	const asset = activity?.asset ?? loadMintedAssets().find((candidate) => candidate.id === assetId);
+	useMintActivityStalledRerender(activity ? [activity] : []);
 
 	React.useEffect(() => {
 		const showLiveAsset = (event: Event) => {
@@ -8896,6 +8950,7 @@ function PendingAssetView() {
 		['complete', 'Live on Bazar'],
 	];
 	const currentPhase = phases.findIndex(([phase]) => phase === activity.phase);
+	const stalled = mintActivityTrackingState(activity) === 'stalled';
 	const pinnedGateway =
 		activity.arweaveGateway !== arweaveGatewayFromLocation() || activity.computeGateway !== gatewayFromLocation();
 
@@ -8919,9 +8974,12 @@ function PendingAssetView() {
 					)}
 				</div>
 				<div className="mint-pending-copy">
-					<p className="eyebrow">Submitted · safe to leave</p>
+					<p className="eyebrow">
+						{stalled ? 'Taking longer than usual · still checking' : 'Submitted · safe to leave'}
+					</p>
 					<h1>{asset.name}</h1>
 					<p>{activity.status}</p>
+					{stalled ? <p role="status">{MINT_ACTIVITY_STALLED_STATUS}</p> : null}
 					<ol className="mint-pending-phases">
 						{phases.map(([phase, label], index) => (
 							<li className={index <= currentPhase ? 'reached' : undefined} key={phase}>

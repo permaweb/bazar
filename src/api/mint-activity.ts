@@ -99,8 +99,54 @@ export function removeMintActivities(storage: StorageLike, ids: Iterable<string>
 	notifyMintActivityChange(storage);
 }
 
+/**
+ * How Bazar is tracking an accepted upload. 'stalled' is a label on a watch that keeps
+ * running at a slower pace, never a terminal state: only reaching live process state
+ * ('complete') or the user removing the activity ends tracking.
+ */
+export type MintActivityTrackingState = 'tracking' | 'stalled' | 'complete';
+
+export const MINT_ACTIVITY_OBSERVATION_MS = 4_000;
+export const MINT_ACTIVITY_STALLED_OBSERVATION_MS = 60_000;
+export const MINT_ACTIVITY_STALLED_STATUS =
+	'Taking longer than usual to reach live process state. Bazar is still checking about once a minute.';
+
+export function mintActivityTrackingState(activity: MintActivity, now = Date.now()): MintActivityTrackingState {
+	if (activity.phase === 'complete') return 'complete';
+	return now - activity.createdAt >= MINT_ACTIVITY_ATTENTION_AFTER_MS ? 'stalled' : 'tracking';
+}
+
 export function mintActivityNeedsAttention(activity: MintActivity, now = Date.now()) {
-	return activity.phase !== 'complete' && now - activity.createdAt >= MINT_ACTIVITY_ATTENTION_AFTER_MS;
+	return mintActivityTrackingState(activity, now) === 'stalled';
+}
+
+export function mintActivityObservationDelay(activity: MintActivity, now = Date.now()) {
+	return mintActivityTrackingState(activity, now) === 'stalled'
+		? MINT_ACTIVITY_STALLED_OBSERVATION_MS
+		: MINT_ACTIVITY_OBSERVATION_MS;
+}
+
+/** Every activity that has not completed is watched, stalled or not. */
+export function mintActivityWatchPlan(activities: MintActivity[], watching: Iterable<string>) {
+	const watched = new Set(watching);
+	const tracked = new Set(
+		activities.filter((activity) => activity.phase !== 'complete').map((activity) => activity.id)
+	);
+	return {
+		start: activities.filter((activity) => tracked.has(activity.id) && !watched.has(activity.id)),
+		stop: [...watched].filter((id) => !tracked.has(id)),
+	};
+}
+
+/** When the next tracked activity turns 'stalled', so views can re-render on time. */
+export function nextMintActivityStalledAt(activities: MintActivity[], now = Date.now()) {
+	let next: number | null = null;
+	for (const activity of activities) {
+		if (mintActivityTrackingState(activity, now) !== 'tracking') continue;
+		const at = activity.createdAt + MINT_ACTIVITY_ATTENTION_AFTER_MS;
+		if (next === null || at < next) next = at;
+	}
+	return next;
 }
 
 export function mintActivityStatus(phase: MintActivityPhase) {
