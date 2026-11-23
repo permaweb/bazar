@@ -69,7 +69,9 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'The submission gateway rejected the signed seller payment. The reservation may still be active; continue to recheck it and sign only a replacement payment if needed.',
 };
 
-export function purchaseQuoteFailure(error: unknown): { message: string; retryable: boolean } {
+export type PurchaseQuoteFailure = { message: string; retryable: boolean };
+
+export function purchaseQuoteFailure(error: unknown): PurchaseQuoteFailure {
 	const value = error instanceof Error ? error.message : String(error);
 	if (/^asset-purchase-(?:registration-fee-too-high|invalid-registration-fee)$/.test(value)) {
 		return { message: marketplaceErrorMessage(error), retryable: false };

@@ -102,6 +102,8 @@ import {
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceOperationFailure,
 	marketplaceOperationFailure,
+	type PurchaseQuoteFailure,
+	purchaseQuoteFailure,
 } from './marketplace-error';
 import {
 	announceFungibleOperationActivityChange,
@@ -2121,7 +2123,7 @@ function FungibleOperationDialog({
 	const [estimatedCost, setEstimatedCost] = React.useState<string | null>(null);
 	const [estimatedWalletBalance, setEstimatedWalletBalance] = React.useState<string | null>(null);
 	const [canAfford, setCanAfford] = React.useState<boolean | null>(null);
-	const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	const [quoteState, setQuoteState] = React.useState<FungiblePurchaseQuoteState>({ status: 'idle' });
 	const [quoteRetry, setQuoteRetry] = React.useState(0);
 	const [hiding, setHiding] = React.useState(false);
 	const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
@@ -2236,7 +2238,7 @@ function FungibleOperationDialog({
 			setEstimatedCost(null);
 			setEstimatedWalletBalance(null);
 			setCanAfford(null);
-			setQuoteState('idle');
+			setQuoteState({ status: 'idle' });
 			return;
 		}
 		const controller = new AbortController();
@@ -2244,7 +2246,7 @@ function FungibleOperationDialog({
 		setEstimatedCost(null);
 		setEstimatedWalletBalance(null);
 		setCanAfford(null);
-		setQuoteState('loading');
+		setQuoteState({ status: 'loading' });
 		const quoteTimer = window.setTimeout(() => {
 			void Promise.all([
 				client.estimatePurchaseBatchCosts(matchedOrders, asset.id, controller.signal),
@@ -2256,15 +2258,15 @@ function FungibleOperationDialog({
 						setEstimatedCost(total.toString());
 						setEstimatedWalletBalance(walletBalance.toString());
 						setCanAfford(walletBalance >= total);
-						setQuoteState('ready');
+						setQuoteState({ status: 'ready' });
 					}
 				})
-				.catch(() => {
+				.catch((cause) => {
 					if (!controller.signal.aborted) {
 						setEstimatedCost(null);
 						setEstimatedWalletBalance(null);
 						setCanAfford(null);
-						setQuoteState('error');
+						setQuoteState({ status: 'error', ...purchaseQuoteFailure(cause) });
 					}
 				});
 		}, 250);
@@ -3357,7 +3359,7 @@ function FungibleOperationDialog({
 								<>
 									{matchedOrders.length ? (
 										<section
-											aria-busy={quoteState === 'loading'}
+											aria-busy={quoteState.status === 'loading'}
 											className="purchase-confirmation"
 											aria-label="Purchase summary"
 										>
@@ -3375,7 +3377,7 @@ function FungibleOperationDialog({
 												<div>
 													<dt>Network fees</dt>
 													<dd>
-														{quoteState === 'error' ? (
+														{quoteState.status === 'error' ? (
 															'Unavailable'
 														) : estimatedCost ? (
 															<ArCurrencyText>{`${winstonToAr(
@@ -3389,7 +3391,7 @@ function FungibleOperationDialog({
 												<div className="purchase-confirmation-total">
 													<dt>Maximum total</dt>
 													<dd>
-														{quoteState === 'error' ? (
+														{quoteState.status === 'error' ? (
 															'Quote unavailable'
 														) : estimatedCost ? (
 															<ArCurrencyText>{`${winstonToAr(
@@ -3403,7 +3405,7 @@ function FungibleOperationDialog({
 												<div>
 													<dt>Wallet after</dt>
 													<dd>
-														{quoteState === 'error' ? (
+														{quoteState.status === 'error' ? (
 															'—'
 														) : canAfford === false ? (
 															<ArCurrencyText>Insufficient AR</ArCurrencyText>
@@ -3430,31 +3432,24 @@ function FungibleOperationDialog({
 									{matchedOrders.length ? (
 										<p id={quoteStatusId} className="sr-only" aria-live="polite" role="status">
 											<ArCurrencyText>
-												{quoteState === 'ready' && estimatedCost
+												{quoteState.status === 'ready' && estimatedCost
 													? `Purchase quote ready. Maximum total ${winstonToAr(
 															estimatedCost
 													  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
-													: quoteState === 'error'
-													? 'Purchase quote unavailable. Retry the cost check before buying.'
+													: quoteState.status === 'error'
+													? quoteState.message
 													: 'Checking the wallet balance and network fees.'}
 											</ArCurrencyText>
 										</p>
 									) : null}
 									{matchedOrders.length ? (
-										quoteState === 'error' ? (
-											<div className="inline-error retry-notice" role="status">
-												<span>Compute hasn’t completed yet. Please try again.</span>
-												<Button
-													aria-describedby={quoteStatusId}
-													className="with-icon"
-													onClick={() => setQuoteRetry((value) => value + 1)}
-													type="button"
-													size="custom"
-												>
-													<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-													Retry
-												</Button>
-											</div>
+										quoteState.status === 'error' ? (
+											<FungiblePurchaseQuoteFailureNotice
+												message={quoteState.message}
+												retryable={quoteState.retryable}
+												describedBy={quoteStatusId}
+												onRetry={() => setQuoteRetry((value) => value + 1)}
+											/>
 										) : null
 									) : null}
 									{canAfford === false ? (
@@ -3900,6 +3895,36 @@ function FungibleOperationDialog({
 					</div>
 				) : null}
 			</div>
+		</div>
+	);
+}
+
+export type FungiblePurchaseQuoteState =
+	| { status: 'idle' | 'loading' | 'ready' }
+	| ({ status: 'error' } & PurchaseQuoteFailure);
+
+export function FungiblePurchaseQuoteFailureNotice({
+	message,
+	retryable,
+	describedBy,
+	onRetry,
+}: PurchaseQuoteFailure & { describedBy?: string; onRetry: () => void }) {
+	return (
+		<div className="inline-error retry-notice" role="status">
+			<span>
+				<ArCurrencyText>{message}</ArCurrencyText>
+			</span>
+			{retryable ? (
+				<Button
+					aria-describedby={describedBy}
+					className="with-icon"
+					onClick={onRetry}
+					type="button"
+					size="custom"
+				>
+					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry cost check
+				</Button>
+			) : null}
 		</div>
 	);
 }
