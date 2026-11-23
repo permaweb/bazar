@@ -237,6 +237,35 @@ export function discardDispatchPlan(
 	storage.removeItem(`${DISPATCH_PLAN_PREFIX}${processId}`);
 }
 
+/**
+ * A row that may still land on Arweave: posted but not settled, or signed
+ * (an unsent row with a recorded transaction id may have been posted before a
+ * crash — see the runDispatch crash-safety contract). Settled rows are done;
+ * unsent rows without a transaction id were never signed.
+ */
+export function dispatchRowInFlight(row: Pick<DispatchRow, 'status' | 'transactionId'>): boolean {
+	return row.status !== 'settled' && (row.status === 'posted' || Boolean(row.transactionId));
+}
+
+/**
+ * Confirmation text required before discardDispatchPlan, or null when the plan
+ * can be forgotten in one click (no plan, untouched, or complete). Discarding a
+ * plan with in-flight rows forgets transfers that will still apply and deletes
+ * their saved signed transactions; a fresh plan for the same list would take a
+ * new baseline and send to those recipients a second time.
+ */
+export function dispatchDiscardConfirmation(plan: Pick<DispatchPlan, 'rows'> | null | undefined): string | null {
+	const count = plan?.rows.filter(dispatchRowInFlight).length ?? 0;
+	if (!count) return null;
+	const transfers = count === 1 ? '1 transfer is' : `${count.toLocaleString()} transfers are`;
+	return (
+		`${transfers} posted or signed but not settled yet. They may still land on Arweave.\n\n` +
+		'Discarding forgets them and deletes the saved signed transactions needed for manual review. ' +
+		'Dispatching the holder list in the form again would send to those recipients a second time.\n\n' +
+		'To keep watching settlement without re-sending, cancel and choose Resume. Discard anyway?'
+	);
+}
+
 export function isDispatchPlan(value: unknown): value is DispatchPlan {
 	if (!value || typeof value !== 'object') return false;
 	const plan = value as DispatchPlan;
