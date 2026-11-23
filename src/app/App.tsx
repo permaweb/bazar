@@ -10526,11 +10526,7 @@ function AssetView() {
 		remove: removeOperationActivity,
 	} = useOperationActivity();
 	const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
-	const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
-	const operationFocusFallback = React.useCallback(
-		() => resumeButtonRef.current ?? operationFocusFallbackRef.current,
-		[]
-	);
+	const operationFocusFallback = React.useCallback(() => operationFocusFallbackRef.current, []);
 	const operationActivityEntry = operationActivities.find(
 		(activity) => activity.asset.id === assetId && activity.owner === wallet.address && activity.phase !== 'done'
 	);
@@ -10553,7 +10549,6 @@ function AssetView() {
 		},
 		[collectionId, operationFocusFallback, startOperationActivity, verifiedAsset, wallet.address]
 	);
-	const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
 	const [recoveryNotice, setRecoveryNotice] = React.useState('');
 	const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
 	const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
@@ -10682,7 +10677,6 @@ function AssetView() {
 			if (event.storageArea && event.storageArea !== localStorage) return;
 			const change = walletOperationStorageChange(event.key, event.newValue, claimKey, recoveryKeys);
 			if (change === 'ignore') return;
-			setRecoverySuppressed(false);
 			if (change === 'claim-acquired' || change === 'claim-released') {
 				if (change === 'claim-acquired' && operation && operationActivityEntry) {
 					const recovering =
@@ -10879,16 +10873,12 @@ function AssetView() {
 		setActivityRequested(false);
 	}, [assetId]);
 	React.useEffect(() => {
-		setRecoverySuppressed(false);
 		setRecoveryNotice('');
 		setUnavailableRecovery(null);
 	}, [assetId, wallet.address]);
-	React.useLayoutEffect(() => {
-		if (recoverySuppressed) resumeButtonRef.current?.focus();
-	}, [recoverySuppressed]);
 	React.useEffect(() => {
 		// Recovery may discard signed local work, so it waits for current state.
-		if (!wallet.address || operation || recoverySuppressed || !state || !stateCurrent) return;
+		if (!wallet.address || operation || !state || !stateCurrent) return;
 		if (state.totalSupply !== '1' || state.denomination > 0) return;
 		const walletAddress = wallet.address;
 		const activeClaimKey = operationClaimStorageKey(assetId, walletAddress);
@@ -11054,7 +11044,7 @@ function AssetView() {
 			}
 		);
 		return () => controller.abort();
-	}, [assetId, openOperation, operation, recoverySuppressed, state, stateCurrent, storageVersion, wallet.address]);
+	}, [assetId, openOperation, operation, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
 	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
 	const stateRecoveryAction = recoveryUrl
@@ -11220,7 +11210,7 @@ function AssetView() {
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const mine = Boolean(wallet.address && sameAccount(owner, wallet.address));
 	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
-	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+	const recoveryBlocksActions = Boolean(unavailableRecovery);
 	const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
 	const newOperationBlocksActions = operationBlocksActions || !balanceStateAvailable || loading || Boolean(error);
 	const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
@@ -11268,23 +11258,6 @@ function AssetView() {
 	];
 	return (
 		<section className="asset-page asset-detail-page atomic-asset-page">
-			{recoverySuppressed ? (
-				<div className="pending-operation-notice">
-					<span role="status">
-						Local tracking is paused. Resume here to continue observing signed work or review any wallet
-						approvals still required.
-					</span>
-					<Button
-						ref={resumeButtonRef}
-						className="with-icon"
-						size="custom"
-						type="button"
-						onClick={() => setRecoverySuppressed(false)}
-					>
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
-					</Button>
-				</div>
-			) : null}
 			{recoveryNotice ? (
 				<div className="pending-operation-notice">
 					<span role="status">{recoveryNotice}</span>

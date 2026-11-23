@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import type { AssetSummary, Collection } from 'api/collections';
@@ -208,5 +210,21 @@ describe('asset detail fallbacks', () => {
 			height: 1500,
 			timestamp: 1_700_000_000,
 		});
+	});
+});
+
+describe('atomic asset recovery states', () => {
+	const source = (file: string) => readFileSync(join(process.cwd(), 'src/app', file), 'utf8');
+
+	it('has no paused-tracking state, because the global activity provider owns resume-later', () => {
+		const atomicView = source('App.tsx');
+		expect(atomicView).not.toMatch(/recoverySuppressed|setRecoverySuppressed|resumeButtonRef/);
+		expect(atomicView).not.toContain('Local tracking is paused');
+	});
+
+	it('keeps the paused-tracking banner in the fungible view, which can still pause', () => {
+		const fungibleView = source('FungibleAssetView.tsx');
+		expect(fungibleView).toContain('setRecoverySuppressed(Boolean(resumeLater))');
+		expect(fungibleView).toContain('Local tracking is paused');
 	});
 });
