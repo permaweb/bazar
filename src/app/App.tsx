@@ -3403,6 +3403,11 @@ export function homeRouteSearch(search: string) {
 	return value ? `?${value}` : '';
 }
 
+/** Where the bare Home route `#/` sends the visitor: the tab a legacy `?tab=` link named, or Discover. */
+export function homeRedirectPath(search: string) {
+	return homeTabPath(homeTabFromPathname(new URLSearchParams(search).get('tab') ?? ''));
+}
+
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
 
 export function compareHomeCollections(
@@ -4025,7 +4030,7 @@ export function HomeMarketTabs({ active, onSelect }: { active: HomeTab; onSelect
 
 function HomeRedirect() {
 	const { search } = useLocation();
-	return <Navigate to={{ pathname: homeTabPath('discover'), search: homeRouteSearch(search) }} replace />;
+	return <Navigate to={{ pathname: homeRedirectPath(search), search: homeRouteSearch(search) }} replace />;
 }
 
 function Home() {
