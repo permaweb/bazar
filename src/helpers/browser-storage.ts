@@ -5,6 +5,7 @@ export const HOME_LISTING_SHELL_STORAGE_KEY = 'bazar-home-listing-shell:v1';
 export const HIDDEN_COLLECTION_ASSETS_STORAGE_KEY = 'bazar-hidden-collection-assets:v1';
 export const ASSET_SHELL_STORAGE_PREFIX = 'bazar-asset-shell:v1:';
 export const WALLET_CANDIDATE_SCAN_STORAGE_PREFIX = 'bazar.wallet-candidate-scan';
+export const AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX = 'bazar-ao-origin-without-compute:v1:';
 
 const REBUILDABLE_CACHE_KEYS = [
 	MARKET_SHELL_STORAGE_KEY,

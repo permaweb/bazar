@@ -105,6 +105,7 @@ import {
 	collectionAsset,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
+	FUNGIBLE_TOKEN_ID,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
 	isVisibleAssetId,
@@ -190,6 +191,7 @@ import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
 	AO_TRANSPORT_QUERY_PARAMETER,
+	aoPeerSelectionQuery,
 	aoRoutingScopeFromLocation,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -428,7 +430,13 @@ export function App() {
 	const [marketRetry, setMarketRetry] = React.useState(0);
 	const [, setNetworkPolicyRevision] = React.useState(0);
 	const collectionTransport = usesPermawebOsAo() ? window.aoFetch : undefined;
-	React.useEffect(() => warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1)), []);
+	React.useEffect(
+		() =>
+			warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1), {
+				probeProcessId: FUNGIBLE_TOKEN_ID,
+			}),
+		[]
+	);
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
@@ -4889,7 +4897,9 @@ function GatewayControl() {
 		}
 		setError('');
 		const url = new URL(window.location.href);
-		url.searchParams.set('node', computeOrigins.join(','));
+		const node = aoPeerSelectionQuery(computeOrigins, window.location);
+		if (node === null) url.searchParams.delete('node');
+		else url.searchParams.set('node', node);
 		if (permawebOsAvailable && usePermawebOs) {
 			url.searchParams.delete(AO_TRANSPORT_QUERY_PARAMETER);
 		} else {

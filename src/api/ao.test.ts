@@ -9,7 +9,16 @@ import {
 	setAoWalletConnection,
 } from 'helpers/config';
 
-import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from './ao';
+import {
+	aoFetch,
+	aoPeers,
+	aoPrimaryPeer,
+	createBazarAoFetch,
+	probeServingOriginCompute,
+	readyAoFetch,
+	warmAoFetch,
+} from './ao';
+import { readAssetState } from './asset-marketplace';
 
 function injectedAoFetch(peers: string[]): PermawebOsAoFetch {
 	const fetcher = vi.fn(async () => new Response('from-permawebos')) as unknown as PermawebOsAoFetch;
@@ -266,8 +275,8 @@ describe('PermawebOS AO transport boundary', () => {
 		vi.stubGlobal('window', browserWindow());
 
 		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
-		expect(direct.peers).toEqual(['https://bazar.example']);
-		expect(aoPeers()).toEqual(['https://bazar.example']);
+		expect(direct.peers).toEqual(['https://bazar.example', 'https://arweave.net']);
+		expect(aoPeers()).toEqual(['https://bazar.example', 'https://arweave.net']);
 		await direct('/process~process@1.0/now?max-age=60', { method: 'GET' });
 		expect(nativeFetch).toHaveBeenCalledWith(
 			'https://bazar.example/process~process@1.0/now?max-age=60',
@@ -396,5 +405,245 @@ describe('Bazar AO.js routing', () => {
 
 		expect(response.status).toBe(404);
 		expect(await response.text()).toBe('not_found');
+	});
+});
+
+describe('Bazar AO.js process state admissibility', () => {
+	const processIds = ['IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', 'A'.repeat(43), 'B'.repeat(43), 'C'.repeat(43)];
+	const spaShell = () =>
+		new Response('<!doctype html><title>Bazar</title>', { headers: { 'content-type': 'text/html' } });
+	const processState = (slot = 65) =>
+		new Response(null, {
+			headers: {
+				'at-slot': String(slot),
+				'content-type': 'multipart/form-data; boundary="state"',
+				device: 'process@1.0',
+				'execution-device': 'token@1.0',
+				name: 'Computed state',
+				'total-supply': '1',
+			},
+		});
+
+	it('routes a state read past a static host that answers with its HTML shell', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://compute.example'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				return url.startsWith('https://bazar.example/') ? spaShell() : processState();
+			}) as typeof fetch
+		);
+
+		for (const processId of processIds) {
+			const result = await readAssetState(processId, { fetch: routed, includeBalances: false });
+			expect(result.state.raw).toMatchObject({ 'at-slot': '65', name: 'Computed state' });
+			expect(result.state.raw).not.toHaveProperty('content-type', 'text/html');
+		}
+		expect(requested.some((url) => url.startsWith('https://bazar.example/'))).toBe(true);
+	});
+
+	it('routes a state read past a header-only answer without the evaluated slot', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://hollow.example', 'https://compute.example'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				return url.startsWith('https://hollow.example/')
+					? new Response(null, { headers: { 'content-type': 'multipart/form-data; boundary="empty"' } })
+					: processState(12);
+			}) as typeof fetch
+		);
+
+		for (const processId of processIds) {
+			const response = await routed(`/${processId}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+			expect(response.headers.get('at-slot')).toBe('12');
+		}
+		expect(requested.some((url) => url.startsWith('https://hollow.example/'))).toBe(true);
+	});
+
+	it('never parses state when every peer answers a state read with HTML', async () => {
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://static.example'],
+			vi.fn(async () => spaShell()) as typeof fetch
+		);
+
+		await expect(
+			readAssetState(processIds[0], { fetch: routed, includeBalances: false, maxAge: 0 })
+		).rejects.toThrow('ao-inadmissible-process-state');
+	});
+
+	it('accepts linked message and mounted-device reads that carry no slot', async () => {
+		const routed = createBazarAoFetch(
+			['https://compute.example'],
+			vi.fn(async () => new Response(null, { headers: { device: 'trie@1.0' } })) as typeof fetch
+		);
+
+		const message = await routed(`/${'M'.repeat(43)}~message@1.0`, { method: 'HEAD' });
+		const device = await routed(`/${processIds[0]}~process@1.0/compute&max-age=60/balances/device`);
+
+		expect(message.headers.get('device')).toBe('trie@1.0');
+		expect(device.ok).toBe(true);
+	});
+
+	it('leaves peer discovery free to read the HyperBuddy page', async () => {
+		const requested: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				return url.includes('/~meta@1.0/') ? spaShell() : processState(7);
+			})
+		);
+		const routed = createBazarAoFetch(['https://compute.example']);
+
+		const response = await routed(`/${processIds[0]}~process@1.0/now`, { method: 'HEAD' });
+
+		expect(response.headers.get('at-slot')).toBe('7');
+		expect(requested).toContain('https://compute.example/~meta@1.0/info/format~hyperbuddy@1.0');
+	});
+});
+
+describe('Bazar default compute peers', () => {
+	const tokenId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+	const probeUrl = (origin: string) => `${origin}/${tokenId}~process@1.0/compute&max-age=86400`;
+	const servedWindow = (hostname: string, search = '', sessionStorage?: Pick<Storage, 'getItem' | 'setItem'>) =>
+		Object.assign(browserWindow(undefined, search, false), {
+			location: { protocol: 'https:', hostname, port: '', search, hash: '' },
+			...(sessionStorage ? { sessionStorage } : {}),
+		});
+	const processState = () =>
+		new Response(null, {
+			headers: { 'at-slot': '65', 'content-type': 'multipart/form-data; boundary="state"' },
+		});
+
+	it('tries the serving origin before the default peers for every process', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://arweave.net'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				requested.push(String(input));
+				return processState();
+			}) as typeof fetch,
+			{ ordered: true }
+		);
+
+		for (const processId of [tokenId, 'A'.repeat(43), 'B'.repeat(43), 'C'.repeat(43), 'D'.repeat(43)]) {
+			await routed(`/${processId}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+		}
+		expect(requested).toHaveLength(5);
+		expect(requested.every((url) => url.startsWith('https://bazar.example/'))).toBe(true);
+	});
+
+	it('falls back to the next default peer when the serving origin has no compute', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://arweave.net'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				requested.push(String(input));
+				return String(input).startsWith('https://bazar.example/')
+					? new Response('Not Found', { status: 404 })
+					: processState();
+			}) as typeof fetch,
+			{ ordered: true }
+		);
+
+		const response = await routed(`/${tokenId}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+		expect(response.headers.get('at-slot')).toBe('65');
+		expect(requested).toEqual([
+			`https://bazar.example/${tokenId}~process@1.0/compute&max-age=60`,
+			`https://arweave.net/${tokenId}~process@1.0/compute&max-age=60`,
+		]);
+	});
+
+	it.each([
+		['not-found', 'arns-host.example', () => new Response('Not Found', { status: 404 })],
+		[
+			'an HTML shell',
+			'static-host.example',
+			() => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+		],
+	])('drops a serving origin that answers a known process read with %s', async (_label, hostname, answer) => {
+		const origin = `https://${hostname}`;
+		vi.stubGlobal('window', servedWindow(hostname));
+		const fetcher = vi.fn(async () => answer());
+
+		await expect(probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(true);
+		expect(fetcher).toHaveBeenCalledWith(probeUrl(origin), expect.objectContaining({ method: 'HEAD' }));
+		expect((aoFetch() as ReturnType<typeof createBazarAoFetch>).peers).toEqual(['https://arweave.net']);
+		expect(aoPeers()).toEqual(['https://arweave.net']);
+		await expect(probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(false);
+		expect(fetcher).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		['computes process state', 'compute-host.example', async () => processState()],
+		['fails transiently', 'flaky-host.example', async () => new Response('busy', { status: 502 })],
+		[
+			'cannot be reached',
+			'offline-host.example',
+			async (): Promise<Response> => {
+				throw new TypeError('Failed to fetch');
+			},
+		],
+	])('keeps a serving origin that %s and asks it only once', async (_label, hostname, answer) => {
+		vi.stubGlobal('window', servedWindow(hostname));
+		const fetcher = vi.fn(answer);
+
+		await expect(probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(false);
+		await expect(probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(false);
+		expect(fetcher).toHaveBeenCalledOnce();
+		expect(aoPeers()).toEqual([`https://${hostname}`, 'https://arweave.net']);
+	});
+
+	it('never probes an explicitly selected peer list', async () => {
+		vi.stubGlobal('window', servedWindow('selected-host.example', '?node=https://selected-host.example'));
+		const fetcher = vi.fn(async () => new Response('Not Found', { status: 404 }));
+
+		await expect(probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(false);
+		expect(fetcher).not.toHaveBeenCalled();
+		expect(aoPeers()).toEqual(['https://selected-host.example']);
+	});
+
+	it('starts the next page load in the tab without the dropped origin and without probing', async () => {
+		const items = new Map<string, string>();
+		const sessionStorage = {
+			getItem: (key: string) => items.get(key) ?? null,
+			setItem: (key: string, value: string) => void items.set(key, value),
+		};
+		vi.stubGlobal('window', servedWindow('reload-host.example', '', sessionStorage));
+		const fetcher = vi.fn(async () => new Response('Not Found', { status: 404 }));
+		await expect(probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(true);
+
+		vi.resetModules();
+		const reloaded = await import('./ao');
+		expect(reloaded.aoPeers()).toEqual(['https://arweave.net']);
+		await expect(reloaded.probeServingOriginCompute(tokenId, fetcher as typeof fetch)).resolves.toBe(false);
+		expect(fetcher).toHaveBeenCalledOnce();
+	});
+
+	it('refreshes routing and rediscovers the remaining peers once warming drops the serving origin', async () => {
+		vi.stubGlobal('window', servedWindow('warm-host.example'));
+		const requested: string[] = [];
+		const nativeFetch = vi.fn(async (input: RequestInfo | URL) => {
+			requested.push(String(input));
+			return new Response('Not Found', { status: 404 });
+		});
+		vi.stubGlobal('fetch', nativeFetch);
+		const changed = vi.fn();
+		const discovery = (origin: string) =>
+			requested.filter((url) => url.startsWith(`${origin}/~meta@1.0/info/`)).length;
+
+		const stop = warmAoFetch(changed, { probeProcessId: tokenId });
+
+		await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+		expect(requested).toContain(probeUrl('https://warm-host.example'));
+		expect(aoPeers()).toEqual(['https://arweave.net']);
+		// The first transport discovered both peers; the one without the origin discovers arweave.net again.
+		await vi.waitFor(() => expect(discovery('https://arweave.net')).toBe(2));
+		expect(discovery('https://warm-host.example')).toBe(1);
+		stop();
 	});
 });
