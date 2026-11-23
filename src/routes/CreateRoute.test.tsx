@@ -10,6 +10,7 @@ import { Button } from 'components/Button';
 import { SegmentedTabs } from 'components/SegmentedTabs';
 
 import {
+	createMintErrorMessage,
 	fileDropzoneProps,
 	FungibleMintDialog,
 	fungibleMintStage,
@@ -24,6 +25,7 @@ import {
 	MintRecoveryActions,
 	MintRecoveryCost,
 	MintSubmitButton,
+	nonFungibleMintInputError,
 	quoteClearsError,
 	type QuoteErrorReset,
 	resumeMintDraft,
@@ -614,10 +616,14 @@ describe('mint cost estimate lifecycle', () => {
 
 describe('mint cost estimate failure', () => {
 	it('offers Retry for a transient price failure but not for an input validation code', () => {
+		// The message is the mapped mint copy (mint-error-copy-mapping), never the dehyphenated code.
 		expect(mintEstimateFailure(new Error('mint-price-503'))).toEqual({
-			message: 'mint price 503',
+			message: expect.stringMatching(/^Arweave network fees could not be checked\./),
 			retryable: true,
 		});
+		expect(mintEstimateFailure(new Error('mint-price-503'), 'fungible').message).not.toMatch(
+			/Transaction activity/
+		);
 		expect(mintEstimateFailure(new TypeError('Failed to fetch')).retryable).toBe(true);
 		expect(mintEstimateFailure(new TypeError('mint-name-invalid'))).toEqual({
 			message: 'Enter a name between 1 and 80 characters.',
@@ -682,4 +688,54 @@ describe('mint cost estimate failure', () => {
 		expect(markup).not.toContain('Retry');
 		expect(markup).not.toContain('<button');
 	});
+});
+
+describe('non-fungible mint pre-validation', () => {
+	const png = (name: string) => new File([new Uint8Array([1, 2, 3])], name, { type: 'image/png' });
+
+	it('rejects a collection with a blank name with field guidance before any upload starts', () => {
+		expect(
+			nonFungibleMintInputError({
+				mode: 'collection',
+				input: { files: [png('a.png'), png('b.png')], name: '   ', description: '', udl: {} },
+			})
+		).toBe('Enter a collection name between 1 and 80 characters.');
+	});
+
+	it('rejects an asset with a blank name with field guidance before any upload starts', () => {
+		expect(
+			nonFungibleMintInputError({
+				mode: 'asset',
+				input: { file: png('a.png'), name: '', description: '', udl: {} },
+			})
+		).toBe('Enter a name between 1 and 80 characters.');
+	});
+
+	it('accepts valid asset and collection input', () => {
+		expect(
+			nonFungibleMintInputError({
+				mode: 'collection',
+				input: { files: [png('a.png')], name: 'Signals', description: '', udl: {} },
+			})
+		).toBeNull();
+		expect(
+			nonFungibleMintInputError({ mode: 'asset', input: { file: png('a.png'), name: 'Signal', description: '' } })
+		).toBeNull();
+	});
+});
+
+describe('mint failure copy by mode', () => {
+	it.each(['mint-upload-503', 'mint-price-503', 'wallet-balance-502', 'User rejected the request'])(
+		'never sends a failed token mint (%s) to Transaction activity, which has no entry for it',
+		(code) => {
+			expect(createMintErrorMessage('fungible', new Error(code))).not.toMatch(/Transaction activity/i);
+		}
+	);
+
+	it.each(['asset', 'collection'] as const)(
+		'keeps the Transaction activity pointer for a failed %s upload',
+		(mode) => {
+			expect(createMintErrorMessage(mode, new Error('mint-upload-503'))).toMatch(/Transaction activity/);
+		}
+	);
 });

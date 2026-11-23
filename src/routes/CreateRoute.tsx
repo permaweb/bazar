@@ -7,6 +7,7 @@ import {
 	AssetMintClient,
 	CollectionMintClient,
 	type CollectionMintEstimate,
+	type CollectionMintInput,
 	type CollectionMintPhase,
 	type CollectionMintResult,
 	CREATED_COLLECTION_ID,
@@ -24,6 +25,7 @@ import {
 	type MintedAsset,
 	type MintedByIndex,
 	type MintEstimate,
+	type MintInput,
 	type MintPhase,
 	type MintProgress,
 	mintProgressKey,
@@ -35,8 +37,10 @@ import {
 	type UdlPreset,
 	type UdlTerms,
 	udlTermsForPreset,
+	validateCollectionMintInput,
 	validateFungibleLogo,
 	validateFungibleMintInput,
+	validateMintInput,
 } from 'api/asset-mint';
 import { confirmTransactionId } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
@@ -71,6 +75,7 @@ import {
 	formatBytes,
 	MarketContext,
 	MarketSelect,
+	type MintErrorContext,
 	mintErrorMessage,
 	useOperationActivity,
 	winstonToAr,
@@ -237,6 +242,22 @@ export async function runSingleFlight(guard: { current: boolean }, run: () => Pr
 		return true;
 	} finally {
 		guard.current = false;
+	}
+}
+
+/**
+ * Validates an asset or collection mint before any upload activity is recorded,
+ * as the fungible branch already does, so a form error stays a form error.
+ */
+export function nonFungibleMintInputError(
+	request: { mode: 'asset'; input: MintInput } | { mode: 'collection'; input: CollectionMintInput }
+): string | null {
+	try {
+		if (request.mode === 'collection') validateCollectionMintInput(request.input);
+		else validateMintInput(request.input);
+		return null;
+	} catch (cause) {
+		return mintErrorMessage(cause);
 	}
 }
 
@@ -479,6 +500,15 @@ export function MintOutcomeCard({
 			</div>
 		</div>
 	);
+}
+
+/**
+ * Copy for a failed mint. Asset and collection mints list every signed
+ * transaction in Transaction activity; token mints record nothing there for a
+ * failed attempt, so their copy never points there.
+ */
+export function createMintErrorMessage(mode: 'asset' | 'collection' | 'fungible', cause: unknown): string {
+	return mintErrorMessage(cause, mode === 'fungible' ? 'fungible' : 'upload');
 }
 
 type FungibleMintDialogProps = {
@@ -883,9 +913,9 @@ export type CreateFormMessage = { text: string; origin: 'selection' | 'submit' }
  * Input-validation codes (validateMintInput and friends throw TypeError('mint-…'))
  * fail the same way on every retry, so only other causes offer Retry.
  */
-export function mintEstimateFailure(cause: unknown): MintEstimateFailure {
+export function mintEstimateFailure(cause: unknown, context: MintErrorContext = 'upload'): MintEstimateFailure {
 	return {
-		message: mintErrorMessage(cause),
+		message: mintErrorMessage(cause, context),
 		retryable: !(cause instanceof TypeError && /^[a-z]+(?:-[a-z0-9]+)+$/.test(cause.message)),
 	};
 }
@@ -1249,7 +1279,7 @@ export default function CreateRoute() {
 				(cause) => {
 					if (!signal.aborted)
 						setEstimateFailures((current) =>
-							withMintEstimateFailure(current, 'fungible', mintEstimateFailure(cause))
+							withMintEstimateFailure(current, 'fungible', mintEstimateFailure(cause, 'fungible'))
 						);
 				}
 			);
@@ -1314,7 +1344,7 @@ export default function CreateRoute() {
 				setLogo(null);
 				setLogoTxId('');
 				setFungibleEstimate(null);
-				setError(mintErrorMessage(cause), 'selection');
+				setError(mintErrorMessage(cause, 'fungible'), 'selection');
 				if (logoInput.current) logoInput.current.value = '';
 				return;
 			}
@@ -1358,10 +1388,32 @@ export default function CreateRoute() {
 				validateFungibleMintInput(fungibleInput);
 				if (logo) validateFungibleLogo(logo);
 			} catch (cause) {
-				return setError(mintErrorMessage(cause));
+				return setError(mintErrorMessage(cause, 'fungible'));
 			}
 			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
+		// Form errors stay form errors: validate before submitOnce records any upload activity.
+		const collectionInput: CollectionMintInput = { files: collectionFiles, name, description, udl: activeUdl };
+		const assetInput: MintInput | null = file
+			? {
+					file,
+					artwork: artwork ?? undefined,
+					...(reusedArtworkId ? { artworkId: reusedArtworkId } : {}),
+					name,
+					description,
+					artist: audioMetadata.artist,
+					album: audioMetadata.album,
+					duration: audioMetadata.duration,
+					udl: activeUdl,
+			  }
+			: null;
+		const inputError =
+			mode === 'collection'
+				? nonFungibleMintInputError({ mode, input: collectionInput })
+				: mode === 'asset' && assetInput
+				? nonFungibleMintInputError({ mode, input: assetInput })
+				: null;
+		if (inputError) return setError(inputError);
 		await submitOnce('mint', submitMint);
 	};
 	const submitMint = async () => {
@@ -1459,7 +1511,7 @@ export default function CreateRoute() {
 			);
 			completeMint(minted.asset, uploadId);
 		} catch (cause) {
-			const message = mintErrorMessage(cause);
+			const message = createMintErrorMessage(mode, cause);
 			keepPaidProgress();
 			setDraft(getMintDraft(wallet.address));
 			setPhase(null);

@@ -6448,7 +6448,7 @@ function CollectionView() {
 				},
 				(cause) => {
 					if (!controller.signal.aborted)
-						dispatchAppendEstimate({ type: 'reject', message: errorMessage(cause) });
+						dispatchAppendEstimate({ type: 'reject', message: mintErrorMessage(cause) });
 				}
 			);
 		return () => controller.abort();
@@ -6514,7 +6514,7 @@ function CollectionView() {
 			dispatchAppendEstimate({ type: 'reset' });
 			setAppendOpen(false);
 		} catch (cause) {
-			const message = errorMessage(cause);
+			const message = mintErrorMessage(cause);
 			keepPaidProgress();
 			setAppendError(message);
 			failUpload(uploadId, message);
@@ -8082,13 +8082,13 @@ export function CollectionAppendDialog({
 				</div>
 				{estimate.status === 'failed' ? (
 					<>
-						<OperationErrorAlert title="Could not check the storage cost" message={estimate.message} />
+						<CollectionAppendFailureNotice failure={{ stage: 'estimate', message: estimate.message }} />
 						<Button className="with-icon" disabled={working} onClick={onRetryEstimate} type="button">
 							<RefreshCw aria-hidden="true" className="ui-icon ui-icon--sm" /> Retry cost check
 						</Button>
 					</>
 				) : null}
-				{error ? <OperationErrorAlert title="Could not add assets" message={error} /> : null}
+				{error ? <CollectionAppendFailureNotice failure={{ stage: 'submit', message: error }} /> : null}
 				<Button
 					className="wide"
 					disabled={!collectionAppendCanSubmit({ estimate, files, working })}
@@ -12513,6 +12513,21 @@ function OperationDialog({
 	);
 }
 
+/**
+ * Where a collection "Add assets" failure came from: the storage-cost check that
+ * runs while images are chosen, or the signed append itself.
+ */
+export type CollectionAppendFailure = { stage: 'estimate' | 'submit'; message: string };
+
+export function CollectionAppendFailureNotice({ failure }: { failure: CollectionAppendFailure }) {
+	return (
+		<OperationErrorAlert
+			title={failure.stage === 'submit' ? 'Could not add assets' : 'Could not check the storage cost'}
+			message={failure.message}
+		/>
+	);
+}
+
 export function AtomicOperationErrorAlert({ message }: { message: string }) {
 	return <OperationErrorAlert title="Could not complete this action" message={message} />;
 }
@@ -12860,9 +12875,48 @@ export function formatBytes(value: number) {
 	if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
 	return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
-export function mintErrorMessage(error: unknown) {
+/**
+ * Shown for any code the mint mapper does not know, including programmer-error
+ * TypeErrors. It never claims that nothing was submitted: collection mints and
+ * appends sign file by file, so earlier transactions may already exist.
+ */
+export const MINT_ERROR_FALLBACK =
+	'Bazar could not finish this mint. Check Transaction activity for any submitted transactions, then try again.';
+/**
+ * Fallback for a token mint. Token mints never create a Transaction activity
+ * entry (no beginUpload/recordUploadTransaction, and mintFungible writes to
+ * the activity notifier only after success), so the copy must not point there.
+ */
+export const FUNGIBLE_MINT_ERROR_FALLBACK =
+	'Bazar could not finish this token mint. If the token logo already uploaded, Bazar reuses it when you try again.';
+const MINT_LICENSE_DATA_INVALID = 'This draft or license data is invalid. Start the mint again.';
+const MINT_EARLIER_TRANSACTIONS = 'any transactions you already approved are listed in Transaction activity.';
+const FUNGIBLE_LOGO_REUSED = 'a token logo that already uploaded is reused.';
+/**
+ * Which flow a mint error comes from. 'upload': asset, collection and append
+ * mints, which list every signed transaction in Transaction activity.
+ * 'fungible': token mints, which have no such record for a failed attempt.
+ */
+export type MintErrorContext = 'upload' | 'fungible';
+export function mintErrorMessage(error: unknown, context: MintErrorContext = 'upload') {
+	const fungible = context === 'fungible';
 	const value = error instanceof Error ? error.message : String(error);
 	const friendly: Record<string, string> = {
+		'mint-collection-name-invalid': 'Enter a collection name between 1 and 80 characters.',
+		'mint-collection-size-invalid': 'Choose between 1 and 10 images for the collection.',
+		'mint-artist-invalid': 'Keep the artist name under 160 characters.',
+		'mint-album-invalid': 'Keep the album name under 160 characters.',
+		'mint-duration-invalid': 'Bazar could not read a valid duration from this audio file. Choose another file.',
+		'collection-owner-mismatch':
+			'Only the wallet that created this collection can add assets to it. Connect that wallet and try again.',
+		'wallet-returned-unsigned-transaction':
+			'Your wallet did not return a signed transaction, so this upload was not sent. Reconnect your wallet and try again.',
+		'wallet-returned-invalid-signature':
+			'Your wallet returned an invalid signature, so this upload was not sent. Reconnect your wallet and try again.',
+		'mint-udl-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-grant-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-unknown-rights-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-value-unexpected': MINT_LICENSE_DATA_INVALID,
 		'mint-name-invalid': 'Enter a name between 1 and 80 characters.',
 		'mint-description-invalid': 'Keep the description under 600 characters.',
 		'mint-file-required': 'Choose an image, MP3, or WAV file to continue.',
@@ -12892,10 +12946,25 @@ export function mintErrorMessage(error: unknown) {
 	if (value.startsWith('mint-media-unavailable-')) {
 		return 'The earlier media upload is not available through this gateway yet. Try finishing the mint later.';
 	}
-	if (value.startsWith('mint-upload-')) {
-		return 'The gateway did not accept the upload. Check your connection and try again; your earlier uploads are kept.';
+	const earlier = fungible ? FUNGIBLE_LOGO_REUSED : MINT_EARLIER_TRANSACTIONS;
+	if (value === 'mint-upload-network') {
+		// Every retry lost its connection, so the POST may still have reached the gateway: no claim either way.
+		return fungible
+			? `The gateway did not accept the transaction. Check your connection and try again; ${FUNGIBLE_LOGO_REUSED}`
+			: 'The gateway did not accept the upload. Check your connection and try again; your earlier uploads are kept.';
 	}
-	return friendly[value] ?? value.replaceAll('-', ' ');
+	if (/^mint-upload-\d+$/.test(value)) {
+		return fungible
+			? `Your wallet signed this transaction, but the Arweave gateway did not accept it, so as far as Bazar can tell it was not published or charged. Try again; ${FUNGIBLE_LOGO_REUSED}`
+			: 'Your wallet signed this upload, but the Arweave gateway did not accept it, so as far as Bazar can tell it was not published or charged. Its transaction ID is listed in Transaction activity. Check your connection and try again; your earlier uploads are kept.';
+	}
+	if (/^mint-price-(?:\d+|invalid)$/.test(value)) {
+		return `Arweave network fees could not be checked. Try again in a moment; ${earlier}`;
+	}
+	if (/^wallet-balance-(?:\d+|invalid)$/.test(value)) {
+		return `Your AR balance could not be checked. Try again in a moment; ${earlier}`;
+	}
+	return friendly[value] ?? (fungible ? FUNGIBLE_MINT_ERROR_FALLBACK : MINT_ERROR_FALLBACK);
 }
 function arToWinston(value: string) {
 	return parseArAmount(value);
