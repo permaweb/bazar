@@ -8345,19 +8345,13 @@ export type WalletDiscoverySession = {
 	complete: boolean;
 };
 
-export function walletDiscoveryScope(address: string, gateway: string, collections: Collection[]) {
-	const supportedCollections = collections
-		.map((collection) =>
-			[
-				collection.id,
-				collection.kind,
-				collection.kind === 'names'
-					? collection.namespace?.manifestId ?? ''
-					: collection.manifestId ?? collection.id,
-			].join(':')
-		)
-		.sort();
-	return [address, gateway, ...supportedCollections].join('|');
+/**
+ * A wallet discovery session is scoped to the wallet and serving gateway only.
+ * Collections stream in after the first render; they refine support inside the
+ * running session instead of replacing it and restarting the GraphQL scan.
+ */
+export function walletDiscoveryScope(address: string, gateway: string) {
+	return [address, gateway].join('|');
 }
 
 export function walletDiscoverySession(

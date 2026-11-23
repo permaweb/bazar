@@ -91,24 +91,16 @@ describe('My assets retry bookkeeping', () => {
 	});
 
 	it('resumes only the same in-memory discovery scope and replaces explicit refreshes', () => {
-		const collections = [
-			{
-				id: 'tokens',
-				name: 'Tokens',
-				description: '',
-				kind: 'tokens' as const,
-				assets: [],
-				manifestId: 'M'.repeat(43),
-			},
-		];
-		const scope = walletDiscoveryScope(wallet, 'https://arweave.net', collections);
+		// Collections are not part of the scope: streaming collections refine the
+		// running session instead of replacing it.
+		const scope = walletDiscoveryScope(wallet, 'https://arweave.net');
 		const session = walletDiscoverySession(undefined, `${scope}|refresh:0`, wallet);
 		session.complete = true;
 
 		expect(walletDiscoverySession(session, `${scope}|refresh:0`, wallet)).toBe(session);
 		expect(walletDiscoverySession(session, `${scope}|refresh:1`, wallet)).not.toBe(session);
-		expect(walletDiscoveryScope('X'.repeat(43), 'https://arweave.net', collections)).not.toBe(scope);
-		expect(walletDiscoveryScope(wallet, 'https://other.example', collections)).not.toBe(scope);
+		expect(walletDiscoveryScope('X'.repeat(43), 'https://arweave.net')).not.toBe(scope);
+		expect(walletDiscoveryScope(wallet, 'https://other.example')).not.toBe(scope);
 		expect(walletDiscoverySessionIsCurrent(session, `${scope}|refresh:0`)).toBe(true);
 		expect(walletDiscoverySessionIsCurrent(session, `${scope}|refresh:1`)).toBe(false);
 		expect(walletDiscoverySessionIsCurrent(session, '')).toBe(false);

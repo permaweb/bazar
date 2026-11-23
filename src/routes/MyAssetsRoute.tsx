@@ -3,11 +3,9 @@ import { RefreshCw, Server } from 'lucide-react';
 
 import {
 	type AssetCandidate,
-	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverWalletAssetCandidates,
 	loadCompletedWalletCandidateScan,
-	partitionAssetCandidateSupport,
 	resolveAssetCandidates,
 	type ResolvedAsset,
 	resumeCompletedWalletCandidateScan,
@@ -36,13 +34,12 @@ import { useWallet } from 'providers/WalletProvider';
 import {
 	AssetCard,
 	type CandidateSupportFailure,
+	homeListingSupportVersion,
 	initialWalletResolutionStatus,
 	MarketContext,
 	MarketSelect,
 	nextWalletAnnouncementProgress,
 	orderPriceLabel,
-	refreshCandidateRetryMetadata,
-	reopenWalletCandidate,
 	RouteState,
 	tokenBalanceLabel,
 	trackRateLimitFailure,
@@ -61,6 +58,7 @@ import {
 	marketplaceFailureKind,
 	marketplaceRequestFailureMessage,
 } from '../app/marketplace-error';
+import { runWalletDiscovery, type WalletDiscovery } from '../app/wallet-discovery';
 
 export default function MyAssetsRoute({
 	address,
@@ -91,7 +89,15 @@ export default function MyAssetsRoute({
 	});
 	const [results, setResults] = React.useState<ResolvedAsset[]>([]);
 	const [storedStatus, setStatus] = React.useState<WalletResolutionStatus>(initialWalletResolutionStatus);
-	const discoveryScope = walletAddress ? walletDiscoveryScope(walletAddress, gateway, market.collections) : '';
+	const collectionsReady = market.collections.length > 0;
+	const marketCollectionsRef = React.useRef(market.collections);
+	marketCollectionsRef.current = market.collections;
+	const walletSupportVersion = React.useMemo(
+		() => homeListingSupportVersion(market.collections),
+		[market.collections]
+	);
+	const walletDiscovery = React.useRef<WalletDiscovery>();
+	const discoveryScope = walletAddress ? walletDiscoveryScope(walletAddress, gateway) : '';
 	const requestedSessionScope = discoveryScope ? `${discoveryScope}|refresh:${retry}` : '';
 	const sessionIsCurrent = walletDiscoverySessionIsCurrent(discoverySession.current, requestedSessionScope);
 	const visibleResults = sessionIsCurrent ? results : [];
@@ -106,7 +112,7 @@ export default function MyAssetsRoute({
 		setRetry((value) => value + 1);
 	};
 	React.useEffect(() => {
-		if (!walletAddress || !market.collections.length || market.error) return;
+		if (!walletAddress || !collectionsReady || market.error) return;
 		const controller = new AbortController();
 		const scope = requestedSessionScope;
 		const previousSession = discoverySession.current;
@@ -119,7 +125,6 @@ export default function MyAssetsRoute({
 		const reset = session !== previousSession;
 		discoverySession.current = session;
 		const active = () => !controller.signal.aborted && discoverySession.current === session;
-		const revalidations: Promise<unknown>[] = [];
 		let renderFrame: number | undefined;
 		let cancelScanStore: (() => void) | undefined;
 		const flushResults = () => {
@@ -145,261 +150,59 @@ export default function MyAssetsRoute({
 			setStatus((current) => ({ ...current, phase: 'discovering', error: null }));
 			scheduleResults();
 		}
-		void (async () => {
-			try {
-				const scheduled = new Set<string>();
-				const readWalletState = async (processId: string, signal?: AbortSignal) => {
-					const result = await readAssetStateCached(processId, {
-						force: true,
-						maxAge: 0,
-						maxAttempts: 1,
-						signal,
-						...(retry === 0 ? { staleWhileRevalidate: DISPLAY_STATE_CACHE.staleWhileRevalidate } : {}),
-					});
-					if (result.revalidation) {
-						revalidations.push(result.revalidation);
-						if (active()) {
-							setStatus((current) => ({
-								...current,
-								revalidationTotal: (current.revalidationTotal ?? 0) + 1,
-							}));
-						}
-					}
-					return result;
-				};
-				const resolver = createAssetCandidateResolver(market.collections, {
-					signal: controller.signal,
-					requireHolderBalances: true,
-					read: readWalletState,
-					onSettled: (result, candidate, error) => {
-						if (!active()) return;
-						const latest = session.latestCandidates.get(candidate.processId) ?? candidate;
-						session.screened.add(candidate.processId);
-						session.completed.add(candidate.processId);
-						if (error) failedCandidates.current.set(candidate.processId, latest);
-						else failedCandidates.current.delete(candidate.processId);
-						trackRateLimitFailure(computeRateLimits.current, candidate.processId, error);
-						setStatus((current) => ({
-							...current,
-							resolved: current.resolved + 1,
-							failures: current.failures + (error ? 1 : 0),
-							rateLimited:
-								current.rateLimited +
-								(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
-						}));
-						if (!error && updateWalletResolvedAsset(session, result, latest, walletAddress))
-							scheduleResults();
-					},
-					onRevalidated: (result, candidate, error) => {
-						if (!active()) return;
-						const latest = session.latestCandidates.get(candidate.processId) ?? candidate;
-						if (error) failedCandidates.current.set(candidate.processId, latest);
-						else failedCandidates.current.delete(candidate.processId);
-						trackRateLimitFailure(computeRateLimits.current, candidate.processId, error);
-						if (error) {
-							if (session.resolvedAssets.delete(candidate.processId)) scheduleResults();
-						} else if (updateWalletResolvedAsset(session, result, latest, walletAddress)) {
-							scheduleResults();
-						}
-						setStatus((current) => ({
-							...current,
-							revalidated: (current.revalidated ?? 0) + 1,
-							failures: current.failures + (error ? 1 : 0),
-							rateLimited:
-								current.rateLimited +
-								(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
-						}));
-					},
-				});
-				let supportTail = Promise.resolve();
-				const resolvePage = (page: AssetCandidate[]) => {
-					let reopened = 0;
-					let reopenedFailures = 0;
-					let reopenedIndexFailures = 0;
-					let reopenedRateLimits = 0;
-					let reopenedIndexRateLimits = 0;
-					for (const candidate of page) {
-						const wasComputeFailure = failedCandidates.current.has(candidate.processId);
-						const wasIndexFailure = supportFailures.current.has(candidate.processId);
-						const wasComputeRateLimited = computeRateLimits.current.has(candidate.processId);
-						const wasIndexRateLimited = indexRateLimits.current.has(candidate.processId);
-						const refresh = reopenWalletCandidate(session, candidate);
-						if (refresh.completed) {
-							reopened += 1;
-							reopenedFailures += Number(wasComputeFailure || wasIndexFailure);
-							reopenedIndexFailures += Number(wasIndexFailure);
-							reopenedRateLimits += Number(wasComputeRateLimited || wasIndexRateLimited);
-							reopenedIndexRateLimits += Number(wasIndexRateLimited);
-						}
-						if (refresh.reopened) {
-							failedCandidates.current.delete(candidate.processId);
-							supportFailures.current.delete(candidate.processId);
-							computeRateLimits.current.delete(candidate.processId);
-							indexRateLimits.current.delete(candidate.processId);
-							if (refresh.removedResult) scheduleResults();
-						}
-						session.latestCandidates.set(candidate.processId, candidate);
-						refreshCandidateRetryMetadata(candidate, failedCandidates.current, supportFailures.current);
-						const existing = session.resolvedAssets.get(candidate.processId);
-						if (existing) {
-							session.resolvedAssets.set(candidate.processId, { ...existing, activity: candidate });
-							scheduleResults();
-						}
-					}
-					if (reopened && active()) {
-						setStatus((current) => ({
-							...current,
-							resolved: Math.max(0, current.resolved - reopened),
-							failures: Math.max(0, current.failures - reopenedFailures),
-							indexFailures: Math.max(0, current.indexFailures - reopenedIndexFailures),
-							rateLimited: Math.max(0, current.rateLimited - reopenedRateLimits),
-							indexRateLimited: Math.max(0, current.indexRateLimited - reopenedIndexRateLimits),
-						}));
-					}
-					const unchecked = page.filter(
-						(candidate) => !session.screened.has(candidate.processId) && !scheduled.has(candidate.processId)
-					);
-					const { supported, unverified } = partitionAssetCandidateSupport(unchecked, market.collections);
-					const candidates = [...supported, ...unverified];
-					for (const candidate of candidates) scheduled.add(candidate.processId);
-					const candidateIds = new Set(candidates.map((candidate) => candidate.processId));
-					for (const candidate of unchecked) {
-						if (!candidateIds.has(candidate.processId)) session.screened.add(candidate.processId);
-					}
-					const newlyCounted = candidates.filter((candidate) => !session.counted.has(candidate.processId));
-					for (const candidate of newlyCounted) session.counted.add(candidate.processId);
-					if (active()) {
-						setStatus((current) => ({
-							...current,
-							phase: candidates.length ? 'resolving' : current.phase,
-							discovered: session.latestCandidates.size,
-							total: current.total + newlyCounted.length,
-						}));
-					}
-					resolver.enqueue(supported);
-					if (unverified.length) {
-						supportTail = supportTail.then(async () => {
-							const verification = await verifyAssetCandidateSupport(unverified, market.collections, {
-								signal: controller.signal,
-								onVerified: (verified) => resolver.enqueue(verified),
-							});
-							if (!active()) return;
-							for (const candidate of unverified) supportFailures.current.delete(candidate.processId);
-							for (const failure of verification.unavailable) {
-								supportFailures.current.set(failure.candidate.processId, failure);
-								trackRateLimitFailure(
-									indexRateLimits.current,
-									failure.candidate.processId,
-									failure.error
-								);
-							}
-							for (const candidate of unverified) {
-								if (!supportFailures.current.has(candidate.processId))
-									indexRateLimits.current.delete(candidate.processId);
-							}
-							const verifiedIds = new Set(verification.supported.map((candidate) => candidate.processId));
-							for (const candidate of unverified) {
-								if (!verifiedIds.has(candidate.processId)) session.screened.add(candidate.processId);
-							}
-							const checkedWithoutCompute = unverified.length - verification.supported.length;
-							const rateLimited = verification.unavailable.filter(
-								(failure) => marketplaceFailureKind(failure.error) === 'rate-limited'
-							).length;
-							if (checkedWithoutCompute && active()) {
-								for (const candidate of unverified) {
-									if (!verifiedIds.has(candidate.processId))
-										session.completed.add(candidate.processId);
-								}
-								setStatus((current) => ({
-									...current,
-									resolved: current.resolved + checkedWithoutCompute,
-									failures: current.failures + verification.unavailable.length,
-									indexFailures: current.indexFailures + verification.unavailable.length,
-									rateLimited: current.rateLimited + rateLimited,
-									indexRateLimited: current.indexRateLimited + rateLimited,
-								}));
-							}
-						});
-					}
-				};
-				const pendingCandidates = [...session.latestCandidates.values()].filter(
-					(candidate) => !session.screened.has(candidate.processId)
+		// Collections are read through the ref so streaming collections refine
+		// support in place instead of restarting the wallet GraphQL scan and resolver.
+		const discovery = runWalletDiscovery({
+			address: walletAddress,
+			session,
+			signal: controller.signal,
+			collections: () => marketCollectionsRef.current,
+			failures: {
+				compute: failedCandidates.current,
+				support: supportFailures.current,
+				computeRateLimits: computeRateLimits.current,
+				indexRateLimits: indexRateLimits.current,
+			},
+			discover: (walletScan, onPage, signal) =>
+				discoverWalletAssetCandidates(walletAddress, { signal, scan: walletScan, catchUp: true, onPage }),
+			read: (processId, signal) =>
+				readAssetStateCached(processId, {
+					force: true,
+					maxAge: 0,
+					maxAttempts: 1,
+					signal,
+					...(retry === 0 ? { staleWhileRevalidate: DISPLAY_STATE_CACHE.staleWhileRevalidate } : {}),
+				}),
+			active,
+			setStatus,
+			onResultsChanged: scheduleResults,
+			onDiscoveryComplete: () => {
+				cancelScanStore = scheduleIdleTask(
+					() => storeCompletedWalletCandidateScan(window.localStorage, session.scan),
+					500
 				);
-				if (pendingCandidates.length) resolvePage(pendingCandidates);
-				let discoveredCandidates: AssetCandidate[] = [];
-				let discoveryFailure: unknown;
-				try {
-					discoveredCandidates = await discoverWalletAssetCandidates(walletAddress, {
-						signal: controller.signal,
-						scan: session.scan,
-						catchUp: true,
-						onPage: resolvePage,
-					});
-				} catch (cause) {
-					discoveryFailure = cause;
-				}
-				if (!active()) return;
-				if (!discoveryFailure) {
-					cancelScanStore = scheduleIdleTask(
-						() => storeCompletedWalletCandidateScan(window.localStorage, session.scan),
-						500
-					);
-				}
-				resolvePage(discoveredCandidates.filter((candidate) => !session.screened.has(candidate.processId)));
-				let resolutionFailure: unknown;
-				try {
-					await supportTail;
-				} catch (cause) {
-					resolutionFailure = cause;
-				}
-				try {
-					await resolver.finish();
-				} catch (cause) {
-					resolutionFailure ??= cause;
-				}
-				if (discoveryFailure || resolutionFailure) throw discoveryFailure ?? resolutionFailure;
-				if (revalidations.length && active()) {
-					setStatus((current) => ({
-						...current,
-						phase: 'revalidating',
-						discoveryComplete: true,
-					}));
-					await Promise.allSettled(revalidations);
-				}
-				if (active()) {
-					session.complete = true;
-					if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
-					flushResults();
-					setStatus((current) => ({
-						...current,
-						phase: 'done',
-						discoveryComplete: true,
-						discovered: session.latestCandidates.size,
-						revalidated: undefined,
-						revalidationTotal: undefined,
-					}));
-				}
-			} catch (cause) {
-				if (active()) {
-					setStatus((current) => ({
-						...current,
-						phase: 'error',
-						error: marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)),
-					}));
-				}
-			}
-		})();
+			},
+			onComplete: () => {
+				if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
+				flushResults();
+			},
+		});
+		walletDiscovery.current = discovery;
 		return () => {
+			if (walletDiscovery.current === discovery) walletDiscovery.current = undefined;
 			controller.abort();
 			cancelScanStore?.();
 			if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
 		};
-	}, [discoveryRetry, discoveryScope, gateway, market.error, retry, walletAddress]);
+	}, [collectionsReady, discoveryRetry, discoveryScope, market.error, retry]);
+	React.useEffect(() => {
+		walletDiscovery.current?.supportChanged();
+	}, [walletSupportVersion]);
 	React.useEffect(() => {
 		if (
 			!failedRetry ||
 			!walletAddress ||
-			!market.collections.length ||
+			!collectionsReady ||
 			market.error ||
 			(!failedCandidates.current.size && !supportFailures.current.size)
 		)
@@ -429,7 +232,7 @@ export default function MyAssetsRoute({
 			error: null,
 		}));
 		const resolveFailed = (failed: AssetCandidate[]) =>
-			resolveAssetCandidates(failed, market.collections, {
+			resolveAssetCandidates(failed, marketCollectionsRef.current, {
 				signal: controller.signal,
 				requireHolderBalances: true,
 				onSettled: (result, candidate, error) => {
@@ -449,7 +252,9 @@ export default function MyAssetsRoute({
 			});
 		const retryUnavailable = async () => {
 			const verification = unverified.length
-				? await verifyAssetCandidateSupport(unverified, market.collections, { signal: controller.signal })
+				? await verifyAssetCandidateSupport(unverified, marketCollectionsRef.current, {
+						signal: controller.signal,
+				  })
 				: { supported: [], unavailable: [] };
 			if (!active()) return;
 			for (const candidate of unverified) supportFailures.current.delete(candidate.processId);
@@ -501,7 +306,7 @@ export default function MyAssetsRoute({
 			}
 		);
 		return () => controller.abort();
-	}, [failedRetry, gateway, market.collections, market.error, requestedSessionScope, walletAddress]);
+	}, [collectionsReady, failedRetry, market.error, requestedSessionScope, walletAddress]);
 
 	if (!walletAddress) {
 		return (
