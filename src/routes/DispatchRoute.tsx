@@ -380,6 +380,36 @@ export function rejectedSignatureOutcomeMessage(outcome: 'settled' | 'discarded'
 		: 'Rejected signature deleted. Resume signs a replacement for this holder only.';
 }
 
+/**
+ * How a dispatch run stopped. 'interrupted' is the unmount abort: the plan is
+ * saved and the page offers Resume, but nothing is running any more.
+ */
+export type DispatchRunEnd = { kind: 'complete' } | { kind: 'failed'; cause: unknown } | { kind: 'interrupted' };
+
+/**
+ * The top-bar activity a stopped run leaves behind. Every exit maps to a
+ * terminal phase so the tray never keeps a 'working' row for a run that ended:
+ * complete removes the row, failed and interrupted keep a needs-attention row.
+ */
+export function dispatchEndActivity(
+	end: DispatchRunEnd,
+	plan: Pick<DispatchPlan, 'rows'>
+): { phase: 'done' | 'error'; status: string } {
+	switch (end.kind) {
+		case 'complete':
+			return { phase: 'done', status: '' };
+		case 'failed':
+			return { phase: 'error', status: dispatchErrorMessage(end.cause) };
+		case 'interrupted': {
+			const settled = plan.rows.filter((row) => row.status === 'settled').length;
+			return {
+				phase: 'error',
+				status: `Dispatch paused when you left the page · ${settled} of ${plan.rows.length} settled. Resume it from Dispatch on this token; posted transfers will not be re-sent.`,
+			};
+		}
+	}
+}
+
 export default function DispatchRoute() {
 	const { processId = '' } = useParams();
 	const wallet = useWallet();
@@ -534,22 +564,32 @@ export default function DispatchRoute() {
 		const total = dispatchPlan.rows.length;
 		const startedAt = Date.now();
 		dispatchActivity(sender, 'working', `Dispatching to ${total} holder${total === 1 ? '' : 's'}…`, startedAt);
+		let latest = dispatchPlan;
+		const finish = (end: DispatchRunEnd) => {
+			const activity = dispatchEndActivity(end, latest);
+			dispatchActivity(sender, activity.phase, activity.status, startedAt);
+		};
 		try {
 			await runDispatch(dispatchPlan, {
 				signal: controller.signal,
 				batchSize: DEFAULT_DISPATCH_BATCH_SIZE,
 				readCurrentState: readAssetStateWithDeadline,
 				onProgress: (next) => {
+					latest = next;
 					setPlan(next);
 					const settled = next.rows.filter((row) => row.status === 'settled').length;
 					dispatchActivity(sender, 'working', `${settled} of ${next.rows.length} settled`, startedAt);
 				},
 			});
-			dispatchActivity(sender, 'done', '', startedAt);
+			finish({ kind: 'complete' });
 		} catch (cause) {
-			if (!controller.signal.aborted) {
+			if (controller.signal.aborted) {
+				// The page unmounted mid-run. The plan is saved; replace the
+				// 'working' row so the tray stops claiming a run is in progress.
+				finish({ kind: 'interrupted' });
+			} else {
 				setRunError(dispatchErrorMessage(cause));
-				dispatchActivity(sender, 'error', dispatchErrorMessage(cause), startedAt);
+				finish({ kind: 'failed', cause });
 			}
 		} finally {
 			if (!controller.signal.aborted) setRunning(false);
