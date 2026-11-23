@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Camera, MapPin, Pencil, Upload, X } from 'lucide-react';
 
 import {
+	type AccountProfile,
 	PROFILE_AVATAR_CONTENT_TYPES,
 	PROFILE_AVATAR_MAX_BYTES,
 	profileAvatarUrl,
@@ -107,12 +108,88 @@ export function ProfilePage({
 	);
 }
 
-type ProfileEditUpdate = {
+export type ProfileEditUpdate = {
 	displayName: string;
 	displayNameChanged: boolean;
 	avatarFile: File | null;
 	removeAvatar: boolean;
 };
+
+/**
+ * Where a profile save stopped. A new picture and the profile are two separate signed,
+ * paid L1 posts, so a failure after the picture landed must not lose it.
+ */
+export type ProfileSaveStage =
+	| 'picture-preparing'
+	| 'picture-signing'
+	| 'picture-uploading'
+	| 'profile-preparing'
+	| 'profile-signing'
+	| 'profile-publishing';
+
+/** A picture whose upload was accepted, kept so a retry of the same File by the same owner reuses it. */
+export type UploadedProfileAvatar = { address: string; file: File; avatar: string };
+
+export class ProfileSaveError extends Error {
+	constructor(readonly stage: ProfileSaveStage, readonly pictureUploaded: boolean, cause: unknown) {
+		super(cause instanceof Error ? cause.message : String(cause), { cause });
+		this.name = 'ProfileSaveError';
+	}
+}
+
+export const PROFILE_PICTURE_REUSED_STATUS = 'Picture already uploaded. Preparing profile…';
+
+/**
+ * Upload the picture (unless this exact File was already uploaded for this address),
+ * then publish the profile. `uploaded` is the caller's holder: it is set only once
+ * uploadAvatar resolves (an accepted POST) and cleared on success or when the File
+ * or address no longer match.
+ */
+export async function saveProfileEdit(
+	client: Pick<ProfileClient, 'uploadAvatar' | 'update'>,
+	address: string,
+	update: ProfileEditUpdate,
+	uploaded: { current: UploadedProfileAvatar | null },
+	onStatus: (status: string) => void
+): Promise<AccountProfile> {
+	const fields: ProfileUpdate = update.displayNameChanged ? { displayName: update.displayName } : {};
+	if (update.removeAvatar) fields.avatar = '';
+	const file = update.avatarFile;
+	const reused =
+		file && uploaded.current?.address === address && uploaded.current.file === file ? uploaded.current : null;
+	if (!reused) uploaded.current = null;
+	let stage: ProfileSaveStage = 'picture-preparing';
+	try {
+		if (reused) {
+			fields.avatar = reused.avatar;
+			onStatus(PROFILE_PICTURE_REUSED_STATUS);
+		} else if (file) {
+			const data = new Uint8Array(await file.arrayBuffer());
+			const avatar = await client.uploadAvatar(address, data, file.type, {
+				onPhase: (phase) => {
+					stage = phase === 'signing' ? 'picture-signing' : 'picture-uploading';
+					onStatus(phase === 'signing' ? 'Approve picture…' : 'Uploading picture…');
+				},
+			});
+			uploaded.current = { address, file, avatar };
+			fields.avatar = avatar;
+			onStatus('Preparing profile…');
+		} else {
+			onStatus('Preparing profile…');
+		}
+		stage = 'profile-preparing';
+		const updated = await client.update(address, fields, {
+			onPhase: (phase) => {
+				stage = phase === 'signing' ? 'profile-signing' : 'profile-publishing';
+				onStatus(phase === 'signing' ? 'Approve profile…' : 'Publishing profile…');
+			},
+		});
+		uploaded.current = null;
+		return updated;
+	} catch (cause) {
+		throw new ProfileSaveError(stage, uploaded.current !== null, cause);
+	}
+}
 
 function ProfileEditDialog({
 	onClose,
@@ -326,20 +403,36 @@ function profileImageError(file: File) {
 	return '';
 }
 
-function profileUpdateError(cause: unknown) {
-	if (cause instanceof Error && cause.message === 'invalid-profile-avatar') {
-		return 'The existing profile picture is not a valid image reference. Choose a new picture and try again.';
+const PROFILE_PICTURE_KEPT =
+	'Your picture was uploaded, but your profile was not published. Save again to finish. Only one approval is needed.';
+
+export function profileUpdateError(cause: unknown) {
+	const code = cause instanceof Error ? cause.message : '';
+	const stage = cause instanceof ProfileSaveError ? cause.stage : undefined;
+	const reason = profileSaveFailureReason(code, stage);
+	if (cause instanceof ProfileSaveError && cause.pictureUploaded) {
+		return reason ? `${reason} ${PROFILE_PICTURE_KEPT}` : PROFILE_PICTURE_KEPT;
 	}
-	if (cause instanceof Error && cause.message === 'invalid-profile-avatar-type') {
-		return 'Choose a PNG, JPEG, WebP, or GIF image.';
+	return reason || 'Your profile could not be updated. Please try again.';
+}
+
+function profileSaveFailureReason(code: string, stage: ProfileSaveStage | undefined) {
+	switch (code) {
+		case 'invalid-profile-avatar':
+			return 'The existing profile picture is not a valid image reference. Choose a new picture and try again.';
+		case 'invalid-profile-avatar-type':
+			return 'Choose a PNG, JPEG, WebP, or GIF image.';
+		case 'invalid-profile-avatar-size':
+			return 'Choose an image smaller than 10 MB.';
+		case 'wallet-account-changed':
+			return 'The connected wallet changed. Return to your current wallet profile and try again.';
+		case 'wallet-sign-unavailable':
+			return 'Connect an Arweave wallet that can sign transactions.';
 	}
-	if (cause instanceof Error && cause.message === 'invalid-profile-avatar-size') {
-		return 'Choose an image smaller than 10 MB.';
-	}
-	if (cause instanceof Error && cause.message === 'wallet-account-changed') {
-		return 'The connected wallet changed. Return to your current wallet profile and try again.';
-	}
-	return 'Your profile could not be updated. Please try again.';
+	// The wallet's own sign call failed or was declined: nothing from this step was posted.
+	if (stage === 'picture-signing') return 'Your wallet did not approve the picture, so nothing was uploaded.';
+	if (stage === 'profile-signing') return 'Your wallet did not approve the profile.';
+	return '';
 }
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -352,6 +445,7 @@ export default function ProfileRoute() {
 	const [error, setError] = React.useState('');
 	const [editOpen, setEditOpen] = React.useState(false);
 	const editTrigger = React.useRef<HTMLButtonElement | null>(null);
+	const uploadedAvatar = React.useRef<UploadedProfileAvatar | null>(null);
 
 	React.useEffect(() => {
 		setError('');
@@ -380,22 +474,12 @@ export default function ProfileRoute() {
 	};
 	const openEditor = (trigger: HTMLButtonElement) => {
 		editTrigger.current = trigger;
+		// The reopened dialog starts without a chosen File, so no earlier upload can match.
+		uploadedAvatar.current = null;
 		setEditOpen(true);
 	};
 	const saveProfile = async (update: ProfileEditUpdate, onStatus: (status: string) => void) => {
-		const client = new ProfileClient();
-		const fields: ProfileUpdate = update.displayNameChanged ? { displayName: update.displayName } : {};
-		if (update.removeAvatar) fields.avatar = '';
-		if (update.avatarFile) {
-			const data = new Uint8Array(await update.avatarFile.arrayBuffer());
-			fields.avatar = await client.uploadAvatar(address, data, update.avatarFile.type, {
-				onPhase: (phase) => onStatus(phase === 'signing' ? 'Approve picture…' : 'Uploading picture…'),
-			});
-		}
-		onStatus('Preparing profile…');
-		const updated = await client.update(address, fields, {
-			onPhase: (phase) => onStatus(phase === 'signing' ? 'Approve profile…' : 'Publishing profile…'),
-		});
+		const updated = await saveProfileEdit(new ProfileClient(), address, update, uploadedAvatar, onStatus);
 		setProfile(updated);
 		setEditOpen(false);
 	};
