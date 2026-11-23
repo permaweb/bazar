@@ -13,8 +13,12 @@ import {
 	dispatchFeeLabel,
 	DispatchFeeNotice,
 	dispatchFeeStatus,
+	DispatchPlanStatus,
+	dispatchPlanStatusText,
+	DispatchRunError,
 	type DispatchStartRequest,
 	dispatchStateReadMessage,
+	focusCreatedPlan,
 	startDispatchOnce,
 	transferRewardErrorMessage,
 } from './DispatchRoute';
@@ -300,5 +304,70 @@ describe('dispatch network fee', () => {
 		);
 
 		expect(markup).not.toContain('stays disabled');
+	});
+});
+
+describe('dispatch announcements and focus', () => {
+	it('announces a run failure as an alert with the mapped message', () => {
+		const message = dispatchErrorMessage(new Error('asset-purchase-insufficient-funds'));
+		const markup = renderToStaticMarkup(React.createElement(DispatchRunError, { message }));
+
+		expect(markup).toContain('role="alert"');
+		expect(markup).toContain('inline-error');
+		expect(markup).toContain('Your AR balance cannot cover the transfer amounts plus network rewards.');
+	});
+
+	it('keeps the progress region mounted and empty until a run reports progress', () => {
+		const idle = dispatchPlanStatusText({ hasPlan: false, complete: false, running: false, settled: 0, total: 0 });
+		const markup = renderToStaticMarkup(React.createElement(DispatchPlanStatus, { text: idle }));
+
+		expect(idle).toBe('');
+		expect(markup).toContain('role="status"');
+		expect(markup).toContain('aria-atomic="true"');
+		expect(markup).toContain('sr-only');
+	});
+
+	it('moves the progress region through running, paused and complete', () => {
+		const plan = { hasPlan: true, settled: 1, total: 3 };
+
+		// A saved plan that is not running says nothing; the visible heading covers it.
+		expect(dispatchPlanStatusText({ ...plan, complete: false, running: false })).toBe('');
+		// While running only the plain counter is spoken, without posted/sender detail.
+		expect(dispatchPlanStatusText({ ...plan, complete: false, running: true })).toBe('1 of 3 settled');
+		expect(dispatchPlanStatusText({ ...plan, settled: 2, complete: false, running: true })).toBe('2 of 3 settled');
+		const done = dispatchPlanStatusText({ ...plan, settled: 3, complete: true, running: true });
+		expect(done).toBe('Dispatch complete. All transfers settled.');
+		expect(dispatchPlanStatusText({ ...plan, settled: 3, complete: true, running: false })).toBe(done);
+
+		const markup = renderToStaticMarkup(React.createElement(DispatchPlanStatus, { text: done }));
+		expect(markup).toContain('role="status"');
+		expect(markup).toContain('Dispatch complete');
+	});
+
+	it('focuses the plan heading only once, after start() created the plan', () => {
+		const target = { focus: vi.fn() };
+		const justCreated = { current: true };
+
+		expect(focusCreatedPlan(justCreated, target)).toBe(true);
+		expect(target.focus).toHaveBeenCalledTimes(1);
+		expect(justCreated.current).toBe(false);
+
+		// Later onProgress updates re-run the effect but must not pull focus again.
+		expect(focusCreatedPlan(justCreated, target)).toBe(false);
+		expect(target.focus).toHaveBeenCalledTimes(1);
+	});
+
+	it('never takes focus when a saved plan is restored on page open', () => {
+		const target = { focus: vi.fn() };
+
+		expect(focusCreatedPlan({ current: false }, target)).toBe(false);
+		expect(target.focus).not.toHaveBeenCalled();
+	});
+
+	it('keeps the request until the heading has mounted', () => {
+		const justCreated = { current: true };
+
+		expect(focusCreatedPlan(justCreated, null)).toBe(false);
+		expect(justCreated.current).toBe(true);
 	});
 });

@@ -226,6 +226,59 @@ export async function startDispatchOnce(request: DispatchStartRequest): Promise<
 	}
 }
 
+/** A run failure follows a user action (sign, resume), so it interrupts as an alert. */
+export function DispatchRunError(props: { message: string }) {
+	return (
+		<div className="inline-error" role="alert">
+			<span>{props.message}</span>
+		</div>
+	);
+}
+
+/**
+ * Text for the page's one polite progress region: the plain settled counter
+ * while a run is active, completion once, and nothing otherwise. The visible
+ * heading keeps its posted/sender detail; it is left out here so every
+ * onProgress update stays short.
+ */
+export function dispatchPlanStatusText(input: {
+	hasPlan: boolean;
+	complete: boolean;
+	running: boolean;
+	settled: number;
+	total: number;
+}): string {
+	if (!input.hasPlan) return '';
+	if (input.complete) return 'Dispatch complete. All transfers settled.';
+	if (input.running) return `${input.settled} of ${input.total} settled`;
+	return '';
+}
+
+/**
+ * Always mounted at section level, outside the plan/form swap, so it exists
+ * empty before its first update (mirrors OperationOutcomeAnnouncement).
+ */
+export function DispatchPlanStatus(props: { text: string }) {
+	return (
+		<div aria-atomic="true" className="sr-only" role="status">
+			{props.text}
+		</div>
+	);
+}
+
+/**
+ * Moves focus to the plan heading once, after start() created the plan and the
+ * form (holding the focused submit button) unmounted. A plan restored from
+ * storage on mount never raises the flag, so opening the page keeps focus
+ * where the user put it.
+ */
+export function focusCreatedPlan(justCreated: { current: boolean }, target: { focus: () => void } | null): boolean {
+	if (!justCreated.current || !target) return false;
+	justCreated.current = false;
+	target.focus();
+	return true;
+}
+
 const STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
 
 export default function DispatchRoute() {
@@ -234,6 +287,11 @@ export default function DispatchRoute() {
 	const validId = ADDRESS.test(processId);
 	const abortRef = React.useRef<AbortController | null>(null);
 	const inFlightRef = React.useRef(false);
+	const planHeadingRef = React.useRef<HTMLElement>(null);
+	const planJustCreatedRef = React.useRef(false);
+	const holderListLabelId = React.useId();
+	const holderListErrorsId = React.useId();
+	const senderMismatchId = React.useId();
 	const [state, setState] = React.useState<AssetState | null>(null);
 	const [stateError, setStateError] = React.useState<string | null>(null);
 	const [loadingState, setLoadingState] = React.useState(false);
@@ -315,6 +373,17 @@ export default function DispatchRoute() {
 	const senderMismatch = Boolean(plan && wallet.address && plan.sender !== wallet.address);
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const balance = state && wallet.address && balanceStateAvailable ? liquidBalanceOf(state, wallet.address) : null;
+	const planStatusText = dispatchPlanStatusText({
+		hasPlan: Boolean(plan),
+		complete: planComplete,
+		running,
+		settled: planSettled,
+		total: plan?.rows.length ?? 0,
+	});
+
+	React.useEffect(() => {
+		if (plan) focusCreatedPlan(planJustCreatedRef, planHeadingRef.current);
+	}, [plan]);
 
 	// Surface the run in the top-bar activity notifier the same as a buy/sell/
 	// transfer. It rides the fungible runtime-activity channel with a dedicated
@@ -401,7 +470,10 @@ export default function DispatchRoute() {
 			createPlan: createDispatchPlan,
 			execute,
 			onPreparingChange: setPreparing,
-			onPlan: setPlan,
+			onPlan: (created) => {
+				planJustCreatedRef.current = true;
+				setPlan(created);
+			},
 			onError: setRunError,
 		});
 	};
@@ -502,7 +574,7 @@ export default function DispatchRoute() {
 				<div className="dispatch-plan">
 					<div className="dispatch-plan-heading">
 						<div>
-							<strong>
+							<strong ref={planHeadingRef} tabIndex={-1}>
 								{planComplete
 									? 'Dispatch complete'
 									: running
@@ -522,6 +594,7 @@ export default function DispatchRoute() {
 									size="custom"
 									onClick={() => void resume()}
 									disabled={running || senderMismatch}
+									aria-describedby={senderMismatch ? senderMismatchId : undefined}
 								>
 									{running ? 'Working…' : 'Resume'}
 								</Button>
@@ -532,13 +605,14 @@ export default function DispatchRoute() {
 						</div>
 					</div>
 					{senderMismatch ? (
-						<div className="inline-error">
+						<div className="inline-error" id={senderMismatchId}>
 							<span>
 								This dispatch was started from {shortAddress(plan.sender)}. Connect that wallet to
 								resume it.
 							</span>
 						</div>
 					) : null}
+					{runError ? <DispatchRunError message={runError} /> : null}
 					{running && planPosted ? (
 						<div className="mint-notice">
 							<Info className="ui-icon" aria-hidden="true" />
@@ -603,8 +677,13 @@ export default function DispatchRoute() {
 							void start();
 						}}
 					>
-						<div className="create-field">
-							<label>Holder list</label>
+						<div
+							className="create-field"
+							role="group"
+							aria-labelledby={holderListLabelId}
+							aria-describedby={parsed?.errors.length ? holderListErrorsId : undefined}
+						>
+							<label id={holderListLabelId}>Holder list</label>
 							<HolderListField
 								rows={holderRows}
 								disabled={running || preparing}
@@ -624,7 +703,9 @@ export default function DispatchRoute() {
 						</div>
 
 						{parsed?.errors.length ? (
-							<div className="inline-error">
+							// Not live: it re-renders on every keystroke. The holder-list group
+							// references it through aria-describedby instead.
+							<div className="inline-error" id={holderListErrorsId}>
 								<span>
 									{parsed.errors.slice(0, 8).map((entry, index) => (
 										<React.Fragment key={index}>
@@ -734,11 +815,7 @@ export default function DispatchRoute() {
 							</>
 						) : null}
 
-						{runError ? (
-							<div className="inline-error">
-								<span>{runError}</span>
-							</div>
-						) : null}
+						{runError ? <DispatchRunError message={runError} /> : null}
 
 						<Button
 							className="mint-submit"
@@ -771,11 +848,7 @@ export default function DispatchRoute() {
 				</div>
 			)}
 
-			{plan && runError ? (
-				<div className="inline-error">
-					<span>{runError}</span>
-				</div>
-			) : null}
+			<DispatchPlanStatus text={planStatusText} />
 		</section>
 	);
 }
