@@ -629,7 +629,6 @@ async function readState(
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
 					const state = await parseStateResponse(
 						response,
-						path,
 						base,
 						requestInit,
 						fetcher,
@@ -687,7 +686,6 @@ function statePaths(base: string, processId: string, endpoint: string): string[]
 
 async function parseStateResponse(
 	response: Response,
-	statePath: string,
 	base: string,
 	requestInit: RequestInit,
 	fetcher: typeof fetch,
@@ -703,7 +701,7 @@ async function parseStateResponse(
 			if (raw[key] === undefined) return [];
 			const id = linkedMessageId(raw[key]);
 			if (!id) throw new TypeError('invalid-asset-state-link');
-			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher, limit)];
+			return [readLinkedStateTable(key, id, base, requestInit, fetcher, limit)];
 		})
 	);
 	const linkedValue = await readLinkedValue(raw.value, base, requestInit, fetcher);
@@ -741,7 +739,6 @@ async function readLinkedValue(
 async function readLinkedStateTable(
 	key: (typeof LINKED_STATE_TABLES)[number],
 	id: string,
-	statePath: string,
 	base: string,
 	requestInit: RequestInit,
 	fetcher: typeof fetch,
@@ -794,48 +791,26 @@ async function readLinkedStateTable(
 			throwIfAborted();
 			return value;
 		});
-	let requireDirectJsonBalance = false;
 	if (key === 'balances') {
-		const allowNotFound = (
-			fetcher as typeof fetch & {
-				allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-			}
-		).allowNotFound;
+		// Holder tables are read only as a direct immutable JSON root. No device
+		// probe is made: public peers 404 `<state>/balances/device` and answer
+		// `<link>~message@1.0/device` with "message@1.0" whatever the stored
+		// device, so neither path says anything about the table. An unreadable
+		// or non-JSON root marks holders unavailable and keeps the core state and
+		// order book instead of following child links.
+		let root: Record<string, unknown>;
 		try {
-			const deviceResponse = await limit(() =>
-				(allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
-					signal: requestInit.signal,
-				})
-			);
+			root = await read(id);
 			throwIfAborted();
-			if (deviceResponse.status === 404 || !deviceResponse.ok) {
-				// A legacy routed fetch can reject or hide the optional 404 probe.
-				// Inspect only the linked root in that case; it is safe to use when
-				// it identifies itself as a direct immutable JSON value.
-				requireDirectJsonBalance = true;
-			} else {
-				const device = await deviceResponse.text();
-				throwIfAborted();
-				if (device.trim() !== 'message@1.0') return [key, {}, false];
-			}
 		} catch {
 			throwIfAborted();
-			requireDirectJsonBalance = true;
+			return [key, {}, false];
 		}
-	}
-	let root: Record<string, unknown>;
-	try {
-		root = await read(id);
-		throwIfAborted();
-	} catch (error) {
-		throwIfAborted();
-		if (requireDirectJsonBalance) return [key, {}, false];
-		throw error;
-	}
-	if (requireDirectJsonBalance) {
 		const balances = strictDirectJsonBalances(root);
 		return balances ? [key, balances, true] : [key, {}, false];
 	}
+	const root = await read(id);
+	throwIfAborted();
 	const value =
 		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar);
 	throwIfAborted();
@@ -1011,7 +986,6 @@ async function parseRevalidatedState(
 		return {
 			state: await parseStateResponse(
 				response,
-				path,
 				'/',
 				requestInit,
 				fetcher,
