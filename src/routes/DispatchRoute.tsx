@@ -19,6 +19,7 @@ import {
 	type DispatchPlan,
 	estimateDispatchCost,
 	fetchTransferReward,
+	type HolderRow,
 	loadDispatchPlan,
 	parseHolderList,
 	requiresCostConfirmation,
@@ -157,6 +158,74 @@ export function DispatchFeeNotice(props: { message: string; blocksDispatch: bool
 	);
 }
 
+export type DispatchStartRequest = {
+	/**
+	 * Single-flight gate shared by start and resume. It is claimed synchronously,
+	 * before any await, so a second submit landing before React re-renders is a
+	 * no-op instead of a second plan that signs every transfer again.
+	 */
+	inFlight: { current: boolean };
+	/** Receives the run's controller before the first await so unmount aborts the pre-flight too. */
+	abortRef: { current: AbortController | null };
+	processId: string;
+	sender: string;
+	rows: HolderRow[];
+	state: AssetState | null;
+	/** Total network rewards to check against the AR balance; null skips the check. */
+	requiredWinston: bigint | null;
+	readWalletBalance: (address: string, signal: AbortSignal) => Promise<bigint>;
+	createPlan: (
+		processId: string,
+		sender: string,
+		rows: HolderRow[],
+		options: { signal: AbortSignal }
+	) => Promise<DispatchPlan>;
+	execute: (plan: DispatchPlan, controller: AbortController) => Promise<void>;
+	onPreparingChange: (preparing: boolean) => void;
+	onPlan: (plan: DispatchPlan) => void;
+	onError: (message: string) => void;
+};
+
+export type DispatchStartOutcome = 'busy' | 'executed' | 'aborted' | 'failed';
+
+/**
+ * Runs the dispatch pre-flight (AR balance, fresh plan) and hands the plan to
+ * execute under one controller. Returns 'busy' without side effects when a
+ * start or resume is already in flight.
+ */
+export async function startDispatchOnce(request: DispatchStartRequest): Promise<DispatchStartOutcome> {
+	if (request.inFlight.current) return 'busy';
+	request.inFlight.current = true;
+	const controller = new AbortController();
+	const { signal } = controller;
+	request.abortRef.current = controller;
+	request.onPreparingChange(true);
+	try {
+		if (!request.state || !assetBalanceStateAvailable(request.state)) {
+			throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+		}
+		// Pre-flight every network reward before creating a resumable dispatch
+		// plan. Native AR quantity stays zero.
+		if (request.requiredWinston !== null) {
+			const arBalance = await request.readWalletBalance(request.sender, signal);
+			if (signal.aborted) return 'aborted';
+			if (arBalance < request.requiredWinston) throw new Error('asset-purchase-insufficient-funds');
+		}
+		const created = await request.createPlan(request.processId, request.sender, request.rows, { signal });
+		if (signal.aborted) return 'aborted';
+		request.onPlan(created);
+		await request.execute(created, controller);
+		return signal.aborted ? 'aborted' : 'executed';
+	} catch (cause) {
+		if (signal.aborted) return 'aborted';
+		request.onError(dispatchErrorMessage(cause));
+		return 'failed';
+	} finally {
+		request.inFlight.current = false;
+		if (!signal.aborted) request.onPreparingChange(false);
+	}
+}
+
 const STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
 
 export default function DispatchRoute() {
@@ -164,6 +233,7 @@ export default function DispatchRoute() {
 	const wallet = useWallet();
 	const validId = ADDRESS.test(processId);
 	const abortRef = React.useRef<AbortController | null>(null);
+	const inFlightRef = React.useRef(false);
 	const [state, setState] = React.useState<AssetState | null>(null);
 	const [stateError, setStateError] = React.useState<string | null>(null);
 	const [loadingState, setLoadingState] = React.useState(false);
@@ -175,6 +245,7 @@ export default function DispatchRoute() {
 	const [rewardAttempt, setRewardAttempt] = React.useState(0);
 	const [plan, setPlan] = React.useState<DispatchPlan | null>(() => (validId ? loadDispatchPlan(processId) : null));
 	const [running, setRunning] = React.useState(false);
+	const [preparing, setPreparing] = React.useState(false);
 	const [runError, setRunError] = React.useState<string | null>(null);
 	const [costApproved, setCostApproved] = React.useState(false);
 
@@ -280,8 +351,7 @@ export default function DispatchRoute() {
 		});
 	};
 
-	const execute = async (dispatchPlan: DispatchPlan) => {
-		const controller = new AbortController();
+	const execute = async (dispatchPlan: DispatchPlan, controller = new AbortController()) => {
 		abortRef.current = controller;
 		setRunning(true);
 		setRunError(null);
@@ -316,28 +386,34 @@ export default function DispatchRoute() {
 			wallet.openConnectDialog();
 			return;
 		}
-		if (!parsed?.rows.length || parsed.errors.length || running) return;
+		if (!parsed?.rows.length || parsed.errors.length || running || inFlightRef.current) return;
 		if (needsCostApproval && !costApproved) return;
 		setRunError(null);
-		try {
-			if (!state || !assetBalanceStateAvailable(state)) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
-			// Pre-flight every network reward. Native AR quantity stays zero.
-			// before creating a resumable dispatch plan.
-			if (estimate) {
-				const arBalance = await new AssetTransactionClient().walletBalance(wallet.address);
-				if (arBalance < estimate.totalWinston) throw new Error('asset-purchase-insufficient-funds');
-			}
-			const created = await createDispatchPlan(processId, wallet.address, parsed.rows);
-			setPlan(created);
-			await execute(created);
-		} catch (cause) {
-			setRunError(dispatchErrorMessage(cause));
-		}
+		await startDispatchOnce({
+			inFlight: inFlightRef,
+			abortRef,
+			processId,
+			sender: wallet.address,
+			rows: parsed.rows,
+			state,
+			requiredWinston: estimate ? estimate.totalWinston : null,
+			readWalletBalance: (address, signal) => new AssetTransactionClient().walletBalance(address, signal),
+			createPlan: createDispatchPlan,
+			execute,
+			onPreparingChange: setPreparing,
+			onPlan: setPlan,
+			onError: setRunError,
+		});
 	};
 
 	const resume = async () => {
-		if (!plan || running || senderMismatch) return;
-		await execute(plan);
+		if (!plan || running || senderMismatch || inFlightRef.current) return;
+		inFlightRef.current = true;
+		try {
+			await execute(plan);
+		} finally {
+			inFlightRef.current = false;
+		}
 	};
 
 	const discard = () => {
@@ -531,7 +607,7 @@ export default function DispatchRoute() {
 							<label>Holder list</label>
 							<HolderListField
 								rows={holderRows}
-								disabled={running}
+								disabled={running || preparing}
 								denomination={state?.denomination ?? 0}
 								ticker={state?.ticker || 'tokens'}
 								onChange={(next) => {
@@ -670,6 +746,7 @@ export default function DispatchRoute() {
 							size="custom"
 							disabled={
 								running ||
+								preparing ||
 								!state ||
 								!balanceStateAvailable ||
 								!parsed?.rows.length ||
@@ -680,10 +757,12 @@ export default function DispatchRoute() {
 						>
 							{running
 								? 'Dispatching…'
+								: preparing
+								? 'Checking balances…'
 								: wallet.address
 								? 'Sign and dispatch'
 								: 'Connect wallet to dispatch'}
-							{!running ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
+							{!running && !preparing ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
 						</Button>
 						<p className="mint-permanence">
 							Confirmed Arweave transfers are permanent. Review every address and quantity before signing.
