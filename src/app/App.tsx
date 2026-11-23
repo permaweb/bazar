@@ -2649,6 +2649,20 @@ function Header() {
 	);
 }
 
+/** Escape closes the Transaction activity popover and returns focus to its trigger, as WalletMenu does. */
+export function handleActivityPopoverKey(
+	event: Pick<KeyboardEvent, 'key' | 'defaultPrevented'>,
+	close: () => void,
+	trigger: { readonly current: Pick<HTMLElement, 'focus'> | null },
+	schedule: (callback: () => void) => unknown = (callback) => window.requestAnimationFrame(callback)
+) {
+	// A dialog above the popover claims Escape first (useDialogFocus calls preventDefault).
+	if (event.key !== 'Escape' || event.defaultPrevented) return false;
+	close();
+	schedule(() => trigger.current?.focus());
+	return true;
+}
+
 function OperationActivityControl() {
 	const wallet = useWallet();
 	const {
@@ -2663,6 +2677,8 @@ function OperationActivityControl() {
 	} = useOperationActivity();
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
+	const triggerRef = React.useRef<HTMLButtonElement>(null);
+	const menuId = React.useId();
 	const visibleActivities = activities.filter(
 		(activity) => activity.owner === wallet.address && isTransactionActivityVisible(activity.phase)
 	);
@@ -2708,11 +2724,18 @@ function OperationActivityControl() {
 	};
 	React.useEffect(() => {
 		if (!open) return;
-		const close = (event: MouseEvent) => {
+		const closeFromOutside = (event: PointerEvent) => {
 			if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
 		};
-		window.addEventListener('mousedown', close);
-		return () => window.removeEventListener('mousedown', close);
+		const closeFromKeyboard = (event: KeyboardEvent) => {
+			handleActivityPopoverKey(event, () => setOpen(false), triggerRef);
+		};
+		document.addEventListener('pointerdown', closeFromOutside);
+		document.addEventListener('keydown', closeFromKeyboard);
+		return () => {
+			document.removeEventListener('pointerdown', closeFromOutside);
+			document.removeEventListener('keydown', closeFromKeyboard);
+		};
 	}, [open]);
 	if (!activityCount) return null;
 	return (
@@ -2720,11 +2743,13 @@ function OperationActivityControl() {
 			<Tooltip content="Transaction activity" disabled={open}>
 				{(tooltipId) => (
 					<Button
+						aria-controls={open ? menuId : undefined}
 						aria-describedby={tooltipId}
 						aria-expanded={open}
 						aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
 						className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
 						data-activity-owner="global"
+						ref={triggerRef}
 						size="custom"
 						onClick={() => setOpen((value) => !value)}
 						type="button"
@@ -2736,7 +2761,7 @@ function OperationActivityControl() {
 				)}
 			</Tooltip>
 			{open ? (
-				<section aria-label="Transaction activity" className="operation-activity-menu">
+				<section aria-label="Transaction activity" className="operation-activity-menu" id={menuId}>
 					<div className="operation-activity-heading">
 						<div>
 							<strong>Transaction activity</strong>
