@@ -95,7 +95,7 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
-import type { CollectionMintEstimate, CollectionMintPhase, MintUploadTransaction } from 'api/asset-mint';
+import type { CollectionMintPhase, MintUploadTransaction } from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
@@ -232,6 +232,12 @@ import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
 
+import {
+	collectionAppendCanSubmit,
+	collectionAppendEstimateReducer,
+	type CollectionAppendEstimateState,
+	idleCollectionAppendEstimate,
+} from './collection-append-estimate';
 import { createGlobalActivityPager, type GlobalActivityFilter, mergeIndexedActivityEvent } from './global-activity';
 import { createHomeListingCrawl, type HomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
@@ -6239,8 +6245,11 @@ function CollectionView() {
 	);
 	const [appendOpen, setAppendOpen] = React.useState(false);
 	const [appendFiles, setAppendFiles] = React.useState<File[]>([]);
-	const [appendEstimate, setAppendEstimate] = React.useState<CollectionMintEstimate | null>(null);
-	const [appendEstimating, setAppendEstimating] = React.useState(false);
+	const [appendEstimate, dispatchAppendEstimate] = React.useReducer(
+		collectionAppendEstimateReducer,
+		idleCollectionAppendEstimate
+	);
+	const [appendEstimateRetry, setAppendEstimateRetry] = React.useState(0);
 	const [appendWorking, setAppendWorking] = React.useState(false);
 	const [appendStatus, setAppendStatus] = React.useState('');
 	const [appendError, setAppendError] = React.useState<string | null>(null);
@@ -6357,11 +6366,11 @@ function CollectionView() {
 	const collectionStatusRef = React.useRef<HTMLSpanElement>(null);
 	React.useEffect(() => {
 		if (!appendOpen || !appendFiles.length || !ownedCollection) {
-			setAppendEstimate(null);
+			dispatchAppendEstimate({ type: 'reset' });
 			return;
 		}
 		const controller = new AbortController();
-		setAppendEstimating(true);
+		dispatchAppendEstimate({ type: 'start' });
 		void import('api/asset-mint')
 			.then(({ CollectionMintClient }) =>
 				new CollectionMintClient().estimateAppend(
@@ -6373,19 +6382,23 @@ function CollectionView() {
 			)
 			.then(
 				(estimate) => {
-					if (!controller.signal.aborted) setAppendEstimate(estimate);
+					if (!controller.signal.aborted) dispatchAppendEstimate({ type: 'resolve', estimate });
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setAppendError(errorMessage(cause));
+					if (!controller.signal.aborted)
+						dispatchAppendEstimate({ type: 'reject', message: errorMessage(cause) });
 				}
-			)
-			.finally(() => {
-				if (!controller.signal.aborted) setAppendEstimating(false);
-			});
+			);
 		return () => controller.abort();
-	}, [appendFiles, appendOpen, ownedCollection, reusedAppendAssets]);
+	}, [appendFiles, appendOpen, ownedCollection, reusedAppendAssets, appendEstimateRetry]);
 	const appendToCollection = async () => {
-		if (!collection || !ownedCollection || !wallet.address || !appendFiles.length || appendWorking) return;
+		if (
+			!collection ||
+			!ownedCollection ||
+			!wallet.address ||
+			!collectionAppendCanSubmit({ estimate: appendEstimate, files: appendFiles, working: appendWorking })
+		)
+			return;
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
 		setAppendError(null);
 		setAppendWorking(true);
@@ -6434,7 +6447,7 @@ function CollectionView() {
 				extended: true,
 			});
 			setAppendFiles([]);
-			setAppendEstimate(null);
+			dispatchAppendEstimate({ type: 'reset' });
 			setAppendOpen(false);
 		} catch (cause) {
 			const message = errorMessage(cause);
@@ -7302,9 +7315,9 @@ function CollectionView() {
 					collectionName={collection.name}
 					error={appendError}
 					estimate={appendEstimate}
-					estimating={appendEstimating}
 					files={appendFiles}
 					onClose={() => setAppendOpen(false)}
+					onRetryEstimate={() => setAppendEstimateRetry((count) => count + 1)}
 					onSelectFiles={(files) => {
 						setAppendFiles(files.slice(0, 10));
 						setAppendError(null);
@@ -7883,9 +7896,9 @@ export function CollectionAppendDialog({
 	collectionName,
 	error,
 	estimate,
-	estimating,
 	files,
 	onClose,
+	onRetryEstimate,
 	onSelectFiles,
 	onSubmit,
 	previews,
@@ -7894,11 +7907,12 @@ export function CollectionAppendDialog({
 	working,
 }: {
 	collectionName: string;
+	/** The last append (submit) failure; estimate failures live in `estimate`. */
 	error: string | null;
-	estimate: CollectionMintEstimate | null;
-	estimating: boolean;
+	estimate: CollectionAppendEstimateState;
 	files: File[];
 	onClose(): void;
+	onRetryEstimate(): void;
 	onSelectFiles(files: File[]): void;
 	onSubmit(): void;
 	previews: Array<{ file: File; url: string }>;
@@ -7909,6 +7923,7 @@ export function CollectionAppendDialog({
 	const close = () => {
 		if (!working) onClose();
 	};
+	const estimating = estimate.status === 'checking';
 	const restoreTarget = React.useCallback(() => restoreTargetRef.current, [restoreTargetRef]);
 	const dialogRef = useDialogFocus<HTMLElement>(true, close, restoreTarget);
 	return (
@@ -7976,22 +7991,36 @@ export function CollectionAppendDialog({
 						<span aria-atomic="true" role="status">
 							{estimating ? '' : status}
 						</span>
-						{estimating ? 'Checking Arweave storage cost…' : status ? null : 'Ready'}
+						{estimating
+							? 'Checking Arweave storage cost…'
+							: status
+							? null
+							: estimate.status === 'failed'
+							? 'Storage cost unavailable'
+							: 'Ready'}
 					</span>
 					<strong>
-						{estimate ? (
-							<ArCurrencyText>{`${winstonToAr(estimate.total.toString())} AR · ${
-								estimate.transactionCount
+						{estimate.status === 'ready' ? (
+							<ArCurrencyText>{`${winstonToAr(estimate.estimate.total.toString())} AR · ${
+								estimate.estimate.transactionCount
 							} transactions`}</ArCurrencyText>
 						) : (
 							'—'
 						)}
 					</strong>
 				</div>
+				{estimate.status === 'failed' ? (
+					<>
+						<OperationErrorAlert title="Could not check the storage cost" message={estimate.message} />
+						<Button className="with-icon" disabled={working} onClick={onRetryEstimate} type="button">
+							<RefreshCw aria-hidden="true" className="ui-icon ui-icon--sm" /> Retry cost check
+						</Button>
+					</>
+				) : null}
 				{error ? <OperationErrorAlert title="Could not add assets" message={error} /> : null}
 				<Button
 					className="wide"
-					disabled={!files.length || !estimate || working}
+					disabled={!collectionAppendCanSubmit({ estimate, files, working })}
 					onClick={onSubmit}
 					type="button"
 				>
