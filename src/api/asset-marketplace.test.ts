@@ -842,6 +842,77 @@ describe('asset state', () => {
 		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
 	});
 
+	it('bounds linked order fan-out to a few in-flight reads and keeps order messages header-only', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const orderIds = Array.from({ length: 12 }, (_, index) => `${'Q'.repeat(41)}${String(index).padStart(2, '0')}`);
+		const orderLink = (index: number) => `${'L'.repeat(41)}${String(index).padStart(2, '0')}`;
+		const requests: Array<{ url: string; method: string }> = [];
+		let inFlight = 0;
+		let maximum = 0;
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input, init = {}) => {
+				const url = String(input);
+				requests.push({ url, method: init.method ?? 'GET' });
+				inFlight += 1;
+				maximum = Math.max(maximum, inFlight);
+				await new Promise((resolve) => setTimeout(resolve, 1));
+				inFlight -= 1;
+				if (url.endsWith('/balances/device')) return new Response('message@1.0');
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ [owner]: '12' });
+				}
+				if (url.endsWith(`${ordersLink}~message@1.0`)) {
+					return new Response(null, {
+						headers: Object.fromEntries(
+							orderIds.map((id, index) => [id.toLowerCase(), `ao:${orderLink(index)}`])
+						),
+					});
+				}
+				const index = Array.from({ length: orderIds.length }, (_, held) => held).find((held) =>
+					url.includes(orderLink(held))
+				);
+				if (index !== undefined && url.endsWith('~message@1.0/status')) return new Response('open');
+				if (index !== undefined) {
+					// Half of the orders shadow their status with an HTTP status code,
+					// so the scalar status reads share the same budget.
+					const status = index % 2 ? '200' : 'open';
+					return new Response(null, {
+						headers: Object.fromEntries(
+							Object.entries(order(orderIds[index], { status })).map(([name, value]) => [
+								name,
+								String(value),
+							])
+						),
+					});
+				}
+				return new Response(null, {
+					headers: {
+						balances: `ao:${balancesLink}`,
+						'execution-device': 'token@1.0',
+						orders: `ao:${ordersLink}`,
+						'total-supply': '12',
+					},
+				});
+			},
+		});
+
+		expect(Object.keys(result.state.orders).sort()).toEqual([...orderIds].sort());
+		expect(Object.values(result.state.orders).every((held) => held.status === 'open')).toBe(true);
+		expect(maximum).toBe(4);
+		expect(inFlight).toBe(0);
+		const messageReads = requests.filter(({ url }) => url.endsWith('~message@1.0'));
+		expect(messageReads).toHaveLength(orderIds.length + 1);
+		expect(messageReads.every(({ method }) => method === 'HEAD')).toBe(true);
+		expect(requests.filter(({ url }) => url.endsWith('~message@1.0/status'))).toHaveLength(orderIds.length / 2);
+		expect(
+			requests
+				.filter(({ url }) => /~process@1\.0\/compute[^/]*$/.test(url))
+				.every(({ method }) => method === 'HEAD')
+		).toBe(true);
+	});
+
 	it('routes background observation through PermawebOS despite a legacy provider label', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		let requested = '';

@@ -1,3 +1,4 @@
+import { createConcurrencyLimit } from 'helpers/concurrency';
 import { arweaveGatewayFromLocation, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
 import {
 	accountAddress,
@@ -100,6 +101,8 @@ const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
 const PASSIVE_STATE_MAX_AGES = [30, 60, 120] as const;
 const LINKED_STATE_TABLES = ['balances', 'orders'] as const;
+/** Linked-table messages one state read may have in flight at once, across all of its tables. */
+const LINKED_STATE_READ_CONCURRENCY = 4;
 const DIRECT_JSON_BALANCE_METADATA = new Set([
 	'ao-body-key',
 	'ao-types',
@@ -692,6 +695,7 @@ async function parseStateResponse(
 	includeBalances = true
 ): Promise<AssetState> {
 	const raw = await responseMessage(response);
+	const limit = createConcurrencyLimit(LINKED_STATE_READ_CONCURRENCY);
 	const linked = await Promise.all(
 		LINKED_STATE_TABLES.flatMap((key) => {
 			if (key === 'balances' && !includeBalances) return [];
@@ -699,7 +703,7 @@ async function parseStateResponse(
 			if (raw[key] === undefined) return [];
 			const id = linkedMessageId(raw[key]);
 			if (!id) throw new TypeError('invalid-asset-state-link');
-			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher)];
+			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher, limit)];
 		})
 	);
 	const linkedValue = await readLinkedValue(raw.value, base, requestInit, fetcher);
@@ -740,7 +744,8 @@ async function readLinkedStateTable(
 	statePath: string,
 	base: string,
 	requestInit: RequestInit,
-	fetcher: typeof fetch
+	fetcher: typeof fetch,
+	limit: ReturnType<typeof createConcurrencyLimit>
 ): Promise<[string, Record<string, unknown>, boolean?]> {
 	const throwIfAborted = () => requestInit.signal?.throwIfAborted();
 	const messages = new Map<string, Promise<Record<string, unknown>>>();
@@ -752,10 +757,17 @@ async function readLinkedStateTable(
 		const existing = messages.get(messageId);
 		if (existing) return existing;
 		const serialized = key === 'balances';
-		const pending = fetcher(`${base}${messageId}~message@1.0${serialized ? '/serialize~json@1.0' : ''}`, {
-			...(serialized ? {} : { method: 'HEAD' as const }),
-			signal: requestInit.signal,
-		}).then(async (response) => {
+		// Order tables are read as HEAD so only HTTPSig headers move; balance
+		// tables use the JSON serialization of just the linked message.
+		const pending = limit(async () => {
+			throwIfAborted();
+			const response = await fetcher(
+				`${base}${messageId}~message@1.0${serialized ? '/serialize~json@1.0' : ''}`,
+				{
+					...(serialized ? {} : { method: 'HEAD' as const }),
+					signal: requestInit.signal,
+				}
+			);
 			throwIfAborted();
 			if (!response.ok) throw new Error(`HTTP ${response.status}`);
 			if (serialized) {
@@ -770,16 +782,18 @@ async function readLinkedStateTable(
 		messages.set(messageId, pending);
 		return pending;
 	};
-	const readScalar = async (messageId: string, field: string): Promise<string> => {
-		const response = await fetcher(`${base}${messageId}~message@1.0/${field}`, {
-			signal: requestInit.signal,
+	const readScalar = (messageId: string, field: string): Promise<string> =>
+		limit(async () => {
+			throwIfAborted();
+			const response = await fetcher(`${base}${messageId}~message@1.0/${field}`, {
+				signal: requestInit.signal,
+			});
+			throwIfAborted();
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const value = await response.text();
+			throwIfAborted();
+			return value;
 		});
-		throwIfAborted();
-		if (!response.ok) throw new Error(`HTTP ${response.status}`);
-		const value = await response.text();
-		throwIfAborted();
-		return value;
-	};
 	let requireDirectJsonBalance = false;
 	if (key === 'balances') {
 		const allowNotFound = (
@@ -788,9 +802,11 @@ async function readLinkedStateTable(
 			}
 		).allowNotFound;
 		try {
-			const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
-				signal: requestInit.signal,
-			});
+			const deviceResponse = await limit(() =>
+				(allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
+					signal: requestInit.signal,
+				})
+			);
 			throwIfAborted();
 			if (deviceResponse.status === 404 || !deviceResponse.ok) {
 				// A legacy routed fetch can reject or hide the optional 404 probe.
