@@ -9153,6 +9153,9 @@ body input:focus-visible {
 	color: var(--muted);
 	font-size: var(--type-small);
 }
+.mint-live-notice-attention {
+	border-color: var(--warning-border);
+}
 
 .home-shell {
 	height: calc(100vh - 122px);

@@ -305,6 +305,52 @@ export function atomicOperationActivityId(assetId: string, owner: string) {
 	return `atomic:${assetId}:${owner}`;
 }
 
+/** A terminal phase reached by an activity whose panel was hidden at that moment. */
+export type SettledWhileHiddenPhase = 'done' | 'error';
+
+/**
+ * The explicit "settled while hidden" transition of an activity panel.
+ *
+ * An activity that reaches `done` or `error` while it is not the active (visible) panel has no
+ * dialog left to show or announce the result, so the caller must raise a background notice.
+ * It returns null when the panel is visible (its own dialog reports the result), when the next
+ * phase is not terminal, and when the phase is unchanged, so a re-reported `error` status never
+ * notifies twice.
+ */
+export function settledWhileHidden(
+	previous: { id: string; phase: string } | undefined,
+	nextPhase: string,
+	activeId: string | null
+): SettledWhileHiddenPhase | null {
+	if (!previous || previous.id === activeId) return null;
+	if (nextPhase !== 'done' && nextPhase !== 'error') return null;
+	return previous.phase === nextPhase ? null : nextPhase;
+}
+
+export type BackgroundOperationOutcome = Pick<
+	OperationActivity,
+	'id' | 'asset' | 'collectionId' | 'owner' | 'operation' | 'status'
+> & { phase: SettledWhileHiddenPhase };
+
+/** The outcome a hidden marketplace operation settled with, or null when no notice is owed. */
+export function backgroundOperationOutcome(
+	previous: Pick<OperationActivity, 'id' | 'asset' | 'collectionId' | 'owner' | 'operation' | 'phase'> | undefined,
+	patch: Pick<OperationActivity, 'phase' | 'status'>,
+	activeId: string | null
+): BackgroundOperationOutcome | null {
+	const phase = settledWhileHidden(previous, patch.phase, activeId);
+	if (!previous || !phase) return null;
+	return {
+		id: previous.id,
+		asset: previous.asset,
+		collectionId: previous.collectionId,
+		owner: previous.owner,
+		operation: previous.operation,
+		status: patch.status,
+		phase,
+	};
+}
+
 export function saveOperationActivities(
 	storage: ActivityStorage,
 	activities: OperationActivity[],

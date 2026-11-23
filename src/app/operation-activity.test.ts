@@ -4,6 +4,7 @@ import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 
 import {
 	atomicPurchaseRecoveryCanBeDiscarded,
+	backgroundOperationOutcome,
 	deriveFungibleOperationActivities,
 	deriveOperationActivities,
 	discoverFungibleOperationActivities,
@@ -22,6 +23,7 @@ import {
 	removeFungibleOperationActivity,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
+	settledWhileHidden,
 	upsertFungibleOperationActivity,
 } from './operation-activity';
 
@@ -493,5 +495,65 @@ describe('fungible operation activity persistence', () => {
 		expect(discoverFungibleOperationActivities(storage, owner, [])).toMatchObject([
 			{ asset: { id: 'asset-1', name: 'Weave Credit' }, collectionId: 'fungible-tokens' },
 		]);
+	});
+});
+
+describe('settled-while-hidden activity transition', () => {
+	const hidden = activity({ id: 'activity-1', phase: 'working' });
+
+	it('reports a hidden operation that completes so its result can be noticed', () => {
+		expect(backgroundOperationOutcome(hidden, { phase: 'done', status: 'Listing is live' }, null)).toEqual({
+			id: 'activity-1',
+			asset: hidden.asset,
+			collectionId: 'collection-1',
+			owner,
+			operation: { kind: 'sell', value: '0.5' },
+			status: 'Listing is live',
+			phase: 'done',
+		});
+		expect(backgroundOperationOutcome(hidden, { phase: 'done', status: 'Listing is live' }, 'other')).toMatchObject(
+			{
+				phase: 'done',
+			}
+		);
+	});
+
+	it('reports a hidden operation that fails with its failure status', () => {
+		expect(
+			backgroundOperationOutcome(hidden, { phase: 'error', status: 'Payment release failed' }, null)
+		).toMatchObject({ id: 'activity-1', phase: 'error', status: 'Payment release failed' });
+	});
+
+	it('leaves a visible operation to announce its own result', () => {
+		expect(
+			backgroundOperationOutcome(hidden, { phase: 'done', status: 'Listing is live' }, 'activity-1')
+		).toBeNull();
+		expect(backgroundOperationOutcome(hidden, { phase: 'error', status: 'Failed' }, 'activity-1')).toBeNull();
+	});
+
+	it('does not notice a result the user already saw once the finished panel is deactivated', () => {
+		const seen = activity({ phase: 'done', status: 'Listing is live' });
+		expect(backgroundOperationOutcome(seen, { phase: 'done', status: 'Listing is live' }, null)).toBeNull();
+	});
+
+	it('does not notify twice when a hidden error is re-reported', () => {
+		const failed = activity({ phase: 'error', status: 'Payment release failed' });
+		expect(backgroundOperationOutcome(failed, { phase: 'error', status: 'Still failing' }, null)).toBeNull();
+	});
+
+	it('ignores non-terminal progress and unknown activities', () => {
+		expect(
+			backgroundOperationOutcome(hidden, { phase: 'working', status: 'Watching Arweave confirmations…' }, null)
+		).toBeNull();
+		expect(backgroundOperationOutcome(undefined, { phase: 'done', status: 'Listing is live' }, null)).toBeNull();
+	});
+
+	it('applies the same transition to upload panels, where tracking is not terminal', () => {
+		const upload = { id: 'upload-1', phase: 'working' };
+		expect(settledWhileHidden(upload, 'done', null)).toBe('done');
+		expect(settledWhileHidden(upload, 'error', 'another-upload')).toBe('error');
+		expect(settledWhileHidden(upload, 'tracking', null)).toBeNull();
+		expect(settledWhileHidden(upload, 'done', 'upload-1')).toBeNull();
+		expect(settledWhileHidden({ id: 'upload-1', phase: 'error' }, 'error', null)).toBeNull();
 	});
 });
