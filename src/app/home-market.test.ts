@@ -11,6 +11,10 @@ import {
 } from 'api/collections';
 
 import {
+	ACTIVITY_CATALOGUE_QUIET_MS,
+	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
+	activityCatalogueMembershipKey,
+	activityCatalogueRevealDelay,
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembershipVerified,
@@ -42,6 +46,7 @@ import {
 	globalActivityCollection,
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
+	globalCatalogueActivity,
 	HOME_ASSET_PAGE_SIZE,
 	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
@@ -1572,6 +1577,64 @@ describe('Home market summary retries', () => {
 		expect(globalActivityCollection(collections, nameId)?.id).toBe('names');
 		expect(globalActivityCollection(collections, hiddenId)).toBeUndefined();
 		expect(globalActivityCollection(collections, 'x'.repeat(43))).toBeUndefined();
+	});
+
+	it('keeps raw activity rows so collections that load later reveal theirs without a re-read', () => {
+		const tokenId = 't'.repeat(43);
+		const imageId = 'i'.repeat(43);
+		const foreignId = 'f'.repeat(43);
+		const event = (id: string, processId: string) => ({ id, processId } as CollectionActivityEvent);
+		const events = [event('1', imageId), event('2', foreignId), event('3', tokenId)];
+		const tokens: Collection = {
+			id: 'tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [{ id: tokenId, name: 'Token' }],
+		};
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [{ id: imageId, name: 'Image' }],
+		};
+
+		expect(globalCatalogueActivity(events, []).map((item) => item.id)).toEqual([]);
+		expect(globalCatalogueActivity(events, [tokens]).map((item) => item.id)).toEqual(['3']);
+		// The same loaded rows, filtered again once a streamed collection claims one; gateway order holds.
+		expect(globalCatalogueActivity(events, [tokens, images]).map((item) => item.id)).toEqual(['1', '3']);
+	});
+
+	it('paints activity rows after a short catalogue quiet time, capped from market settle', () => {
+		expect(activityCatalogueRevealDelay(1_000, 1_000)).toBe(ACTIVITY_CATALOGUE_QUIET_MS);
+		// A collection streamed in 2.2 s after settle: only the time left to the cap remains.
+		expect(activityCatalogueRevealDelay(1_000, 3_200)).toBe(ACTIVITY_CATALOGUE_WAIT_CAP_MS - 2_200);
+		expect(activityCatalogueRevealDelay(1_000, 1_000 + ACTIVITY_CATALOGUE_WAIT_CAP_MS + 1)).toBe(0);
+	});
+
+	it('keys activity catalogue membership on collections and member counts, not names', () => {
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [{ id: 'i'.repeat(43), name: 'iiiiii…iiiii' }],
+		};
+		const names: Collection = {
+			id: 'names',
+			name: 'Names',
+			description: '',
+			kind: 'names',
+			assets: [],
+			namespace: { manifestId: 'm'.repeat(43), namesById: { ['n'.repeat(43)]: 'name' } },
+		};
+		const key = activityCatalogueMembershipKey([images, names]);
+		expect(key).toBe('images:1,names:1');
+		expect(
+			activityCatalogueMembershipKey([{ ...images, assets: [{ ...images.assets[0], name: 'Named' }] }, names])
+		).toBe(key);
+		expect(activityCatalogueMembershipKey([images])).not.toBe(key);
 	});
 
 	it('filters global activity by submitted market action', () => {

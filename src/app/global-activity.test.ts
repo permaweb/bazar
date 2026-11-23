@@ -52,6 +52,21 @@ describe('global activity native pagination', () => {
 		]);
 	});
 
+	it('keeps every indexed row when no membership filter is given, for a render-time catalogue filter', async () => {
+		const requests: unknown[] = [];
+		const pager = createGlobalActivityPager({
+			fetch: vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+				requests.push(JSON.parse(String(init?.body)));
+				return response([edge('a'), edge('f', 'raw-tail', foreign)]);
+			}),
+		});
+		const page = await pager.load('all');
+		expect(page.events.map((event) => event.processId)).toEqual([asset, foreign]);
+		expect(requests).toHaveLength(1);
+		// A later render with a larger catalogue reads the same page from memory.
+		expect(pager.get('all').events).toBe(page.events);
+	});
+
 	it('advances past an empty accepted page only on the next explicit load', async () => {
 		const { pager, requests } = setup([
 			response([edge('f', 'foreign-tail', foreign)]),

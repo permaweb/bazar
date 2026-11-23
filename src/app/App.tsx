@@ -5239,6 +5239,14 @@ export function globalActivityCollection(collections: Collection[], processId: s
 	return indexed.get(processId);
 }
 
+/**
+ * The loaded activity rows the catalogue claims as it stands now. The global pager keeps every
+ * indexed row, so a collection that loads after a page landed reveals its rows on the next render.
+ */
+export function globalCatalogueActivity(events: CollectionActivityEvent[], collections: Collection[]) {
+	return events.filter((event) => Boolean(globalActivityCollection(collections, event.processId)));
+}
+
 export function globalActivityRecipientIds(collections: Collection[]) {
 	const ids = new Set<string>();
 	for (const collection of collections) {
@@ -5285,6 +5293,54 @@ export function visibleActivityAssets(
 	});
 }
 
+/** Quiet time after the catalogue last changed before activity rows are painted. */
+export const ACTIVITY_CATALOGUE_QUIET_MS = 600;
+/** Longest the rows wait for that quiet time once the market shell has settled. */
+export const ACTIVITY_CATALOGUE_WAIT_CAP_MS = 2_500;
+
+/** Which collections, and how many members each, the catalogue holds; name or media updates do not count. */
+export function activityCatalogueMembershipKey(collections: readonly Collection[]) {
+	return collections
+		.map(
+			(collection) =>
+				`${collection.id}:${
+					collection.kind === 'names'
+						? Object.keys(collection.namespace?.namesById ?? {}).length
+						: collection.assets.length
+				}`
+		)
+		.join(',');
+}
+
+/**
+ * How long to wait before painting activity rows, measured from the latest catalogue change: a
+ * short quiet time, so collections that stream in just after the market settles are already
+ * counted, but never past the cap measured from when the market settled.
+ */
+export function activityCatalogueRevealDelay(
+	settledAt: number,
+	now: number,
+	quietMs = ACTIVITY_CATALOGUE_QUIET_MS,
+	capMs = ACTIVITY_CATALOGUE_WAIT_CAP_MS
+) {
+	return Math.max(0, Math.min(quietMs, settledAt + capMs - now));
+}
+
+/** True once the market has settled and its membership has been quiet briefly (or the cap passed). Stays true. */
+function useActivityCatalogueRevealed(marketLoading: boolean, collections: readonly Collection[]) {
+	const [revealed, setRevealed] = React.useState(false);
+	const settledAt = React.useRef<number | null>(null);
+	const membershipKey = React.useMemo(() => activityCatalogueMembershipKey(collections), [collections]);
+	React.useEffect(() => {
+		if (revealed || marketLoading) return;
+		const now = Date.now();
+		settledAt.current ??= now;
+		const timer = window.setTimeout(() => setRevealed(true), activityCatalogueRevealDelay(settledAt.current, now));
+		return () => window.clearTimeout(timer);
+	}, [marketLoading, membershipKey, revealed]);
+	return revealed;
+}
+
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
 	const { rememberIndexedAssets } = React.useContext(MarketContext);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
@@ -5296,17 +5352,16 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const [error, setError] = React.useState<string | null>(null);
 	const [announcement, setAnnouncement] = React.useState('');
 	const activityListId = React.useId();
-	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
-	const activityScope = React.useMemo(() => JSON.stringify([...activityRecipients].sort()), [activityRecipients]);
-	const pager = React.useMemo(() => {
-		const recipients = new Set<string>(JSON.parse(activityScope));
-		return createGlobalActivityPager({ acceptProcessId: (id) => recipients.has(id) });
-	}, [activityScope]);
+	// One pager for the panel's lifetime. It keeps every indexed row and the catalogue filter runs at
+	// render, so collections streaming in (or growing after the market settles) reveal their rows
+	// instead of discarding the loaded page and aborting the read in flight.
+	const [pager] = React.useState(() => createGlobalActivityPager({}));
+	const loadAnnouncementPending = React.useRef(false);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
 		setAnnouncement('');
-	}, [activityFilter, pager]);
+	}, [activityFilter]);
 
 	React.useEffect(() => {
 		const controller = new AbortController();
@@ -5315,12 +5370,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setHasNextPage(cached.hasNextPage);
 		setError(null);
 		setLoading(true);
-		if (marketLoading) return () => controller.abort();
-		if (!activityRecipients.length) {
-			setLoading(false);
-			setHasNextPage(false);
-			return () => controller.abort();
-		}
 		void (async () => {
 			let current = cached;
 			try {
@@ -5333,7 +5382,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				setEvents(current.events);
 				setHasNextPage(current.hasNextPage);
 				if (request.kind === 'more') setActivityLimit((limit) => limit + 20);
-				setAnnouncement(`${current.events.length.toLocaleString()} indexed events loaded.`);
+				loadAnnouncementPending.current = true;
 			} catch (cause) {
 				if (controller.signal.aborted) return;
 				setError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
@@ -5343,11 +5392,23 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			setLoading(false);
 		})();
 		return () => controller.abort();
-	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
+	}, [activityFilter, pager, request]);
 
-	const filteredEvents = filterGlobalActivity(events, activityFilter);
+	const catalogueEvents = React.useMemo(() => globalCatalogueActivity(events, collections), [collections, events]);
+	const claimedEvents = filterGlobalActivity(catalogueEvents, activityFilter);
+	// The page is read in parallel with the catalogue, but rows wait for the catalogue to settle so
+	// collections streaming in do not insert rows between ones already painted. Names for the rows
+	// already claimed are asked for meanwhile, so they paint named.
+	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections);
+	const filteredEvents = catalogueRevealed ? claimedEvents : [];
+	const busy = loading || (!catalogueRevealed && !error);
+	React.useEffect(() => {
+		if (!catalogueRevealed || loading || !loadAnnouncementPending.current) return;
+		loadAnnouncementPending.current = false;
+		setAnnouncement(`${catalogueEvents.length.toLocaleString()} indexed events loaded.`);
+	}, [catalogueEvents.length, catalogueRevealed, loading]);
 	useIndexedAssetNames(
-		visibleActivityAssets(filteredEvents.slice(0, activityLimit), (event) =>
+		visibleActivityAssets(claimedEvents.slice(0, activityLimit), (event) =>
 			globalActivityCollection(collections, event.processId)
 		),
 		rememberIndexedAssets
@@ -5367,7 +5428,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const canReveal = activityLimit < filteredEvents.length;
 	return (
 		<div
-			aria-busy={loading}
+			aria-busy={busy}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
@@ -5390,13 +5451,13 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</Button>
 				))}
 			</div>
-			{loading ? (
+			{busy ? (
 				<div className="global-activity-loading">
-					<Loading label={events.length ? 'Loading activity…' : 'Loading recent activity…'} />
+					<Loading label={filteredEvents.length ? 'Loading activity…' : 'Loading recent activity…'} />
 				</div>
 			) : null}
 			{error ? (
-				events.length ? (
+				filteredEvents.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
 							This page could not be loaded. Your loaded activity is still available. {error}
@@ -5418,7 +5479,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				}`}
 				events={filteredEvents.slice(0, activityLimit)}
 				id={activityListId}
-				loading={loading}
+				loading={busy}
 				resolveAsset={(event) => {
 					const collection = resolveCollection(event);
 					return collection ? collectionAsset(collection, event.processId) : undefined;
@@ -5428,7 +5489,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			<p className="sr-only" role="status" aria-live="polite">
 				{announcement}
 			</p>
-			{!loading && !error && !filteredEvents.length ? (
+			{!busy && !error && !filteredEvents.length ? (
 				<div className="empty-state">
 					<h3>No matching activity loaded</h3>
 					<p>
@@ -5442,7 +5503,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				<Button
 					aria-controls={activityListId}
 					className="load-more"
-					disabled={loading}
+					disabled={busy}
 					size="custom"
 					type="button"
 					onClick={() => {
@@ -5453,14 +5514,14 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 								globalActivityRevealDescription(
 									nextLimit,
 									filteredEvents.length,
-									events.length,
+									catalogueEvents.length,
 									activityFilter !== 'all'
 								)
 							);
 						} else requestPage('more');
 					}}
 				>
-					{loading
+					{busy
 						? 'Loading activity…'
 						: canReveal
 						? `Show ${Math.min(20, filteredEvents.length - activityLimit)} more events`
@@ -5468,7 +5529,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						? 'Load older activity'
 						: 'Check older activity'}
 				</Button>
-			) : !loading && !error ? (
+			) : !busy && !error ? (
 				<p className="collection-result-count">End of indexed activity for this filter.</p>
 			) : null}
 		</div>
