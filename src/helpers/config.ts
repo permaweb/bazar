@@ -166,9 +166,6 @@ export function arweaveGraphqlEndpoint(): string {
 	return graphqlEndpoints[0];
 }
 
-/** Arweave content gateways tried, in order, after the selected and same-origin gateways. */
-export const ARWEAVE_CONTENT_FALLBACK_GATEWAYS = ['https://arweave.net'] as const;
-
 /**
  * arweave.net (and its subdomains, such as bazar.arweave.net) redirects `/<id>` to a `<b32>`
  * sandbox that answers 200 with an empty body for process-with-data items, so content reads use
@@ -192,8 +189,9 @@ export function arweaveDataUrl(id: string, gateway = arweaveGatewayFromLocation(
 
 /**
  * Content URLs for one Arweave item: the PermawebOS permanent-content provider (or the selected
- * gateway), a same-origin arweave.net gateway, the caller's URL, then arweave.net. An active
- * PermawebOS network policy names its own content providers, so that fallback is left out.
+ * gateway), a same-origin arweave.net gateway, the caller's URL, then the deployment's configured
+ * default gateway (`VITE_ARWEAVE_GATEWAY`, else arweave.net). An active PermawebOS network policy
+ * names its own content providers, so that fallback is left out.
  */
 export function arweaveDataFallbackUrls(
 	value: string,
@@ -221,7 +219,7 @@ export function arweaveDataFallbackUrls(
 			arweaveDataUrl(id, arweaveGatewayFromLocation(location)),
 			...(isArweaveNetGateway(servingOrigin) ? [arweaveDataUrl(id, servingOrigin)] : []),
 			...(computeOrigins.has(url.origin) && url.origin !== new URL(permanent).origin ? [] : [requested]),
-			...(policy ? [] : ARWEAVE_CONTENT_FALLBACK_GATEWAYS.map((gateway) => arweaveDataUrl(id, gateway))),
+			...(policy ? [] : [arweaveDataUrl(id, DEFAULT_ARWEAVE_GATEWAY)]),
 		]),
 	];
 }

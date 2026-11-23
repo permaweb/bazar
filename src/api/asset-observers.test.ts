@@ -144,6 +144,7 @@ describe('assetObserverNetworkOptions outside PermawebOS', () => {
 		expect(options).not.toHaveProperty('relay-with');
 		expect(options.node).toBe('https://arweave.net');
 		expect(options.spider).toBe(false);
+		expect(options.useDefaultSeeds).toBe(false);
 		expect(options.seeds).toEqual(relayedNodes);
 		expect(JSON.stringify(options)).not.toMatch(/ardrive|ar-io|vilenarios|frostor|permagate/);
 		expect(options.transport).toBeInstanceOf(GatewayFirstObserverTransport);

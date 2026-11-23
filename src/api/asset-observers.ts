@@ -92,6 +92,9 @@ export function assetObserverNetworkOptions(location: Location = window.location
 		// https page without a relay, and refused by a relay that admits only
 		// named hosts. Probing them would only spend relay requests.
 		spider: false,
+		// No library default seed: observers are the configured gateway and the configured
+		// Arweave nodes only.
+		useDefaultSeeds: false,
 		fetch,
 		transport: new GatewayFirstObserverTransport({
 			fetch,

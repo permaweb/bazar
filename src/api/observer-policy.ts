@@ -5,9 +5,10 @@ export const ARWEAVE_OBSERVER_PENDING_INTERVAL_MS = 9_000;
 
 /**
  * Arweave's own named nodes, used as observers beside the selected gateway
- * (arweave.net by default, which WeaveNetwork also seeds). They serve clear
- * http only, so an https page reaches them through the AO peer's
- * `~relay@1.0`; a relay that admits only named hosts (for example
+ * (`VITE_ARWEAVE_GATEWAY` / `?arweave-node=`, arweave.net by default). They are
+ * the only observer hosts Bazar names itself. They serve clear http only (no
+ * https on 443 or 1984, checked 2026-11-23), so an https page reaches them
+ * through the AO peer's `~relay@1.0`; a relay that admits only named hosts (for example
  * `hosts-allowed: [".arweave.xyz"]`) can reach them, whereas the bare
  * `ip:port` peers that `/peers` lists would be refused. A deployment replaces
  * the list with `VITE_ARWEAVE_OBSERVER_NODES` (comma-separated origins).

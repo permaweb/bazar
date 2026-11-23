@@ -466,10 +466,10 @@ describe('Arweave gateway routing', () => {
 		const config = await import('./config');
 		const id = 'A'.repeat(43);
 
+		// The configured gateway is also the last fallback: no gateway is added that config did not name.
 		expect(config.arweaveDataFallbackUrls(`https://bazar.arweave.net/${id}`, location())).toEqual([
 			`https://mystical.computer/${id}`,
 			`https://bazar.arweave.net/raw/${id}`,
-			`https://arweave.net/raw/${id}`,
 		]);
 	});
 
