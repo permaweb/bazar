@@ -138,6 +138,28 @@ export function isTerminalPurchaseFailureCode(code: string | null | undefined): 
 	return TERMINAL_PURCHASE_FAILURE_CODES.has(code ?? '');
 }
 
+/** Operations that sign one prepared transaction; purchases recover through their own flow. */
+export type SignedOperationKind = 'sell' | 'cancel' | 'transfer';
+
+const SIGNED_OPERATION_NOUN: Record<SignedOperationKind, string> = {
+	sell: 'listing',
+	cancel: 'cancellation',
+	transfer: 'transfer',
+};
+
+/** Shown when a signature was saved but its dispatch never left ('transaction-not-sent'). */
+export const NOT_SENT_RECOVERY_NOTE = 'No transaction was submitted. Retry this signature or discard it to start over.';
+
+/** Not-sent recovery copy named for the operation that was signed, shared by the NFT and token dialogs. */
+export function notSentRecoveryCopy(kind: SignedOperationKind) {
+	const noun = SIGNED_OPERATION_NOUN[kind];
+	return {
+		retry: `Retry ${noun}`,
+		discard: `Discard ${noun}`,
+		changed: `This saved ${noun} changed in another tab. Close this panel and review the active action.`,
+	};
+}
+
 export type MarketplaceRequestSource = 'compute' | 'index';
 export type MarketplaceFailureKind = 'rate-limited' | 'unavailable';
 

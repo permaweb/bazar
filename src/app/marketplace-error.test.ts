@@ -8,6 +8,8 @@ import {
 	marketplaceFailureKind,
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 	purchaseQuoteFailure,
 } from './marketplace-error';
 
@@ -178,5 +180,20 @@ describe('terminal purchase failures', () => {
 	it('keeps proof-mismatch copy consistent with resuming the saved purchase', () => {
 		expect(marketplaceErrorMessage(new Error('asset-purchase-proof-mismatch'))).toContain('continue here');
 		expect(marketplaceErrorMessage(new Error('asset-purchase-rejected'))).toContain('remains saved for review');
+	});
+});
+
+describe('not-sent recovery copy', () => {
+	it('names the signed operation instead of calling every signature a transfer', () => {
+		expect(notSentRecoveryCopy('sell')).toEqual({
+			retry: 'Retry listing',
+			discard: 'Discard listing',
+			changed: 'This saved listing changed in another tab. Close this panel and review the active action.',
+		});
+		expect(notSentRecoveryCopy('cancel').discard).toBe('Discard cancellation');
+		expect(notSentRecoveryCopy('transfer').retry).toBe('Retry transfer');
+		expect(NOT_SENT_RECOVERY_NOTE).toBe(
+			'No transaction was submitted. Retry this signature or discard it to start over.'
+		);
 	});
 });

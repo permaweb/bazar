@@ -244,7 +244,10 @@ import {
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
 	type MarketplaceRequestSource,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 	purchaseQuoteFailure,
+	type SignedOperationKind,
 } from './marketplace-error';
 import {
 	atomicOperationActivityId,
@@ -11673,6 +11676,58 @@ function OperationDialog({
 		setFailureKind(null);
 		setPhase('form');
 	};
+	const errorRecovery = atomicOperationRecovery({
+		kind: operation.kind,
+		failureKind,
+		hasTransaction: Boolean(transaction),
+		purchaseFailureCode: atomicPurchaseFailureCode(purchaseState),
+		recoverable,
+	});
+	const runRecoveryAction = (action: AtomicOperationRecoveryAction) => {
+		switch (action) {
+			case 'view-updated-asset':
+			case 'view-current-listing':
+				onClose(false);
+				return;
+			case 'start-fresh-purchase':
+				startFreshPurchase();
+				return;
+			case 'restart-purchase':
+				restartPurchase();
+				return;
+			case 'resign-seller-payment':
+			case 'retry-not-sent':
+			case 'resume-signed-transaction':
+				void submit();
+				return;
+			case 'discard-not-sent': {
+				if (!transaction || operation.kind === 'buy') return;
+				const conflict = discardUnsentAtomicSignature(
+					localStorage,
+					asset.id,
+					owner,
+					operation.kind,
+					transaction.id
+				);
+				if (conflict) {
+					setMessage(conflict);
+					return;
+				}
+				// Nothing reached the network, so there is no live state to refresh and nothing to resume later.
+				setTransaction(null);
+				onClose(false, false);
+				return;
+			}
+			case 'discard-rejected-signature':
+				if (transaction) discardRejectedSignatureAndSignAgain(transaction);
+				return;
+			case 'return-to-form':
+				setFailureKind(null);
+				setMessage('');
+				setPhase('form');
+				return;
+		}
+	};
 	const closeOrHide = () => {
 		const action = transactionDialogDismissAction(visiblePhase, recoverable && !terminalReservationFailure);
 		if (action.kind === 'close') {
@@ -12202,101 +12257,64 @@ function OperationDialog({
 				{visiblePhase === 'error' ? (
 					<div className="result error">
 						<AtomicOperationErrorAlert message={visibleMessage} />
-						{failureKind === 'market-state-changed' ? (
-							<Button data-dialog-initial type="button" onClick={() => onClose(false)} size="custom">
-								View updated asset
-							</Button>
-						) : operation.kind === 'buy' ? (
-							<>
-								<div className="settlement-receipt">
-									<div>
-										<span>Failed stage</span>
-										<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
-									</div>
-									<div>
-										<span>Seller</span>
-										<WalletAddress address={operation.order.creator} full label="seller" />
-									</div>
-									<div>
-										<span>Order</span>
+						{operation.kind === 'buy' && errorRecovery.purchaseReceipt ? (
+							<div className="settlement-receipt">
+								<div>
+									<span>Failed stage</span>
+									<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
+								</div>
+								<div>
+									<span>Seller</span>
+									<WalletAddress address={operation.order.creator} full label="seller" />
+								</div>
+								<div>
+									<span>Order</span>
+									<a
+										href={transactionExplorerUrl(operation.order.orderId)}
+										rel="noreferrer"
+										target="_blank"
+									>
+										<OperationExternalLink>{short(operation.order.orderId)}</OperationExternalLink>
+									</a>
+								</div>
+								<div className="settlement-receipt-links">
+									{purchaseState?.registration?.id ? (
 										<a
-											href={transactionExplorerUrl(operation.order.orderId)}
+											href={transactionExplorerUrl(purchaseState.registration.id)}
 											rel="noreferrer"
 											target="_blank"
 										>
 											<OperationExternalLink>
-												{short(operation.order.orderId)}
+												Reservation {short(purchaseState.registration.id)}
 											</OperationExternalLink>
 										</a>
-									</div>
-									<div className="settlement-receipt-links">
-										{purchaseState?.registration?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.registration.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Reservation {short(purchaseState.registration.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-										{purchaseState?.payment?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.payment.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Payment {short(purchaseState.payment.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-									</div>
+									) : null}
+									{purchaseState?.payment?.id ? (
+										<a
+											href={transactionExplorerUrl(purchaseState.payment.id)}
+											rel="noreferrer"
+											target="_blank"
+										>
+											<OperationExternalLink>
+												Payment {short(purchaseState.payment.id)}
+											</OperationExternalLink>
+										</a>
+									) : null}
 								</div>
-								{atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => onClose(false)} size="custom">
-										View current listing
-									</Button>
-								) : terminalReservationFailure ? (
-									<Button data-dialog-initial onClick={startFreshPurchase} size="custom">
-										Start a new purchase
-									</Button>
-								) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => void submit()} size="custom">
-										Sign a replacement seller payment
-									</Button>
-								) : (
-									<Button data-dialog-initial onClick={restartPurchase} size="custom">
-										{recoverable ? 'Continue saved purchase' : 'Try again'}
-									</Button>
-								)}
-							</>
-						) : failureKind === 'transaction-rejected' && transaction ? (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => discardRejectedSignatureAndSignAgain(transaction)}
-								variant="danger"
-							>
-								Discard rejected signature and sign again
-							</Button>
-						) : transaction ? (
-							<Button data-dialog-initial onClick={() => void submit()} size="custom">
-								Resume the signed transaction
-							</Button>
+							</div>
+						) : null}
+						{errorRecovery.note ? <p>{errorRecovery.note}</p> : null}
+						{errorRecovery.secondary ? (
+							<div className="dialog-actions">
+								<AtomicRecoveryButton
+									initial
+									option={errorRecovery.primary}
+									onAction={runRecoveryAction}
+								/>
+								<AtomicRecoveryButton option={errorRecovery.secondary} onAction={runRecoveryAction} />
+							</div>
 						) : (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									setFailureKind(null);
-									setMessage('');
-									setPhase('form');
-								}}
-							>
-								Try again
-							</Button>
+							<AtomicRecoveryButton initial option={errorRecovery.primary} onAction={runRecoveryAction} />
 						)}
 					</div>
 				) : null}
@@ -12307,6 +12325,27 @@ function OperationDialog({
 
 export function AtomicOperationErrorAlert({ message }: { message: string }) {
 	return <OperationErrorAlert title="Could not complete this action" message={message} />;
+}
+
+function AtomicRecoveryButton({
+	initial = false,
+	onAction,
+	option,
+}: {
+	initial?: boolean;
+	onAction(action: AtomicOperationRecoveryAction): void;
+	option: AtomicOperationRecoveryOption;
+}) {
+	return (
+		<Button
+			data-dialog-initial={initial || undefined}
+			onClick={() => onAction(option.action)}
+			size="custom"
+			variant={option.danger ? 'danger' : undefined}
+		>
+			{option.label}
+		</Button>
+	);
 }
 
 function collectionKindLabel(collection: Collection) {
@@ -12918,12 +12957,116 @@ export function atomicPurchaseFailureCode(state: PurchaseState | null) {
 	if (!state?.error?.code) return null;
 	return purchaseFailureCode(state);
 }
+const TERMINAL_RESERVATION_FAILURE_CODES = [
+	'registration-dispatch-rejected',
+	'asset-order-reservation-rejected',
+	'asset-order-reservation-expired',
+];
 export function atomicPurchaseHasTerminalReservationFailure(state: PurchaseState | null) {
-	return [
-		'registration-dispatch-rejected',
-		'asset-order-reservation-rejected',
-		'asset-order-reservation-expired',
-	].includes(atomicPurchaseFailureCode(state) ?? '');
+	return TERMINAL_RESERVATION_FAILURE_CODES.includes(atomicPurchaseFailureCode(state) ?? '');
+}
+
+/** What each button in the NFT operation dialog's error footer does. */
+export type AtomicOperationRecoveryAction =
+	| 'view-updated-asset'
+	| 'view-current-listing'
+	| 'start-fresh-purchase'
+	| 'resign-seller-payment'
+	| 'restart-purchase'
+	| 'retry-not-sent'
+	| 'discard-not-sent'
+	| 'discard-rejected-signature'
+	| 'resume-signed-transaction'
+	| 'return-to-form';
+
+export type AtomicOperationRecoveryOption = {
+	action: AtomicOperationRecoveryAction;
+	label: string;
+	danger?: boolean;
+};
+
+export type AtomicOperationRecovery = {
+	primary: AtomicOperationRecoveryOption;
+	secondary?: AtomicOperationRecoveryOption;
+	note?: string;
+	/** Whether the failed purchase's stage, seller, order and receipts are shown above the actions. */
+	purchaseReceipt: boolean;
+};
+
+/**
+ * The NFT operation dialog's error state -> recovery actions. Precedence: a changed market wins; then
+ * purchases (whose dispatch rejections are also classified 'transaction-rejected') by purchase error
+ * code; then a saved signature that never left (retry or discard), a rejected signature (discard and
+ * sign again), any other saved signature (resume), and finally a return to the form.
+ */
+export function atomicOperationRecovery(input: {
+	kind: Operation['kind'];
+	failureKind: MarketplaceOperationFailure | null;
+	hasTransaction: boolean;
+	purchaseFailureCode: string | null;
+	recoverable: boolean;
+}): AtomicOperationRecovery {
+	const { kind, failureKind, hasTransaction, purchaseFailureCode, recoverable } = input;
+	const only = (primary: AtomicOperationRecoveryOption, purchaseReceipt = false): AtomicOperationRecovery => ({
+		primary,
+		purchaseReceipt,
+	});
+	if (failureKind === 'market-state-changed') {
+		return only({ action: 'view-updated-asset', label: 'View updated asset' });
+	}
+	if (kind === 'buy') {
+		if (purchaseFailureCode === 'registration-dispatch-rejected') {
+			return only({ action: 'view-current-listing', label: 'View current listing' }, true);
+		}
+		if (TERMINAL_RESERVATION_FAILURE_CODES.includes(purchaseFailureCode ?? '')) {
+			return only({ action: 'start-fresh-purchase', label: 'Start a new purchase' }, true);
+		}
+		if (purchaseFailureCode === 'payment-dispatch-rejected') {
+			return only({ action: 'resign-seller-payment', label: 'Sign a replacement seller payment' }, true);
+		}
+		return only({ action: 'restart-purchase', label: recoverable ? 'Continue saved purchase' : 'Try again' }, true);
+	}
+	if (failureKind === 'transaction-not-sent' && hasTransaction) {
+		const copy = notSentRecoveryCopy(kind);
+		return {
+			primary: { action: 'retry-not-sent', label: copy.retry },
+			secondary: { action: 'discard-not-sent', label: copy.discard, danger: true },
+			note: NOT_SENT_RECOVERY_NOTE,
+			purchaseReceipt: false,
+		};
+	}
+	if (failureKind === 'transaction-rejected' && hasTransaction) {
+		return only({
+			action: 'discard-rejected-signature',
+			label: 'Discard rejected signature and sign again',
+			danger: true,
+		});
+	}
+	if (hasTransaction) return only({ action: 'resume-signed-transaction', label: 'Resume the signed transaction' });
+	return only({ action: 'return-to-form', label: 'Try again' });
+}
+
+/**
+ * Discards a signed NFT listing, cancellation or transfer whose dispatch never left, so it is not
+ * resumed on the next visit. Returns the message to show when another tab already changed the saved
+ * record, or null once the record and its signature are gone.
+ */
+export function discardUnsentAtomicSignature(
+	storage: Pick<Storage, 'getItem' | 'removeItem'>,
+	assetId: string,
+	owner: string,
+	kind: SignedOperationKind,
+	transactionId: string
+) {
+	return removeWalletRecoveryAndSignatures<any>(
+		storage,
+		operationStorageKey(assetId, owner),
+		(record) => record?.txId === transactionId,
+		[transactionId],
+		owner
+	)
+		? null
+		: notSentRecoveryCopy(kind).changed;
 }
 export function assetStateErrorMessage(error: unknown) {
 	const value = error instanceof Error ? error.message : String(error);
