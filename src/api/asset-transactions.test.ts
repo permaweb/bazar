@@ -16,7 +16,9 @@ import {
 	AssetTransactionClient,
 	cancelAppliedAtSlot,
 	fungibleTransferAppliedAtSlot,
+	MAXIMUM_REGISTRATION_FEE,
 	purchaseAppliedAtSlot,
+	purchaseOrderSafetyError,
 	waitUntilSeen,
 } from './asset-transactions';
 
@@ -2339,3 +2341,112 @@ function approvalSubject(
 		storedTransaction: (id: string) => JSON.parse(values.get(`bazar-signed-transaction:${id}`)!).transaction,
 	};
 }
+
+describe('buy-side registration fee cap', () => {
+	const cap = '10000000000';
+	const overCap = '10000000001';
+
+	function countingClient() {
+		let signatures = 0;
+		const subject = client(async (transaction) => {
+			signatures += 1;
+			return transaction;
+		});
+		return { ...subject, signatures: () => signatures };
+	}
+
+	function purchaseInput(order: ReturnType<typeof swapOrder>, fillQuantity?: string) {
+		return {
+			processId,
+			order,
+			...(fillQuantity ? { fillQuantity } : {}),
+			buyer: seller,
+			startingBalance: '0',
+			network: { tip: () => 1000 } as any,
+		};
+	}
+
+	it('caps the reservation fee at 0.01 AR and rejects malformed fees', () => {
+		expect(MAXIMUM_REGISTRATION_FEE).toBe(BigInt(cap));
+		const order = swapOrder(transactionId, '1', '1000');
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: '0' })).toBeNull();
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: cap })).toBeNull();
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: overCap })).toBe(
+			'asset-purchase-registration-fee-too-high'
+		);
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: 'abc' })).toBe(
+			'asset-purchase-invalid-registration-fee'
+		);
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: '1.5' })).toBe(
+			'asset-purchase-invalid-registration-fee'
+		);
+	});
+
+	it('refuses an over-cap fee synchronously, before any signature prompt or network request', () => {
+		const subject = countingClient();
+		const order = { ...swapOrder(transactionId, '1', '1000'), minimumFee: overCap };
+		expect(() => subject.client.purchaseAdapter(purchaseInput(order))).toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		expect(subject.signatures()).toBe(0);
+		expect(subject.requests).toEqual([]);
+	});
+
+	it('signs a reservation whose fee is exactly the cap, burning that fee as its reward', async () => {
+		const subject = countingClient();
+		const order = { ...swapOrder(transactionId, '1', '1000'), minimumFee: cap };
+		const adapter = subject.client.purchaseAdapter(purchaseInput(order));
+		const prepared = await adapter.prepareRegistration(new AbortController().signal);
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(stored.transaction.reward).toBe(cap);
+		expect(subject.signatures()).toBe(1);
+	});
+
+	it('applies the cap to the filled share of a partially bought lot, not to the whole lot', async () => {
+		const allowed = countingClient();
+		const lot = { ...swapOrder(transactionId, '2', '1000'), minimumFee: '20000000000' };
+		expect(() => allowed.client.purchaseAdapter(purchaseInput(lot))).toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		const adapter = allowed.client.purchaseAdapter(purchaseInput(lot, '1'));
+		const prepared = await adapter.prepareRegistration(new AbortController().signal);
+		const stored = JSON.parse(allowed.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(stored.transaction.reward).toBe(cap);
+
+		const rejected = countingClient();
+		const overLot = { ...lot, minimumFee: '20000000002' };
+		expect(() => rejected.client.purchaseAdapter(purchaseInput(overLot, '1'))).toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		expect(rejected.signatures()).toBe(0);
+		expect(rejected.requests).toEqual([]);
+	});
+
+	it('rejects a quote containing an over-cap or malformed fee before any price request', async () => {
+		const subject = countingClient();
+		const valid = swapOrder(transactionId, '1', '1000');
+		const overCapOrder = { ...swapOrder('A'.repeat(43), '1', '1000'), minimumFee: overCap };
+		await expect(subject.client.estimatePurchaseBatchCosts([valid, overCapOrder], processId)).rejects.toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		await expect(subject.client.estimatePurchaseCosts({ ...valid, minimumFee: 'abc' }, processId)).rejects.toThrow(
+			'asset-purchase-invalid-registration-fee'
+		);
+		expect(subject.requests).toEqual([]);
+
+		await expect(
+			subject.client.estimatePurchaseCosts({ ...valid, minimumFee: cap }, processId)
+		).resolves.toMatchObject({ registrationFee: cap });
+	});
+
+	it('rejects a batch with one over-cap order before any signature prompt or price request', async () => {
+		const subject = countingClient();
+		const valid = swapOrder(transactionId, '1', '1000');
+		const overCapOrder = { ...swapOrder('A'.repeat(43), '1', '1000'), minimumFee: overCap };
+		await expect(
+			subject.client.preparePurchaseBatch([purchaseInput(valid), purchaseInput(overCapOrder)])
+		).rejects.toThrow('asset-purchase-registration-fee-too-high');
+		expect(subject.signatures()).toBe(0);
+		expect(subject.requests.filter((url) => url.includes('/price/'))).toEqual([]);
+	});
+});
