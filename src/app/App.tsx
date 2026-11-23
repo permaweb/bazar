@@ -12164,14 +12164,10 @@ function OperationDialog({
 									{quoteRetryable && (purchaseQuote || quoteError) ? (
 										<Button
 											aria-describedby={quoteStatusId}
-											aria-disabled={!purchaseQuote && !quoteError}
 											className="with-icon"
 											size="custom"
 											type="button"
-											onClick={() => {
-												if (purchaseQuote || quoteError)
-													setQuoteRetry((current) => current + 1);
-											}}
+											onClick={() => setQuoteRetry((current) => current + 1)}
 										>
 											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 											{purchaseQuote ? 'Refresh costs' : 'Retry cost check'}
@@ -13177,7 +13173,7 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 }
 
 export function atomicOperationActionLabel(operation: Operation, value: string) {
-	if (operation.kind === 'buy') return `Buy for ${winstonToAr(operation.order.asking)} AR`;
+	if (operation.kind === 'buy') return operationLabel('buy');
 	if (operation.kind === 'sell')
 		return value.trim() ? `List for ${atomicListingPriceLabel(value)}` : 'Enter a listing price';
 	if (operation.kind === 'cancel') return 'Cancel listing and return asset';

@@ -4076,57 +4076,6 @@ export function FungibleOperationErrorAlert({ message }: { message: string }) {
 	return <OperationErrorAlert title="Could not complete this action" message={message} />;
 }
 
-export function MatchedListingsReview({
-	onRemove,
-	orders,
-	state,
-}: {
-	onRemove?(order: SwapOrder): void;
-	orders: SwapOrder[];
-	state: AssetState;
-}) {
-	return (
-		<section aria-label="Purchase overview" className="matched-listings">
-			<div className="matched-listings-heading">
-				<strong>Purchase overview</strong>
-				<span>
-					{orders.length} {orders.length === 1 ? 'listing' : 'listings'}
-				</span>
-			</div>
-			{orders.length ? (
-				<ul aria-label="Matched seller addresses" tabIndex={orders.length > 4 ? 0 : undefined}>
-					{orders.map((order) => (
-						<li key={order.orderId}>
-							<span>
-								<strong>{tokenLabel(order.quantity, state)}</strong>
-								<small>
-									<ArCurrencyText>
-										{`${orderPriceLabel(order, state)} · ${formatArAmount(order.asking)} AR total`}
-									</ArCurrencyText>
-								</small>
-							</span>
-							<WalletIdentity address={order.creator} />
-							{onRemove ? (
-								<Button
-									aria-label={`Remove ${fungibleListingAccessibleLabel(order, state)} from purchase`}
-									onClick={() => onRemove(order)}
-									size="custom"
-									type="button"
-									variant="danger"
-								>
-									Remove
-								</Button>
-							) : null}
-						</li>
-					))}
-				</ul>
-			) : (
-				<p className="matched-listings-empty">Your purchase overview is empty.</p>
-			)}
-		</section>
-	);
-}
-
 function ownOrder(order: SwapOrder, walletAddress: unknown) {
 	return sameAccount(order.creator, walletAddress) || sameAccount(order.recipient, walletAddress);
 }
