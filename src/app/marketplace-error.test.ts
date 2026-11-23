@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	isRejectedTransactionDispatch,
+	isTerminalPurchaseFailureCode,
 	marketplaceCodedError,
 	marketplaceErrorMessage,
 	marketplaceFailureKind,
@@ -155,5 +156,27 @@ describe('isRejectedTransactionDispatch', () => {
 		expect(isRejectedTransactionDispatch('transaction dispatch 500')).toBe(false);
 		expect(isRejectedTransactionDispatch('transaction propagation timeout')).toBe(false);
 		expect(isRejectedTransactionDispatch('payment not found')).toBe(false);
+	});
+});
+
+describe('terminal purchase failures', () => {
+	it('treats only a process rejection after payment as terminal', () => {
+		expect(isTerminalPurchaseFailureCode('asset-purchase-rejected')).toBe(true);
+		for (const code of [
+			'asset-purchase-proof-mismatch',
+			'asset-balance-proof-unavailable',
+			'payment-not-found',
+			'unexpected',
+			'',
+			null,
+			undefined,
+		]) {
+			expect(isTerminalPurchaseFailureCode(code)).toBe(false);
+		}
+	});
+
+	it('keeps proof-mismatch copy consistent with resuming the saved purchase', () => {
+		expect(marketplaceErrorMessage(new Error('asset-purchase-proof-mismatch'))).toContain('continue here');
+		expect(marketplaceErrorMessage(new Error('asset-purchase-rejected'))).toContain('remains saved for review');
 	});
 });

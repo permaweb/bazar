@@ -276,6 +276,7 @@ import {
 	PURCHASE_PAYMENT_TARGET,
 	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseFailureCode,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
 	purchaseSkipKind,
@@ -12474,7 +12475,7 @@ export function atomicPurchaseFailureStage(state: PurchaseState | null) {
 }
 export function atomicPurchaseFailureCode(state: PurchaseState | null) {
 	if (!state?.error?.code) return null;
-	return state.error.code === 'unexpected' ? state.error.message || state.error.code : state.error.code;
+	return purchaseFailureCode(state);
 }
 export function atomicPurchaseHasTerminalReservationFailure(state: PurchaseState | null) {
 	return [

@@ -97,6 +97,7 @@ import { useWallet } from 'providers/WalletProvider';
 
 import { ASSET_STATE_UNAVAILABLE_HEADING, collectionDisplayName, MarketSelect } from './App';
 import {
+	isTerminalPurchaseFailureCode,
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceOperationFailure,
@@ -136,6 +137,7 @@ import {
 	PURCHASE_PAYMENT_TARGET,
 	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseFailureCode,
 	type PurchaseGatewayContext,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
@@ -281,8 +283,6 @@ export function fungiblePriceHistory(events: CollectionActivityEvent[], denomina
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
-const TERMINAL_PURCHASE_FAILURES = new Set(['asset-purchase-rejected', 'asset-purchase-proof-mismatch']);
-const TERMINAL_PURCHASE_FAILURE_MESSAGES = new Set(['asset purchase rejected', 'asset purchase proof mismatch']);
 
 export type FungibleHolder = {
 	address: string;
@@ -596,16 +596,40 @@ export function FungibleHolderChart({
 }
 
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
-	if (state?.stage !== 'failed' || !state.error) return false;
-	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
-	return TERMINAL_PURCHASE_FAILURE_MESSAGES.has(state.error.message.trim().toLowerCase());
+	return state?.stage === 'failed' && isTerminalPurchaseFailureCode(purchaseFailureCode(state));
 }
 
-export function purchaseFailureMessageNeedsManualReview(message?: string) {
-	if (!message) return false;
-	const normalized = message.trim().toLowerCase();
-	if (TERMINAL_PURCHASE_FAILURE_MESSAGES.has(normalized)) return true;
-	return [...TERMINAL_PURCHASE_FAILURE_MESSAGES].some((failure) => normalized.endsWith(`. ${failure}`));
+/**
+ * How a failed batch buy may continue, decided from each lot's own state.
+ * - `none`: no lot was rejected after payment.
+ * - `resumable`: some lots were rejected after payment, but another
+ *   incomplete lot still has saved work to continue, so its receipts stay.
+ * - `manual-review`: every incomplete lot was rejected after payment;
+ *   nothing can resume, so the asset may be unlocked.
+ */
+export type BatchPurchaseFailureReview =
+	| { kind: 'none' }
+	| { kind: 'resumable'; rejectedAfterPayment: number }
+	| { kind: 'manual-review'; rejectedAfterPayment: number };
+
+export function batchPurchaseRejectedAfterPaymentNotice(review: BatchPurchaseFailureReview): string {
+	if (review.kind !== 'resumable') return '';
+	const one = review.rejectedAfterPayment === 1;
+	return `The process rejected ${
+		one ? 'one listing' : `${review.rejectedAfterPayment} listings`
+	} after payment. Resuming only rechecks ${one ? 'its' : 'their'} saved receipts and never pays again. `;
+}
+
+export function batchPurchaseFailureReview(states: Array<PurchaseState | undefined>): BatchPurchaseFailureReview {
+	let rejectedAfterPayment = 0;
+	let resumable = false;
+	for (const state of states) {
+		if (state?.stage === 'complete') continue;
+		if (purchaseSettlementNeedsManualReview(state)) rejectedAfterPayment += 1;
+		else resumable = true;
+	}
+	if (!rejectedAfterPayment) return { kind: 'none' };
+	return { kind: resumable ? 'resumable' : 'manual-review', rejectedAfterPayment };
 }
 
 function currentPurchaseGatewayContext(): PurchaseGatewayContext {
@@ -2787,11 +2811,10 @@ function FungibleOperationDialog({
 					}
 					update(purchaseState);
 					if (retryKind) return;
-					const failureCode =
-						purchaseState.error?.code === 'unexpected'
-							? purchaseState.error.message
-							: purchaseState.error?.code;
-					const repaired = repairRejectedPurchase(entry.snapshot, failureCode);
+					const repaired = repairRejectedPurchase(
+						entry.snapshot,
+						purchaseFailureCode(purchaseState) ?? undefined
+					);
 					for (const id of repaired.discardIds) {
 						localStorage.removeItem(`bazar-signed-transaction:${id}`);
 					}
@@ -2922,9 +2945,10 @@ function FungibleOperationDialog({
 			: 'The live token state now reflects this action.';
 	const settlementSummary = batchSettlementSummary(visibleOrders.map((order) => purchaseStates[order.orderId]));
 	const incompletePurchases = visibleOrders.length - settlementSummary.settled;
-	const purchaseNeedsManualReview =
-		visibleOrders.some((order) => purchaseSettlementNeedsManualReview(purchaseStates[order.orderId])) ||
-		purchaseFailureMessageNeedsManualReview(message);
+	const purchaseFailureReview = batchPurchaseFailureReview(
+		visibleOrders.map((order) => purchaseStates[order.orderId])
+	);
+	const purchaseNeedsManualReview = purchaseFailureReview.kind === 'manual-review';
 	const signedWork = Boolean(transaction || recoverableBatch);
 	React.useEffect(() => {
 		if (operation.kind !== 'buy' || phase !== 'working') return;
@@ -3843,6 +3867,7 @@ function FungibleOperationDialog({
 									</p>
 								) : recoverableBatch ? (
 									<p>
+										{batchPurchaseRejectedAfterPaymentNotice(purchaseFailureReview)}
 										Completed settlements will not be retried; only incomplete settlements will
 										continue.
 									</p>
@@ -4638,20 +4663,21 @@ export async function waitForSettlementBatch(running: Promise<PurchaseState>[]):
 		(result) => result.status === 'rejected' || result.value.stage !== 'complete' || !result.value.success
 	);
 	if (failed.length) {
+		// A lot that reached a failed state shows its own friendly reason in the
+		// per-listing panel, so only reasons with no lot state are repeated here.
 		const reasons = [
 			...new Set(
-				failed.flatMap((result) => {
-					if (result.status === 'rejected') {
-						return [result.reason instanceof Error ? result.reason.message : String(result.reason)];
-					}
-					return result.value.error?.message ? [result.value.error.message] : [];
-				})
+				failed.flatMap((result) =>
+					result.status === 'rejected'
+						? [result.reason instanceof Error ? result.reason.message : String(result.reason)]
+						: []
+				)
 			),
 		];
 		throw new Error(
 			`${failed.length} of ${settled.length} settlements need attention.${
 				reasons.length ? ` ${reasons.join(' ')}` : ''
-			}`
+			} Each listing below shows its own status and saved receipts.`
 		);
 	}
 	return settled.map((result) => (result as PromiseFulfilledResult<PurchaseState>).value);

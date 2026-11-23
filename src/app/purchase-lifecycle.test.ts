@@ -4,6 +4,7 @@ import {
 	continuePaymentConfirmations,
 	PURCHASE_PAYMENT_TARGET,
 	PURCHASE_REGISTRATION_TARGET,
+	purchaseFailureCode,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleMilestone,
 	purchaseLifecycleStatus,
@@ -170,5 +171,36 @@ describe('purchase lifecycle copy', () => {
 		expect(notice).toContain('will not sign or submit replacements');
 		expect(snapshot.registration.id).toBe(registrationId);
 		if (snapshot.payment) expect(snapshot.payment.id).toBe(paymentId);
+	});
+});
+
+describe('purchase failure code', () => {
+	it.each([
+		[
+			'a lifecycle code',
+			{ code: 'payment-dispatch-rejected', message: 'invalid payment' },
+			'payment-dispatch-rejected',
+		],
+		[
+			'an adapter code stored as unexpected',
+			{ code: 'unexpected', message: 'asset-purchase-rejected' },
+			'asset-purchase-rejected',
+		],
+		['a spaced message', { code: 'unexpected', message: ' Payment not found ' }, 'payment-not-found'],
+		['an underscored code', { code: 'Registration_Not_Found', message: 'ignored' }, 'registration-not-found'],
+		['an unexpected error with no message', { code: 'unexpected', message: '' }, 'unexpected'],
+		[
+			'a message with no code',
+			{ code: '', message: 'asset-order-reservation-expired' },
+			'asset-order-reservation-expired',
+		],
+	])('reads %s', (_label, error, expected) => {
+		expect(purchaseFailureCode({ error })).toBe(expected);
+	});
+
+	it('has no code without an error', () => {
+		expect(purchaseFailureCode(null)).toBeNull();
+		expect(purchaseFailureCode({})).toBeNull();
+		expect(purchaseFailureCode({ error: { code: '', message: '' } })).toBeNull();
 	});
 });

@@ -11,8 +11,10 @@ import {
 	appendFungibleOperationActivity,
 	batchHasNoDispatchedSellerPayment,
 	batchPaymentBarrierState,
+	batchPurchaseFailureReview,
 	batchPurchaseRecoveryApprovalCopy,
 	batchPurchaseRecoveryApprovalCount,
+	batchPurchaseRejectedAfterPaymentNotice,
 	batchPurchaseStartingBalance,
 	batchRecoveryFrameBuffer,
 	batchRecoveryIdentity,
@@ -50,7 +52,6 @@ import {
 	nextSettlementAnnouncement,
 	orderbookCumulativeDepths,
 	purchaseAmountMatch,
-	purchaseFailureMessageNeedsManualReview,
 	purchaseQuoteIdentity,
 	PurchaseRoute,
 	purchaseSettlementNeedsManualReview,
@@ -421,16 +422,25 @@ describe('fungible operation error semantics', () => {
 	});
 
 	it('does not present a process-rejected payment as resumable observation', () => {
+		// The engine's real shape: verifyOwnership throws a plain
+		// Error('asset-purchase-rejected'), which weave-wrangler stores as
+		// { code: 'unexpected', message: 'asset-purchase-rejected' }.
 		expect(
 			purchaseSettlementNeedsManualReview({
 				stage: 'failed',
-				error: { code: 'asset-purchase-rejected', message: 'asset purchase rejected' },
+				error: { code: 'unexpected', message: 'asset-purchase-rejected' },
 			} as PurchaseState)
 		).toBe(true);
 		expect(
 			purchaseSettlementNeedsManualReview({
 				stage: 'failed',
-				error: { code: 'asset-payment-observer-timeout', message: 'asset purchase rejected' },
+				error: { code: 'unexpected', message: 'Asset purchase rejected' },
+			} as PurchaseState)
+		).toBe(true);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-purchase-rejected', message: 'asset purchase rejected' },
 			} as PurchaseState)
 		).toBe(true);
 		expect(
@@ -445,22 +455,58 @@ describe('fungible operation error semantics', () => {
 				error: { code: 'unexpected', message: 'asset-balance-proof-unavailable' },
 			} as PurchaseState)
 		).toBe(false);
+		// Incomplete scheduler proof keeps both IDs to continue, as its copy says.
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'unexpected', message: 'asset-purchase-proof-mismatch' },
+			} as PurchaseState)
+		).toBe(false);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'payment-confirming',
+				error: { code: 'unexpected', message: 'asset-purchase-rejected' },
+			} as PurchaseState)
+		).toBe(false);
 	});
 
-	it('recognizes a terminal failure reported only by the batch summary', () => {
-		expect(
-			purchaseFailureMessageNeedsManualReview('1 of 1 settlements need attention. asset purchase rejected')
-		).toBe(true);
-		expect(
-			purchaseFailureMessageNeedsManualReview(
-				'1 of 1 settlements need attention. observer timed out while checking transaction'
-			)
-		).toBe(false);
-		expect(
-			purchaseFailureMessageNeedsManualReview(
-				'1 of 1 settlements need attention. asset-balance-proof-unavailable'
-			)
-		).toBe(false);
+	it('unlocks a batch only when every incomplete lot was rejected after payment', () => {
+		const rejected = {
+			stage: 'failed',
+			error: { code: 'unexpected', message: 'asset-purchase-rejected' },
+		} as PurchaseState;
+		const balanceProofUnavailable = {
+			stage: 'failed',
+			error: { code: 'unexpected', message: 'asset-balance-proof-unavailable' },
+		} as PurchaseState;
+		const complete = { stage: 'complete', success: true } as PurchaseState;
+
+		expect(batchPurchaseFailureReview([rejected])).toEqual({ kind: 'manual-review', rejectedAfterPayment: 1 });
+		expect(batchPurchaseFailureReview([complete, rejected, rejected])).toEqual({
+			kind: 'manual-review',
+			rejectedAfterPayment: 2,
+		});
+		// A lot that can still resume keeps its saved work, whatever the order.
+		for (const states of [
+			[rejected, balanceProofUnavailable],
+			[balanceProofUnavailable, rejected],
+			[rejected, undefined],
+		]) {
+			expect(batchPurchaseFailureReview(states)).toEqual({ kind: 'resumable', rejectedAfterPayment: 1 });
+		}
+		expect(batchPurchaseFailureReview([complete, balanceProofUnavailable])).toEqual({ kind: 'none' });
+		expect(batchPurchaseFailureReview([complete, complete])).toEqual({ kind: 'none' });
+	});
+
+	it('explains a rejected lot when the rest of the batch can resume', () => {
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'resumable', rejectedAfterPayment: 1 })).toBe(
+			'The process rejected one listing after payment. Resuming only rechecks its saved receipts and never pays again. '
+		);
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'resumable', rejectedAfterPayment: 2 })).toContain(
+			'rejected 2 listings after payment. Resuming only rechecks their saved receipts'
+		);
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'manual-review', rejectedAfterPayment: 1 })).toBe('');
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'none' })).toBe('');
 	});
 
 	it('quotes a requested token amount from automatic partial fills', () => {
@@ -955,6 +1001,23 @@ describe('fungible batch payment coordination', () => {
 		resolveSibling({ stage: 'complete', success: true } as PurchaseState);
 		await expect(result).rejects.toThrow('1 of 2 settlements need attention. reservation failed');
 		expect(reported).toBe(true);
+	});
+
+	it('points a failed batch to each listing instead of joining raw failure codes', async () => {
+		const failed = (message: string) =>
+			Promise.resolve({
+				stage: 'failed',
+				success: false,
+				error: { code: 'unexpected', message },
+			} as PurchaseState);
+		const result = waitForSettlementBatch([
+			failed('asset-purchase-rejected'),
+			failed('asset-balance-proof-unavailable'),
+		]);
+
+		await expect(result).rejects.toThrow(
+			/^2 of 2 settlements need attention\. Each listing below shows its own status and saved receipts\.$/
+		);
 	});
 
 	it('releases a mixed resumed batch after only its remaining reservation becomes ready', () => {
