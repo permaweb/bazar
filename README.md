@@ -147,7 +147,8 @@ After a listing, cancellation, transfer or fungible-token transaction is submitt
 confirms it with several Arweave observers: the selected gateway, plus Arweave's own nodes
 (`tip-1`–`tip-4` and `chain-1`–`chain-3` at `arweave.xyz`, port 1984). Those nodes serve plain
 HTTP only, so an HTTPS page reaches them through an AO-Core node that runs `~relay@1.0`: the first
-AO peer, or the node named in `VITE_ARWEAVE_OBSERVER_RELAY`. Set `VITE_ARWEAVE_OBSERVER_NODES` to a
+AO peer, or the node named in `VITE_ARWEAVE_OBSERVER_RELAY`. The deploy workflow
+sets it to `https://mystical.computer` until arweave.net serves `~relay@1.0`; remove it then. Set `VITE_ARWEAVE_OBSERVER_NODES` to a
 comma-separated list of origins to observe other nodes. A confirmation needs at least two
 reachable observers; when fewer stay reachable for 15 seconds (for example, no relay-capable
 peer), Bazar says it cannot verify the transaction from here instead of waiting, and the signed
