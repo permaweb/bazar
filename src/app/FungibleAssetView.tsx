@@ -106,6 +106,8 @@ import {
 	announceFungibleOperationActivityChange,
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
+	initialOperationPhase,
+	type OperationActivityPhase,
 	operationRecoveryCanStillApply,
 } from './operation-activity';
 import {
@@ -2078,14 +2080,13 @@ function FungibleOperationDialog({
 	);
 	const [unitPrice, setUnitPrice] = React.useState(operation.kind === 'sell' ? operation.unitPrice ?? '' : '');
 	const [recipient, setRecipient] = React.useState(operation.kind === 'transfer' ? operation.recipient ?? '' : '');
-	const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
-		operation.kind === 'buy' && operation.resume
-			? recoveryApprovalCount
-				? 'approval'
-				: 'working'
-			: operation.kind !== 'buy' && operation.resumeId
-			? 'working'
-			: 'form'
+	const [phase, setPhase] = React.useState<OperationActivityPhase>(
+		initialOperationPhase({
+			kind: operation.kind,
+			hasResume: operation.kind === 'buy' && Boolean(operation.resume),
+			hasResumeId: operation.kind !== 'buy' && Boolean(operation.resumeId),
+			recoveryApprovalCount,
+		})
 	);
 	const [message, setMessage] = React.useState('');
 	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
