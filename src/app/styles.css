@@ -5675,30 +5675,11 @@ input:focus {
 .operation-summary small {
 	grid-column: 1 / -1;
 }
-.matched-listings {
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	background: var(--panel);
-}
 .purchase-route {
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	background: var(--paper);
 	overflow: hidden;
-}
-.matched-listings-heading {
-	padding: 11px 14px;
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 16px;
-	color: var(--ink);
-	font-size: var(--type-body);
-	font-weight: 400;
-}
-.matched-listings-heading > span {
-	color: var(--muted);
-	font-size: var(--type-small);
 }
 .purchase-route summary {
 	padding: 12px 15px;
@@ -5725,27 +5706,6 @@ input:focus {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
 }
-.matched-listings ul {
-	max-height: min(300px, 40dvh);
-	margin: 0;
-	padding: 0 14px 12px;
-	overflow-y: auto;
-	list-style: none;
-}
-.matched-listings ul:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
-}
-.matched-listings li {
-	padding: 7px 0;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
-	align-items: center;
-	gap: 16px;
-	border-top: 1px solid var(--line);
-	color: var(--muted);
-	font-size: var(--type-body);
-}
 .purchase-route li {
 	padding: 11px 15px;
 	display: grid;
@@ -5755,22 +5715,6 @@ input:focus {
 	border-top: 1px solid var(--line);
 	color: var(--muted);
 	font-size: var(--type-body);
-}
-.matched-listings li > span:first-child {
-	min-width: 0;
-	display: grid;
-	gap: 2px;
-}
-.matched-listings li > span:first-child small {
-	overflow: hidden;
-	color: var(--muted);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.matched-listings a {
-	flex: 0 0 auto;
-	color: var(--ink);
-	text-underline-offset: 3px;
 }
 .purchase-route-index {
 	width: 22px;
@@ -5804,24 +5748,6 @@ input:focus {
 .purchase-route .wallet-address {
 	justify-self: end;
 	font-size: 0.68rem;
-}
-.matched-listings button {
-	min-height: 34px;
-	padding: 6px 10px;
-	color: var(--muted);
-	background: var(--paper);
-	font-size: var(--type-small);
-}
-.matched-listings button:hover {
-	color: var(--negative);
-	border-color: color-mix(in srgb, var(--negative) 45%, var(--line));
-}
-.matched-listings-empty {
-	margin: 0;
-	padding: 14px;
-	border-top: 1px solid var(--line);
-	color: var(--muted);
-	font-size: var(--type-body);
 }
 .field-help {
 	min-height: 1.1em;
@@ -10029,7 +9955,6 @@ body input:focus-visible {
 .operation-side-panel .trade-quote,
 .operation-side-panel .cancel-summary,
 .operation-side-panel .batch-quote,
-.operation-side-panel .matched-listings,
 .operation-side-panel .purchase-route {
 	padding: 0;
 	border: 0;
@@ -10082,8 +10007,6 @@ body input:focus-visible {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
 }
-.operation-side-panel .matched-listings-heading,
-.operation-side-panel .matched-listings ul,
 .operation-side-panel .purchase-route summary,
 .operation-side-panel .purchase-route li {
 	padding-inline: 0;

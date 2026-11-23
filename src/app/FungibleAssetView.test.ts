@@ -46,7 +46,6 @@ import {
 	fungibleTransferSubmitLabel,
 	isRecoverableBatch,
 	latestRecoverableSnapshot,
-	MatchedListingsReview,
 	nextSettlementAnnouncement,
 	orderbookCumulativeDepths,
 	purchaseAmountMatch,
@@ -715,25 +714,6 @@ describe('fungible operation error semantics', () => {
 		expect(review).toContain('aria-label="Purchase execution route"');
 		expect(review.match(/tabindex="0"/g)).toHaveLength(1);
 		expect(review).toContain(orders[511].creator);
-	});
-
-	it('renders checkout listings without tabs and exposes a remove action for each lot', () => {
-		const orders = [
-			{ orderId: '1'.repeat(43), creator: 'a'.repeat(43), quantity: '1', asking: '1000' },
-			{ orderId: '2'.repeat(43), creator: 'b'.repeat(43), quantity: '2', asking: '2000' },
-		] as SwapOrder[];
-		const overview = renderToStaticMarkup(
-			React.createElement(MatchedListingsReview, {
-				onRemove: () => undefined,
-				orders,
-				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
-			})
-		);
-
-		expect(overview).toContain('aria-label="Purchase overview"');
-		expect(overview).not.toContain('role="tablist"');
-		expect(overview).not.toContain('<details');
-		expect(overview.match(/>Remove<\/button>/g)).toHaveLength(2);
 	});
 
 	it('keeps interactive settlement recovery outside the assertive alert summary', () => {
