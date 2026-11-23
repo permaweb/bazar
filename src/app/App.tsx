@@ -105,6 +105,7 @@ import {
 	collectionAsset,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
+	FUNGIBLE_TOKEN_ID,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
 	isVisibleAssetId,
@@ -429,7 +430,13 @@ export function App() {
 	const [marketRetry, setMarketRetry] = React.useState(0);
 	const [, setNetworkPolicyRevision] = React.useState(0);
 	const collectionTransport = usesPermawebOsAo() ? window.aoFetch : undefined;
-	React.useEffect(() => warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1)), []);
+	React.useEffect(
+		() =>
+			warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1), {
+				probeProcessId: FUNGIBLE_TOKEN_ID,
+			}),
+		[]
+	);
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
