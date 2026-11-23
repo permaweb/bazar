@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Server } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 import {
 	type AssetCandidate,
@@ -17,10 +17,8 @@ import { liquidBalanceOf, listedBalanceOf, liveOrdersOfAsset, servingNodeOrigin 
 import { DISPLAY_STATE_CACHE, readAssetStateCached } from 'api/asset-state-store';
 
 import { Button } from 'components/Button';
-import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
-import { Tooltip } from 'components/Tooltip';
 import { sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import {
@@ -32,7 +30,6 @@ import { applyStableOrder } from 'helpers/stable-order';
 import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
-import { useWallet } from 'providers/WalletProvider';
 
 import {
 	AssetCard,
@@ -43,7 +40,6 @@ import {
 	MarketSelect,
 	nextWalletAnnouncementProgress,
 	orderPriceLabel,
-	RouteState,
 	tokenBalanceLabel,
 	trackRateLimitFailure,
 	updateWalletResolvedAsset,
@@ -71,17 +67,13 @@ import {
 	walletEntryWithCurrentName,
 } from '../app/wallet-discovery';
 
-export default function MyAssetsRoute({
-	address,
-	embedded = false,
-}: {
-	address?: string;
-	embedded?: boolean;
-} = {}) {
+/**
+ * The asset inventory of one profile. The owner is always the explicit `address` the profile
+ * route resolved, never the connected wallet, so a profile can only list its own assets.
+ */
+export default function MyAssetsRoute({ address: walletAddress }: { address: string }) {
 	const market = React.useContext(MarketContext);
-	const wallet = useWallet();
-	const walletAddress = address ?? wallet.address ?? '';
-	const pageClassName = `my-assets-page${embedded ? ' profile-assets' : ''}`;
+	const pageClassName = 'my-assets-page profile-assets';
 	const gateway = servingNodeOrigin(window.location);
 	const [retry, setRetry] = React.useState(0);
 	const [discoveryRetry, setDiscoveryRetry] = React.useState(0);
@@ -330,42 +322,16 @@ export default function MyAssetsRoute({
 		return () => controller.abort();
 	}, [collectionsReady, failedRetry, market.error, requestedSessionScope, walletAddress]);
 
-	if (!walletAddress) {
+	if (market.loading && !market.collections.length) {
 		return (
 			<section className={pageClassName}>
-				<p className="eyebrow">Your wallet</p>
-				<h1>My assets</h1>
-				<div className="empty-state">
-					<h3>Connect a wallet to resolve its assets</h3>
-					<p>No signature is requested. Candidate history and live state are read-only.</p>
-					<ConnectWalletButton />
-				</div>
+				<Loading label="Reading supported asset collections from Arweave…" />
 			</section>
-		);
-	}
-	if (market.loading && !market.collections.length) {
-		if (embedded) {
-			return (
-				<section className={pageClassName}>
-					<Loading label="Reading supported asset collections from Arweave…" />
-				</section>
-			);
-		}
-		return (
-			<RouteState title="My assets">
-				<Loading label="Reading the supported asset collections from Arweave…" />
-			</RouteState>
 		);
 	}
 	if (market.error) {
 		return (
 			<section className={pageClassName}>
-				{!embedded ? (
-					<>
-						<p className="eyebrow">Live wallet inventory</p>
-						<h1>My assets</h1>
-					</>
-				) : null}
 				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</section>
 		);
@@ -414,25 +380,6 @@ export default function MyAssetsRoute({
 	const unavailableCopy = walletUnavailableCandidatesCopy(status, aggregateFailureMessage);
 	return (
 		<section className={pageClassName}>
-			{!embedded ? (
-				<div className="my-assets-heading">
-					<div>
-						<p className="eyebrow">Live wallet inventory</p>
-						<h1>My assets</h1>
-						<p>Your assets, read from live Arweave state.</p>
-						<span className="gateway-pill">
-							<Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
-							<Tooltip content={new URL(gateway).host}>
-								{(tooltipId) => (
-									<span aria-describedby={tooltipId} className="gateway-pill-host">
-										{new URL(gateway).host}
-									</span>
-								)}
-							</Tooltip>
-						</span>
-					</div>
-				</div>
-			) : null}
 			{failureBlock === 'partial' ? (
 				<div className="my-assets-heading-status retry-notice">
 					<span role="status">{unavailableCopy}</span>

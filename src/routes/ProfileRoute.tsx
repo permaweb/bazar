@@ -408,7 +408,7 @@ export default function ProfileRoute() {
 				onRetry={() => setRetry((value) => value + 1)}
 				profile={summary}
 			>
-				{ADDRESS.test(address) ? <MyAssetsRoute address={address} embedded /> : null}
+				{ADDRESS.test(address) ? <MyAssetsRoute address={address} /> : null}
 			</ProfilePage>
 			<ProfileEditDialog
 				onClose={() => setEditOpen(false)}
