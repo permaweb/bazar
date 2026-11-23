@@ -30,7 +30,9 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from 'helpers/progressive-assets';
+import { applyStableOrder } from 'helpers/stable-order';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
+import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
 import { useWallet } from 'providers/WalletProvider';
 
 import {
@@ -708,7 +710,7 @@ export function listedUniquePrice(result: ResolvedAsset, address: string): strin
 
 const AssetGroup = React.memo(function AssetGroup({
 	title,
-	results,
+	results: rankedResults,
 	address,
 	kind,
 	onViewChange,
@@ -723,6 +725,19 @@ const AssetGroup = React.memo(function AssetGroup({
 	settled: boolean;
 	view: 'all' | 'listed';
 }) {
+	// Cards already painted keep their slots while ownership checks resolve; the group re-ranks by activity
+	// when the viewer switches view or once wallet resolution is done.
+	const order = useStableOrder(
+		rankedResults.map((result) => result.asset.id),
+		`${address}|${view}`,
+		settled
+	);
+	const results = React.useMemo(
+		() => applyStableOrder(rankedResults, order, (result) => result.asset.id),
+		[order, rankedResults]
+	);
+	const gridRef = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(gridRef, order);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
 	const gridId = React.useId();
@@ -764,7 +779,7 @@ const AssetGroup = React.memo(function AssetGroup({
 			</div>
 			{results.length ? (
 				<>
-					<div className="asset-grid" id={gridId}>
+					<div className="asset-grid" id={gridId} ref={gridRef}>
 						{results.slice(0, limit).map((result, index) => {
 							const listed = walletAssetGroups(result, address).includes('listed');
 							const listedBalance = listedBalanceOf(result.state, address);
@@ -780,6 +795,7 @@ const AssetGroup = React.memo(function AssetGroup({
 									key={result.asset.id}
 									collection={result.collection}
 									asset={result.asset}
+									orderId={result.asset.id}
 									badge={view === 'listed' || listed ? 'For sale' : 'Owned'}
 									priority={index < 2}
 									price={
