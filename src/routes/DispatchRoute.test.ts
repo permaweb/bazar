@@ -1,10 +1,27 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AssetState } from 'api/asset-marketplace';
 import { DISPLAY_STATE_TIMEOUT_ERROR } from 'api/asset-state-store';
 import { DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, type DispatchPlan } from 'api/fungible-dispatch';
 
-import { dispatchErrorMessage, type DispatchStartRequest, startDispatchOnce } from './DispatchRoute';
+import { assetStateErrorMessage } from '../app/App';
+
+import {
+	dispatchErrorMessage,
+	dispatchFeeLabel,
+	DispatchFeeNotice,
+	dispatchFeeStatus,
+	DispatchPlanStatus,
+	dispatchPlanStatusText,
+	DispatchRunError,
+	type DispatchStartRequest,
+	dispatchStateReadMessage,
+	focusCreatedPlan,
+	startDispatchOnce,
+	transferRewardErrorMessage,
+} from './DispatchRoute';
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -197,5 +214,160 @@ describe('dispatch recovery errors', () => {
 		expect(message).toContain('within 45 seconds');
 		expect(message).toContain('No new transfer was signed');
 		expect(message).toContain('saved dispatch progress remains available');
+	});
+});
+
+describe('dispatch token-state read errors', () => {
+	it('describes a state-read timeout as a 45 second deadline, not a freshly minted token', () => {
+		const message = dispatchStateReadMessage(new Error(DISPLAY_STATE_TIMEOUT_ERROR));
+
+		expect(message).toContain('45 seconds');
+		expect(message).not.toContain('20 minutes');
+	});
+
+	it('uses the asset page rate-limit copy for HTTP 429', () => {
+		const message = dispatchStateReadMessage(new Error('HTTP 429'));
+
+		expect(message).toBe(assetStateErrorMessage(new Error('HTTP 429')));
+		expect(message).toContain('rate-limiting');
+		expect(message).not.toContain('20 minutes');
+	});
+
+	it('does not blame token age for peer outages or unreachable peers', () => {
+		for (const cause of ['HTTP 502', 'AO response quorum not met', 'Failed to fetch']) {
+			expect(dispatchStateReadMessage(new Error(cause))).not.toContain('20 minutes');
+		}
+	});
+
+	it('keeps the freshly minted hint for not-found and unrecognised causes', () => {
+		const notFound = dispatchStateReadMessage(new Error('HTTP 404'));
+		expect(notFound).toContain('(HTTP 404)');
+		expect(notFound).toContain('20 minutes');
+
+		expect(dispatchStateReadMessage(new Error('historical-state-slot-mismatch'))).toContain('20 minutes');
+	});
+});
+
+describe('dispatch network fee', () => {
+	it('maps a failed fee quote to fixed copy without the raw code', () => {
+		const message = transferRewardErrorMessage(new Error('transfer-price-500'));
+
+		expect(message).toBe('Network fee could not be checked. Retry.');
+		expect(transferRewardErrorMessage(new Error('transfer-price-invalid'))).toBe(message);
+		expect(transferRewardErrorMessage(new TypeError('Failed to fetch'))).toBe(message);
+		expect(transferRewardErrorMessage(new Error('transfer-price-429'))).toContain('rate-limiting');
+		expect(transferRewardErrorMessage(new Error('transfer-price-429'))).not.toContain('transfer-price');
+	});
+
+	it('makes the fee quote states explicit', () => {
+		const base = { walletConnected: true, rowsParsed: true, reward: null, rewardError: null };
+
+		expect(dispatchFeeStatus({ ...base, rowsParsed: false })).toBe('idle');
+		expect(dispatchFeeStatus(base)).toBe('checking');
+		// Without a wallet the fee does not gate sending, so it is not presented as pending.
+		expect(dispatchFeeStatus({ ...base, walletConnected: false })).toBe('idle');
+		expect(dispatchFeeStatus({ ...base, rewardError: 'Network fee could not be checked. Retry.' })).toBe('error');
+		expect(dispatchFeeStatus({ ...base, reward: 1000n })).toBe('ready');
+	});
+
+	it('labels the total AR cost for every fee state', () => {
+		expect(dispatchFeeLabel('checking', null)).toBe('Checking…');
+		expect(dispatchFeeLabel('error', null)).toBe('Unavailable');
+		expect(dispatchFeeLabel('idle', null)).toBe('—');
+		expect(dispatchFeeLabel('ready', 1_000_000_000_000n)).toBe('1 AR');
+	});
+
+	it('renders a status notice with a Retry when the fee quote fails', () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(DispatchFeeNotice, {
+				message: transferRewardErrorMessage(new Error('transfer-price-500')),
+				blocksDispatch: true,
+				onRetry: () => undefined,
+			})
+		);
+
+		expect(markup).toContain('role="status"');
+		expect(markup).toContain('Network fee unavailable');
+		expect(markup).toContain('Network fee could not be checked.');
+		expect(markup).toContain('Sign and dispatch stays disabled until the fee is known.');
+		expect(markup).toContain('Retry</button>');
+		expect(markup).not.toContain('transfer-price');
+	});
+
+	it('does not claim the fee blocks sending when no wallet is connected', () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(DispatchFeeNotice, {
+				message: 'Network fee could not be checked. Retry.',
+				blocksDispatch: false,
+				onRetry: () => undefined,
+			})
+		);
+
+		expect(markup).not.toContain('stays disabled');
+	});
+});
+
+describe('dispatch announcements and focus', () => {
+	it('announces a run failure as an alert with the mapped message', () => {
+		const message = dispatchErrorMessage(new Error('asset-purchase-insufficient-funds'));
+		const markup = renderToStaticMarkup(React.createElement(DispatchRunError, { message }));
+
+		expect(markup).toContain('role="alert"');
+		expect(markup).toContain('inline-error');
+		expect(markup).toContain('Your AR balance cannot cover the transfer amounts plus network rewards.');
+	});
+
+	it('keeps the progress region mounted and empty until a run reports progress', () => {
+		const idle = dispatchPlanStatusText({ hasPlan: false, complete: false, running: false, settled: 0, total: 0 });
+		const markup = renderToStaticMarkup(React.createElement(DispatchPlanStatus, { text: idle }));
+
+		expect(idle).toBe('');
+		expect(markup).toContain('role="status"');
+		expect(markup).toContain('aria-atomic="true"');
+		expect(markup).toContain('sr-only');
+	});
+
+	it('moves the progress region through running, paused and complete', () => {
+		const plan = { hasPlan: true, settled: 1, total: 3 };
+
+		// A saved plan that is not running says nothing; the visible heading covers it.
+		expect(dispatchPlanStatusText({ ...plan, complete: false, running: false })).toBe('');
+		// While running only the plain counter is spoken, without posted/sender detail.
+		expect(dispatchPlanStatusText({ ...plan, complete: false, running: true })).toBe('1 of 3 settled');
+		expect(dispatchPlanStatusText({ ...plan, settled: 2, complete: false, running: true })).toBe('2 of 3 settled');
+		const done = dispatchPlanStatusText({ ...plan, settled: 3, complete: true, running: true });
+		expect(done).toBe('Dispatch complete. All transfers settled.');
+		expect(dispatchPlanStatusText({ ...plan, settled: 3, complete: true, running: false })).toBe(done);
+
+		const markup = renderToStaticMarkup(React.createElement(DispatchPlanStatus, { text: done }));
+		expect(markup).toContain('role="status"');
+		expect(markup).toContain('Dispatch complete');
+	});
+
+	it('focuses the plan heading only once, after start() created the plan', () => {
+		const target = { focus: vi.fn() };
+		const justCreated = { current: true };
+
+		expect(focusCreatedPlan(justCreated, target)).toBe(true);
+		expect(target.focus).toHaveBeenCalledTimes(1);
+		expect(justCreated.current).toBe(false);
+
+		// Later onProgress updates re-run the effect but must not pull focus again.
+		expect(focusCreatedPlan(justCreated, target)).toBe(false);
+		expect(target.focus).toHaveBeenCalledTimes(1);
+	});
+
+	it('never takes focus when a saved plan is restored on page open', () => {
+		const target = { focus: vi.fn() };
+
+		expect(focusCreatedPlan({ current: false }, target)).toBe(false);
+		expect(target.focus).not.toHaveBeenCalled();
+	});
+
+	it('keeps the request until the heading has mounted', () => {
+		const justCreated = { current: true };
+
+		expect(focusCreatedPlan(justCreated, null)).toBe(false);
+		expect(justCreated.current).toBe(true);
 	});
 });

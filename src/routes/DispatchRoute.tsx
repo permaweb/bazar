@@ -36,7 +36,7 @@ import { Tooltip } from 'components/Tooltip';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
-import { winstonToAr } from '../app/App';
+import { assetStateErrorMessage, winstonToAr } from '../app/App';
 import { announceFungibleOperationActivityChange } from '../app/operation-activity';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -75,6 +75,87 @@ export function dispatchErrorMessage(cause: unknown): string {
 	}
 	if (message.startsWith('transaction-dispatch-')) return `Arweave rejected a transfer: ${message}`;
 	return message || 'Dispatch failed.';
+}
+
+const MINTED_TOKEN_HINT =
+	'If this token was minted recently, it only becomes readable once the arweave-scheduler sequences its creation — around 20 minutes on mainnet.';
+const TRANSPORT_STATE_FAILURES = [
+	'Failed to fetch',
+	'fetch failed',
+	'compute-provider-failed',
+	'compute-provider-timeout',
+];
+
+/**
+ * Copy for a failed token-state read. Uses the asset page's cause-specific
+ * mapping; the freshly-minted hint is added only when the cause could be a
+ * token that is not sequenced yet (not found / unrecognised), never for a
+ * rate limit, peer outage, timeout or unreachable peer.
+ */
+export function dispatchStateReadMessage(cause: unknown): string {
+	const message = cause instanceof Error ? cause.message : String(cause);
+	const base = assetStateErrorMessage(cause);
+	const transport =
+		/^HTTP (?:429|5\d\d)(?:\b|$)/i.test(message) ||
+		/response[-\s]+quorum[-\s]+not[-\s]+met/i.test(message) ||
+		message === DISPLAY_STATE_TIMEOUT_ERROR ||
+		TRANSPORT_STATE_FAILURES.includes(message);
+	return transport ? base : `${base} ${MINTED_TOKEN_HINT}`;
+}
+
+/** Fixed, short copy for a failed network-fee quote; raw codes never reach the UI. */
+export function transferRewardErrorMessage(cause: unknown): string {
+	const message = cause instanceof Error ? cause.message : String(cause);
+	return message === 'transfer-price-429'
+		? 'The Arweave gateway is rate-limiting network fee checks. Wait briefly and retry.'
+		: 'Network fee could not be checked. Retry.';
+}
+
+/**
+ * The network-fee quote as explicit state:
+ * - idle: nothing to show yet (no rows, or no wallet while the quote is pending)
+ * - checking: a connected wallet is waiting on the quote that gates sending
+ * - error: the quote failed; a Retry re-requests only the fee
+ * - ready: the quote is known
+ */
+export type DispatchFeeStatus = 'idle' | 'checking' | 'error' | 'ready';
+
+export function dispatchFeeStatus(input: {
+	walletConnected: boolean;
+	rowsParsed: boolean;
+	reward: bigint | null;
+	rewardError: string | null;
+}): DispatchFeeStatus {
+	if (!input.rowsParsed) return 'idle';
+	if (input.rewardError) return 'error';
+	if (input.reward !== null) return 'ready';
+	return input.walletConnected ? 'checking' : 'idle';
+}
+
+export function dispatchFeeLabel(status: DispatchFeeStatus, totalWinston: bigint | null): string {
+	if (status === 'ready' && totalWinston !== null) return `${winstonToAr(totalWinston.toString())} AR`;
+	if (status === 'checking') return 'Checking…';
+	if (status === 'error') return 'Unavailable';
+	return '—';
+}
+
+export function DispatchFeeNotice(props: { message: string; blocksDispatch: boolean; onRetry: () => void }) {
+	return (
+		<div className="mint-recovery" role="status">
+			<div>
+				<strong>Network fee unavailable</strong>
+				<span>
+					{props.message}
+					{props.blocksDispatch ? ' Sign and dispatch stays disabled until the fee is known.' : ''}
+				</span>
+			</div>
+			<div>
+				<Button type="button" size="custom" onClick={props.onRetry}>
+					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+				</Button>
+			</div>
+		</div>
+	);
 }
 
 export type DispatchStartRequest = {
@@ -145,6 +226,59 @@ export async function startDispatchOnce(request: DispatchStartRequest): Promise<
 	}
 }
 
+/** A run failure follows a user action (sign, resume), so it interrupts as an alert. */
+export function DispatchRunError(props: { message: string }) {
+	return (
+		<div className="inline-error" role="alert">
+			<span>{props.message}</span>
+		</div>
+	);
+}
+
+/**
+ * Text for the page's one polite progress region: the plain settled counter
+ * while a run is active, completion once, and nothing otherwise. The visible
+ * heading keeps its posted/sender detail; it is left out here so every
+ * onProgress update stays short.
+ */
+export function dispatchPlanStatusText(input: {
+	hasPlan: boolean;
+	complete: boolean;
+	running: boolean;
+	settled: number;
+	total: number;
+}): string {
+	if (!input.hasPlan) return '';
+	if (input.complete) return 'Dispatch complete. All transfers settled.';
+	if (input.running) return `${input.settled} of ${input.total} settled`;
+	return '';
+}
+
+/**
+ * Always mounted at section level, outside the plan/form swap, so it exists
+ * empty before its first update (mirrors OperationOutcomeAnnouncement).
+ */
+export function DispatchPlanStatus(props: { text: string }) {
+	return (
+		<div aria-atomic="true" className="sr-only" role="status">
+			{props.text}
+		</div>
+	);
+}
+
+/**
+ * Moves focus to the plan heading once, after start() created the plan and the
+ * form (holding the focused submit button) unmounted. A plan restored from
+ * storage on mount never raises the flag, so opening the page keeps focus
+ * where the user put it.
+ */
+export function focusCreatedPlan(justCreated: { current: boolean }, target: { focus: () => void } | null): boolean {
+	if (!justCreated.current || !target) return false;
+	justCreated.current = false;
+	target.focus();
+	return true;
+}
+
 const STATUS_LABEL = { unsent: 'Unsent', posted: 'Posted', settled: 'Settled' } as const;
 
 export default function DispatchRoute() {
@@ -153,12 +287,20 @@ export default function DispatchRoute() {
 	const validId = ADDRESS.test(processId);
 	const abortRef = React.useRef<AbortController | null>(null);
 	const inFlightRef = React.useRef(false);
+	const planHeadingRef = React.useRef<HTMLElement>(null);
+	const planJustCreatedRef = React.useRef(false);
+	const holderListLabelId = React.useId();
+	const holderListErrorsId = React.useId();
+	const senderMismatchId = React.useId();
 	const [state, setState] = React.useState<AssetState | null>(null);
 	const [stateError, setStateError] = React.useState<string | null>(null);
 	const [loadingState, setLoadingState] = React.useState(false);
 	const [stateAttempt, setStateAttempt] = React.useState(0);
 	const [holderRows, setHolderRows] = React.useState<HolderDraftRow[]>([{ address: '', quantity: '' }]);
 	const [reward, setReward] = React.useState<bigint | null>(null);
+	const [rewardError, setRewardError] = React.useState<string | null>(null);
+	// Separate from stateAttempt: retrying the fee must not re-read the token state.
+	const [rewardAttempt, setRewardAttempt] = React.useState(0);
 	const [plan, setPlan] = React.useState<DispatchPlan | null>(() => (validId ? loadDispatchPlan(processId) : null));
 	const [running, setRunning] = React.useState(false);
 	const [preparing, setPreparing] = React.useState(false);
@@ -176,12 +318,8 @@ export default function DispatchRoute() {
 				(result) => {
 					if (!controller.signal.aborted) setState(result.state);
 				},
-				() => {
-					if (!controller.signal.aborted) {
-						setStateError(
-							'The token process state is not readable yet. A freshly minted token only becomes readable once the arweave-scheduler sequences its creation — around 20 minutes on mainnet. Retry once it has settled.'
-						);
-					}
+				(cause) => {
+					if (!controller.signal.aborted) setStateError(dispatchStateReadMessage(cause));
 				}
 			)
 			.finally(() => {
@@ -190,16 +328,22 @@ export default function DispatchRoute() {
 		return () => controller.abort();
 	}, [processId, validId, stateAttempt]);
 	React.useEffect(() => {
+		// Every attempt starts clean so a fee or error from another token or an
+		// earlier attempt is never shown.
+		setReward(null);
+		setRewardError(null);
 		if (!validId || !state) return;
 		const controller = new AbortController();
 		void fetchTransferReward(arweaveGatewayFromLocation(), processId, undefined, controller.signal).then(
 			(value) => {
 				if (!controller.signal.aborted) setReward(value);
 			},
-			() => undefined
+			(cause) => {
+				if (!controller.signal.aborted) setRewardError(transferRewardErrorMessage(cause));
+			}
 		);
 		return () => controller.abort();
-	}, [processId, validId, state]);
+	}, [processId, validId, state, rewardAttempt]);
 
 	// The K/V rows are the editable source of truth; serialize non-empty rows
 	// back to the CSV the strict parser/validator already understands.
@@ -216,6 +360,12 @@ export default function DispatchRoute() {
 		[state, text]
 	);
 	const estimate = parsed?.rows.length && reward !== null ? estimateDispatchCost(parsed.rows, reward) : null;
+	const feeStatus = dispatchFeeStatus({
+		walletConnected: Boolean(wallet.address),
+		rowsParsed: Boolean(parsed?.rows.length),
+		reward,
+		rewardError,
+	});
 	const needsCostApproval = Boolean(estimate && requiresCostConfirmation(estimate.totalWinston));
 	const planSettled = plan ? plan.rows.filter((row) => row.status === 'settled').length : 0;
 	const planPosted = plan ? plan.rows.filter((row) => row.status === 'posted').length : 0;
@@ -223,6 +373,17 @@ export default function DispatchRoute() {
 	const senderMismatch = Boolean(plan && wallet.address && plan.sender !== wallet.address);
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const balance = state && wallet.address && balanceStateAvailable ? liquidBalanceOf(state, wallet.address) : null;
+	const planStatusText = dispatchPlanStatusText({
+		hasPlan: Boolean(plan),
+		complete: planComplete,
+		running,
+		settled: planSettled,
+		total: plan?.rows.length ?? 0,
+	});
+
+	React.useEffect(() => {
+		if (plan) focusCreatedPlan(planJustCreatedRef, planHeadingRef.current);
+	}, [plan]);
 
 	// Surface the run in the top-bar activity notifier the same as a buy/sell/
 	// transfer. It rides the fungible runtime-activity channel with a dedicated
@@ -309,7 +470,10 @@ export default function DispatchRoute() {
 			createPlan: createDispatchPlan,
 			execute,
 			onPreparingChange: setPreparing,
-			onPlan: setPlan,
+			onPlan: (created) => {
+				planJustCreatedRef.current = true;
+				setPlan(created);
+			},
 			onError: setRunError,
 		});
 	};
@@ -363,7 +527,7 @@ export default function DispatchRoute() {
 			{stateError ? (
 				<div className="mint-recovery" role="status">
 					<div>
-						<strong>Token state not readable yet</strong>
+						<strong>Token state unavailable</strong>
 						<span>{stateError}</span>
 					</div>
 					<div>
@@ -410,7 +574,7 @@ export default function DispatchRoute() {
 				<div className="dispatch-plan">
 					<div className="dispatch-plan-heading">
 						<div>
-							<strong>
+							<strong ref={planHeadingRef} tabIndex={-1}>
 								{planComplete
 									? 'Dispatch complete'
 									: running
@@ -430,6 +594,7 @@ export default function DispatchRoute() {
 									size="custom"
 									onClick={() => void resume()}
 									disabled={running || senderMismatch}
+									aria-describedby={senderMismatch ? senderMismatchId : undefined}
 								>
 									{running ? 'Working…' : 'Resume'}
 								</Button>
@@ -440,13 +605,14 @@ export default function DispatchRoute() {
 						</div>
 					</div>
 					{senderMismatch ? (
-						<div className="inline-error">
+						<div className="inline-error" id={senderMismatchId}>
 							<span>
 								This dispatch was started from {shortAddress(plan.sender)}. Connect that wallet to
 								resume it.
 							</span>
 						</div>
 					) : null}
+					{runError ? <DispatchRunError message={runError} /> : null}
 					{running && planPosted ? (
 						<div className="mint-notice">
 							<Info className="ui-icon" aria-hidden="true" />
@@ -511,8 +677,13 @@ export default function DispatchRoute() {
 							void start();
 						}}
 					>
-						<div className="create-field">
-							<label>Holder list</label>
+						<div
+							className="create-field"
+							role="group"
+							aria-labelledby={holderListLabelId}
+							aria-describedby={parsed?.errors.length ? holderListErrorsId : undefined}
+						>
+							<label id={holderListLabelId}>Holder list</label>
 							<HolderListField
 								rows={holderRows}
 								disabled={running || preparing}
@@ -532,7 +703,9 @@ export default function DispatchRoute() {
 						</div>
 
 						{parsed?.errors.length ? (
-							<div className="inline-error">
+							// Not live: it re-renders on every keystroke. The holder-list group
+							// references it through aria-describedby instead.
+							<div className="inline-error" id={holderListErrorsId}>
 								<span>
 									{parsed.errors.slice(0, 8).map((entry, index) => (
 										<React.Fragment key={index}>
@@ -588,11 +761,16 @@ export default function DispatchRoute() {
 									</div>
 									<div>
 										<span>Total AR cost</span>
-										<strong>
-											{estimate ? `${winstonToAr(estimate.totalWinston.toString())} AR` : '—'}
-										</strong>
+										<strong>{dispatchFeeLabel(feeStatus, estimate?.totalWinston ?? null)}</strong>
 									</div>
 								</div>
+								{feeStatus === 'error' && rewardError ? (
+									<DispatchFeeNotice
+										message={rewardError}
+										blocksDispatch={Boolean(wallet.address)}
+										onRetry={() => setRewardAttempt((current) => current + 1)}
+									/>
+								) : null}
 								<div className="mint-notice">
 									<Info className="ui-icon" aria-hidden="true" />
 									<span>
@@ -637,11 +815,7 @@ export default function DispatchRoute() {
 							</>
 						) : null}
 
-						{runError ? (
-							<div className="inline-error">
-								<span>{runError}</span>
-							</div>
-						) : null}
+						{runError ? <DispatchRunError message={runError} /> : null}
 
 						<Button
 							className="mint-submit"
@@ -674,11 +848,7 @@ export default function DispatchRoute() {
 				</div>
 			)}
 
-			{plan && runError ? (
-				<div className="inline-error">
-					<span>{runError}</span>
-				</div>
-			) : null}
+			<DispatchPlanStatus text={planStatusText} />
 		</section>
 	);
 }
