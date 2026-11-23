@@ -10461,7 +10461,7 @@ function AssetView() {
 }
 
 type Operation =
-	| { kind: 'sell'; resumeId?: string; value?: string }
+	| { kind: 'sell'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
 	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
@@ -10587,8 +10587,10 @@ function OperationDialog({
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
 	const submittedAtRef = React.useRef<number>();
+	// A listing saved without a baseline predates exact-slot listing checks and
+	// keeps the open-order wait, so 'sell' never falls back to slot 0.
 	const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
-		(operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
+		operation.kind !== 'buy' && Number.isSafeInteger(operation.startingSlot)
 			? { startingSlot: operation.startingSlot! }
 			: (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
 			? { startingSlot: 0 }
@@ -10760,11 +10762,13 @@ function OperationDialog({
 						);
 					}
 				}
-				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
-					const startingSlot = Number(freshState.raw['at-slot']);
-					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
-					}
+				const startingSlot = Number(freshState.raw['at-slot']);
+				const hasStartingSlot = Number.isSafeInteger(startingSlot) && startingSlot >= 0;
+				if ((operation.kind === 'cancel' || operation.kind === 'transfer') && !hasStartingSlot) {
+					throw new Error('asset-action-starting-slot-unavailable');
+				}
+				// Listings without a slot keep the open-order wait rather than refusing to sign.
+				if (operation.kind !== 'buy' && hasStartingSlot) {
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
 				}
@@ -10994,7 +10998,12 @@ function OperationDialog({
 							startingSlot: exactActionBaseline!.startingSlot,
 							value: operationValue,
 					  }
-					: { kind: 'sell', resumeId: prepared.id, value: operationValue }
+					: {
+							kind: 'sell',
+							resumeId: prepared.id,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+							value: operationValue,
+					  }
 			);
 			const operationRecord = {
 				txId: prepared.id,
@@ -11008,7 +11017,10 @@ function OperationDialog({
 					? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
 					: operation.kind === 'transfer'
 					? { value: operationValue, startingSlot: exactActionBaseline!.startingSlot }
-					: { value: operationValue }),
+					: {
+							value: operationValue,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+					  }),
 				createdAt: Date.now(),
 			};
 			try {
@@ -11048,16 +11060,12 @@ function OperationDialog({
 			setConfirmations(5);
 			setMessage('Five confirmations reached. Waiting for the scheduler safety depth and live asset state…');
 			if (operation.kind === 'sell') {
-				await client.waitForOfferAcceptance(
-					asset.id,
-					{
-						orderId: prepared.id,
-						seller: owner,
-						quantity: '1',
-						asking: arToWinston(operationValue),
-					},
-					signal
-				);
+				const expectedOffer = { seller: owner, quantity: '1', asking: arToWinston(operationValue) };
+				if (exactActionBaseline) {
+					await client.waitForExactOffer(asset.id, prepared.id, expectedOffer, exactActionBaseline, signal);
+				} else {
+					await client.waitForOfferAcceptance(asset.id, { orderId: prepared.id, ...expectedOffer }, signal);
+				}
 			} else if (operation.kind === 'cancel') {
 				await client.waitForExactCancellation(
 					asset.id,
@@ -11099,7 +11107,9 @@ function OperationDialog({
 			if (attemptRef.current.signal.aborted) return;
 			if (
 				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				['asset-cancel-rejected', 'fungible-transfer-rejected', 'asset-offer-rejected'].includes(
+					cause.message
+				) &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(

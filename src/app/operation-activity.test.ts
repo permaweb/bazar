@@ -96,6 +96,16 @@ function activity(overrides: Partial<OperationActivity> = {}): OperationActivity
 	};
 }
 
+const savedListing = {
+	signer: owner,
+	txId: 'T'.repeat(43),
+	kind: 'sell',
+	value: '0.5',
+	asset: { id: 'asset-1', name: 'Permanent Strata #001' },
+	activityKind: 'atomic',
+	collectionId: 'collection-1',
+};
+
 describe('operation activity persistence', () => {
 	it('persists recoverable work while omitting forms and completed entries', () => {
 		const storage = new MemoryStorage();
@@ -142,6 +152,29 @@ describe('operation activity persistence', () => {
 		const [restored] = loadOperationActivities(storage, owner);
 		expect(restored.operation).toEqual({ kind: 'sell', resumeId: 'T'.repeat(43), value: '0.5' });
 		expect(restored.status).toBe('Resuming signed transaction…');
+	});
+
+	it("carries a listing's exact-slot baseline so its outcome can be decided at that slot", () => {
+		const storage = new MemoryStorage();
+		saveOperationActivities(storage, [activity()], [owner]);
+		storage.setItem(`bazar-operation:asset-1:${owner}`, JSON.stringify({ ...savedListing, startingSlot: 42 }));
+
+		const [restored] = loadOperationActivities(storage, owner);
+		expect(restored.operation).toEqual({ kind: 'sell', resumeId: 'T'.repeat(43), startingSlot: 42, value: '0.5' });
+		expect(discoverOperationActivities(storage, owner, [])).toMatchObject([
+			{ operation: { kind: 'sell', resumeId: 'T'.repeat(43), startingSlot: 42 } },
+		]);
+	});
+
+	it.each([undefined, -1, 1.5, '42'])('keeps a listing saved with startingSlot %s on the open-order wait', (slot) => {
+		const storage = new MemoryStorage();
+		saveOperationActivities(storage, [activity()], [owner]);
+		storage.setItem(`bazar-operation:asset-1:${owner}`, JSON.stringify({ ...savedListing, startingSlot: slot }));
+
+		const [restored] = loadOperationActivities(storage, owner);
+		expect(restored.operation).not.toHaveProperty('startingSlot');
+		const [discovered] = discoverOperationActivities(storage, owner, []);
+		expect(discovered.operation).toEqual({ kind: 'sell', resumeId: 'T'.repeat(43), value: '0.5' });
 	});
 
 	it('uses the latest purchase snapshot instead of restarting the purchase from scratch', () => {

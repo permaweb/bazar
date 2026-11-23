@@ -69,6 +69,10 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'This cancellation reached its exact schedule slot, but live state proves it was not applied. The listing changed first. Review the current order book before trying again.',
 	'asset-cancel-proof-mismatch':
 		'The configured AO peers returned incomplete scheduler proof for this cancellation. The signed transaction is saved in this browser; continue it here, or review the AO Core settings in the header.',
+	'asset-offer-rejected':
+		'This listing reached its exact schedule slot, but live state proves the token process did not apply it. The listing was not created and nothing is locked. Its signed transaction was discarded; review your current balance before listing again.',
+	'asset-offer-proof-mismatch':
+		'The configured AO peers returned incomplete scheduler proof for this listing. The signed transaction is saved in this browser; continue it here, or review the AO Core settings in the header.',
 	'asset-purchase-rejected':
 		'The exact seller payment reached this asset’s schedule, but the token transfer was not applied. The permanent payment evidence remains saved for review.',
 	'asset-purchase-proof-mismatch':
@@ -134,6 +138,7 @@ export function marketplaceOperationFailure(error: unknown): MarketplaceOperatio
 	return [
 		'fungible-transfer-rejected',
 		'asset-cancel-rejected',
+		'asset-offer-rejected',
 		'asset-purchase-rejected',
 		'asset-order-reservation-rejected',
 		'asset-order-reservation-expired',

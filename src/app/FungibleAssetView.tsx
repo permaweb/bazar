@@ -213,7 +213,7 @@ type BatchResume = {
 };
 
 export type FungibleOperation =
-	| { kind: 'sell'; quantity?: string; unitPrice?: string; resumeId?: string }
+	| { kind: 'sell'; quantity?: string; unitPrice?: string; startingSlot?: number; resumeId?: string }
 	| {
 			kind: 'transfer';
 			quantity?: string;
@@ -1088,6 +1088,7 @@ export function FungibleAssetView({
 						kind: 'sell',
 						quantity: saved.quantity,
 						unitPrice: saved.unitPrice,
+						startingSlot: saved.startingSlot,
 						resumeId: saved.txId,
 					},
 					{ show: false }
@@ -2128,8 +2129,10 @@ function FungibleOperationDialog({
 	const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
+	// A listing saved without a baseline predates exact-slot listing checks and
+	// keeps the open-order wait, so 'sell' never falls back to slot 0.
 	const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
-		(operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
+		operation.kind !== 'buy' && Number.isSafeInteger(operation.startingSlot)
 			? { startingSlot: operation.startingSlot! }
 			: (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
 			? { startingSlot: 0 }
@@ -2353,11 +2356,13 @@ function FungibleOperationDialog({
 					state.denomination
 				);
 				if (stateError) throw new Error(stateError);
-				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
-					const startingSlot = Number(freshState.raw['at-slot']);
-					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
-					}
+				const startingSlot = Number(freshState.raw['at-slot']);
+				const hasStartingSlot = Number.isSafeInteger(startingSlot) && startingSlot >= 0;
+				if ((operation.kind === 'cancel' || operation.kind === 'transfer') && !hasStartingSlot) {
+					throw new Error('asset-action-starting-slot-unavailable');
+				}
+				// Listings without a slot keep the open-order wait rather than refusing to sign.
+				if (operation.kind !== 'buy' && hasStartingSlot) {
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
 				}
@@ -2431,7 +2436,11 @@ function FungibleOperationDialog({
 				...(operation.kind === 'cancel'
 					? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
 					: operation.kind === 'sell'
-					? { quantity, unitPrice }
+					? {
+							quantity,
+							unitPrice,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+					  }
 					: {
 							quantity,
 							recipient: transferRecipient,
@@ -2480,16 +2489,12 @@ function FungibleOperationDialog({
 					rawQuantity || parseTokenAmount(operation.quantity ?? quantity, state.denomination);
 				const expectedAsking =
 					asking || lotAsking(expectedQuantity, operation.unitPrice ?? unitPrice, state.denomination);
-				await client.waitForOfferAcceptance(
-					asset.id,
-					{
-						orderId: prepared.id,
-						seller: owner,
-						quantity: expectedQuantity,
-						asking: expectedAsking,
-					},
-					signal
-				);
+				const expectedOffer = { seller: owner, quantity: expectedQuantity, asking: expectedAsking };
+				if (exactActionBaseline) {
+					await client.waitForExactOffer(asset.id, prepared.id, expectedOffer, exactActionBaseline, signal);
+				} else {
+					await client.waitForOfferAcceptance(asset.id, { orderId: prepared.id, ...expectedOffer }, signal);
+				}
 			} else if (operation.kind === 'cancel') {
 				await client.waitForExactCancellation(
 					asset.id,
@@ -2535,7 +2540,9 @@ function FungibleOperationDialog({
 			if (attemptRef.current.signal.aborted) return;
 			if (
 				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				['asset-cancel-rejected', 'fungible-transfer-rejected', 'asset-offer-rejected'].includes(
+					cause.message
+				) &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(

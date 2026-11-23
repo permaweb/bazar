@@ -11,12 +11,14 @@ import { parseAssetState, type SwapOrder } from './asset-marketplace';
 import {
 	assertExactCancelAssignment,
 	assertExactFungibleTransferAssignment,
+	assertExactOfferAssignment,
 	assertExactPurchaseAssignment,
 	ASSET_BALANCE_PROOF_UNAVAILABLE,
 	AssetTransactionClient,
 	cancelAppliedAtSlot,
 	fungibleTransferAppliedAtSlot,
 	MAXIMUM_ASSET_OFFER_PRICE,
+	offerAppliedAtSlot,
 	purchaseAppliedAtSlot,
 	waitUntilSeen,
 } from './asset-transactions';
@@ -90,6 +92,80 @@ function scheduledCancelAssignment(slot: number, signedId: string, blockHeight =
 		process: processId,
 		slot,
 	};
+}
+
+function scheduledOfferAssignment(slot: number, signedId: string, blockHeight = 51) {
+	return {
+		'block-height': blockHeight,
+		body: {
+			action: 'make-offer',
+			asking: '1000',
+			commitments: {
+				[signedId]: {
+					'commitment-device': 'tx@1.0',
+					committer: seller,
+					committed: [
+						'action',
+						'asking',
+						'deadline',
+						'deposit',
+						'minimum-fee',
+						'offer-quantity',
+						'quantity',
+						'target',
+					],
+					'field-target': processId,
+				},
+			},
+			deadline: '20',
+			deposit: '0',
+			'minimum-fee': '0',
+			'offer-quantity': '1',
+			quantity: '1',
+			target: processId,
+		},
+		process: processId,
+		slot,
+	};
+}
+
+/** The order a make-offer signed as `transactionId` opens. */
+function offerOrderRaw(overrides: Record<string, unknown> = {}) {
+	return { ...cancelOrderRaw('1'), 'order-id': transactionId, 'minimum-fee': '0', ...overrides };
+}
+
+const expectedOffer = { seller, quantity: '1', asking: '1000' };
+
+function exactOfferClient(current: ReturnType<typeof transferState>, atSlot: ReturnType<typeof transferState>) {
+	const requests: string[] = [];
+	const subject = new AssetTransactionClient({
+		fetch: async (input: RequestInfo | URL) => {
+			const url = String(input);
+			requests.push(url);
+			if (url.includes(`/tx/${transactionId}/status`)) {
+				return new Response(JSON.stringify({ block_height: 51 }));
+			}
+			if (url.endsWith('/now')) return stateResponse(current.raw);
+			const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
+			if (schedule) {
+				const assignments: Record<number, unknown> = {};
+				for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
+					assignments[slot] =
+						slot === 12
+							? scheduledOfferAssignment(slot, transactionId, 51)
+							: scheduledCancelAssignment(
+									slot,
+									`m${String(slot).padStart(42, '0')}`,
+									slot < 12 ? 50 : 52
+							  );
+				}
+				return new Response(JSON.stringify(assignments));
+			}
+			if (url.includes('compute&slot=12')) return stateResponse(atSlot.raw);
+			throw new Error(`unexpected-request:${url}`);
+		},
+	});
+	return { subject, requests };
 }
 
 function scheduledPurchaseAssignment(
@@ -1046,6 +1122,117 @@ describe('fungible asset transactions', () => {
 		await expect(
 			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 })
 		).resolves.toMatchObject({ raw: { 'at-slot': 12 } });
+	});
+
+	it('proves a listing from the order its exact make-offer slot opened, signed fee included', () => {
+		const assignment = {
+			slot: 11,
+			blockHeight: 51,
+			transactionIds: [transactionId],
+			raw: scheduledOfferAssignment(11, transactionId),
+		};
+		const opened = transferState(11, '0', '0', { [transactionId]: offerOrderRaw() });
+		const notOpened = transferState(11, '0', '0');
+		const wrongFee = transferState(11, '0', '0', { [transactionId]: offerOrderRaw({ 'minimum-fee': '5' }) });
+		const wrongAsking = transferState(11, '0', '0', { [transactionId]: offerOrderRaw({ asking: '999' }) });
+		const wrongSlot = transferState(12, '0', '0', { [transactionId]: offerOrderRaw() });
+
+		expect(offerAppliedAtSlot(opened, assignment, processId, transactionId, expectedOffer)).toBe(true);
+		for (const state of [notOpened, wrongFee, wrongAsking, wrongSlot]) {
+			expect(offerAppliedAtSlot(state, assignment, processId, transactionId, expectedOffer)).toBe(false);
+		}
+	});
+
+	it('rejects incomplete exact make-offer evidence before reading it as an outcome', () => {
+		const validRaw = scheduledOfferAssignment(11, transactionId);
+		const mutations: Array<(raw: any) => void> = [
+			(raw) => {
+				raw.process = recipient;
+			},
+			(raw) => {
+				raw.body.commitments[transactionId].committer = recipient;
+			},
+			(raw) => {
+				raw.body.action = 'transfer';
+			},
+			(raw) => {
+				raw.body['offer-quantity'] = '2';
+			},
+			(raw) => {
+				raw.body.asking = '999';
+			},
+			(raw) => {
+				delete raw.body['minimum-fee'];
+			},
+			(raw) => {
+				raw.body.target = recipient;
+			},
+			(raw) => {
+				raw.body.commitments[transactionId].committed = ['action', 'asking', 'target'];
+			},
+			(raw) => {
+				delete raw.body.commitments[transactionId]['field-target'];
+			},
+		];
+
+		expect(() =>
+			assertExactOfferAssignment(
+				{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw: validRaw },
+				processId,
+				transactionId,
+				expectedOffer
+			)
+		).not.toThrow();
+		for (const mutate of mutations) {
+			const raw = structuredClone(validRaw);
+			mutate(raw);
+			expect(() =>
+				assertExactOfferAssignment(
+					{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw },
+					processId,
+					transactionId,
+					expectedOffer
+				)
+			).toThrow('asset-offer-proof-mismatch');
+		}
+	});
+
+	it('waits for the exact make-offer slot and reports a listing the token process did not open as rejected', async () => {
+		// The seller's lot left first (another listing, transfer or sale), so the
+		// make-offer slot opened no order; live state may look identical for hours.
+		const current = transferState(13, '0', '1');
+		const notOpened = transferState(12, '0', '1');
+		const { subject, requests } = exactOfferClient(current, notOpened);
+
+		await expect(
+			subject.waitForExactOffer(processId, transactionId, expectedOffer, { startingSlot: 10 })
+		).rejects.toThrow('asset-offer-rejected');
+		expect(requests.some((url) => url.includes('compute&slot=12'))).toBe(true);
+	});
+
+	it('accepts the exact make-offer slot even after the listing later sold', async () => {
+		const sold = transferState(13, '0', '1');
+		const opened = transferState(12, '0', '0', { [transactionId]: offerOrderRaw() });
+		const { subject } = exactOfferClient(sold, opened);
+
+		await expect(
+			subject.waitForExactOffer(processId, transactionId, expectedOffer, { startingSlot: 10 })
+		).resolves.toMatchObject({ raw: { 'at-slot': 12 }, orders: { [transactionId]: { status: 'open' } } });
+	});
+
+	it('keeps a listing resumable when the make-offer slot proof is incomplete', async () => {
+		const current = transferState(13, '0', '1');
+		const opened = transferState(12, '0', '0', { [transactionId]: offerOrderRaw() });
+		const { subject } = exactOfferClient(current, opened);
+
+		await expect(
+			subject.waitForExactOffer(
+				processId,
+				transactionId,
+				{ ...expectedOffer, asking: '999' },
+				{ startingSlot: 10 }
+			)
+		).rejects.toThrow('asset-offer-proof-mismatch');
 	});
 
 	it('proves an exact-slot transfer from its paired notices rather than noisy balances', () => {

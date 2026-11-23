@@ -59,6 +59,7 @@ describe('marketplaceErrorMessage', () => {
 		['fungible-transfer-proof-mismatch', 'signed transaction is saved in this browser'],
 		['asset-cancel-rejected', 'listing changed first'],
 		['asset-cancel-proof-mismatch', 'signed transaction is saved in this browser'],
+		['asset-offer-proof-mismatch', 'signed transaction is saved in this browser'],
 		['asset-purchase-rejected', 'permanent payment evidence'],
 		['asset-purchase-proof-mismatch', 'Both transaction IDs remain saved in this browser'],
 		['asset-payment-id-missing', 'cannot prove settlement safely'],
@@ -98,6 +99,15 @@ describe('marketplaceErrorMessage', () => {
 		expect(ASSET_OFFER_PRICE_CAP_ERROR).toContain(cap);
 		expect(ASSET_OFFER_TOTAL_CAP_ERROR).toContain(cap);
 		expect(marketplaceErrorMessage(new TypeError('asset-offer-asking-too-high'))).toContain(cap);
+	});
+
+	it('explains a rejected listing as final, with nothing locked and nothing to resume', () => {
+		const message = marketplaceErrorMessage(new Error('asset-offer-rejected'));
+		expect(message).toContain('The listing was not created and nothing is locked.');
+		expect(message).toContain('signed transaction was discarded');
+		expect(message).not.toMatch(/keep checking|resume|continue it/i);
+		expect(marketplaceOperationFailure(new Error('asset-offer-rejected'))).toBe('transaction-rejected');
+		expect(marketplaceOperationFailure(new Error('asset-offer-proof-mismatch'))).toBe('other');
 	});
 
 	it('keeps unknown errors readable', () => {
