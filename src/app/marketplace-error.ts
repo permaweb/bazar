@@ -125,6 +125,19 @@ export function marketplaceOperationFailure(error: unknown): MarketplaceOperatio
 		: 'other';
 }
 
+/**
+ * Purchase failure codes that prove the scheduled seller payment can never
+ * apply, so rechecking its saved receipts cannot complete the purchase.
+ * 'asset-purchase-proof-mismatch' is deliberately absent: it means the peers
+ * returned incomplete scheduler proof, and its copy (like the cancel and
+ * transfer proof mismatches) keeps both transaction IDs to continue later.
+ */
+const TERMINAL_PURCHASE_FAILURE_CODES: ReadonlySet<string> = new Set(['asset-purchase-rejected']);
+
+export function isTerminalPurchaseFailureCode(code: string | null | undefined): boolean {
+	return TERMINAL_PURCHASE_FAILURE_CODES.has(code ?? '');
+}
+
 export type MarketplaceRequestSource = 'compute' | 'index';
 export type MarketplaceFailureKind = 'rate-limited' | 'unavailable';
 

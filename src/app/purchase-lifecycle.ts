@@ -5,6 +5,22 @@ export const PURCHASE_SKIP_FROM_DEPTH = 3;
 export const PURCHASE_REGISTRATION_TARGET = 5;
 export const PURCHASE_PAYMENT_TARGET = 1;
 
+function normalizePurchaseFailureCode(value: string) {
+	return value.trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-');
+}
+
+/**
+ * The one failure code for a purchase state. weave-wrangler reports its own
+ * lifecycle failures as `{ code }`, but stores every adapter error (for
+ * example `new Error('asset-purchase-rejected')`) as
+ * `{ code: 'unexpected', message: <code> }`, so the message is the code then.
+ */
+export function purchaseFailureCode(state: Pick<PurchaseState, 'error'> | null | undefined): string | null {
+	const code = normalizePurchaseFailureCode(state?.error?.code ?? '');
+	if (code && code !== 'unexpected') return code;
+	return normalizePurchaseFailureCode(state?.error?.message ?? '') || code || null;
+}
+
 export type ContinuingPaymentObservation = {
 	consensus: Consensus;
 	views: ObserverView[];
