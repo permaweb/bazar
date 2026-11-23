@@ -231,6 +231,8 @@ import {
 import {
 	atomicOperationActivityId,
 	atomicPurchaseRecoveryCanBeDiscarded,
+	type BackgroundOperationOutcome,
+	backgroundOperationOutcome,
 	deriveFungibleOperationActivities,
 	deriveOperationActivities,
 	FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
@@ -244,6 +246,7 @@ import {
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
+	settledWhileHidden,
 } from './operation-activity';
 import {
 	acquireWalletOperationClaim,
@@ -746,6 +749,41 @@ type OperationActivityContextValue = {
 
 const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
 
+/** A result shown after its own panel is gone: a live mint, or work that settled while hidden. */
+type BackgroundNotice = {
+	id: string;
+	tone: 'positive' | 'attention';
+	title: string;
+	detail: string;
+	action?:
+		| { kind: 'navigate'; label: string; path: string }
+		| { kind: 'show-operation' | 'show-upload'; label: string; id: string };
+};
+
+function backgroundOperationNotice(outcome: BackgroundOperationOutcome): BackgroundNotice {
+	if (outcome.phase === 'error') {
+		return {
+			id: outcome.id,
+			tone: 'attention',
+			title: `${outcome.asset.name} needs attention`,
+			detail: `${operationLabel(outcome.operation.kind)}: ${outcome.status}`,
+			action: { kind: 'show-operation', label: 'Review', id: outcome.id },
+		};
+	}
+	const value =
+		outcome.operation.kind === 'sell' || outcome.operation.kind === 'transfer'
+			? atomicOperationValue(outcome.operation.kind, outcome.operation.value ?? '')
+			: '';
+	const result = atomicOperationResult(outcome.operation.kind, outcome.asset.name, value, outcome.owner);
+	return {
+		id: outcome.id,
+		tone: 'positive',
+		title: `${result.title}: ${outcome.asset.name}`,
+		detail: result.detail,
+		action: { kind: 'navigate', label: 'View asset', path: `/asset/${outcome.collectionId}/${outcome.asset.id}` },
+	};
+}
+
 async function observeMintActivity(
 	activity: MintActivity,
 	onPhase: (phase: MintActivity['phase']) => void,
@@ -825,9 +863,21 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
 	const [mintActivities, setMintActivities] = React.useState<MintActivity[]>([]);
 	const [uploadActivities, setUploadActivities] = React.useState<UploadActivity[]>([]);
-	const [mintNotice, setMintNotice] = React.useState<MintActivity | null>(null);
+	const [notices, setNotices] = React.useState<BackgroundNotice[]>([]);
 	const [activeId, setActiveId] = React.useState<string | null>(null);
 	const [activeUploadId, setActiveUploadId] = React.useState<string | null>(null);
+	const activeIdRef = React.useRef(activeId);
+	activeIdRef.current = activeId;
+	const activeUploadIdRef = React.useRef(activeUploadId);
+	activeUploadIdRef.current = activeUploadId;
+	const uploadActivitiesRef = React.useRef(uploadActivities);
+	uploadActivitiesRef.current = uploadActivities;
+	const pushNotice = React.useCallback((notice: BackgroundNotice) => {
+		setNotices((current) => [...current.filter((candidate) => candidate.id !== notice.id), notice]);
+	}, []);
+	const dismissNotice = React.useCallback((id: string) => {
+		setNotices((current) => current.filter((candidate) => candidate.id !== id));
+	}, []);
 	const [activeMintId, setActiveMintId] = React.useState<string | null>(null);
 	const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
 	const [recoveryValidationRetry, setRecoveryValidationRetry] = React.useState(0);
@@ -931,7 +981,17 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					const updated = advanceMintActivity(current, phase);
 					upsertMintActivity(localStorage, updated);
 					if (phase !== 'complete') return;
-					setMintNotice(updated);
+					pushNotice({
+						id: `mint:${updated.id}`,
+						tone: 'positive',
+						title: `${updated.asset.name} is live on Bazar`,
+						detail: 'The original accepted upload is now applied to live process state.',
+						action: {
+							kind: 'navigate',
+							label: 'View asset',
+							path: `/asset/${updated.collectionId}/${updated.asset.id}`,
+						},
+					});
 					window.dispatchEvent(new CustomEvent('bazar:mint-live', { detail: updated }));
 					if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
 						try {
@@ -958,7 +1018,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				mintWatchersRef.current.delete(id);
 			}
 		}
-	}, [mintActivities]);
+	}, [mintActivities, pushNotice]);
 	React.useEffect(
 		() => () => {
 			for (const controller of mintWatchersRef.current.values()) controller.abort();
@@ -1167,16 +1227,24 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
 			assetId: string
 		) => {
+			// A hidden dialog cannot show or announce its result, and a hidden 'done' is pruned on the
+			// next render, so the settled-while-hidden transition raises the background notice here.
+			const outcome = backgroundOperationOutcome(
+				activitiesRef.current.find((activity) => activity.id === id),
+				patch,
+				activeIdRef.current
+			);
 			setActivities((current) =>
 				current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity))
 			);
+			if (outcome) pushNotice(backgroundOperationNotice(outcome));
 			if (patch.phase === 'done') {
 				queueMicrotask(() =>
 					window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId }))
 				);
 			}
 		},
-		[]
+		[pushNotice]
 	);
 	const updateOperation = React.useCallback((id: string, operation: Operation) => {
 		setActivities((current) =>
@@ -1219,6 +1287,25 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			result: Pick<UploadActivity, 'transactionIds'> &
 				Partial<Pick<UploadActivity, 'assetId' | 'assetIds' | 'collectionId' | 'extended'>>
 		) => {
+			// Asset uploads move to 'tracking' and are announced by the mint notice once live; only a
+			// collection upload settles here, so only it can owe a settled-while-hidden notice.
+			const previous = uploadActivitiesRef.current.find((activity) => activity.id === id);
+			if (
+				previous?.kind === 'collection' &&
+				settledWhileHidden(previous, result.assetId ? 'tracking' : 'done', activeUploadIdRef.current)
+			) {
+				pushNotice({
+					id: `upload:${id}`,
+					tone: 'positive',
+					title: `${previous.name}: ${result.extended ? 'Collection extended' : 'Collection submitted'}`,
+					detail: result.extended
+						? 'Collection manifest update submitted to Arweave.'
+						: 'Collection process submitted to Arweave.',
+					action: result.collectionId
+						? { kind: 'navigate', label: 'View collection', path: `/collection/${result.collectionId}` }
+						: undefined,
+				});
+			}
 			setUploadActivities((current) =>
 				current.map((activity) =>
 					activity.id === id
@@ -1236,13 +1323,26 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				)
 			);
 		},
-		[]
+		[pushNotice]
 	);
-	const failUpload = React.useCallback((id: string, status: string) => {
-		setUploadActivities((current) =>
-			current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
-		);
-	}, []);
+	const failUpload = React.useCallback(
+		(id: string, status: string) => {
+			const previous = uploadActivitiesRef.current.find((activity) => activity.id === id);
+			if (previous && settledWhileHidden(previous, 'error', activeUploadIdRef.current)) {
+				pushNotice({
+					id: `upload:${id}`,
+					tone: 'attention',
+					title: `${previous.name} needs attention`,
+					detail: status,
+					action: { kind: 'show-upload', label: 'Review', id },
+				});
+			}
+			setUploadActivities((current) =>
+				current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
+			);
+		},
+		[pushNotice]
+	);
 	const removeUpload = React.useCallback((id: string) => {
 		setUploadActivities((current) => current.filter((activity) => activity.id !== id));
 		setActiveUploadId((current) => (current === id ? null : current));
@@ -1260,6 +1360,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activeId,
 			start,
 			show: (id) => {
+				dismissNotice(id);
 				setActiveUploadId(null);
 				setActiveMintId(null);
 				setActiveId(id);
@@ -1280,6 +1381,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				setActiveMintId(id);
 			},
 			showUpload: (id) => {
+				dismissNotice(`upload:${id}`);
 				setActiveId(null);
 				setActiveMintId(null);
 				setActiveUploadId(id);
@@ -1300,6 +1402,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activeId,
 			activities,
 			beginUpload,
+			dismissNotice,
 			failUpload,
 			finishUpload,
 			fungibleActivities,
@@ -1312,30 +1415,46 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			uploadActivities,
 		]
 	);
+	const notice = notices[notices.length - 1];
 	return (
 		<OperationActivityContext.Provider value={value}>
 			{children}
-			{mintNotice ? (
-				<div className="mint-live-notice" role="status" aria-live="polite">
-					<div>
-						<strong>{mintNotice.asset.name} is live on Bazar</strong>
-						<span>The original accepted upload is now applied to live process state.</span>
-					</div>
-					<Button
-						type="button"
-						size="custom"
-						onClick={() => {
-							navigate(`/asset/${mintNotice.collectionId}/${mintNotice.asset.id}`);
-							setMintNotice(null);
-						}}
+			{/* The live region stays mounted so inserting a notice is announced; one notice shows at a time. */}
+			<div aria-live="polite" role="status">
+				{notice ? (
+					<div
+						className={`mint-live-notice${
+							notice.tone === 'attention' ? ' mint-live-notice-attention' : ''
+						}`}
+						key={notice.id}
 					>
-						View asset
-					</Button>
-					<Button type="button" size="custom" variant="ghost" onClick={() => setMintNotice(null)}>
-						Dismiss
-					</Button>
-				</div>
-			) : null}
+						<div>
+							<strong>{notice.title}</strong>
+							<span>
+								<ArCurrencyText>{notice.detail}</ArCurrencyText>
+							</span>
+						</div>
+						{notice.action ? (
+							<Button
+								type="button"
+								size="custom"
+								onClick={() => {
+									const action = notice.action!;
+									dismissNotice(notice.id);
+									if (action.kind === 'navigate') navigate(action.path);
+									else if (action.kind === 'show-operation') value.show(action.id);
+									else value.showUpload(action.id);
+								}}
+							>
+								{notice.action.label}
+							</Button>
+						) : null}
+						<Button type="button" size="custom" variant="ghost" onClick={() => dismissNotice(notice.id)}>
+							Dismiss
+						</Button>
+					</div>
+				) : null}
+			</div>
 			{activities.map((activity) => (
 				<OperationDialog
 					key={activity.id}
@@ -1593,6 +1712,14 @@ function UploadActivityPanel({
 				transactionId,
 		  }));
 	const dialogPhase = activity.phase === 'error' ? 'error' : activity.phase === 'done' ? 'done' : 'working';
+	const resultTitle =
+		activity.phase === 'done'
+			? activity.kind === 'collection'
+				? activity.extended
+					? 'Collection extended'
+					: 'Collection submitted'
+				: 'Live on Bazar'
+			: 'Upload needs attention';
 	return (
 		<div
 			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
@@ -1627,6 +1754,7 @@ function UploadActivityPanel({
 					</div>
 					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
 				</div>
+				<OperationOutcomeAnnouncement active={!working} title={resultTitle} detail={displayedStatus} />
 				{working && !syncSteps.length ? (
 					<div className="operation-preparing">
 						<Loading label={displayedStatus} />
@@ -1664,18 +1792,8 @@ function UploadActivityPanel({
 							{activity.phase === 'done' ? <Check /> : <CircleX />}
 						</span>
 						<div>
-							<strong>
-								{activity.phase === 'done'
-									? activity.kind === 'collection'
-										? activity.extended
-											? 'Collection extended'
-											: 'Collection submitted'
-										: 'Live on Bazar'
-									: 'Upload needs attention'}
-							</strong>
-							<p aria-live="polite" role="status">
-								{displayedStatus}
-							</p>
+							<strong>{resultTitle}</strong>
+							<p>{displayedStatus}</p>
 						</div>
 					</div>
 				) : null}
