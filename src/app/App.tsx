@@ -107,6 +107,7 @@ import {
 	FUNGIBLE_TOKEN_ID,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
+	type IndexedAssetName,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadBazarCollectionById,
@@ -115,6 +116,7 @@ import {
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
 	replaceHiddenCollectionAssetIndex,
+	withIndexedAssetNames,
 	withVisibleCollectionAssets,
 } from 'api/collections';
 import {
@@ -351,6 +353,8 @@ type MarketContextValue = {
 	collections: Collection[];
 	searchAssets: SearchAsset[];
 	rememberSearchAssets(assets: SearchAsset[]): void;
+	/** Merge indexed display names into loaded collections; only short-ID placeholders change. */
+	rememberIndexedAssets(indexed: ReadonlyMap<string, IndexedAssetName>): void;
 	verifiedCollectionIds: ReadonlySet<string>;
 	visibilityReady: boolean;
 	loading: boolean;
@@ -403,6 +407,16 @@ export function withoutDuplicatedCreatedAssets(collections: Collection[]): Colle
 	});
 }
 
+/**
+ * A collection published from an older snapshot (the collection-wide index walk) must not turn
+ * names that arrived meanwhile back into short IDs; same-manifest image snapshots keep them.
+ */
+export function retainedCollectionAssetNames(current: Collection[], collection: Collection): Collection {
+	const previous = current.find((item) => item.id === collection.id);
+	if (!previous || previous.kind !== 'images' || collection.kind !== 'images') return collection;
+	return mergeCollectionSnapshots([previous], [collection])[0] ?? collection;
+}
+
 export function verifiedCollectionIdsFrom(collections: Collection[]) {
 	return collections
 		.filter((collection) => collection.indexSource !== 'compiled-fallback')
@@ -413,6 +427,7 @@ export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
 	searchAssets: [],
 	rememberSearchAssets: () => undefined,
+	rememberIndexedAssets: () => undefined,
 	verifiedCollectionIds: new Set(),
 	visibilityReady: false,
 	loading: true,
@@ -442,6 +457,7 @@ export function App() {
 		collections: initialMarketCollections(),
 		searchAssets: [],
 		rememberSearchAssets: () => undefined,
+		rememberIndexedAssets: () => undefined,
 		verifiedCollectionIds: new Set(),
 		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
@@ -595,11 +611,18 @@ export function App() {
 		setMarket((current) => ({
 			...current,
 			collections: marketCatalogueCollections([
-				collection,
+				retainedCollectionAssetNames(current.collections, collection),
 				...current.collections.filter((item) => item.id !== collection.id),
 			]),
 			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
+	}, []);
+	const rememberIndexedAssets = React.useCallback((indexed: ReadonlyMap<string, IndexedAssetName>) => {
+		if (!indexed.size) return;
+		setMarket((current) => {
+			const collections = withIndexedAssetNames(current.collections, indexed);
+			return collections === current.collections ? current : { ...current, collections };
+		});
 	}, []);
 	const rememberSearchAssets = React.useCallback((assets: SearchAsset[]) => {
 		if (!assets.length) return;
@@ -614,10 +637,20 @@ export function App() {
 			addCreatedAsset,
 			addCollection,
 			rememberSearchAssets,
+			rememberIndexedAssets,
 			setPageRefreshing,
 			retry,
 		}),
-		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, rememberSearchAssets, retry]
+		[
+			addCollection,
+			addCreatedAsset,
+			loadMore,
+			market,
+			pageRefreshing,
+			rememberIndexedAssets,
+			rememberSearchAssets,
+			retry,
+		]
 	);
 
 	return (

@@ -17,6 +17,7 @@ import {
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
 	hiddenCollectionAssetIndexSettled,
+	isPlaceholderAssetName,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadBazarCollectionById,
@@ -27,8 +28,10 @@ import {
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
 	parseNamesNamespace,
+	preferResolvedAssetName,
 	replaceHiddenCollectionAssetIndex,
 	testCatalogueItemsRequested,
+	withIndexedAssetNames,
 } from './collections';
 
 const emptyHiddenCollectionAssetIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
@@ -2238,5 +2241,58 @@ describe('indexed asset names for visible pages', () => {
 		await expect(
 			loadIndexedAssetNames(pageIds.slice(0, 3), { fetch: fetcher as typeof fetch, retryDelaysMs: [] })
 		).rejects.toThrow('asset-name-index-503');
+	});
+});
+
+describe('indexed name precedence in loaded collections', () => {
+	const id = 'VFeEyvnoB-u249MgGQHN5Jcwvs7CAwycw826ztrXpT0';
+	const placeholder = { id, name: 'VFeEyvn…trXpT0', image: `https://arweave.net/raw/${id}` };
+	const images = (assets: Collection['assets']): Collection => ({
+		id: 'cNdMdSIuIlF3YM2j81y1k_HiaA60r4wp552w2JiWx4I',
+		name: 'Dumdumz',
+		description: '',
+		kind: 'images',
+		manifestId: 'M'.repeat(43),
+		assets,
+	});
+
+	it('recognises short-ID and blank placeholders only', () => {
+		expect(isPlaceholderAssetName(placeholder)).toBe(true);
+		expect(isPlaceholderAssetName({ id, name: ' ' })).toBe(true);
+		expect(isPlaceholderAssetName({ id, name: '88' })).toBe(false);
+	});
+
+	it('replaces a short-ID placeholder with an indexed name and keeps manifest names', () => {
+		const named = { id: 'N'.repeat(43), name: 'Manifest title' };
+		const collections = [images([placeholder, named])];
+
+		const merged = withIndexedAssetNames(
+			collections,
+			new Map([
+				[id, { id, name: '88' }],
+				[named.id, { id: named.id, name: 'Index title' }],
+			])
+		);
+
+		expect(merged[0].assets.map((asset) => asset.name)).toEqual(['88', 'Manifest title']);
+		expect(merged[0].assets[0].image).toBe(placeholder.image);
+	});
+
+	it('returns the same array when nothing changes', () => {
+		const collections = [images([{ id, name: '88' }]), { ...images([placeholder]), kind: 'names' as const }];
+
+		expect(withIndexedAssetNames(collections, new Map())).toBe(collections);
+		expect(withIndexedAssetNames(collections, new Map([[id, { id, name: 'Other' }]]))).toBe(collections);
+		expect(
+			withIndexedAssetNames([images([placeholder])], new Map([[id, { id, name: placeholder.name }]]))[0].assets[0]
+		).toBe(placeholder);
+	});
+
+	it('never downgrades a resolved name to a placeholder', () => {
+		expect(preferResolvedAssetName(placeholder, { id, name: '88' }).name).toBe('88');
+		expect(preferResolvedAssetName({ id, name: '88' }, placeholder).name).toBe('88');
+		expect(preferResolvedAssetName({ id, name: 'Kept' }, { id, name: '88' }).name).toBe('Kept');
+		expect(preferResolvedAssetName(placeholder, { id: 'X'.repeat(43), name: '88' })).toBe(placeholder);
+		expect(preferResolvedAssetName(placeholder, undefined)).toBe(placeholder);
 	});
 });

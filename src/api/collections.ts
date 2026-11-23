@@ -1104,6 +1104,47 @@ export async function loadIndexedAssetNames(
 	return found;
 }
 
+/** True for the short-ID title an ID-only manifest entry starts with (or a blank name). */
+export function isPlaceholderAssetName(asset: Pick<AssetSummary, 'id' | 'name'>): boolean {
+	return !asset.name.trim() || asset.name === shortId(asset.id);
+}
+
+/** Take a resolved display name over a short-ID placeholder, never the other way round. */
+export function preferResolvedAssetName<T extends Pick<AssetSummary, 'id' | 'name'>>(
+	asset: T,
+	current: Pick<AssetSummary, 'id' | 'name'> | undefined
+): T {
+	if (!current || current.id !== asset.id || !isPlaceholderAssetName(asset) || isPlaceholderAssetName(current))
+		return asset;
+	return { ...asset, name: current.name };
+}
+
+/**
+ * Merge indexed names into the loaded image collections, replacing only short-ID placeholders.
+ * Returns the same array when nothing changed so store updates stay referentially stable.
+ */
+export function withIndexedAssetNames(
+	collections: Collection[],
+	indexed: ReadonlyMap<string, IndexedAssetName>
+): Collection[] {
+	if (!indexed.size) return collections;
+	let changed = false;
+	const next = collections.map((collection) => {
+		if (collection.kind !== 'images') return collection;
+		let touched = false;
+		const assets = collection.assets.map((asset) => {
+			const entry = indexed.get(asset.id);
+			if (!entry || !isPlaceholderAssetName(asset) || isPlaceholderAssetName(entry)) return asset;
+			touched = true;
+			return { ...asset, ...entry, id: asset.id };
+		});
+		if (!touched) return collection;
+		changed = true;
+		return { ...collection, assets };
+	});
+	return changed ? next : collections;
+}
+
 function throwIfAborted(signal?: AbortSignal) {
 	if (!signal?.aborted) return;
 	throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError');

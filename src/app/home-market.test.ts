@@ -87,6 +87,7 @@ import {
 	reconcileHomeListingAssets,
 	recordHomeListingComputeResult,
 	restartCollectionPriceDeadlines,
+	retainedCollectionAssetNames,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
 	shouldLoadHomeAssetSummaries,
@@ -1960,5 +1961,31 @@ describe('Collection live listing truth', () => {
 		expect(iterations).toBe(1);
 		expect(merged).toHaveLength(10_000);
 		expect(new Set(merged.map((result) => result.asset.id)).size).toBe(10_000);
+	});
+});
+
+describe('collection snapshots published from the index walk', () => {
+	const id = 'VFeEyvnoB-u249MgGQHN5Jcwvs7CAwycw826ztrXpT0';
+	const placeholder = { id, name: 'VFeEyvn…trXpT0' };
+	const dumdumz = (name: string, manifestId = 'M'.repeat(43)): Collection => ({
+		id: 'cNdMdSIuIlF3YM2j81y1k_HiaA60r4wp552w2JiWx4I',
+		name: 'Dumdumz',
+		description: '',
+		kind: 'images',
+		manifestId,
+		assets: [{ ...placeholder, name }],
+	});
+
+	it('keeps names that arrived after the snapshot was taken', () => {
+		const retained = retainedCollectionAssetNames([dumdumz('88')], dumdumz(placeholder.name));
+		expect(retained.assets[0].name).toBe('88');
+	});
+
+	it('adopts newer names and a changed manifest as published', () => {
+		expect(retainedCollectionAssetNames([dumdumz(placeholder.name)], dumdumz('88')).assets[0].name).toBe('88');
+		const moved = dumdumz(placeholder.name, 'N'.repeat(43));
+		expect(retainedCollectionAssetNames([dumdumz('88')], moved)).toBe(moved);
+		const fresh = dumdumz(placeholder.name);
+		expect(retainedCollectionAssetNames([], fresh)).toBe(fresh);
 	});
 });
