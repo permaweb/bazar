@@ -5962,6 +5962,30 @@ export function collectionDefaultsToListed(collectionId: string) {
 	return collectionId === 'arweave-names';
 }
 
+/**
+ * The collection Items/Offers choice lives in the URL as `?view=items | offers`; with no (or an unknown)
+ * value the collection's default applies. The URL is the only source of truth, so Back, reload and shared
+ * links all show the same view.
+ */
+export type CollectionListingView = 'items' | 'offers';
+
+export function collectionViewFromSearch(search: string): CollectionListingView | null {
+	const view = new URLSearchParams(search).get('view');
+	return view === 'items' || view === 'offers' ? view : null;
+}
+
+export function collectionListedFromSearch(search: string, collectionId: string): boolean {
+	const view = collectionViewFromSearch(search);
+	return view ? view === 'offers' : collectionDefaultsToListed(collectionId);
+}
+
+/** Writes `view` into the current search, keeping every other param (such as `q`). */
+export function collectionViewSearch(search: string, view: CollectionListingView): string {
+	const params = new URLSearchParams(search);
+	params.set('view', view);
+	return `?${params.toString()}`;
+}
+
 export function compareCollectionAssetNames(a: AssetSummary, b: AssetSummary) {
 	return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 }
@@ -6150,7 +6174,8 @@ function CollectionMarketHeader({
 
 function CollectionView() {
 	const { collectionId = '' } = useParams();
-	const { search } = useLocation();
+	const { pathname, search } = useLocation();
+	const navigate = useNavigate();
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
 	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
@@ -6215,12 +6240,17 @@ function CollectionView() {
 	);
 	React.useEffect(() => () => appendPreviews.forEach(({ url }) => URL.revokeObjectURL(url)), [appendPreviews]);
 	const routedQuery = new URLSearchParams(search).get('q') ?? '';
-	const routedOffers = new URLSearchParams(search).get('view') === 'offers';
 	const [query, setQuery] = React.useState(routedQuery);
 	const deferredQuery = React.useDeferredValue(query);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
-	const [listedOnly, setListedOnly] = React.useState(() => routedOffers || collectionDefaultsToListed(collectionId));
+	const listedOnly = collectionListedFromSearch(search, collectionId);
+	const selectListingView = (view: CollectionListingView) => {
+		const nextSearch = collectionViewSearch(search, view);
+		// An in-view switch: replace the entry so Back from an asset returns here, and keep focus and scroll.
+		if (nextSearch !== search)
+			navigate({ pathname, search: nextSearch }, { replace: true, ...PRESERVE_ROUTE_FOCUS });
+	};
 	const [sort, setSort] = React.useState<CollectionSort>('recent');
 	const [viewMode, setViewMode] = React.useState<CollectionViewMode>('compact');
 	const [initial, setInitial] = React.useState<string>('all');
@@ -7233,8 +7263,8 @@ function CollectionView() {
 				<CollectionTabs
 					collection={collection}
 					active={listedOnly ? 'offers' : 'assets'}
-					onSelectAssets={() => setListedOnly(false)}
-					onSelectOffers={() => setListedOnly(true)}
+					onSelectAssets={() => selectListingView('items')}
+					onSelectOffers={() => selectListingView('offers')}
 				/>
 			</div>
 			{appendOpen && ownedCollection ? (
@@ -7468,7 +7498,7 @@ function CollectionView() {
 							/>
 							<MarketSelect<'all' | 'listed'>
 								label="Show"
-								onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
+								onChange={(nextValue) => selectListingView(nextValue === 'listed' ? 'offers' : 'items')}
 								options={[
 									{ value: 'all', label: 'All assets' },
 									{ value: 'listed', label: 'Listed for sale' },
@@ -8316,7 +8346,7 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({
+export function CollectionTabs({
 	collection,
 	active,
 	onSelectAssets,
@@ -8342,7 +8372,7 @@ function CollectionTabs({
 				<Link
 					aria-current={active === 'assets' ? 'page' : undefined}
 					className={active === 'assets' ? 'active' : ''}
-					to={`/collection/${collection.id}`}
+					to={`/collection/${collection.id}${collectionViewSearch('', 'items')}`}
 				>
 					{collection.kind === 'tokens' ? 'Tokens' : 'Items'}
 				</Link>
@@ -8360,7 +8390,7 @@ function CollectionTabs({
 				<Link
 					aria-current={active === 'offers' ? 'page' : undefined}
 					className={active === 'offers' ? 'active' : ''}
-					to={`/collection/${collection.id}?view=offers`}
+					to={`/collection/${collection.id}${collectionViewSearch('', 'offers')}`}
 				>
 					Offers
 				</Link>
