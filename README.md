@@ -100,8 +100,9 @@ by default, sharing AO.js peer and rate-limit state with other applications.
 The AO Core control in the header can disable that transport and use Bazar's own
 AO.js client instead. Bazar routes AO requests to root-relative paths on the
 origin serving the app by default. In local development, Vite proxies those
-same-origin AO requests to `https://arweave.net` by default. To use another
-AO-Core node, set its origin when starting Vite:
+same-origin AO requests to `https://mystical.computer`, a stock HyperBEAM v0.11.1
+node, by default. To use another AO-Core node, such as `https://arweave.net`, set
+its origin when starting Vite:
 
 ```sh
 AO_CORE_PROXY_TARGET=http://127.0.0.1:3101 npm run start

@@ -5,7 +5,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 function aoCoreProxy(mode: string): Record<string, ProxyOptions> {
 	const { AO_CORE_PROXY_TARGET } = loadEnv(mode, process.cwd(), 'AO_CORE_PROXY_TARGET');
-	const target = AO_CORE_PROXY_TARGET?.trim() || 'https://arweave.net';
+	const target = AO_CORE_PROXY_TARGET?.trim() || 'https://mystical.computer';
 
 	const url = URL.canParse(target) ? new URL(target) : undefined;
 	if (
