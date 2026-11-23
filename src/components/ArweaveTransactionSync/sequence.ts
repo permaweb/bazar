@@ -14,9 +14,65 @@ export function sequencePhaseBounds(index: number, count: number): SequencePhase
 	};
 }
 
-export function confirmationProgressText(label: string, confirmations: number, target: number): string {
-	const depth = Math.min(Math.max(0, confirmations), Math.max(0, target));
-	return `${label}: ${depth} of ${target} confirmations${depth >= target ? ' complete' : ''}.`;
+/** Localized templates for confirmation progress; each may use {label}, {depth} and {target}. */
+export type ConfirmationProgressCopy = {
+	progress: string;
+	complete: string;
+	/** Used only when `uncapped` and the depth has passed a positive target (terminal steps). */
+	beyondTarget: string;
+};
+
+export function confirmationProgressText(
+	label: string,
+	confirmations: number,
+	target: number,
+	copy: ConfirmationProgressCopy,
+	uncapped = false
+): string {
+	const bounded = Math.max(0, target);
+	const beyond = uncapped && bounded > 0 && confirmations > bounded;
+	const depth = beyond ? confirmations : Math.min(Math.max(0, confirmations), bounded);
+	const template = beyond ? copy.beyondTarget : depth >= bounded ? copy.complete : copy.progress;
+	return template.replace('{label}', label).replace('{depth}', String(depth)).replace('{target}', String(target));
+}
+
+export type ConfirmationProgressValue = {
+	min: number;
+	max: number;
+	/** Omitted while observer verification is delayed: the count is unknown, so the bar is indeterminate. */
+	now?: number;
+	text: string;
+};
+
+/**
+ * ARIA progressbar values for the active step. Branch order matches the visible depth label:
+ * beyond target, then pending settlement, then delayed observers, then bounded depth.
+ */
+export function confirmationProgressValue(input: {
+	label: string;
+	confirmations: number;
+	target: number;
+	terminal: boolean;
+	pendingLabel?: string;
+	delayedLabel: string;
+	verificationDelayed: boolean;
+	copy: ConfirmationProgressCopy;
+}): ConfirmationProgressValue {
+	const target = Math.max(0, input.target);
+	const beyond = input.terminal && target > 0 && input.confirmations > target;
+	const depth = beyond ? input.confirmations : Math.min(Math.max(0, input.confirmations), target);
+	const max = Math.max(target, depth);
+	if (beyond) {
+		return {
+			min: 0,
+			max,
+			now: depth,
+			text: confirmationProgressText(input.label, depth, target, input.copy, true),
+		};
+	}
+	if (input.pendingLabel && !input.terminal) return { min: 0, max, now: depth, text: input.pendingLabel };
+	if (input.verificationDelayed) return { min: 0, max, text: input.delayedLabel };
+	return { min: 0, max, now: depth, text: confirmationProgressText(input.label, depth, target, input.copy) };
 }
 
 export function confirmationProgressWidth(confirmed: number, active: boolean, hasError: boolean): number {

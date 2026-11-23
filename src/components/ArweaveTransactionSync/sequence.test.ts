@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	confirmationLifecycleState,
 	confirmationProgressText,
+	confirmationProgressValue,
 	confirmationProgressWidth,
 	postConfirmationPendingLabel,
 	sequencePhaseBounds,
@@ -43,11 +44,112 @@ describe('sequencePhaseBounds', () => {
 	});
 });
 
+const ENGLISH = {
+	progress: '{label}: {depth} of {target} confirmations.',
+	complete: '{label}: {depth} of {target} confirmations complete.',
+	beyondTarget: '{label}: {depth} confirmations.',
+};
+
 describe('confirmationProgressText', () => {
 	it('describes bounded confirmation depth and completion', () => {
-		expect(confirmationProgressText('Reserve listing', 0, 5)).toBe('Reserve listing: 0 of 5 confirmations.');
-		expect(confirmationProgressText('Pay seller', 3, 5)).toBe('Pay seller: 3 of 5 confirmations.');
-		expect(confirmationProgressText('Pay seller', 8, 5)).toBe('Pay seller: 5 of 5 confirmations complete.');
+		expect(confirmationProgressText('Reserve listing', 0, 5, ENGLISH)).toBe(
+			'Reserve listing: 0 of 5 confirmations.'
+		);
+		expect(confirmationProgressText('Pay seller', 3, 5, ENGLISH)).toBe('Pay seller: 3 of 5 confirmations.');
+		expect(confirmationProgressText('Pay seller', 8, 5, ENGLISH)).toBe(
+			'Pay seller: 5 of 5 confirmations complete.'
+		);
+	});
+
+	it('reports uncapped terminal depth past the target', () => {
+		expect(confirmationProgressText('Pay seller', 7, 1, ENGLISH, true)).toBe('Pay seller: 7 confirmations.');
+		expect(confirmationProgressText('Pay seller', 1, 1, ENGLISH, true)).toBe(
+			'Pay seller: 1 of 1 confirmations complete.'
+		);
+	});
+
+	it('renders from the supplied localized templates', () => {
+		const copy = {
+			progress: '{depth}/{target} · {label}',
+			complete: '{label} ✓',
+			beyondTarget: '{label} +{depth}',
+		};
+		expect(confirmationProgressText('Pay', 1, 5, copy)).toBe('1/5 · Pay');
+		expect(confirmationProgressText('Pay', 5, 5, copy)).toBe('Pay ✓');
+		expect(confirmationProgressText('Pay', 9, 5, copy, true)).toBe('Pay +9');
+	});
+});
+
+describe('confirmationProgressValue', () => {
+	const base = {
+		label: 'List for sale',
+		target: 5,
+		terminal: false,
+		delayedLabel: 'Observers delayed',
+		verificationDelayed: false,
+		copy: ENGLISH,
+	};
+
+	it('reports bounded depth while confirming', () => {
+		expect(confirmationProgressValue({ ...base, confirmations: 1 })).toEqual({
+			min: 0,
+			max: 5,
+			now: 1,
+			text: 'List for sale: 1 of 5 confirmations.',
+		});
+		expect(confirmationProgressValue({ ...base, confirmations: 9 })).toEqual({
+			min: 0,
+			max: 5,
+			now: 5,
+			text: 'List for sale: 5 of 5 confirmations complete.',
+		});
+	});
+
+	it('widens the range instead of exceeding it for terminal depth beyond the target', () => {
+		const value = confirmationProgressValue({ ...base, terminal: true, target: 1, confirmations: 7 });
+		expect(value).toEqual({ min: 0, max: 7, now: 7, text: 'List for sale: 7 confirmations.' });
+		expect(value.now).toBeLessThanOrEqual(value.max);
+	});
+
+	it('names post-confirmation settlement on non-terminal steps only', () => {
+		expect(confirmationProgressValue({ ...base, confirmations: 5, pendingLabel: 'Settling live state' })).toEqual({
+			min: 0,
+			max: 5,
+			now: 5,
+			text: 'Settling live state',
+		});
+		expect(
+			confirmationProgressValue({ ...base, terminal: true, confirmations: 5, pendingLabel: 'Checking receipt' })
+				.text
+		).toBe('List for sale: 5 of 5 confirmations complete.');
+	});
+
+	it('is indeterminate while observers are delayed', () => {
+		expect(confirmationProgressValue({ ...base, confirmations: 0, verificationDelayed: true })).toEqual({
+			min: 0,
+			max: 5,
+			text: 'Observers delayed',
+		});
+	});
+
+	it('keeps the branch order: beyond target and pending settlement outrank delay', () => {
+		expect(
+			confirmationProgressValue({
+				...base,
+				terminal: true,
+				target: 1,
+				confirmations: 3,
+				verificationDelayed: true,
+			}).text
+		).toBe('List for sale: 3 confirmations.');
+		expect(
+			confirmationProgressValue({
+				...base,
+				confirmations: 5,
+				pendingLabel: 'Settling live state',
+				verificationDelayed: true,
+			}).text
+		).toBe('Settling live state');
 	});
 });
 
