@@ -805,7 +805,8 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		!ARWEAVE_ID.test(tags['initial-holder'] ?? '')
 	)
 		return undefined;
-	return assetFromMintState(node.id, tags) ?? undefined;
+	// A `title` tag is the conventional display name on assets that predate the `name` tag.
+	return assetFromMintState(node.id, tags, tags.title) ?? undefined;
 }
 
 /**
@@ -875,12 +876,20 @@ function waitBeforeRetry(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-/** Replace ID-only manifest placeholders with immutable transaction metadata. */
+/**
+ * Replace ID-only manifest placeholders with immutable transaction metadata.
+ *
+ * `onProgress` receives the collection with every asset indexed so far after each
+ * GraphQL page or ID batch, so titles appear as soon as their tags arrive instead
+ * of after the whole (possibly multi-page) index walk. The resolved collection is
+ * the last object passed to `onProgress` when nothing changed after it.
+ */
 export async function enrichImageCollectionAssetMetadata(
 	collection: Collection,
 	signal?: AbortSignal,
 	fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
-	retryDelaysMs: readonly number[] = ASSET_INDEX_RETRY_DELAYS_MS
+	retryDelaysMs: readonly number[] = ASSET_INDEX_RETRY_DELAYS_MS,
+	onProgress?: (partial: Collection) => void
 ): Promise<Collection> {
 	if (collection.kind !== 'images') return collection;
 	const unresolved = collection.assets.filter((asset) => asset.name === shortId(asset.id));
@@ -891,11 +900,22 @@ export async function enrichImageCollectionAssetMetadata(
 	let pageEndpoints = graphqlEndpointList();
 	let collectionIndexComplete = false;
 	const visited = new Set<string>();
+	let latest = collection;
+	let latestSize = 0;
+	const snapshot = () => {
+		if (indexed.size !== latestSize) {
+			latestSize = indexed.size;
+			latest = { ...collection, assets: collection.assets.map((asset) => indexed.get(asset.id) ?? asset) };
+		}
+		return latest;
+	};
 	const indexEdges = (edges: any[]) => {
+		const before = indexed.size;
 		for (const edge of edges) {
 			const asset = indexedAtomicAsset(edge?.node ?? {});
 			if (asset && unresolvedIds.has(asset.id)) indexed.set(asset.id, asset);
 		}
+		if (indexed.size !== before && !signal?.aborted) onProgress?.(snapshot());
 	};
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		try {
@@ -977,11 +997,7 @@ export async function enrichImageCollectionAssetMetadata(
 			// Keep the stable ID fallback when GraphQL has not indexed an asset yet.
 		}
 	});
-	if (!indexed.size) return collection;
-	return {
-		...collection,
-		assets: collection.assets.map((asset) => indexed.get(asset.id) ?? asset),
-	};
+	return snapshot();
 }
 
 function throwIfAborted(signal?: AbortSignal) {

@@ -7,7 +7,7 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from '../helpers/progressive-assets';
-import { listedUniquePrice } from '../routes/MyAssetsRoute';
+import { listedUniquePrice, walletFailureBlock } from '../routes/MyAssetsRoute';
 
 import {
 	type CandidateSupportFailure,
@@ -367,5 +367,25 @@ describe('My assets retry bookkeeping', () => {
 				error: null,
 			})
 		).toBe(true);
+	});
+});
+
+describe('wallet assets failure block', () => {
+	const done = { error: null, failures: 0, phase: 'done' as const };
+
+	it('shows one failure block per wallet assets surface', () => {
+		// Partial failure with nothing visible: only the empty state (it carries the failure copy and Retry).
+		expect(walletFailureBlock({ ...done, failures: 2 }, 0)).toBe('empty');
+		// Partial failure above assets that are visible: only the banner.
+		expect(walletFailureBlock({ ...done, failures: 2 }, 3)).toBe('partial');
+		// Discovery error wins over every other block.
+		expect(walletFailureBlock({ error: 'Index unavailable.', failures: 2, phase: 'error' }, 0)).toBe('error');
+		expect(walletFailureBlock({ error: 'Index unavailable.', failures: 0, phase: 'error' }, 3)).toBe('error');
+	});
+
+	it('shows no failure block while resolving or when everything resolved', () => {
+		expect(walletFailureBlock({ error: null, failures: 1, phase: 'resolving' }, 0)).toBe('none');
+		expect(walletFailureBlock(done, 3)).toBe('none');
+		expect(walletFailureBlock(done, 0)).toBe('empty');
 	});
 });

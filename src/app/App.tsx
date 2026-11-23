@@ -3253,6 +3253,25 @@ export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount
 	return pending && visibleAssetCount === 0;
 }
 
+export type HomeDiscoverDisplay = 'loading' | 'failed' | 'results' | 'empty';
+
+/**
+ * The Discover panel renders exactly one state. A terminal failure (market
+ * shell error, tripped compute circuit or failed listing discovery) replaces
+ * the initial loader instead of being stacked above it, while cards that are
+ * already visible stay on screen.
+ */
+export function homeDiscoverDisplay(pending: boolean, failed: boolean, visibleAssetCount: number): HomeDiscoverDisplay {
+	if (visibleAssetCount > 0) return 'results';
+	if (failed) return 'failed';
+	return homeMarketShowsInitialLoader(pending, visibleAssetCount) ? 'loading' : 'empty';
+}
+
+/** A terminal Discover failure is not busy: no header spinner or aria-busy beside the error block. */
+export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean) {
+	return display !== 'failed' && pending;
+}
+
 export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
 	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
 }
@@ -4335,9 +4354,25 @@ function Home() {
 		assetPrices
 	);
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
-	const discoverInitialLoading = homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length);
+	const discoverFailure = market.error
+		? { message: market.error, retry: market.retry }
+		: portableHomeListingsFailure
+		? {
+				message: marketplaceRequestFailureMessage(
+					portableHomeListingsFailure.source,
+					portableHomeListingsFailure.kind
+				),
+				retry: () => setPortableHomeRetry((current) => current + 1),
+		  }
+		: undefined;
+	const discoverDisplay = homeDiscoverDisplay(
+		discoverResultsPending,
+		Boolean(discoverFailure),
+		displayedAssets.length
+	);
+	const discoverBusy = homeDiscoverBusy(discoverDisplay, discoverResultsPending);
 	const pageRefreshing =
-		homeTab === 'discover' ? discoverResultsPending : homeTab === 'collections' ? collectionResultsPending : false;
+		homeTab === 'discover' ? discoverBusy : homeTab === 'collections' ? collectionResultsPending : false;
 	React.useEffect(() => {
 		market.setPageRefreshing(pageRefreshing);
 		return () => market.setPageRefreshing(false);
@@ -4476,7 +4511,7 @@ function Home() {
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
-									<div aria-busy={discoverResultsPending} className="home-asset-filters">
+									<div aria-busy={discoverBusy} className="home-asset-filters">
 										<MarketSelect<HomeAssetType>
 											label="Asset type"
 											onChange={setAssetType}
@@ -4514,15 +4549,12 @@ function Home() {
 									</div>
 								) : null}
 							</div>
-							{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
-							{homeTab === 'discover' && portableHomeListingsFailure ? (
-								<ErrorPanel
-									message={marketplaceRequestFailureMessage(
-										portableHomeListingsFailure.source,
-										portableHomeListingsFailure.kind
-									)}
-									onRetry={() => setPortableHomeRetry((current) => current + 1)}
-								/>
+							{homeTab === 'discover' ? (
+								discoverFailure && discoverDisplay === 'results' ? (
+									<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+								) : null
+							) : market.error ? (
+								<ErrorPanel message={market.error} onRetry={market.retry} />
 							) : null}
 							{homeTab === 'discover' && partialTokenCollection ? (
 								<div className="collection-source-notice">
@@ -4680,12 +4712,14 @@ function Home() {
 								<HomeActivityPanel collections={market.collections} marketLoading={market.loading} />
 							) : (
 								<div
-									aria-busy={discoverResultsPending}
+									aria-busy={discoverBusy}
 									aria-labelledby="home-discover-tab"
 									id="home-discover-panel"
 									role="tabpanel"
 								>
-									{discoverInitialLoading ? (
+									{discoverDisplay === 'failed' && discoverFailure ? (
+										<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+									) : discoverDisplay === 'loading' ? (
 										<div className="home-market-loading">
 											<Loading label="Loading marketplace assets…" />
 										</div>
@@ -5389,10 +5423,100 @@ export function MarketSelect<Value extends string>({
 	);
 }
 
-type CollectionCardPrice =
+export type CollectionCardPrice =
 	| { status: 'resolved'; label: string | null }
 	| { status: 'unindexed' }
 	| { status: 'unavailable'; kind: MarketplaceFailureKind };
+
+/** How long a visible card may say "Checking…" before it admits the price did not arrive. */
+export const COLLECTION_PRICE_DISPLAY_DEADLINE_MS = 15_000;
+
+export function collectionCardPriceLabel(
+	price: CollectionCardPrice | undefined,
+	requestFailed: boolean,
+	deadlinePassed: boolean,
+	unavailableLabel = 'Price unavailable'
+) {
+	if (price?.status === 'unavailable') return unavailableLabel;
+	if (price?.status === 'unindexed') return 'Unlisted';
+	if (price?.status === 'resolved') return price.label ?? 'Not listed';
+	return requestFailed || deadlinePassed ? unavailableLabel : 'Checking…';
+}
+
+/**
+ * Per-card display deadlines. Each visible card without a price gets its own start
+ * time, so cards revealed on scroll and the end of the activity scan never re-arm
+ * cards that are already overdue. Only a scope change or an explicit retry of a
+ * card restarts its deadline.
+ */
+export type CollectionPriceDeadlines = { scope: string; startedAt: Map<string, number> };
+
+export function createCollectionPriceDeadlines(): CollectionPriceDeadlines {
+	return { scope: '', startedAt: new Map() };
+}
+
+export function observeCollectionPriceDeadlines(
+	deadlines: CollectionPriceDeadlines,
+	scope: string,
+	pendingIds: Iterable<string>,
+	now: number,
+	deadlineMs = COLLECTION_PRICE_DISPLAY_DEADLINE_MS
+) {
+	if (deadlines.scope !== scope) {
+		deadlines.scope = scope;
+		deadlines.startedAt.clear();
+	}
+	const overdue: string[] = [];
+	let nextDeadline: number | null = null;
+	for (const id of pendingIds) {
+		let startedAt = deadlines.startedAt.get(id);
+		if (startedAt === undefined) {
+			startedAt = now;
+			deadlines.startedAt.set(id, now);
+		}
+		const due = startedAt + deadlineMs;
+		if (due <= now) overdue.push(id);
+		else nextDeadline = nextDeadline === null ? due : Math.min(nextDeadline, due);
+	}
+	return { overdue, nextDeadline };
+}
+
+/** Restart the deadline for the given cards, or for every card when no IDs are given. */
+export function restartCollectionPriceDeadlines(deadlines: CollectionPriceDeadlines, ids?: Iterable<string>) {
+	if (!ids) {
+		deadlines.startedAt.clear();
+		return;
+	}
+	for (const id of ids) deadlines.startedAt.delete(id);
+}
+
+/**
+ * The card-price retry notice. Overdue cards only count once the activity scan has
+ * finished: while it runs, the scan owns those reads and the page already says it
+ * is checking live offers, so a card-price Retry would have nothing to restart.
+ */
+export function collectionPriceRetryNotice({
+	activityError,
+	activityLoading,
+	cardPricesFailed,
+	cardPricesLoading,
+	listedOnly,
+	overdue,
+	unavailable,
+}: {
+	activityError: boolean;
+	activityLoading: boolean;
+	cardPricesFailed: boolean;
+	cardPricesLoading: boolean;
+	listedOnly: boolean;
+	overdue: number;
+	unavailable: number;
+}) {
+	const countedOverdue = activityLoading || activityError ? 0 : overdue;
+	const visible =
+		!listedOnly && ((!cardPricesLoading && (cardPricesFailed || unavailable > 0)) || countedOverdue > 0);
+	return { visible, unavailable: visible && !cardPricesFailed ? unavailable + countedOverdue : 0 };
+}
 
 type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
 type CollectionViewMode = 'comfortable' | 'compact' | 'list';
@@ -5774,10 +5898,16 @@ function CollectionView() {
 		if (metadataEnrichmentScopes.current.has(metadataEnrichmentScope)) return;
 		metadataEnrichmentScopes.current.add(metadataEnrichmentScope);
 		const controller = new AbortController();
-		void enrichImageCollectionAssetMetadata(target, controller.signal).then(
-			(enriched) => {
-				if (!controller.signal.aborted && enriched !== target) market.addCollection(enriched);
-			},
+		// Publish each indexed page as it arrives so cards take their tag titles
+		// immediately rather than showing truncated process IDs until the walk ends.
+		let published = target;
+		const publish = (enriched: Collection) => {
+			if (controller.signal.aborted || enriched === published) return;
+			published = enriched;
+			market.addCollection(enriched);
+		};
+		void enrichImageCollectionAssetMetadata(target, controller.signal, undefined, undefined, publish).then(
+			publish,
 			() => undefined
 		);
 		return () => {
@@ -6172,7 +6302,12 @@ function CollectionView() {
 			}
 		});
 	}, [filtered.length, limit, moreState.error, moreState.loading, moreState.scanned]);
+	// Metadata-only collection updates (titles arriving from GraphQL) keep the same
+	// listing scope and visible IDs, so they must not abort in-flight card price reads.
+	const priceCollection = React.useRef(collection);
+	priceCollection.current = collection;
 	React.useEffect(() => {
+		const collection = priceCollection.current;
 		if (!collection) return;
 		const nextScope = listingScope;
 		if (priceScope.current !== nextScope) {
@@ -6214,7 +6349,7 @@ function CollectionView() {
 						}));
 						await resolveAssetCandidates(
 							candidates.filter((candidate) => completedIds.has(candidate.processId)),
-							[collection],
+							[priceCollection.current ?? collection],
 							{
 								signal: controller.signal,
 								concurrency: 2,
@@ -6272,8 +6407,64 @@ function CollectionView() {
 			}
 		})();
 		return () => controller.abort();
-	}, [activityState.loading, collection, listedOnly, listingScope, priceRetry, visiblePriceKey]);
+	}, [activityState.loading, listedOnly, listingScope, priceRetry, visiblePriceKey]);
+	// Display-only deadlines, tracked per card: they never cancel a read, so a late
+	// price still replaces the label, and they do not re-arm when the activity scan
+	// finishes or more cards are revealed.
+	const priceDeadlines = React.useRef(createCollectionPriceDeadlines());
+	const [priceDeadlineRestart, setPriceDeadlineRestart] = React.useState(0);
+	const [overduePriceIds, setOverduePriceIds] = React.useState<ReadonlySet<string>>(() => new Set());
+	const unpricedVisibleKey = listedOnly
+		? ''
+		: visiblePriceAssets
+				.filter((asset) => !cardPrices[asset.id])
+				.map((asset) => asset.id)
+				.join(',');
+	React.useEffect(() => {
+		if (listedOnly || !listingScope) {
+			setOverduePriceIds((current) => (current.size ? new Set() : current));
+			return;
+		}
+		const pendingIds = unpricedVisibleKey ? unpricedVisibleKey.split(',') : [];
+		let timer: number | undefined;
+		const update = () => {
+			const { overdue, nextDeadline } = observeCollectionPriceDeadlines(
+				priceDeadlines.current,
+				listingScope,
+				pendingIds,
+				Date.now()
+			);
+			setOverduePriceIds((current) =>
+				current.size === overdue.length && overdue.every((id) => current.has(id)) ? current : new Set(overdue)
+			);
+			if (nextDeadline !== null) timer = window.setTimeout(update, Math.max(0, nextDeadline - Date.now()));
+		};
+		update();
+		return () => window.clearTimeout(timer);
+	}, [listedOnly, listingScope, priceDeadlineRestart, unpricedVisibleKey]);
+	const visibleOverduePrices = visiblePriceAssets.filter(
+		(asset) => !cardPrices[asset.id] && overduePriceIds.has(asset.id)
+	).length;
+	const priceRetryNotice = collectionPriceRetryNotice({
+		activityError: Boolean(activityState.error),
+		activityLoading: activityState.loading,
+		cardPricesFailed: Boolean(cardPricesFailure),
+		cardPricesLoading,
+		listedOnly,
+		overdue: visibleOverduePrices,
+		unavailable: visibleUnavailablePrices,
+	});
+	const restartVisiblePriceDeadlines = () => {
+		restartCollectionPriceDeadlines(
+			priceDeadlines.current,
+			visiblePriceAssets
+				.filter((asset) => !cardPrices[asset.id] || cardPrices[asset.id].status === 'unavailable')
+				.map((asset) => asset.id)
+		);
+		setPriceDeadlineRestart((current) => current + 1);
+	};
 	const retryCardPrices = () => {
+		restartVisiblePriceDeadlines();
 		setCardPrices((current) =>
 			Object.fromEntries(
 				Object.entries(current).filter(([processId, price]) => {
@@ -6317,7 +6508,8 @@ function CollectionView() {
 			listingLoadedAssetIds.current,
 			collectionAssetIds
 		);
-		const continuing = listingActivityScope.current === listingScope && !assetWindow.reset;
+		const sameScope = listingActivityScope.current === listingScope;
+		const continuing = sameScope && !assetWindow.reset;
 		const requestedAssetIds = continuing ? assetWindow.added : collectionAssetIds;
 		listingActivityScope.current = listingScope;
 		if (!continuing) {
@@ -6345,7 +6537,15 @@ function CollectionView() {
 			setCardPricesLoading(false);
 			return () => controller.abort();
 		}
-		if (!continuing) setCardPrices({});
+		if (!continuing) {
+			setCardPrices({});
+			// A window reset in the same scope rechecks every card, so every deadline restarts;
+			// a new scope is already handled by the deadline tracker itself.
+			if (sameScope) {
+				restartCollectionPriceDeadlines(priceDeadlines.current);
+				setPriceDeadlineRestart((current) => current + 1);
+			}
+		}
 		setCardPricesLoading(true);
 		setCardPricesFailure(null);
 		const publications = createListingPublications();
@@ -7008,6 +7208,7 @@ function CollectionView() {
 						className="with-icon"
 						size="custom"
 						onClick={() => {
+							restartVisiblePriceDeadlines();
 							setRetry((value) => value + 1);
 							window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 						}}
@@ -7016,13 +7217,13 @@ function CollectionView() {
 					</Button>
 				</div>
 			) : null}
-			{!listedOnly && !cardPricesLoading && (cardPricesFailure || visibleUnavailablePrices > 0) ? (
+			{priceRetryNotice.visible ? (
 				<div className="inline-error retry-notice">
 					<span role="status">
 						Compute hasn’t completed yet. Please try again.
-						{!cardPricesFailure && visibleUnavailablePrices
-							? ` ${visibleUnavailablePrices.toLocaleString()} visible ${
-									visibleUnavailablePrices === 1 ? 'price remains' : 'prices remain'
+						{priceRetryNotice.unavailable
+							? ` ${priceRetryNotice.unavailable.toLocaleString()} visible ${
+									priceRetryNotice.unavailable === 1 ? 'price remains' : 'prices remain'
 							  } unavailable.`
 							: ''}
 					</span>
@@ -7066,16 +7267,12 @@ function CollectionView() {
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
 						const price = cardPrices[asset.id];
-						const priceLabel =
-							price?.status === 'unavailable'
-								? 'Unavailable'
-								: price?.status === 'unindexed'
-								? 'Unlisted'
-								: price?.status === 'resolved'
-								? price.label ?? 'Not listed'
-								: cardPricesFailure
-								? 'Unavailable'
-								: 'Checking…';
+						const priceLabel = collectionCardPriceLabel(
+							price,
+							Boolean(cardPricesFailure),
+							overduePriceIds.has(asset.id),
+							'Unavailable'
+						);
 						return (
 							<TokenMarketRow
 								asset={asset}
@@ -7113,17 +7310,11 @@ function CollectionView() {
 								priority={index < 2}
 								collectionContext
 								badge={listedOnly ? 'For sale' : undefined}
-								price={
-									price?.status === 'unavailable'
-										? 'Unavailable'
-										: price?.status === 'unindexed'
-										? 'Unlisted'
-										: price?.status === 'resolved'
-										? price.label ?? 'Not listed'
-										: cardPricesFailure
-										? 'Unavailable'
-										: 'Checking…'
-								}
+								price={collectionCardPriceLabel(
+									price,
+									Boolean(cardPricesFailure),
+									overduePriceIds.has(asset.id)
+								)}
 								priceListed={price?.status === 'resolved' && Boolean(price.label)}
 							/>
 						);

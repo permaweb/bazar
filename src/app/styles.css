@@ -306,6 +306,7 @@ p {
 .brand {
 	display: inline-flex;
 	align-items: center;
+	justify-self: start;
 	gap: 9px;
 	font-family: 'DM Sans', sans-serif;
 	font-weight: 400;
