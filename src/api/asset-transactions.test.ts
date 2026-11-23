@@ -16,9 +16,11 @@ import {
 	AssetTransactionClient,
 	cancelAppliedAtSlot,
 	fungibleTransferAppliedAtSlot,
+	MAXIMUM_ASSET_OFFER_PRICE,
 	purchaseAppliedAtSlot,
 	waitUntilSeen,
 } from './asset-transactions';
+import { MAXIMUM_ASSET_OFFER_PRICE as MAXIMUM_ASSET_OFFER_PRICE_SOURCE } from './order-matching';
 
 const processId = 'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM';
 const seller = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
@@ -1427,6 +1429,29 @@ describe('fungible asset transactions', () => {
 		await expect(client().client.transfer(processId, recipient, '1.5', seller)).rejects.toThrow(
 			'invalid-token-quantity'
 		);
+	});
+
+	it.each([
+		[{ asking: '0' }, 'invalid-asset-offer-asking'],
+		[{ asking: '01' }, 'invalid-asset-offer-asking'],
+		[{ asking: (MAXIMUM_ASSET_OFFER_PRICE + 1n).toString() }, 'asset-offer-asking-too-high'],
+		[{ seller: 'not-an-address' }, 'invalid-asset-offer-seller'],
+		[{ deadline: 0 }, 'invalid-offer-deadline'],
+	] as const)('rejects listing terms %o before asking the wallet to sign', async (override, code) => {
+		const sign = vi.fn(async (transaction: any) => transaction);
+		await expect(
+			client(sign).client.makeOffer({ processId, quantity: '1', asking: '1', seller, ...override })
+		).rejects.toThrow(code);
+		expect(sign).not.toHaveBeenCalled();
+	});
+
+	it('accepts a listing priced exactly at the 66,000,000 AR cap', async () => {
+		expect(MAXIMUM_ASSET_OFFER_PRICE).toBe(MAXIMUM_ASSET_OFFER_PRICE_SOURCE);
+		const asking = MAXIMUM_ASSET_OFFER_PRICE.toString();
+		const subject = client();
+		const prepared = await subject.client.makeOffer({ processId, quantity: '1', asking, seller });
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'asking', value: asking });
 	});
 
 	it('includes the one-winston scheduler quantity in purchase estimates', async () => {

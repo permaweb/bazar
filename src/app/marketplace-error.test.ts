@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { MAXIMUM_ASSET_OFFER_PRICE } from 'api/order-matching';
+
+import { formatArAmount } from 'helpers/token-display';
+
 import {
+	ASSET_OFFER_PRICE_CAP_ERROR,
+	ASSET_OFFER_TOTAL_CAP_ERROR,
 	isRejectedTransactionDispatch,
 	marketplaceCodedError,
 	marketplaceErrorMessage,
@@ -61,6 +67,37 @@ describe('marketplaceErrorMessage', () => {
 		['asset-pending-listing-check-unavailable', 'did not ask your wallet to sign'],
 	] as const)('explains recovery for %s', (code, guidance) => {
 		expect(marketplaceErrorMessage(new Error(code))).toContain(guidance);
+	});
+
+	it.each([
+		['asset-offer-asking-too-high', '66,000,000 AR maximum'],
+		['invalid-asset-offer-asking', 'at least 0.000000000001 AR'],
+		['wallet-sign-unavailable', 'Connect an Arweave wallet that can sign transactions.'],
+		['wallet-returned-unsigned-transaction', 'did not return a signed transaction'],
+		['wallet-returned-invalid-signature', 'signature that does not verify'],
+	] as const)('explains the pre-dispatch listing or signing failure %s', (code, guidance) => {
+		const message = marketplaceErrorMessage(new TypeError(code));
+		expect(message).toContain(guidance);
+		expect(message).toContain('No transaction was submitted.');
+		expect(message).not.toBe(code.replaceAll('-', ' '));
+	});
+
+	it.each(['wallet-modified-transaction-fields', 'wallet-modified-transaction-data'])(
+		'explains that Bazar refused to submit a transaction the wallet altered (%s)',
+		(code) => {
+			for (const error of [new Error(code), marketplaceCodedError('transaction-dispatch-not-sent', code)]) {
+				const message = marketplaceErrorMessage(error);
+				expect(message).toContain('Bazar did not submit it');
+				expect(message).not.toBe(code.replaceAll('-', ' '));
+			}
+		}
+	);
+
+	it('states the listing cap that makeOffer enforces', () => {
+		const cap = `${formatArAmount(MAXIMUM_ASSET_OFFER_PRICE)} AR`;
+		expect(ASSET_OFFER_PRICE_CAP_ERROR).toContain(cap);
+		expect(ASSET_OFFER_TOTAL_CAP_ERROR).toContain(cap);
+		expect(marketplaceErrorMessage(new TypeError('asset-offer-asking-too-high'))).toContain(cap);
 	});
 
 	it('keeps unknown errors readable', () => {

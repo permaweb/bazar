@@ -27,6 +27,7 @@ import {
 	fungibleHoldingPercentage,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
+	fungibleListingTotalError,
 	fungibleOfferedPercentage,
 	type FungibleOperationActivity,
 	fungibleOperationActivityProgress,
@@ -56,6 +57,7 @@ import {
 	purchaseSettlementNeedsManualReview,
 	purchaseStateFrameBuffer,
 	restartFungibleOperationActivity,
+	safeLotQuote,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
 	visibleOrderbookRows,
@@ -527,6 +529,45 @@ describe('fungible operation error semantics', () => {
 		expect(composer).toContain('$MINTA');
 		expect(composer).toContain('0.00024 <span class="ar-currency-label">');
 		expect(composer).toContain('$AR</span> total');
+	});
+
+	it('caps the listing total (quantity x unit price) at the amount makeOffer accepts', () => {
+		const state = { denomination: 0, ticker: 'MINTA' } as AssetState;
+		// Exactly 66,000,000 AR in total is listable.
+		expect(safeLotQuote('1000', '66000', state)).toBe('66,000,000');
+		expect(fungibleListingTotalError('1000', '66000', state)).toBe('');
+		// One winston over the cap: no quote, so listingReady and sellValid stay false.
+		expect(safeLotQuote('1000', '66000.000000000001', state)).toBeNull();
+		expect(fungibleListingTotalError('1000', '66000.000000000001', state)).toBe(
+			'The listing total is above the 66,000,000 AR maximum. Lower the quantity or the unit price.'
+		);
+		// A plausible extra-zeros typo in the quantity.
+		expect(safeLotQuote('10000000', '7', state)).toBeNull();
+		expect(fungibleListingTotalError('10000000', '7', state)).toContain('66,000,000 AR maximum');
+		// Invalid inputs keep their own validation messages.
+		expect(fungibleListingTotalError('', '7', state)).toBe('');
+		expect(fungibleListingTotalError('10', 'abc', state)).toBe('');
+	});
+
+	it('shows the listing-total cap in the listing composer', () => {
+		const composer = renderToStaticMarkup(
+			React.createElement(FungibleListingComposer, {
+				availableQuantity: '100000000',
+				onMax: () => undefined,
+				onQuantityChange: () => undefined,
+				onUnitPriceChange: () => undefined,
+				quantity: '10000000',
+				quantityError: '',
+				state: { denomination: 0, ticker: 'MINTA' } as AssetState,
+				total: safeLotQuote('10000000', '7', { denomination: 0 }),
+				unitPrice: '7',
+				unitPriceError: fungibleListingTotalError('10000000', '7', { denomination: 0 }),
+			})
+		);
+		expect(composer).toContain('Listing total');
+		expect(composer).toContain('aria-invalid="true"');
+		expect(composer).toContain('role="alert"');
+		expect(composer).toContain('66,000,000');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {
