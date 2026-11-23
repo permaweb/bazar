@@ -231,7 +231,7 @@ import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
 
-import { createGlobalActivityPager, type GlobalActivityFilter } from './global-activity';
+import { createGlobalActivityPager, type GlobalActivityFilter, mergeIndexedActivityEvent } from './global-activity';
 import { createHomeListingCrawl, type HomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
@@ -5888,15 +5888,7 @@ export function collectionActivityVersion(collection: Collection) {
 
 export function newestCollectionActivity(events: CollectionActivityEvent[], limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
 	const byId = new Map<string, CollectionActivityEvent>();
-	for (const event of events) {
-		const previous = byId.get(event.id);
-		byId.set(
-			event.id,
-			previous?.purchaseProof && !event.purchaseProof
-				? { ...event, purchaseProof: previous.purchaseProof }
-				: event
-		);
-	}
+	for (const event of events) byId.set(event.id, mergeIndexedActivityEvent(byId.get(event.id), event));
 	return [...byId.values()]
 		.sort((a, b) => b.height - a.height || b.timestamp - a.timestamp || a.id.localeCompare(b.id))
 		.slice(0, limit);
@@ -8799,7 +8791,7 @@ export function mergeAssetActivityPages(
 	older: CollectionActivityEvent[]
 ): CollectionActivityEvent[] {
 	const events = new Map(current.map((event) => [event.id, event]));
-	for (const event of older) events.set(event.id, event);
+	for (const event of older) events.set(event.id, mergeIndexedActivityEvent(events.get(event.id), event));
 	return [...events.values()].sort(
 		(left, right) =>
 			right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id)
