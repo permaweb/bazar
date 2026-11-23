@@ -14,14 +14,17 @@ import {
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembershipVerified,
+	COLLECTION_PRICE_DISPLAY_DEADLINE_MS,
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,
 	collectionActivityWindowDelta,
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
+	collectionCardPriceLabel,
 	collectionDefaultsToListed,
 	CollectionDescription,
 	collectionListingScopeVersion,
+	collectionPriceRetryNotice,
 	collectionRecipientsWithoutListingCandidates,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
@@ -31,6 +34,7 @@ import {
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
 	createAnimationFrameBatch,
+	createCollectionPriceDeadlines,
 	cumulativeCollectionDepth,
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
@@ -69,6 +73,7 @@ import {
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
+	observeCollectionPriceDeadlines,
 	pendingCollectionPriceAssets,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
@@ -77,6 +82,7 @@ import {
 	reconcileHomeFloorScan,
 	reconcileHomeListingAssets,
 	recordHomeListingComputeResult,
+	restartCollectionPriceDeadlines,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
 	shouldLoadHomeAssetSummaries,
@@ -1077,6 +1083,106 @@ describe('Home market summary retries', () => {
 		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
 		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
 		expect(homeMarketShowsInitialLoader(false, 0)).toBe(false);
+	});
+
+	it('turns a stuck card price into an explicit unavailable label after the display deadline', () => {
+		expect(COLLECTION_PRICE_DISPLAY_DEADLINE_MS).toBe(15_000);
+		expect(collectionCardPriceLabel(undefined, false, false)).toBe('Checking…');
+		expect(collectionCardPriceLabel(undefined, false, true)).toBe('Price unavailable');
+		expect(collectionCardPriceLabel(undefined, true, false)).toBe('Price unavailable');
+		expect(collectionCardPriceLabel(undefined, false, true, 'Unavailable')).toBe('Unavailable');
+		// Settled prices are never overridden by the deadline.
+		expect(collectionCardPriceLabel({ status: 'resolved', label: '0.1 AR' }, false, true)).toBe('0.1 AR');
+		expect(collectionCardPriceLabel({ status: 'resolved', label: null }, false, true)).toBe('Not listed');
+		expect(collectionCardPriceLabel({ status: 'unindexed' }, false, true)).toBe('Unlisted');
+		expect(collectionCardPriceLabel({ status: 'unavailable', kind: 'unavailable' }, false, false)).toBe(
+			'Price unavailable'
+		);
+	});
+
+	it('keeps each card price deadline from its own start instead of re-arming on reveal', () => {
+		const deadlines = createCollectionPriceDeadlines();
+		const deadline = COLLECTION_PRICE_DISPLAY_DEADLINE_MS;
+
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b'], 0)).toEqual({
+			overdue: [],
+			nextDeadline: deadline,
+		});
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b'], deadline).overdue).toEqual(['a', 'b']);
+		// Progressive reveal adds card c; a and b stay overdue and c gets its own deadline.
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], deadline + 1_000)).toEqual({
+			overdue: ['a', 'b'],
+			nextDeadline: 2 * deadline + 1_000,
+		});
+		// A Retry restarts only the cards it rechecks.
+		restartCollectionPriceDeadlines(deadlines, ['a']);
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], deadline + 2_000)).toEqual({
+			overdue: ['b'],
+			nextDeadline: 2 * deadline + 1_000,
+		});
+		// A new listing scope starts every card over.
+		expect(observeCollectionPriceDeadlines(deadlines, 'other', ['b'], deadline + 3_000)).toEqual({
+			overdue: [],
+			nextDeadline: 2 * deadline + 3_000,
+		});
+		restartCollectionPriceDeadlines(deadlines);
+		expect(deadlines.startedAt.size).toBe(0);
+	});
+
+	it('holds the card-price retry notice during the activity scan and keeps overdue cards overdue after it', () => {
+		const deadlines = createCollectionPriceDeadlines();
+		const deadline = COLLECTION_PRICE_DISPLAY_DEADLINE_MS;
+		const notice = (activityLoading: boolean, overdue: number, cardPricesLoading = false) =>
+			collectionPriceRetryNotice({
+				activityError: false,
+				activityLoading,
+				cardPricesFailed: false,
+				cardPricesLoading,
+				listedOnly: false,
+				overdue,
+				unavailable: 0,
+			});
+
+		observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], 0);
+		// The scan is still running past the deadline: the labels admit it, but no card-price
+		// Retry is offered because the scan, not the card-price reads, owns these prices.
+		const during = observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], deadline + 500);
+		expect(during.overdue).toEqual(['a', 'b', 'c']);
+		expect(notice(true, during.overdue.length)).toEqual({ visible: false, unavailable: 0 });
+		// The scan finishes and card-price reads start for the remainder: the same cards stay
+		// overdue (no flip back to "Checking…") and the notice now offers a working Retry.
+		const after = observeCollectionPriceDeadlines(deadlines, 'scope', ['b', 'c'], deadline + 600);
+		expect(after).toEqual({ overdue: ['b', 'c'], nextDeadline: null });
+		expect(notice(false, after.overdue.length, true)).toEqual({ visible: true, unavailable: 2 });
+	});
+
+	it('shows the card-price retry notice only for card-price failures outside listed-only views', () => {
+		const base = {
+			activityError: false,
+			activityLoading: false,
+			cardPricesFailed: false,
+			cardPricesLoading: false,
+			listedOnly: false,
+			overdue: 0,
+			unavailable: 0,
+		};
+
+		expect(collectionPriceRetryNotice(base)).toEqual({ visible: false, unavailable: 0 });
+		expect(collectionPriceRetryNotice({ ...base, unavailable: 2 })).toEqual({ visible: true, unavailable: 2 });
+		expect(collectionPriceRetryNotice({ ...base, unavailable: 2, cardPricesLoading: true })).toEqual({
+			visible: false,
+			unavailable: 0,
+		});
+		expect(collectionPriceRetryNotice({ ...base, cardPricesFailed: true, overdue: 2 })).toEqual({
+			visible: true,
+			unavailable: 0,
+		});
+		// The activity-scan error notice already carries its own Retry.
+		expect(collectionPriceRetryNotice({ ...base, activityError: true, overdue: 2 })).toEqual({
+			visible: false,
+			unavailable: 0,
+		});
+		expect(collectionPriceRetryNotice({ ...base, listedOnly: true, unavailable: 2 }).visible).toBe(false);
 	});
 
 	it('renders exactly one Discover state so a failure replaces the loader but keeps visible cards', () => {
