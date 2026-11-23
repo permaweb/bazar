@@ -8,6 +8,7 @@ import {
 	AssetMintClient,
 	CollectionMintClient,
 	type CollectionMintEstimate,
+	type CollectionMintInput,
 	type CollectionMintPhase,
 	type CollectionMintResult,
 	CREATED_COLLECTION_ID,
@@ -24,13 +25,16 @@ import {
 	type MintDraft,
 	type MintedAsset,
 	type MintEstimate,
+	type MintInput,
 	type MintPhase,
 	UDL_LICENSE_ID,
 	type UdlPreset,
 	type UdlTerms,
 	udlTermsForPreset,
+	validateCollectionMintInput,
 	validateFungibleLogo,
 	validateFungibleMintInput,
+	validateMintInput,
 } from 'api/asset-mint';
 import { confirmTransactionId } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
@@ -148,6 +152,31 @@ function AnimatedCreditBadgeIcon() {
 			</g>
 		</svg>
 	);
+}
+
+/**
+ * Validates an asset or collection mint before any upload activity is recorded,
+ * as the fungible branch already does, so a form error stays a form error.
+ */
+export function nonFungibleMintInputError(
+	request: { mode: 'asset'; input: MintInput } | { mode: 'collection'; input: CollectionMintInput }
+): string | null {
+	try {
+		if (request.mode === 'collection') validateCollectionMintInput(request.input);
+		else validateMintInput(request.input);
+		return null;
+	} catch (cause) {
+		return mintErrorMessage(cause);
+	}
+}
+
+/**
+ * Copy for a failed mint. Asset and collection mints list every signed
+ * transaction in Transaction activity; token mints record nothing there for a
+ * failed attempt, so their copy never points there.
+ */
+export function createMintErrorMessage(mode: 'asset' | 'collection' | 'fungible', cause: unknown): string {
+	return mintErrorMessage(cause, mode === 'fungible' ? 'fungible' : 'upload');
 }
 
 type FungibleMintDialogProps = {
@@ -773,7 +802,7 @@ export default function CreateRoute() {
 						if (!controller.signal.aborted) setFungibleEstimate(nextEstimate);
 					},
 					(cause) => {
-						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+						if (!controller.signal.aborted) setError(mintErrorMessage(cause, 'fungible'));
 					}
 				)
 				.finally(() => {
@@ -844,7 +873,7 @@ export default function CreateRoute() {
 				setLogo(null);
 				setLogoTxId('');
 				setFungibleEstimate(null);
-				setError(mintErrorMessage(cause));
+				setError(mintErrorMessage(cause, 'fungible'));
 				if (logoInput.current) logoInput.current.value = '';
 				return;
 			}
@@ -877,10 +906,30 @@ export default function CreateRoute() {
 				validateFungibleMintInput(fungibleInput);
 				if (logo) validateFungibleLogo(logo);
 			} catch (cause) {
-				return setError(mintErrorMessage(cause));
+				return setError(mintErrorMessage(cause, 'fungible'));
 			}
 			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
+		const collectionInput: CollectionMintInput = { files: collectionFiles, name, description, udl: activeUdl };
+		const assetInput: MintInput | null = file
+			? {
+					file,
+					artwork: artwork ?? undefined,
+					name,
+					description,
+					artist: audioMetadata.artist,
+					album: audioMetadata.album,
+					duration: audioMetadata.duration,
+					udl: activeUdl,
+			  }
+			: null;
+		const inputError =
+			mode === 'collection'
+				? nonFungibleMintInputError({ mode, input: collectionInput })
+				: mode === 'asset' && assetInput
+				? nonFungibleMintInputError({ mode, input: assetInput })
+				: null;
+		if (inputError) return setError(inputError);
 		setError(null);
 		setResult(null);
 		setCollectionResult(null);
@@ -911,18 +960,14 @@ export default function CreateRoute() {
 				return;
 			}
 			if (mode === 'collection') {
-				const minted = await new CollectionMintClient().mint(
-					{ files: collectionFiles, name, description, udl: activeUdl },
-					wallet.address,
-					{
-						allowHighCost: true,
-						onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
-						onPhase: (nextPhase) => {
-							setCollectionPhase(nextPhase);
-							updateUpload(uploadId, collectionMintPhaseLabel(nextPhase));
-						},
-					}
-				);
+				const minted = await new CollectionMintClient().mint(collectionInput, wallet.address, {
+					allowHighCost: true,
+					onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
+					onPhase: (nextPhase) => {
+						setCollectionPhase(nextPhase);
+						updateUpload(uploadId, collectionMintPhaseLabel(nextPhase));
+					},
+				});
 				market.addCollection(minted.collection);
 				setCollectionResult(minted);
 				setCollectionPhase(null);
@@ -933,31 +978,18 @@ export default function CreateRoute() {
 				});
 				return;
 			}
-			if (!file) return;
-			const minted = await new AssetMintClient().mint(
-				{
-					file,
-					artwork: artwork ?? undefined,
-					name,
-					description,
-					artist: audioMetadata.artist,
-					album: audioMetadata.album,
-					duration: audioMetadata.duration,
-					udl: activeUdl,
+			if (!assetInput) return;
+			const minted = await new AssetMintClient().mint(assetInput, wallet.address, {
+				allowHighCost: true,
+				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
+				onPhase: (nextPhase) => {
+					setPhase(nextPhase);
+					updateUpload(uploadId, mintPhaseStatus(nextPhase));
 				},
-				wallet.address,
-				{
-					allowHighCost: true,
-					onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
-					onPhase: (nextPhase) => {
-						setPhase(nextPhase);
-						updateUpload(uploadId, mintPhaseStatus(nextPhase));
-					},
-				}
-			);
+			});
 			completeMint(minted.asset, uploadId);
 		} catch (cause) {
-			const message = mintErrorMessage(cause);
+			const message = createMintErrorMessage(mode, cause);
 			setDraft(getMintDraft(wallet.address));
 			setPhase(null);
 			setCollectionPhase(null);
