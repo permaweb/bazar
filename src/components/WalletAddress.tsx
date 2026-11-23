@@ -89,7 +89,8 @@ export function WalletAddress({
 	);
 }
 
-export function WalletIdentity({ address }: { address: string }) {
+export function WalletIdentity({ address: account }: { address: string }) {
+	const address = displayAccount(account);
 	return (
 		<Tooltip content={address} placement="top">
 			{(tooltipId) => (

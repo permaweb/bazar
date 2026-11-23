@@ -7,6 +7,8 @@ import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 import { filledOrder } from 'api/order-matching';
 
+import { toHostAccount } from 'helpers/host-account';
+
 import {
 	appendFungibleOperationActivity,
 	batchHasNoDispatchedSellerPayment,
@@ -646,7 +648,7 @@ describe('fungible operation error semantics', () => {
 		expect(receiptOptions).toHaveLength(512);
 		expect(receiptOptions[511]).toEqual({
 			value: orders[511].orderId,
-			label: `Listing 512 · 1 $WEAVE · ${orders[511].creator.slice(0, 6)}…${orders[511].creator.slice(-5)}`,
+			label: `Listing 512 · 1 $WEAVE · ${orders[511].creator.slice(0, 7)}…${orders[511].creator.slice(-5)}`,
 		});
 		const receipt = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseReceiptNavigator, {
@@ -1275,6 +1277,24 @@ describe('fungible order action names', () => {
 		expect(fungibleListingAccessibleLabel(second, state)).toContain(second.creator);
 		expect(fungibleListingAccessibleLabel(first, state)).not.toBe(fungibleListingAccessibleLabel(second, state));
 	});
+
+	it('names a host-form seller by the raw address people see', () => {
+		const state = { ticker: 'WEAVE', denomination: 12 } as AssetState;
+		const raw = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
+		const order = {
+			asking: '3000000',
+			creator: toHostAccount(raw)!,
+			orderId: ORDER_ID,
+			quantity: '3000000000000',
+		} as SwapOrder;
+
+		expect(fungiblePurchaseReceiptOptions([order], state)).toEqual([
+			{ value: ORDER_ID, label: 'Listing 1 · 3 $WEAVE · 1uTLV5G…82YZw' },
+		]);
+		expect(fungibleListingAccessibleLabel(order, state)).toContain(`seller ${raw}`);
+		expect(fungibleListingAccessibleLabel(order, state)).not.toContain('uri-did');
+		expect(fungibleOrderActionLabel('buy', order, state)).toBe(`Buy 3 $WEAVE for 0.000003 $AR from ${raw}`);
+	});
 });
 
 describe('fungible activity amounts', () => {
@@ -1432,7 +1452,7 @@ describe('fungible transfer recipient validation', () => {
 	it('names the exact recipient before an irreversible transfer', () => {
 		const recipient = 'c'.repeat(43);
 		const state = { denomination: 12, ticker: 'WEAVE' } as AssetState;
-		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 $WEAVE to cccccc…ccccc');
+		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 $WEAVE to ccccccc…ccccc');
 		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(
 			`Send 2 $WEAVE to ${recipient}`
 		);
