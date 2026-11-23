@@ -4,7 +4,16 @@ import { fetchJsonWithDeadline } from './fetch-with-deadline';
 
 const ARWEAVE_NET_ID_BATCH_SIZE = 9;
 
-export type GraphqlResult<T> = { response: Response; body: T | undefined; endpoint: string };
+export type GraphqlResult<T> = {
+	response: Response;
+	body: T | undefined;
+	endpoint: string;
+	/** When no endpoint answered usably: the longest Retry-After any of them sent (capped, in ms). */
+	retryAfterMs?: number;
+};
+
+/** The longest Retry-After sent by the endpoints behind a thrown postGraphql failure. */
+const failureRetryAfterMs = new WeakMap<object, number>();
 
 type GraphqlRequestOptions = {
 	/** Deadline for each endpoint attempt; a fallback attempt starts only after the previous one ended. */
@@ -71,7 +80,9 @@ export function usableGraphqlPayload(result: Pick<GraphqlResult<unknown>, 'respo
  * deadline it had on its own and the whole call lasts at most `timeoutMs` per
  * endpoint attempted. A caller abort stops at once without trying the rest.
  * When no endpoint answers usably, the preferred endpoint's own outcome is
- * returned (or thrown) so callers keep their existing status and error handling.
+ * returned (or thrown) so callers keep their existing status and error handling;
+ * the longest Retry-After any endpoint sent travels with it, so a retry waits for
+ * a rate-limited fallback even when the preferred endpoint only timed out.
  *
  * Cursors are index-specific (arweave.net and AR.IO gateways encode them
  * differently), so pass the answering `endpoint` back as the only endpoint for
@@ -88,6 +99,7 @@ export async function postGraphql<T = unknown>(
 	const requestFor = typeof init === 'function' ? init : () => init;
 	const deadline = { timeoutMs: options.timeoutMs, timeoutError: options.timeoutError };
 	let preferred: Outcome<T> | undefined;
+	let retryAfter: number | undefined;
 	for (const endpoint of list) {
 		const request = requestFor(endpoint);
 		request.signal?.throwIfAborted();
@@ -96,6 +108,8 @@ export async function postGraphql<T = unknown>(
 			const result = await fetchJsonWithDeadline<T>(fetcher, endpoint, request, deadline);
 			const value = { ...result, endpoint };
 			if (list.length === 1 || usableGraphqlPayload(result)) return value;
+			const wait = retryAfterMs(result.response);
+			if (wait !== undefined) retryAfter = Math.max(retryAfter ?? 0, wait);
 			outcome = { ok: true, value };
 		} catch (error) {
 			if (request.signal?.aborted || list.length === 1) throw error;
@@ -103,8 +117,12 @@ export async function postGraphql<T = unknown>(
 		}
 		preferred ??= outcome;
 	}
-	if (preferred!.ok) return preferred!.value;
-	throw preferred!.error;
+	if (preferred!.ok)
+		return retryAfter === undefined ? preferred!.value : { ...preferred!.value, retryAfterMs: retryAfter };
+	const failure = preferred!.error;
+	if (retryAfter !== undefined && failure && typeof failure === 'object')
+		failureRetryAfterMs.set(failure, retryAfter);
+	throw failure;
 }
 
 /** Delays before each retry of a transient index failure. */
@@ -113,11 +131,12 @@ const GRAPHQL_RETRY_AFTER_MAX_MS = 10_000;
 
 /**
  * Run one index request, retrying it after `retryDelaysMs` while it fails transiently: a network
- * error or deadline, a 429 (waiting for its Retry-After, capped at 10 s) or a 5xx. Any other answer
+ * error or deadline, a 429 (waiting for its Retry-After, capped at 10 s, or the longest one a
+ * postGraphql fallback endpoint sent) or a 5xx. Any other answer
  * is returned as is. Once the retries are spent, the last answer is returned or its error thrown,
  * so callers keep their status and error handling. A caller abort stops at once.
  */
-export async function retryTransientGraphql<R extends { response: Response }>(
+export async function retryTransientGraphql<R extends { response: Response; retryAfterMs?: number }>(
 	request: () => Promise<R>,
 	retryDelaysMs: readonly number[],
 	signal?: AbortSignal
@@ -137,7 +156,12 @@ export async function retryTransientGraphql<R extends { response: Response }>(
 			if (result) return result;
 			throw failure;
 		}
-		await waitBeforeRetry(retryAfterMs(result?.response) ?? retryDelaysMs[attempt], signal);
+		const sentRetryAfter = result
+			? result.retryAfterMs ?? retryAfterMs(result.response)
+			: failure && typeof failure === 'object'
+			? failureRetryAfterMs.get(failure)
+			: undefined;
+		await waitBeforeRetry(sentRetryAfter ?? retryDelaysMs[attempt], signal);
 	}
 }
 
