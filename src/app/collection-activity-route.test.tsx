@@ -69,6 +69,7 @@ function renderActivity(market: Pick<MarketValue, 'verifiedCollectionIds'>) {
 		collections: [] as Collection[],
 		searchAssets: [],
 		rememberSearchAssets: () => undefined,
+		rememberIndexedAssets: () => undefined,
 		visibilityReady: true,
 		loading: false,
 		error: null,
