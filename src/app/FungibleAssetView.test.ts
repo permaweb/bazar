@@ -360,6 +360,14 @@ describe('fungible operation error semantics', () => {
 		expect(sequence).not.toContain('0/2 accepted');
 		expect(sequence).not.toContain('0/2 confirmed');
 		expect(sequence).not.toContain('0/2 verified');
+		expect(sequence.match(/aria-current="step"/g)).toHaveLength(1);
+		expect(sequence.match(/<li[^>]*aria-current="step"[^>]*>.*?<\/li>/)?.[0]).toContain('<strong>Reserve</strong>');
+		expect(
+			Array.from(
+				sequence.matchAll(/<strong>([^<]+)<\/strong><span class="sr-only">, ([^<]+)<\/span>/g),
+				(match) => `${match[1]}: ${match[2]}`
+			)
+		).toEqual(['Sign: completed', 'Reserve: in progress', 'Pay: not started', 'Verify: not started']);
 	});
 
 	it('keeps payment and receipt verification as separate visible stages', () => {

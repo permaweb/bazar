@@ -10459,10 +10459,23 @@ type Operation =
 	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
 	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
 
+export type PurchaseSequenceStepState = 'done' | 'active' | 'next';
+
+const PURCHASE_SEQUENCE_STEP_STATUS: Record<PurchaseSequenceStepState, string> = {
+	done: 'completed',
+	active: 'in progress',
+	next: 'not started',
+};
+
+/** Screen-reader text for a purchase step; the visible marker conveys the same state and is aria-hidden. */
+export function purchaseSequenceStepStatus(state: PurchaseSequenceStepState): string {
+	return PURCHASE_SEQUENCE_STEP_STATUS[state];
+}
+
 export type AtomicPurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
 	label: string;
-	state: 'done' | 'active' | 'next';
+	state: PurchaseSequenceStepState;
 };
 
 const ATOMIC_PAYMENT_STAGES = new Set([
@@ -10500,12 +10513,17 @@ export function AtomicPurchaseSequence({ state }: { state: PurchaseState | null 
 		<section aria-label="Asset purchase transaction sequence" className="purchase-sequence">
 			<ol>
 				{steps.map((step, index) => (
-					<li className={step.state} key={step.key}>
+					<li
+						aria-current={step.state === 'active' ? 'step' : undefined}
+						className={step.state}
+						key={step.key}
+					>
 						<span aria-hidden="true" className="purchase-sequence-marker">
 							{step.state === 'done' ? <Check /> : index + 1}
 						</span>
 						<span className="purchase-sequence-copy">
 							<strong>{step.label}</strong>
+							<span className="sr-only">{`, ${purchaseSequenceStepStatus(step.state)}`}</span>
 						</span>
 					</li>
 				))}
