@@ -14,6 +14,7 @@ import {
 import { assetStateErrorMessage } from '../app/App';
 
 import {
+	DispatchRecipientCell,
 	dispatchErrorMessage,
 	dispatchFeeLabel,
 	DispatchFeeNotice,
@@ -466,5 +467,24 @@ describe('dispatch receipt settlement copy', () => {
 		);
 		expect(dispatchRowStatusLabel({ startingSlot: 41 }, { status: 'rejected' })).toBe('Rejected');
 		expect(dispatchRowStatusLabel({}, { status: 'posted' })).toBe('Posted');
+	});
+});
+
+describe('dispatch recipient review', () => {
+	const address = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
+
+	it('shows the full recipient address as text, not only in a hover tooltip', () => {
+		const markup = renderToStaticMarkup(React.createElement(DispatchRecipientCell, { address }));
+
+		expect(markup).toContain(`<span>${address}</span>`);
+		expect(markup).not.toContain(`${address.slice(0, 6)}…${address.slice(-6)}`);
+	});
+
+	it('gives keyboard and screen-reader users a focusable control named with the full address', () => {
+		const markup = renderToStaticMarkup(React.createElement(DispatchRecipientCell, { address }));
+		const button = markup.match(/<button[^>]*>/)?.[0] ?? '';
+
+		expect(button).toContain(`aria-label="Copy recipient address ${address}"`);
+		expect(button).not.toContain('tabindex="-1"');
 	});
 });

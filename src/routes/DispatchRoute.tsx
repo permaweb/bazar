@@ -38,7 +38,7 @@ import { Button } from 'components/Button';
 import { type HolderDraftRow, HolderListField } from 'components/HolderListField';
 import { Loading } from 'components/Loading';
 import { TokenArtwork } from 'components/TokenArtwork';
-import { Tooltip } from 'components/Tooltip';
+import { WalletAddress } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -60,6 +60,15 @@ function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'tick
 /** Gateway answers that say "try again later", not "this transaction is invalid". */
 const TRANSIENT_GATEWAY_DISPATCH = /^transaction-dispatch-(5\d\d|408|425|429)\b/;
 const GATEWAY_DISPATCH_STATUS = /^transaction-dispatch-(\d{3})\b/;
+/**
+ * A recipient in a dispatch review table. The full address is rendered as text
+ * (no profile lookup per row) with a copy button whose accessible name carries
+ * the address, so keyboard and screen-reader users can check every recipient
+ * before signing or resuming a dispatch.
+ */
+export function DispatchRecipientCell({ address }: { address: string }) {
+	return <WalletAddress address={address} full label="recipient" tooltipEscapesOverflow />;
+}
 
 export function dispatchErrorMessage(cause: unknown): string {
 	const message = cause instanceof Error ? cause.message : String(cause);
@@ -771,13 +780,7 @@ export default function DispatchRoute() {
 								{plan.rows.map((row) => (
 									<tr key={row.address} className={`dispatch-row-${row.status}`}>
 										<td>
-											<Tooltip content={row.address} placement="top">
-												{(tooltipId) => (
-													<code aria-describedby={tooltipId}>
-														{shortAddress(row.address)}
-													</code>
-												)}
-											</Tooltip>
+											<DispatchRecipientCell address={row.address} />
 										</td>
 										<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 										<td>
@@ -900,13 +903,7 @@ export default function DispatchRoute() {
 											{parsed.rows.map((row) => (
 												<tr key={row.address}>
 													<td>
-														<Tooltip content={row.address} placement="top">
-															{(tooltipId) => (
-																<code aria-describedby={tooltipId}>
-																	{shortAddress(row.address)}
-																</code>
-															)}
-														</Tooltip>
+														<DispatchRecipientCell address={row.address} />
 													</td>
 													<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 												</tr>
