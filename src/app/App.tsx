@@ -12504,6 +12504,9 @@ export function mintErrorMessage(error: unknown) {
 	if (value.startsWith('mint-media-unavailable-')) {
 		return 'The earlier media upload is not available through this gateway yet. Try finishing the mint later.';
 	}
+	if (value.startsWith('mint-upload-')) {
+		return 'The gateway did not accept the upload. Check your connection and try again; your earlier uploads are kept.';
+	}
 	return friendly[value] ?? value.replaceAll('-', ' ');
 }
 function arToWinston(value: string) {
