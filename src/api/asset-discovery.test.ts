@@ -1440,6 +1440,39 @@ describe('wallet candidate discovery', () => {
 		expect(result[0].height).toBe(30);
 	});
 
+	it('reports the index that answered each activity page', async () => {
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const cursor = JSON.parse(String(init?.body)).variables.cursor;
+			if (String(input) === 'https://arweave.net/graphql') return new Response('busy', { status: 429 });
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: !cursor },
+						edges: [activityEdge(cursor ? 'fallback-2' : 'fallback-1', cursor ? assetB : assetA, 30)],
+					},
+				},
+			});
+		});
+		const pages: Array<[string[], string | undefined]> = [];
+
+		await discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			onPage: (candidates, graphql) => {
+				pages.push([candidates.map((candidate) => candidate.processId), graphql]);
+			},
+		});
+
+		expect(pages).toEqual([
+			[[assetA], 'https://ardrive.net/graphql'],
+			[[assetB], 'https://ardrive.net/graphql'],
+		]);
+		expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+			'https://ardrive.net/graphql',
+		]);
+	});
+
 	it('can bound a recent market scan without requiring the complete history', async () => {
 		const fetcher = vi.fn(async () =>
 			Response.json({

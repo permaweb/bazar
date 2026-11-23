@@ -3219,6 +3219,8 @@ function Home() {
 	const [discoverTokenPage, setDiscoverTokenPage] = React.useState(1);
 	const aoRoutingScope = aoRoutingScopeFromLocation();
 	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${aoRoutingScope}`;
+	// Listings found through a fallback index may be incomplete; keep them out of the preferred index's snapshot.
+	const homeListingsFromFallbackIndex = React.useRef(false);
 	const query = new URLSearchParams(search).get('q') ?? '';
 	const normalizedQuery = query.trim().toLowerCase();
 	const homeSearchMatches = React.useMemo(
@@ -3544,6 +3546,7 @@ function Home() {
 		setPortableHomeListingsLoading(true);
 		setPortableHomeListingsComplete(false);
 		setPortableHomeListingsFailure(undefined);
+		homeListingsFromFallbackIndex.current = false;
 		const publications = createAnimationFrameBatch<ListingResolutionOutcome>((batch) => {
 			const settledIds = new Set(batch.map((publication) => publication.processId));
 			setCachedHomeListings((current) => current.filter((listing) => !settledIds.has(listing.asset.id)));
@@ -3591,7 +3594,8 @@ function Home() {
 				},
 			});
 			let supportTail = Promise.resolve();
-			const publishCandidates = (candidates: AssetCandidate[]) => {
+			const publishCandidates = (candidates: AssetCandidate[], graphql: string) => {
+				if (graphql !== arweaveGraphqlEndpoint()) homeListingsFromFallbackIndex.current = true;
 				const { supported, unverified } = partitionAssetCandidateSupport(candidates, collections);
 				resolver.enqueue(supported);
 				if (unverified.length) {
@@ -3673,10 +3677,10 @@ function Home() {
 			(!portableHomeListingsComplete && liveHomeListingShells.length < HOME_ASSET_PAGE_SIZE)
 		)
 			return;
-		return scheduleIdleTask(
-			() => storeHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, liveHomeListingShells),
-			250
-		);
+		return scheduleIdleTask(() => {
+			if (homeListingsFromFallbackIndex.current) return;
+			storeHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, liveHomeListingShells);
+		}, 250);
 	}, [homeListingSnapshotScope, liveHomeListingShells, portableHomeListingsComplete]);
 	React.useEffect(() => {
 		if (!shouldLoadAssetSummaries) {
@@ -6285,7 +6289,7 @@ function CollectionView() {
 									signal: controller.signal,
 									listingsOnly: true,
 									acceptProcessId: includesCollectionAsset,
-									onPage: resolvePage,
+									onPage: (page) => resolvePage(page),
 							  })
 							: await discoverMarketActivityBatched({
 									recipients: requestedAssetIds,

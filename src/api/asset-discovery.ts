@@ -132,7 +132,9 @@ type WalletCandidateOptions = CandidateOptions & {
 	catchUp?: boolean;
 };
 
-type MarketActivityOptions = CandidateOptions & {
+type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> & {
+	/** `graphql` is the index that answered the page. */
+	onPage?: (candidates: AssetCandidate[], graphql: string) => void | Promise<void>;
 	recipients?: string[];
 	listingsOnly?: boolean;
 	acceptProcessId?: (processId: string) => boolean;
@@ -968,7 +970,7 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 			mergeCandidate(found, candidate);
 			return firstOccurrence ? [candidate] : [];
 		});
-		await options.onPage?.(sortCandidates(pageCandidates));
+		await options.onPage?.(sortCandidates(pageCandidates), endpoint);
 		pages += 1;
 		if (pages >= maxPages || !connection.pageInfo.hasNextPage) return sortCandidates([...found.values()]);
 		cursor = advanceGraphqlCursor(connection, visited, 'asset-activity-pagination-stalled');
