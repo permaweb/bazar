@@ -32,4 +32,22 @@ describe('asset operation page status', () => {
 		expect(markup).toContain('View details');
 		expect(markup).toContain('role="status"');
 	});
+
+	it('reports a finished action as complete without a running loader', () => {
+		expect(assetOperationProgressTitle('transfer', 'done')).toBe('Transfer complete');
+		expect(assetOperationProgressTitle('buy', 'done')).toBe('Purchase complete');
+		const markup = renderToStaticMarkup(
+			React.createElement(AssetOperationStatus, {
+				kind: 'transfer',
+				phase: 'done',
+				status: 'Complete',
+				onView: () => undefined,
+			})
+		);
+
+		expect(markup).toContain('Transfer complete');
+		expect(markup).not.toContain('in progress');
+		expect(markup).not.toContain('operation-activity-loader');
+		expect(markup).toContain('View details');
+	});
 });

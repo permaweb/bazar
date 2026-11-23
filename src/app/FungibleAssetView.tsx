@@ -270,6 +270,22 @@ export function appendFungibleOperationActivity(
 	return [...current.map((item) => ({ ...item, visible: false })), activity];
 }
 
+/** A finished activity stays listed so its outcome can be reviewed, but it no longer blocks or relabels actions. */
+export function pendingFungibleOperationActivities(activities: FungibleOperationActivity[]) {
+	return activities.filter((activity) => activity.phase !== 'done');
+}
+
+/** The running activity a new request for the same id should reopen; a finished one is replaced instead. */
+export function resumableFungibleOperationActivity(
+	activities: FungibleOperationActivity[],
+	id: string,
+	signer: string
+) {
+	return pendingFungibleOperationActivities(activities).find(
+		(activity) => activity.id === id && activity.signer === signer
+	);
+}
+
 export function restartFungibleOperationActivity(activity: FungibleOperationActivity, now = Date.now()) {
 	return {
 		...activity,
@@ -712,9 +728,10 @@ export function FungibleAssetView({
 	);
 	const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
 	const hasWalletActivities = walletActivities.length > 0;
-	const hasBusyWalletActivities = walletActivities.some((activity) => (activity.phase ?? 'form') !== 'error');
-	const activePurchaseActivity = walletActivities.find((activity) => activity.operation.kind === 'buy');
-	const activeAssetActivity = walletActivities.find((activity) => activity.operation.kind !== 'buy');
+	const pendingWalletActivities = pendingFungibleOperationActivities(walletActivities);
+	const hasBusyWalletActivities = pendingWalletActivities.some((activity) => (activity.phase ?? 'form') !== 'error');
+	const activePurchaseActivity = pendingWalletActivities.find((activity) => activity.operation.kind === 'buy');
+	const activeAssetActivity = pendingWalletActivities.find((activity) => activity.operation.kind !== 'buy');
 	const showOperationActivity = React.useCallback((id: string) => {
 		setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
 	}, []);
@@ -755,9 +772,7 @@ export function FungibleAssetView({
 				const show = options?.show ?? true;
 				const signer = wallet.address;
 				const id = fungibleOperationActivityId(asset.id, signer, next.kind);
-				const existing = operationActivitiesRef.current.find(
-					(activity) => activity.id === id && activity.signer === signer
-				);
+				const existing = resumableFungibleOperationActivity(operationActivitiesRef.current, id, signer);
 				if (existing) {
 					if (show) showOperationActivity(existing.id);
 					return;
