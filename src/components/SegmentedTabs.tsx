@@ -13,6 +13,7 @@ export function SegmentedTabs<Value extends string>({
 	active,
 	ariaLabel,
 	className,
+	disabled,
 	idPrefix,
 	onChange,
 	tabs,
@@ -20,6 +21,8 @@ export function SegmentedTabs<Value extends string>({
 	active: Value;
 	ariaLabel: string;
 	className?: string;
+	/** Locks every tab, for example while the selected tab's operation is running. */
+	disabled?: boolean;
 	idPrefix: string;
 	onChange(value: Value): void;
 	tabs: SegmentedTab<Value>[];
@@ -33,6 +36,7 @@ export function SegmentedTabs<Value extends string>({
 						aria-controls={tab.panelId}
 						aria-selected={selected}
 						className={selected ? 'active' : undefined}
+						disabled={disabled}
 						id={`${idPrefix}-${tab.value}-tab`}
 						key={tab.value}
 						onClick={() => onChange(tab.value)}

@@ -8086,7 +8086,7 @@ body input:focus-visible {
 	background: var(--panel);
 	cursor: pointer;
 }
-.mint-dropzone:hover {
+.mint-dropzone:hover:not([aria-disabled='true']) {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
 }
@@ -9003,7 +9003,9 @@ body input:focus-visible {
 	overflow-wrap: anywhere;
 }
 .mint-success-actions {
+	grid-column: 2 / -1;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
 	gap: 8px;
@@ -10694,7 +10696,7 @@ body input:focus-visible {
 	cursor: pointer;
 	text-align: left;
 }
-.fungible-logo-dropzone:hover:not(:disabled) {
+.fungible-logo-dropzone:hover:not(:disabled):not([aria-disabled='true']) {
 	border-color: var(--ink);
 	background: var(--surface-hover);
 }
