@@ -554,7 +554,7 @@ describe('Bazar AO.js process state admissibility', () => {
 		expect(device.ok).toBe(true);
 	});
 
-	it('leaves peer discovery free to read the HyperBuddy page', async () => {
+	it('leaves peer discovery free to read the node info message', async () => {
 		const requested: string[] = [];
 		vi.stubGlobal(
 			'fetch',
@@ -569,7 +569,7 @@ describe('Bazar AO.js process state admissibility', () => {
 		const response = await routed(`/${processIds[0]}~process@1.0/now`, { method: 'HEAD' });
 
 		expect(response.headers.get('at-slot')).toBe('7');
-		expect(requested).toContain('https://compute.example/~meta@1.0/info/format~hyperbuddy@1.0');
+		expect(requested).toContain('https://compute.example/~meta@1.0/info/serialize~json@1.0');
 	});
 });
 
