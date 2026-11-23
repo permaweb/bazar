@@ -31,6 +31,7 @@ import {
 	waitForAssetState,
 } from './asset-marketplace';
 import { acquireAssetObserverNetwork } from './asset-observers';
+import { ARWEAVE_OBSERVER_QUORUM_GRACE_MS, observerQuorumUnavailable } from './observer-policy';
 import { filledOrder, MAXIMUM_ASSET_OFFER_PRICE } from './order-matching';
 
 export { MAXIMUM_ASSET_OFFER_PRICE };
@@ -1678,6 +1679,7 @@ async function withTransactionWatcher<T>(
 	const network = observerLease.network;
 	try {
 		await observerLease.ready;
+		let quorumCheck: ReturnType<typeof setTimeout> | undefined;
 		const watcher = network.watch(txId, {
 			target: options.target ?? 1,
 			minObservers: 2,
@@ -1699,12 +1701,22 @@ async function withTransactionWatcher<T>(
 			});
 			watcher.on('settled', () => resolve());
 			watcher.on('timeout', () => reject(new Error('transaction-propagation-timeout')));
+			// With fewer reachable observers than a quorum needs (for example only
+			// arweave.net, because the AO peer cannot relay to Arweave's own nodes),
+			// the watch could neither settle nor time out once one observer has
+			// seen the transaction. Say so instead of waiting.
+			quorumCheck = setTimeout(() => {
+				if (observerQuorumUnavailable(network.active().length)) {
+					reject(new Error('transaction-observers-unavailable'));
+				}
+			}, ARWEAVE_OBSERVER_QUORUM_GRACE_MS);
 		});
 		void settlement.catch(() => undefined);
 		watcher.start();
 		try {
 			return await run({ watcher, settlement });
 		} finally {
+			clearTimeout(quorumCheck);
 			watcher.stop();
 		}
 	} finally {

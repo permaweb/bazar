@@ -4,26 +4,15 @@ export const ARWEAVE_OBSERVER_HEALTHY_TARGET = 7;
 export const ARWEAVE_OBSERVER_PENDING_INTERVAL_MS = 9_000;
 
 /**
- * HTTPS gateways that answer `/info`, `/peers` and `/tx/<id>/status` with CORS
- * `*`, so a page asks them directly. WeaveNetwork also adds its default seed,
- * arweave.net. Checked from a browser origin on 2026-11-23 (all in sync at
- * height 2048188); ardrive.net and ar-io.dev share an operator with
- * arweave.net, so the clear-http nodes below add operator diversity.
+ * Arweave's own named nodes, used as observers beside the selected gateway
+ * (arweave.net by default, which WeaveNetwork also seeds). They serve clear
+ * http only, so an https page reaches them through the AO peer's
+ * `~relay@1.0`; a relay that admits only named hosts (for example
+ * `hosts-allowed: [".arweave.xyz"]`) can reach them, whereas the bare
+ * `ip:port` peers that `/peers` lists would be refused. A deployment replaces
+ * the list with `VITE_ARWEAVE_OBSERVER_NODES` (comma-separated origins).
  */
-export const ARWEAVE_OBSERVER_GATEWAY_SEEDS: readonly string[] = Object.freeze([
-	'https://ardrive.net',
-	'https://ar-io.dev',
-	'https://vilenarios.com',
-	'https://frostor.xyz',
-]);
-
-/**
- * Named Arweave nodes. They serve clear http only, so an https page reaches
- * them through the AO peer's `~relay@1.0`; a relay that only admits named
- * hosts (for example `hosts-allowed: [".arweave.xyz"]`) can still reach them,
- * whereas the bare `ip:port` peers that `/peers` lists would be refused.
- */
-export const ARWEAVE_OBSERVER_RELAYED_NODE_SEEDS: readonly string[] = Object.freeze([
+export const DEFAULT_ARWEAVE_OBSERVER_NODES: readonly string[] = Object.freeze([
 	'http://tip-1.arweave.xyz:1984',
 	'http://tip-2.arweave.xyz:1984',
 	'http://tip-3.arweave.xyz:1984',
@@ -32,6 +21,40 @@ export const ARWEAVE_OBSERVER_RELAYED_NODE_SEEDS: readonly string[] = Object.fre
 	'http://chain-2.arweave.xyz:1984',
 	'http://chain-3.arweave.xyz:1984',
 ]);
+
+/** Parse an ordered, comma-separated observer origin list; unusable entries are skipped. */
+export function parseArweaveObserverNodes(value: string | undefined): string[] {
+	const nodes = new Set<string>();
+	for (const entry of value?.split(',') ?? []) {
+		const candidate = entry.trim();
+		if (!candidate) continue;
+		try {
+			const url = new URL(candidate);
+			if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) nodes.add(url.origin);
+		} catch {
+			// A malformed entry must not take observation down with it.
+		}
+	}
+	return nodes.size ? [...nodes] : [...DEFAULT_ARWEAVE_OBSERVER_NODES];
+}
+
+const configuredObserverNodes = parseArweaveObserverNodes(import.meta.env.VITE_ARWEAVE_OBSERVER_NODES?.trim());
+
+/** Observer nodes for this deployment, in preference order. */
+export function arweaveObserverNodes(): string[] {
+	return [...configuredObserverNodes];
+}
+
+/** A transaction watch needs at least this many reachable observers to form a quorum. */
+export const ARWEAVE_OBSERVER_QUORUM_MINIMUM = 2;
+
+/** How long a watch waits for enough observers to become reachable before saying it cannot verify. */
+export const ARWEAVE_OBSERVER_QUORUM_GRACE_MS = 15_000;
+
+/** True when the reachable observers cannot form a quorum for a transaction watch. */
+export function observerQuorumUnavailable(activeObservers: number): boolean {
+	return activeObservers < ARWEAVE_OBSERVER_QUORUM_MINIMUM;
+}
 
 /**
  * HyperBEAM's relay answers a multi-value `Accept` (weave-wrangler sends

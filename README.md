@@ -140,6 +140,15 @@ http://127.0.0.1:3000/?arweave-node=http://127.0.0.1:1984#/asset/…
 The AO peer pool and Arweave gateway selection are independent. Transactions
 are signed by the connected wallet and submitted through the selected Arweave gateway.
 
+After a transaction is submitted, Bazar confirms it with several Arweave observers:
+the selected gateway, plus Arweave's own nodes (`tip-1`–`tip-4` and `chain-1`–`chain-3`
+at `arweave.xyz`, port 1984). Those nodes serve plain HTTP, so an HTTPS page reaches them
+through the first AO peer's `~relay@1.0`. Set `VITE_ARWEAVE_OBSERVER_NODES` to a
+comma-separated list of origins to observe other nodes. A confirmation needs at least two
+reachable observers: when the AO peer cannot relay, only the gateway is reachable, and
+Bazar says it cannot verify the transaction from here instead of waiting. The signed
+transaction stays saved for a later resume.
+
 ### Analytics
 
 Builds and the dev server load no analytics script by default. To include one,

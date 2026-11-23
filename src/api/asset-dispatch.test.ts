@@ -24,6 +24,10 @@ vi.mock('./arweave-observers', () => ({
 			control.networkOptions = options;
 		}
 		async ready() {}
+		// A healthy network: enough reachable observers for a quorum.
+		active() {
+			return [{}, {}, {}];
+		}
 		watch() {
 			return {
 				on(event: string, listener: (...args: any[]) => void) {

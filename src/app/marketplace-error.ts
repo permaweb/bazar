@@ -31,6 +31,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'This wallet does not have enough AR for the network reward. No transaction was submitted.',
 	'transaction-propagation-timeout':
 		'The sampled observers did not reach the required propagation quorum in time. The signed transaction remains saved in this browser; return with the same wallet and retained browser data to continue checking it.',
+	'transaction-observers-unavailable':
+		'Bazar cannot verify this transaction from here: arweave.net alone cannot form an observer quorum, and the configured AO peer does not relay to Arweave’s own nodes. The signed transaction remains saved in this browser; open Bazar with a relay-capable AO peer, or return later with the same wallet and retained browser data to continue checking it.',
 	'asset-state-timeout':
 		'The sampled observers report the transaction as confirmed, but the configured AO peers have not applied it yet. Continue to keep checking live state.',
 	'asset-state-read-timeout':

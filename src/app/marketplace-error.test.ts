@@ -48,6 +48,7 @@ describe('marketplaceErrorMessage', () => {
 		['browser-storage-full', 'cleared its rebuildable caches'],
 		['asset-purchase-insufficient-funds-after-signing', 'saved in this browser with the same wallet'],
 		['transaction-propagation-timeout', 'return with the same wallet and retained browser data'],
+		['transaction-observers-unavailable', 'open Bazar with a relay-capable AO peer'],
 		['asset-state-timeout', 'sampled observers report the transaction as confirmed'],
 		['asset-state-read-timeout', 'No transaction was prepared or sent'],
 		['asset-order-reservation-expired', 'start a new purchase'],
