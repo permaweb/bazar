@@ -674,6 +674,14 @@ function restoredWalletCandidateScan(
 	return scan;
 }
 
+/** Start the scan over in place (the session keeps the same scan object) for a full rescan. */
+function resetWalletCandidateScan(scan: WalletCandidateScan) {
+	Object.assign(scan, createWalletCandidateScan(scan.address, scan.graphql), {
+		answeringIndex: undefined,
+		catchUp: undefined,
+	});
+}
+
 function encodeStoredWalletCandidate(candidate: AssetCandidate): StoredWalletCandidate {
 	const stored: StoredWalletCandidate = [
 		candidate.processId,
@@ -858,45 +866,49 @@ export async function discoverWalletAssetCandidates(
 		return { processIds, updates };
 	};
 
-	while (scan.active.size) {
-		options.signal?.throwIfAborted();
-		const { requestedAliases, connections, endpoint } = await requestPage(scan.active, scan.cursors);
-		const nextActive = new Set(scan.active);
-		const nextCursors = { ...scan.cursors };
-		const nextVisited = {
-			initiallyHeld: new Set(scan.visited.initiallyHeld),
-			marketActions: new Set(scan.visited.marketActions),
-			receivedTransfers: new Set(scan.visited.receivedTransfers),
-		};
-		for (const alias of requestedAliases) {
-			const connection = connections.get(alias)!;
-			if (!connection.pageInfo.hasNextPage) {
-				nextActive.delete(alias);
-			} else {
-				nextCursors[alias] = advanceGraphqlCursor(
-					connection,
-					nextVisited[alias],
-					'asset-discovery-pagination-stalled'
-				);
+	const scanToEnd = async () => {
+		while (scan.active.size) {
+			options.signal?.throwIfAborted();
+			const { requestedAliases, connections, endpoint } = await requestPage(scan.active, scan.cursors);
+			const nextActive = new Set(scan.active);
+			const nextCursors = { ...scan.cursors };
+			const nextVisited = {
+				initiallyHeld: new Set(scan.visited.initiallyHeld),
+				marketActions: new Set(scan.visited.marketActions),
+				receivedTransfers: new Set(scan.visited.receivedTransfers),
+			};
+			for (const alias of requestedAliases) {
+				const connection = connections.get(alias)!;
+				if (!connection.pageInfo.hasNextPage) {
+					nextActive.delete(alias);
+				} else {
+					nextCursors[alias] = advanceGraphqlCursor(
+						connection,
+						nextVisited[alias],
+						'asset-discovery-pagination-stalled'
+					);
+				}
 			}
-		}
 
-		const page = pageUpdates(requestedAliases, connections);
-		await options.onPage?.(sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!)));
-		options.signal?.throwIfAborted();
-		for (const [processId, candidate] of page.updates) scan.found.set(processId, candidate);
-		for (const alias of requestedAliases) {
-			if (scan.heads[alias] === undefined) {
-				scan.heads[alias] = connections.get(alias)!.edges[0]?.node.id ?? null;
+			const page = pageUpdates(requestedAliases, connections);
+			await options.onPage?.(
+				sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
+			);
+			options.signal?.throwIfAborted();
+			for (const [processId, candidate] of page.updates) scan.found.set(processId, candidate);
+			for (const alias of requestedAliases) {
+				if (scan.heads[alias] === undefined) {
+					scan.heads[alias] = connections.get(alias)!.edges[0]?.node.id ?? null;
+				}
 			}
+			scan.active = nextActive;
+			scan.cursors = nextCursors;
+			scan.answeringIndex ??= endpoint;
+			scan.visited = nextVisited;
 		}
-		scan.active = nextActive;
-		scan.cursors = nextCursors;
-		scan.answeringIndex ??= endpoint;
-		scan.visited = nextVisited;
-	}
+	};
 
-	if (options.catchUp && !scan.caughtUp) {
+	const catchUpHeads = async () => {
 		// A scan with heads always has its answering index; a hand-built one is read on the preferred index.
 		scan.answeringIndex ??= graphql;
 		let pagesThisPass = 0;
@@ -968,6 +980,21 @@ export async function discoverWalletAssetCandidates(
 			scan.heads = { ...scan.catchUp.newHeads };
 			scan.catchUp = undefined;
 			scan.caughtUp = stable;
+		}
+	};
+
+	await scanToEnd();
+	if (options.catchUp && !scan.caughtUp) {
+		try {
+			await catchUpHeads();
+		} catch (error) {
+			if (!(error instanceof Error && error.message === 'asset-discovery-head-watermark-missing')) throw error;
+			// The index that recorded a head no longer returns it (a dropped or re-indexed transaction),
+			// so the heads cannot bound a catch-up: scan the wallet again from the start, once.
+			options.signal?.throwIfAborted();
+			resetWalletCandidateScan(scan);
+			await scanToEnd();
+			await catchUpHeads();
 		}
 	}
 

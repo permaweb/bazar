@@ -5,7 +5,6 @@ import { arweaveGraphqlEndpoint } from 'helpers/config';
 import {
 	type AssetCandidate,
 	bazarAtomicAssetFromState,
-	clearCompletedWalletCandidateScan,
 	type CollectionActivityEvent,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
@@ -1046,7 +1045,7 @@ describe('wallet candidate discovery', () => {
 		expect(restored.caughtUp).toBe(true);
 	});
 
-	it('keeps checkpoint retry fail-closed but restarts cleanly after a cached head disappears', async () => {
+	it('rescans the wallet once when a stored head disappears, and fails closed if it disappears again', async () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
@@ -1060,18 +1059,17 @@ describe('wallet candidate discovery', () => {
 		});
 		const storage = memoryStorage();
 		storeCompletedWalletCandidateScan(storage, scan);
-		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
 		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
-		const fetcher = vi.fn(async () =>
+		const headPage = (id: string) =>
 			Response.json({
 				data: {
 					initiallyHeld: {
 						pageInfo: { hasNextPage: false },
 						edges: [
 							{
-								cursor: 'new-head',
+								cursor: `head-${id}`,
 								node: {
-									id: assetC,
+									id,
 									tags: [{ name: 'initial-holder', value: wallet }],
 									block: { height: 2, timestamp: 2 },
 								},
@@ -1081,30 +1079,38 @@ describe('wallet candidate discovery', () => {
 					marketActions: empty,
 					receivedTransfers: empty,
 				},
-			})
-		);
+			});
+		const fetcher = vi.fn(async () => headPage(assetC));
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
 
-		for (let attempt = 0; attempt < 2; attempt += 1) {
-			await expect(
-				discoverWalletAssetCandidates(wallet, {
-					fetch: fetcher as typeof fetch,
-					scan: restored,
-					catchUp: true,
-				})
-			).rejects.toThrow('asset-discovery-head-watermark-missing');
-		}
-		expect(fetcher).toHaveBeenCalledTimes(2);
-
-		clearCompletedWalletCandidateScan(storage, wallet);
-		const restarted = loadCompletedWalletCandidateScan(storage, wallet) ?? createWalletCandidateScan(wallet);
+		// The catch-up page lacks head A; the scan starts over and reads the wallet in full.
 		await expect(
 			discoverWalletAssetCandidates(wallet, {
 				fetch: fetcher as typeof fetch,
-				scan: restarted,
+				scan: restored,
 				catchUp: true,
 			})
-		).resolves.toMatchObject([{ processId: assetC }]);
-		expect(fetcher).toHaveBeenCalledTimes(4);
+		).resolves.toEqual([expect.objectContaining({ processId: assetC })]);
+		// Catch-up page, full-scan page, then the catch-up that confirms the new head.
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(restored.caughtUp).toBe(true);
+		expect(restored.found.has(assetA)).toBe(false);
+		expect(storeCompletedWalletCandidateScan(storage, restored)).toBe(true);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)?.heads.initiallyHeld).toBe(assetC);
+
+		// An index whose head moves on every read is not trusted after the one rescan.
+		const heads = [assetB, nameAsset, traditionalName];
+		const unstable = vi.fn(async () => headPage(heads.shift()!));
+		const again = loadCompletedWalletCandidateScan(storage, wallet)!;
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: unstable as typeof fetch,
+				scan: again,
+				catchUp: true,
+			})
+		).rejects.toThrow('asset-discovery-head-watermark-missing');
+		expect(unstable).toHaveBeenCalledTimes(3);
+		expect(storeCompletedWalletCandidateScan(storage, again)).toBe(false);
 	});
 
 	it('fails open for incomplete, corrupt, mismatched, or unavailable scan storage', () => {
