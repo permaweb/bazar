@@ -25,7 +25,8 @@ type GeneratedWallet = {
 	jwk: WalletJwk;
 };
 
-type WalletDialogAction = BrowserWalletId | 'generate' | 'import' | null;
+/** `unlock` retries the keyfile saved in this browser; like a browser connect it adds no key. */
+type WalletDialogAction = BrowserWalletId | 'generate' | 'import' | 'unlock' | null;
 
 /**
  * The connect dialog's phase, derived from its pending action and generated key. `backup` holds a
@@ -45,9 +46,21 @@ const COPY_FEEDBACK_MS = 2000;
  */
 export type WalletKind = 'local' | 'browser';
 
+/** Unlock state of the local keyfile saved in this browser. */
+export type LocalWalletUnlockState =
+	| { status: 'idle' }
+	| { status: 'unlocking' }
+	| { status: 'failed'; message: string };
+
+export const LOCAL_WALLET_UNLOCK_FAILED_MESSAGE =
+	'Saved browser wallet could not be unlocked. Its keyfile is still saved in this browser. Check your connection and retry.';
+
 type WalletContextValue = {
 	address: string | null;
 	walletKind: WalletKind | null;
+	localWalletUnlock: LocalWalletUnlockState;
+	/** Retries unlocking the saved browser keyfile; resolves true once it is connected. */
+	retryLocalWalletUnlock(): Promise<boolean>;
 	arBalance: bigint | null;
 	arBalanceDenomination: number;
 	arBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
@@ -85,6 +98,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const [aoBalanceStatus, setAoBalanceStatus] = React.useState<WalletContextValue['aoBalanceStatus']>('idle');
 	const [balanceRevision, setBalanceRevision] = React.useState(0);
 	const [connectDialogOpen, setConnectDialogOpen] = React.useState(false);
+	const [localWalletUnlock, setLocalWalletUnlock] = React.useState<LocalWalletUnlockState>({ status: 'idle' });
 	const connectDialogTrigger = React.useRef<HTMLElement | null>(null);
 	const addressRequests = React.useRef(
 		createLatestAddressCommitter((nextAddress) => {
@@ -109,17 +123,30 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		}
 	}, []);
 
+	const unlockLocalWallet = React.useCallback(async (storedWallet: WalletJwk) => {
+		const unlocking: LocalWalletUnlockState = { status: 'unlocking' };
+		setLocalWalletUnlock(unlocking);
+		const next = await unlockStoredLocalWallet(storedWallet, {
+			activate: activateLocalWallet,
+			commit: addressRequests.current.begin(),
+			clear: clearLocalWallet,
+		});
+		if (!next) {
+			// Superseded by a newer wallet action: settle only if no newer unlock replaced this one.
+			setLocalWalletUnlock((current) => (current === unlocking ? { status: 'idle' } : current));
+			return false;
+		}
+		setLocalWalletUnlock(next.state);
+		return next.address !== null;
+	}, []);
+
 	React.useEffect(() => {
 		let cancelled = false;
 		void installDevelopmentWallet().then(() => {
 			if (cancelled) return;
 			const storedWallet = readLocalWallet();
 			if (storedWallet) {
-				const commit = addressRequests.current.begin();
-				void activateLocalWallet(storedWallet).then(commit, () => {
-					clearLocalWallet();
-					commit(null);
-				});
+				void unlockLocalWallet(storedWallet);
 			} else {
 				void refresh();
 			}
@@ -139,7 +166,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			window.removeEventListener('aoFetchLoaded', refreshNetworkBalances);
 			addressRequests.current.invalidate();
 		};
-	}, [refresh]);
+	}, [refresh, unlockLocalWallet]);
 
 	React.useEffect(() => {
 		setArBalance(null);
@@ -169,6 +196,15 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		() => ({
 			address,
 			walletKind,
+			localWalletUnlock,
+			retryLocalWalletUnlock: async () => {
+				const storedWallet = readLocalWallet();
+				if (!storedWallet) {
+					setLocalWalletUnlock({ status: 'idle' });
+					return false;
+				}
+				return unlockLocalWallet(storedWallet);
+			},
 			arBalance,
 			arBalanceDenomination,
 			arBalanceStatus,
@@ -187,7 +223,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				clearLocalWallet();
 				window.arweaveWallet = wallet;
 				storeBrowserWalletPreference(walletId);
-				commit(nextAddress);
+				if (commit(nextAddress)) setLocalWalletUnlock({ status: 'idle' });
 				setBalanceRevision((revision) => revision + 1);
 			},
 			disconnect: async () => {
@@ -198,6 +234,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				const permawebOs = resolveBrowserWallet(window, 'permaweb-os');
 				if (plan.clearsKey) {
 					clearLocalWallet();
+					setLocalWalletUnlock({ status: 'idle' });
 					restoreBrowserWallet();
 				} else {
 					await disconnectedWallet?.disconnect?.();
@@ -226,7 +263,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
 				const nextAddress = await activateLocalWallet(jwk);
-				commit(nextAddress);
+				if (commit(nextAddress)) setLocalWalletUnlock({ status: 'idle' });
 				return { address: nextAddress, jwk };
 			},
 			importLocalWallet: async (file: File) => {
@@ -240,7 +277,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				confirmLocalWalletReplacement(jwk);
 				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
-				commit(await activateLocalWallet(jwk));
+				if (commit(await activateLocalWallet(jwk))) setLocalWalletUnlock({ status: 'idle' });
 			},
 			openConnectDialog: (trigger) => {
 				connectDialogTrigger.current =
@@ -266,6 +303,8 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			arBalance,
 			arBalanceDenomination,
 			arBalanceStatus,
+			localWalletUnlock,
+			unlockLocalWallet,
 			walletKind,
 		]
 	);
@@ -388,6 +427,18 @@ function WalletConnectionDialog({
 			setAction(null);
 		}
 	};
+	// The retry stays dismissible like a browser connect, so it is scoped to the session that started it.
+	const retryLocalWalletUnlock = async () => {
+		const started = session.current;
+		setAction('unlock');
+		setError('');
+		try {
+			if ((await wallet.retryLocalWalletUnlock()) && started === session.current) onClose();
+		} finally {
+			if (started === session.current) setAction(null);
+		}
+	};
+	const unlockFailure = wallet.localWalletUnlock.status === 'failed' ? wallet.localWalletUnlock.message : null;
 	// A browser cannot report whether a download was saved or cancelled, so starting the download
 	// only moves the panel to its "downloaded" step; the user closes it with an explicit confirmation.
 	const downloadGeneratedWallet = () => {
@@ -517,6 +568,29 @@ function WalletConnectionDialog({
 				) : (
 					<>
 						<div className="wallet-option-list">
+							{unlockFailure || action === 'unlock' ? (
+								<div
+									className="wallet-option"
+									data-local-wallet-unlock={wallet.localWalletUnlock.status}
+								>
+									<div className="wallet-option-copy">
+										<KeyRound className="ui-icon" aria-hidden="true" />
+										<div>
+											<strong>Saved browser wallet</strong>
+											<span role="alert">{unlockFailure ?? 'Unlocking the saved keyfile…'}</span>
+										</div>
+									</div>
+									<Button
+										onClick={() => void retryLocalWalletUnlock()}
+										disabled={action !== null}
+										type="button"
+										size="custom"
+										variant="primary"
+									>
+										{action === 'unlock' ? 'Retrying…' : 'Retry'}
+									</Button>
+								</div>
+							) : null}
 							<div className="wallet-option">
 								<div className="wallet-option-copy">
 									<Wallet className="ui-icon" aria-hidden="true" />
@@ -845,10 +919,53 @@ function isLocalWallet(wallet: Window['arweaveWallet']) {
 	);
 }
 
+/** The keyfile itself is unusable; retrying cannot help. Every other activation error is transient. */
+export class InvalidLocalWalletError extends Error {
+	constructor(cause: unknown) {
+		super(cause instanceof Error && cause.message ? cause.message : 'The Arweave keyfile is invalid.');
+		this.name = 'InvalidLocalWalletError';
+	}
+}
+
+/** Only an invalid keyfile is removed; a failed chunk load, offline network or missing crypto keeps it. */
+export function storedLocalWalletFailureAction(cause: unknown): 'clear' | 'keep' {
+	return cause instanceof InvalidLocalWalletError ? 'clear' : 'keep';
+}
+
+/**
+ * Unlocks the keyfile saved in this browser. Resolves null when a newer wallet action
+ * superseded this one, so a stale failure never clears the key or the newer state.
+ */
+export async function unlockStoredLocalWallet(
+	storedWallet: WalletJwk,
+	{
+		activate,
+		commit,
+		clear,
+	}: {
+		activate(jwk: WalletJwk): Promise<string>;
+		commit(address: string | null): boolean;
+		clear(): void;
+	}
+): Promise<{ address: string | null; state: LocalWalletUnlockState } | null> {
+	let address: string;
+	try {
+		address = await activate(storedWallet);
+	} catch (cause) {
+		if (!commit(null)) return null;
+		if (storedLocalWalletFailureAction(cause) === 'clear') {
+			clear();
+			return { address: null, state: { status: 'idle' } };
+		}
+		return { address: null, state: { status: 'failed', message: LOCAL_WALLET_UNLOCK_FAILED_MESSAGE } };
+	}
+	return commit(address) ? { address, state: { status: 'idle' } } : null;
+}
+
 async function activateLocalWallet(jwk: WalletJwk) {
 	const current = window.arweaveWallet;
 	if (current && !isLocalWallet(current)) rememberedBrowserWallet = current;
-	const signingJwk = completePrivateJwk(jwk);
+	const signingJwk = localWalletSigningJwk(jwk);
 	const arweave = await createArweaveClient();
 	const address = await arweave.wallets.jwkToAddress(signingJwk as any);
 	window.arweaveWallet = {
@@ -862,6 +979,14 @@ async function activateLocalWallet(jwk: WalletJwk) {
 		},
 	} as Window['arweaveWallet'];
 	return address;
+}
+
+export function localWalletSigningJwk(jwk: WalletJwk): WalletJwk {
+	try {
+		return completePrivateJwk(jwk);
+	} catch (cause) {
+		throw new InvalidLocalWalletError(cause);
+	}
 }
 
 export function completePrivateJwk(jwk: WalletJwk): WalletJwk {
