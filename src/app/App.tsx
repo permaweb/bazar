@@ -924,7 +924,7 @@ export function mintActivityUploadActivity(activity: MintActivity, now = Date.no
 		transactionIds: activity.transactionIds,
 		transactions: activity.transactionIds.map((id, index) => ({
 			id,
-			label: index === activity.transactionIds.length - 1 ? 'Asset transaction' : 'Artwork transaction',
+			label: mintActivityReceiptLabel(activity, index),
 		})),
 		assetId: activity.asset.id,
 		collectionId: activity.collectionId,
@@ -1620,6 +1620,31 @@ export function useOperationActivity() {
 
 export type UploadObserverState = Record<string, { views: ObserverView[]; consensus?: Consensus }>;
 
+/** Receipt label for a mint activity's transaction: the last id is the process, earlier ids are its media. */
+export function mintActivityReceiptLabel(
+	activity: Pick<MintActivity, 'asset' | 'collectionId' | 'transactionIds'>,
+	index: number
+) {
+	const processTransaction = index === activity.transactionIds.length - 1;
+	if (isFungiblePendingMint(activity.asset, activity.collectionId))
+		return processTransaction ? 'Token process transaction' : 'Token logo transaction';
+	return processTransaction ? 'Asset transaction' : 'Artwork transaction';
+}
+
+/**
+ * Activity menu copy for a mint activity, so token mints are not described as uploads. A stalled
+ * mint's attention text is the shared MINT_ACTIVITY_STALLED_STATUS, which names neither.
+ */
+export function mintActivityMenuCopy(activity: Pick<MintActivity, 'asset' | 'collectionId'>) {
+	return isFungiblePendingMint(activity.asset, activity.collectionId) ? { kind: 'Token mint' } : { kind: 'Upload' };
+}
+
+/** The panel eyebrow for an upload activity. */
+export function uploadActivityEyebrow(activity: Pick<UploadActivity, 'kind' | 'collectionId'>) {
+	if (activity.kind === 'collection') return 'Collection upload';
+	return activity.collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ? 'Token mint' : 'Asset upload';
+}
+
 export function uploadActivitySyncSteps(
 	activity: UploadActivity,
 	relatedMintActivities: MintActivity[],
@@ -1862,9 +1887,7 @@ export function UploadActivityPanel({
 							)}
 						</span>
 						<div className="dialog-asset-heading-copy">
-							<p className="eyebrow">
-								{activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
-							</p>
+							<p className="eyebrow">{uploadActivityEyebrow(activity)}</p>
 							<h2 id={titleId}>{activity.name}</h2>
 						</div>
 					</div>
@@ -3015,6 +3038,7 @@ function OperationActivityControl() {
 								activity.arweaveGateway !== arweaveGatewayFromLocation() ||
 								activity.computeGateway !== gatewayFromLocation();
 							const needsAttention = mintActivityNeedsAttention(activity);
+							const menuCopy = mintActivityMenuCopy(activity);
 							return (
 								<div
 									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
@@ -3036,7 +3060,7 @@ function OperationActivityControl() {
 										<span className="operation-activity-copy">
 											<strong>{activity.asset.name}</strong>
 											<small>
-												Upload ·{' '}
+												{menuCopy.kind} ·{' '}
 												{needsAttention
 													? 'Needs attention'
 													: mintActivityPhaseLabel(activity.phase)}
@@ -9491,13 +9515,10 @@ function PendingAssetView() {
 					</div>
 					<MintTransactionReceipt
 						entries={activity.transactionIds.map((transactionId, index) => ({
-							label: fungible
-								? index === activity.transactionIds.length - 1
-									? 'Token process transaction'
-									: 'Token logo transaction'
-								: index === activity.transactionIds.length - 1
-								? 'Asset transaction'
-								: 'Artwork transaction',
+							label: mintActivityReceiptLabel(
+								{ ...activity, asset, collectionId: activity.collectionId ?? collectionId },
+								index
+							),
 							transactionId,
 						}))}
 					/>

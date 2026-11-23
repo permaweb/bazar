@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ObserverView } from 'weave-wrangler';
 
+import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import { MINT_ACTIVITY_ATTENTION_AFTER_MS, MINT_ACTIVITY_STALLED_STATUS, type MintActivity } from 'api/mint-activity';
 
 vi.mock('./useDialogFocus', async (importOriginal) => ({
@@ -12,9 +13,11 @@ vi.mock('./useDialogFocus', async (importOriginal) => ({
 }));
 
 import {
+	mintActivityMenuCopy,
 	mintActivityUploadActivity,
 	observeUploadActivityTransactions,
 	type UploadActivity,
+	uploadActivityEyebrow,
 	UploadActivityPanel,
 	type UploadObserverAvailability,
 	uploadActivityObserverKey,
@@ -281,5 +284,48 @@ describe('upload result announcements', () => {
 		expect(markup).toContain('<div aria-atomic="true" class="sr-only" role="status">');
 		expect(markup).toContain('Submitted to Arweave.');
 		expect(markup).not.toContain('role="alert"');
+	});
+});
+
+describe('mint activity labels', () => {
+	const logoId = 'L'.repeat(43);
+	const tokenMint: MintActivity = {
+		...mint,
+		asset: {
+			...mint.asset,
+			name: 'Test Token',
+			contentType: 'application/x.arweave-token',
+			ticker: 'TEST',
+		},
+		collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
+		transactionIds: [logoId, processId],
+	};
+
+	it('labels a token mint restored from Activity as a token, not an artwork upload', () => {
+		const activity = mintActivityUploadActivity(tokenMint, tokenMint.createdAt);
+
+		expect(activity.transactions).toEqual([
+			{ id: logoId, label: 'Token logo transaction' },
+			{ id: processId, label: 'Token process transaction' },
+		]);
+		expect(uploadActivityEyebrow(activity)).toBe('Token mint');
+		expect(mintActivityMenuCopy(tokenMint)).toEqual({ kind: 'Token mint' });
+		// The needs-attention line is the shared stalled copy, which never calls a token mint an upload.
+		expect(MINT_ACTIVITY_STALLED_STATUS).not.toMatch(/upload/i);
+	});
+
+	it('keeps the artwork and asset labels for an atomic asset mint', () => {
+		const artworkId = 'A'.repeat(43);
+		const assetMint: MintActivity = { ...mint, transactionIds: [artworkId, processId] };
+		const activity = mintActivityUploadActivity(assetMint, assetMint.createdAt);
+
+		expect(activity).toMatchObject({ kind: 'asset', phase: 'tracking', assetId: processId });
+		expect(activity.transactions.map((transaction) => transaction.label)).toEqual([
+			'Artwork transaction',
+			'Asset transaction',
+		]);
+		expect(uploadActivityEyebrow(activity)).toBe('Asset upload');
+		expect(uploadActivityEyebrow({ kind: 'collection' })).toBe('Collection upload');
+		expect(mintActivityMenuCopy(assetMint).kind).toBe('Upload');
 	});
 });
