@@ -2736,9 +2736,9 @@ function OperationActivityControl() {
 	);
 }
 
-function operationActivityPhaseLabel(phase: OperationActivityPhase) {
+export function operationActivityPhaseLabel(phase: OperationActivityPhase) {
 	return {
-		form: 'Awaiting signature',
+		form: 'Not submitted',
 		approval: 'Awaiting approval',
 		working: 'In progress',
 		done: 'Complete',
@@ -11173,13 +11173,14 @@ function OperationDialog({
 		purchaseQuote && purchaseWalletBalance !== null ? purchaseWalletBalance >= BigInt(purchaseQuote.total) : null;
 	const actionLabel = atomicOperationActionLabel(operation, operationValue);
 	const resultCopy = atomicOperationResult(operation.kind, asset.name, operationValue, owner);
+	const resuming = Boolean(operation.kind === 'buy' ? operation.resume : operation.resumeId);
 	const reportedStatus =
 		visiblePhase === 'form'
 			? 'Waiting for details'
 			: visiblePhase === 'approval'
 			? 'Waiting for wallet approval'
 			: visiblePhase === 'working'
-			? workingStatus || 'Watching Arweave confirmations…'
+			? atomicOperationWorkingStatus({ workingStatus, hasSteps: steps.length > 0, resuming })
 			: visiblePhase === 'done'
 			? resultCopy.title
 			: visibleMessage || 'This transaction needs attention';
@@ -11617,13 +11618,7 @@ function OperationDialog({
 				) : null}
 				{visiblePhase === 'working' && !steps.length ? (
 					<div className="operation-preparing">
-						<Loading
-							label={
-								(operation.kind === 'buy' ? operation.resume : operation.resumeId)
-									? 'Recovering the signed transaction…'
-									: 'Preparing secure wallet approvals…'
-							}
-						/>
+						<Loading label={atomicOperationPreparingLabel(resuming)} />
 						<p>
 							{operation.kind === 'buy'
 								? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
@@ -12433,6 +12428,26 @@ function atomicOperationResult(kind: Operation['kind'], assetName = '', value = 
 			detail: 'The asset is back in your liquid balance and is no longer for sale.',
 		};
 	return { title: 'Transfer complete', detail: `${assetName} now belongs to ${short(value)}.` };
+}
+/** Dialog loading copy while working before a transaction (and its sync steps) exists. */
+export function atomicOperationPreparingLabel(resuming: boolean) {
+	return resuming ? 'Recovering the signed transaction…' : 'Preparing secure wallet approvals…';
+}
+/**
+ * Activity status for the working phase. Explicit status (buy's lifecycle copy) wins; otherwise
+ * confirmations are only claimed once a transaction exists, and the pre-signature window mirrors
+ * the dialog's own loading label.
+ */
+export function atomicOperationWorkingStatus({
+	workingStatus,
+	hasSteps,
+	resuming,
+}: {
+	workingStatus: string;
+	hasSteps: boolean;
+	resuming: boolean;
+}) {
+	return workingStatus || (hasSteps ? 'Watching Arweave confirmations…' : atomicOperationPreparingLabel(resuming));
 }
 function operationLabel(kind: Operation['kind']) {
 	return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Cancel listing', transfer: 'Transfer asset' }[kind];
