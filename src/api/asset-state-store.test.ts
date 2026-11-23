@@ -278,6 +278,111 @@ describe('asset state store', () => {
 		expect(cachedAssetState(processId)).toBeUndefined();
 	});
 
+	describe('invalidation retires in-flight reads', () => {
+		const before = { ...result, state: { raw: { 'at-slot': 5 }, totalSupply: '1' } };
+		const after = { ...result, state: { raw: { 'at-slot': 10 }, totalSupply: '1' } };
+
+		function pendingReads() {
+			const pending: Array<{ resolve: (value: unknown) => void; signal: AbortSignal }> = [];
+			mocks.readAssetState.mockImplementation(
+				(_processId, options) =>
+					new Promise((resolve, reject) => {
+						pending.push({ resolve, signal: options.signal });
+						options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+					})
+			);
+			return pending;
+		}
+
+		it('keeps a post-invalidation result when a pre-invalidation read lands late', async () => {
+			const pending = pendingReads();
+			const stale = readAssetStateCached(processId);
+			invalidateAssetState(processId);
+			const fresh = readAssetStateCached(processId, { force: true, maxAge: 0 });
+			expect(pending).toHaveLength(2);
+
+			pending[1]!.resolve(after);
+			await expect(fresh).resolves.toBe(after);
+			pending[0]!.resolve(before);
+			// The caller that asked before the invalidation still gets its answer.
+			await expect(stale).resolves.toBe(before);
+
+			expect(cachedAssetState(processId)).toBe(after);
+			expect(await readAssetStateCached(processId)).toBe(after);
+			expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		});
+
+		it('starts a fresh read instead of joining a pre-invalidation request', async () => {
+			const pending = pendingReads();
+			const stale = readAssetStateCached(processId);
+			invalidateAssetState(processId);
+			const fresh = readAssetStateCached(processId);
+
+			expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+			pending[0]!.resolve(before);
+			pending[1]!.resolve(after);
+			await expect(stale).resolves.toBe(before);
+			await expect(fresh).resolves.toBe(after);
+			expect(cachedAssetState(processId)).toBe(after);
+		});
+
+		it('does not let a refreshed force read join the aborted pre-invalidation force read', async () => {
+			const pending = pendingReads();
+			const first = new AbortController();
+			const stale = readAssetStateCached(processId, { force: true, maxAge: 0, signal: first.signal });
+			const staleRejected = expect(stale).rejects.toMatchObject({ name: 'AbortError' });
+
+			// AssetView's refresh after an operation: invalidate, abort, force read, same tick.
+			invalidateAssetState(processId);
+			first.abort(new DOMException('Refreshing', 'AbortError'));
+			const fresh = readAssetStateCached(processId, {
+				force: true,
+				maxAge: 0,
+				signal: new AbortController().signal,
+			});
+
+			expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+			await staleRejected;
+			expect(pending[0]!.signal.aborted).toBe(true);
+			expect(pending[1]!.signal.aborted).toBe(false);
+			pending[1]!.resolve(after);
+			await expect(fresh).resolves.toBe(after);
+			expect(cachedAssetState(processId)).toBe(after);
+		});
+
+		it('does not cache the revalidation of a pre-invalidation stale result', async () => {
+			const pending = pendingReads();
+			let revalidate!: (value: unknown) => void;
+			const stale = readAssetStateCached(processId);
+			invalidateAssetState(processId);
+			const fresh = readAssetStateCached(processId, { force: true, maxAge: 0 });
+
+			pending[1]!.resolve(after);
+			await expect(fresh).resolves.toBe(after);
+			pending[0]!.resolve({
+				...before,
+				cacheStatus: 'stale',
+				revalidation: new Promise((resolve) => {
+					revalidate = resolve;
+				}),
+			});
+			const staleResult = await stale;
+			revalidate({ ...before, verifiedAt: 3 });
+			await staleResult.revalidation;
+			await Promise.resolve();
+
+			expect(cachedAssetState(processId)).toBe(after);
+		});
+
+		it('still caches reads that started after the invalidation', async () => {
+			invalidateAssetState(processId);
+			await readAssetStateCached(processId);
+			expect(cachedAssetState(processId)).toBe(result);
+			await readAssetStateCached(processId);
+			expect(mocks.readAssetState).toHaveBeenCalledOnce();
+		});
+	});
+
 	it('bounds a shared foreground read even when the transport ignores abort', async () => {
 		vi.useFakeTimers();
 		let requestSignal!: AbortSignal;
