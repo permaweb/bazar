@@ -8,7 +8,7 @@ import {
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
 import type { ComputeResult } from 'api/asset-marketplace';
-import type { Collection } from 'api/collections';
+import { type AssetSummary, type Collection, collectionAsset } from 'api/collections';
 
 import {
 	type CandidateSupportFailure,
@@ -48,7 +48,7 @@ export type WalletDiscoveryOptions = {
 	/** False once the run was aborted or a newer session replaced this one. */
 	active: () => boolean;
 	setStatus: (update: (current: WalletResolutionStatus) => WalletResolutionStatus) => void;
-	/** The session's resolved assets changed; the caller schedules a render. */
+	/** The session's resolved assets or candidate previews changed; the caller schedules a render. */
 	onResultsChanged: () => void;
 	/** Candidate discovery finished without an index failure. */
 	onDiscoveryComplete?: () => void;
@@ -115,7 +115,9 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 				failures: current.failures + (error ? 1 : 0),
 				rateLimited: current.rateLimited + (error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
 			}));
-			if (!error && updateWalletResolvedAsset(session, result, latest, address)) options.onResultsChanged();
+			if (!error) updateWalletResolvedAsset(session, result, latest, address);
+			// A settled candidate leaves the preview set whether or not the wallet holds it.
+			options.onResultsChanged();
 		},
 		onRevalidated: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => {
 			if (!active()) return;
@@ -217,6 +219,7 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 		}
 		const newlyCounted = candidates.filter((candidate) => !session.counted.has(candidate.processId));
 		for (const candidate of newlyCounted) session.counted.add(candidate.processId);
+		if (newlyCounted.length) options.onResultsChanged();
 		if (active()) {
 			setStatus((current) => ({
 				...current,
@@ -333,6 +336,8 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 			resolvePage(reopen.map((candidate) => session.latestCandidates.get(candidate.processId) ?? candidate));
 		}
 		reclassify();
+		// Newly loaded collection indexes can name candidates that are still being checked.
+		options.onResultsChanged();
 	};
 
 	const finished = (async () => {
@@ -396,4 +401,46 @@ export function runWalletDiscovery(options: WalletDiscoveryOptions): WalletDisco
 	})();
 
 	return { finished, supportChanged };
+}
+
+export type WalletCandidatePreview = {
+	asset: AssetSummary;
+	collection: Collection;
+	activity: AssetCandidate;
+	/** `checking` while live state is read; `unavailable` once that read failed or timed out. */
+	state: 'checking' | 'unavailable';
+};
+
+function walletCandidateSummary(candidate: AssetCandidate, collections: Collection[]) {
+	for (const collection of collections) {
+		if (collection.kind === 'names') continue;
+		const asset = collectionAsset(collection, candidate.processId);
+		if (asset) return { asset, collection };
+	}
+	const names = collections.find((collection) => collection.kind === 'names');
+	const name = names ? collectionAsset(names, candidate.processId) : undefined;
+	return names && name ? { asset: name, collection: names } : undefined;
+}
+
+/**
+ * Cards for candidates a loaded collection index already names (title, artwork),
+ * shown from discovery data while their live state is read. A confirmed asset
+ * replaces its preview in place; a candidate the wallet no longer holds drops
+ * out once its read settles; a failed read stays as `unavailable`.
+ */
+export function walletCandidatePreviews(
+	session: WalletDiscoverySession,
+	collections: Collection[],
+	computeFailures: ReadonlyMap<string, AssetCandidate>
+): WalletCandidatePreview[] {
+	const previews: WalletCandidatePreview[] = [];
+	for (const processId of session.counted) {
+		if (session.resolvedAssets.has(processId)) continue;
+		const failed = computeFailures.has(processId);
+		if (!failed && session.completed.has(processId)) continue;
+		const activity = session.latestCandidates.get(processId);
+		const summary = activity ? walletCandidateSummary(activity, collections) : undefined;
+		if (activity && summary) previews.push({ ...summary, activity, state: failed ? 'unavailable' : 'checking' });
+	}
+	return previews;
 }

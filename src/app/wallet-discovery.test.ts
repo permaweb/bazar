@@ -5,7 +5,7 @@ import { parseAssetState } from 'api/asset-marketplace';
 import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from 'api/collections';
 
 import { initialWalletResolutionStatus, walletDiscoverySession, type WalletResolutionStatus } from './App';
-import { runWalletDiscovery, type WalletDiscoveryOptions } from './wallet-discovery';
+import { runWalletDiscovery, walletCandidatePreviews, type WalletDiscoveryOptions } from './wallet-discovery';
 
 const wallet = 'W'.repeat(43);
 const assetA = 'A'.repeat(43);
@@ -209,5 +209,44 @@ describe('wallet discovery run', () => {
 		await Promise.resolve();
 
 		expect(test.reads).toEqual([assetA]);
+	});
+
+	it('previews indexed candidates from discovery data while their live state is read', async () => {
+		const readA = deferred();
+		const test = harness([images([assetA, assetB])], async (_scan, onPage) => {
+			onPage([candidate(assetA, 30), candidate(assetB, 20), candidate(assetC, 10)]);
+			return [];
+		});
+		test.options.read = async (processId) => {
+			test.reads.push(processId);
+			if (processId === assetA) await readA.promise;
+			if (processId === assetB) throw new Error('compute-timeout');
+			return { provider: 'https://compute.example', state: ownedState() };
+		};
+		const discovery = runWalletDiscovery(test.options);
+		const previews = () =>
+			walletCandidatePreviews(test.session, test.options.collections(), test.options.failures.compute).map(
+				(preview) => [preview.asset.name, preview.state]
+			);
+
+		// Cards are available before any read settles; C is in no loaded index, so it has no preview.
+		expect(previews()).toEqual([
+			['Asset A', 'checking'],
+			['Asset B', 'checking'],
+		]);
+		await vi.waitFor(() =>
+			expect(previews()).toEqual([
+				['Asset A', 'checking'],
+				['Asset B', 'unavailable'],
+			])
+		);
+		// A failed read does not hold back the others.
+		expect(test.resolvedIds()).toEqual([]);
+		readA.resolve();
+		await discovery.finished;
+
+		expect(test.resolvedIds()).toEqual([assetA]);
+		expect(previews()).toEqual([['Asset B', 'unavailable']]);
+		expect(test.status()).toMatchObject({ phase: 'done', total: 2, resolved: 2, failures: 1 });
 	});
 });

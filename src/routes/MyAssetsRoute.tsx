@@ -59,7 +59,12 @@ import {
 	marketplaceFailureKind,
 	marketplaceRequestFailureMessage,
 } from '../app/marketplace-error';
-import { runWalletDiscovery, type WalletDiscovery } from '../app/wallet-discovery';
+import {
+	runWalletDiscovery,
+	type WalletCandidatePreview,
+	walletCandidatePreviews,
+	type WalletDiscovery,
+} from '../app/wallet-discovery';
 
 export default function MyAssetsRoute({
 	address,
@@ -89,6 +94,7 @@ export default function MyAssetsRoute({
 		revalidated: 0,
 	});
 	const [results, setResults] = React.useState<ResolvedAsset[]>([]);
+	const [previews, setPreviews] = React.useState<WalletCandidatePreview[]>([]);
 	const [storedStatus, setStatus] = React.useState<WalletResolutionStatus>(initialWalletResolutionStatus);
 	const collectionsReady = market.collections.length > 0;
 	const marketCollectionsRef = React.useRef(market.collections);
@@ -102,6 +108,7 @@ export default function MyAssetsRoute({
 	const requestedSessionScope = discoveryScope ? `${discoveryScope}|refresh:${retry}` : '';
 	const sessionIsCurrent = walletDiscoverySessionIsCurrent(discoverySession.current, requestedSessionScope);
 	const visibleResults = sessionIsCurrent ? results : [];
+	const visiblePreviews = sessionIsCurrent ? previews : [];
 	const status = sessionIsCurrent ? storedStatus : initialWalletResolutionStatus();
 	const retryDiscovery = () => {
 		setDiscoveryRetry((value) => value + 1);
@@ -136,6 +143,7 @@ export default function MyAssetsRoute({
 					(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp
 				)
 			);
+			setPreviews(walletCandidatePreviews(session, marketCollectionsRef.current, failedCandidates.current));
 		};
 		const scheduleResults = () => {
 			if (renderFrame === undefined) renderFrame = window.requestAnimationFrame(flushResults);
@@ -146,6 +154,7 @@ export default function MyAssetsRoute({
 			computeRateLimits.current.clear();
 			indexRateLimits.current.clear();
 			setResults([]);
+			setPreviews([]);
 			setStatus(initialWalletResolutionStatus());
 		} else {
 			setStatus((current) => ({ ...current, phase: 'discovering', error: null }));
@@ -291,6 +300,7 @@ export default function MyAssetsRoute({
 						(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp
 					)
 				);
+				setPreviews(walletCandidatePreviews(session, marketCollectionsRef.current, failedCandidates.current));
 				setStatus((current) => ({
 					...current,
 					phase: 'done',
@@ -385,7 +395,11 @@ export default function MyAssetsRoute({
 		},
 		aggregateFailureMessage
 	);
-	const failureBlock = walletFailureBlock(status, visibleResults.length);
+	const tokenPreviews =
+		tokenView === 'all' ? visiblePreviews.filter((preview) => preview.collection.kind === 'tokens') : [];
+	const uniquePreviews =
+		uniqueView === 'all' ? visiblePreviews.filter((preview) => preview.collection.kind !== 'tokens') : [];
+	const failureBlock = walletFailureBlock(status, visibleResults.length + visiblePreviews.length);
 	const unavailableCopy = walletUnavailableCandidatesCopy(status, aggregateFailureMessage);
 	return (
 		<section className={pageClassName}>
@@ -435,11 +449,12 @@ export default function MyAssetsRoute({
 					</Button>
 				</div>
 			) : null}
-			{!working || visibleResults.length ? (
+			{!working || visibleResults.length || visiblePreviews.length ? (
 				<>
 					<AssetGroup
 						title="Tokens"
 						results={tokenResults}
+						previews={tokenPreviews}
 						address={walletAddress}
 						kind="tokens"
 						onViewChange={setTokenView}
@@ -449,6 +464,7 @@ export default function MyAssetsRoute({
 					<AssetGroup
 						title="Uniques"
 						results={uniqueResults}
+						previews={uniquePreviews}
 						address={walletAddress}
 						kind="uniques"
 						onViewChange={setUniqueView}
@@ -524,9 +540,31 @@ export function listedUniquePrice(result: ResolvedAsset, address: string): strin
 	return order ? orderPriceLabel(order, result.state) : undefined;
 }
 
+export type WalletAssetGroupEntry =
+	| { id: string; result: ResolvedAsset; preview?: undefined }
+	| { id: string; result?: undefined; preview: WalletCandidatePreview };
+
+/**
+ * Confirmed assets and discovery previews in one activity order, newest first.
+ * A preview sits where its confirmed card will appear, so confirming it updates
+ * the card in place instead of moving it.
+ */
+export function walletAssetGroupEntries(
+	results: ResolvedAsset[],
+	previews: WalletCandidatePreview[]
+): WalletAssetGroupEntry[] {
+	const entries: Array<WalletAssetGroupEntry & { activity: AssetCandidate }> = [
+		...results.map((result) => ({ id: result.asset.id, result, activity: result.activity })),
+		...previews.map((preview) => ({ id: preview.asset.id, preview, activity: preview.activity })),
+	];
+	entries.sort((a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp);
+	return entries.map(({ activity: _activity, ...entry }) => entry as WalletAssetGroupEntry);
+}
+
 const AssetGroup = React.memo(function AssetGroup({
 	title,
 	results,
+	previews,
 	address,
 	kind,
 	onViewChange,
@@ -535,6 +573,7 @@ const AssetGroup = React.memo(function AssetGroup({
 }: {
 	title: string;
 	results: ResolvedAsset[];
+	previews: WalletCandidatePreview[];
 	address: string;
 	kind: 'tokens' | 'uniques';
 	onViewChange(view: 'all' | 'listed'): void;
@@ -545,9 +584,10 @@ const AssetGroup = React.memo(function AssetGroup({
 	const [limit, setLimit] = React.useState(pageSize);
 	const gridId = React.useId();
 	const resultSummaryRef = React.useRef<HTMLParagraphElement>(null);
-	const resultCountRef = React.useRef(results.length);
+	const entries = React.useMemo(() => walletAssetGroupEntries(results, previews), [previews, results]);
+	const resultCountRef = React.useRef(entries.length);
 	const [revealAnnouncement, setRevealAnnouncement] = React.useState('');
-	resultCountRef.current = results.length;
+	resultCountRef.current = entries.length;
 	const assetLabel = `${view === 'listed' ? 'listed ' : ''}${kind}`;
 	const revealNextAssetPage = React.useCallback(() => {
 		setLimit((current) => {
@@ -556,7 +596,7 @@ const AssetGroup = React.memo(function AssetGroup({
 			return nextLimit;
 		});
 	}, [assetLabel, pageSize]);
-	const progressiveRevealRef = useProgressiveReveal(limit < results.length, revealNextAssetPage);
+	const progressiveRevealRef = useProgressiveReveal(limit < entries.length, revealNextAssetPage);
 	React.useEffect(() => {
 		setLimit(pageSize);
 		setRevealAnnouncement('');
@@ -580,10 +620,21 @@ const AssetGroup = React.memo(function AssetGroup({
 					value={view}
 				/>
 			</div>
-			{results.length ? (
+			{entries.length ? (
 				<>
 					<div className="asset-grid" id={gridId}>
-						{results.slice(0, limit).map((result, index) => {
+						{entries.slice(0, limit).map(({ result, preview }, index) => {
+							if (preview) {
+								return (
+									<AssetCard
+										key={preview.asset.id}
+										collection={preview.collection}
+										asset={preview.asset}
+										badge={preview.state === 'unavailable' ? 'State unavailable' : 'Checking…'}
+										priority={index < 2}
+									/>
+								);
+							}
 							const listed = walletAssetGroups(result, address).includes('listed');
 							const listedBalance = listedBalanceOf(result.state, address);
 							const uniquePrice = listed ? listedUniquePrice(result, address) : undefined;
@@ -614,19 +665,19 @@ const AssetGroup = React.memo(function AssetGroup({
 					</div>
 					<p
 						className={
-							results.length > pageSize && limit >= results.length
+							entries.length > pageSize && limit >= entries.length
 								? 'collection-result-count reveal-complete'
 								: 'sr-only'
 						}
 						ref={resultSummaryRef}
 						tabIndex={-1}
 					>
-						{results.length > pageSize && limit >= results.length
-							? `All ${results.length.toLocaleString()} ${assetLabel} are shown.`
+						{entries.length > pageSize && limit >= entries.length
+							? `All ${entries.length.toLocaleString()} ${assetLabel} are shown.`
 							: `Showing ${Math.min(
 									limit,
-									results.length
-							  ).toLocaleString()} of ${results.length.toLocaleString()} ${assetLabel}.`}
+									entries.length
+							  ).toLocaleString()} of ${entries.length.toLocaleString()} ${assetLabel}.`}
 					</p>
 					<span aria-live="polite" className="sr-only" role="status">
 						{revealAnnouncement}
@@ -635,7 +686,7 @@ const AssetGroup = React.memo(function AssetGroup({
 			) : (
 				<p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `Checking for ${assetLabel}…`}</p>
 			)}
-			{results.length && limit < results.length ? (
+			{entries.length && limit < entries.length ? (
 				<>
 					<span aria-hidden="true" className="progressive-reveal-sentinel" ref={progressiveRevealRef} />
 					<Button
@@ -643,9 +694,9 @@ const AssetGroup = React.memo(function AssetGroup({
 						className="load-more"
 						size="custom"
 						onClick={() => {
-							const nextLimit = Math.min(results.length, limit + pageSize);
+							const nextLimit = Math.min(entries.length, limit + pageSize);
 							setLimit(nextLimit);
-							setRevealAnnouncement(assetGroupRevealAnnouncement(nextLimit, results.length, assetLabel));
+							setRevealAnnouncement(assetGroupRevealAnnouncement(nextLimit, entries.length, assetLabel));
 							window.requestAnimationFrame(() => {
 								if (assetGroupRevealComplete(nextLimit, resultCountRef.current)) {
 									resultSummaryRef.current?.focus();
@@ -653,7 +704,7 @@ const AssetGroup = React.memo(function AssetGroup({
 							});
 						}}
 					>
-						Show {Math.min(pageSize, results.length - limit).toLocaleString()} more {assetLabel}
+						Show {Math.min(pageSize, entries.length - limit).toLocaleString()} more {assetLabel}
 					</Button>
 				</>
 			) : null}

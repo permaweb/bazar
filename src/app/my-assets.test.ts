@@ -7,7 +7,12 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from '../helpers/progressive-assets';
-import { listedUniquePrice, walletFailureBlock, walletStatusAnnouncement } from '../routes/MyAssetsRoute';
+import {
+	listedUniquePrice,
+	walletAssetGroupEntries,
+	walletFailureBlock,
+	walletStatusAnnouncement,
+} from '../routes/MyAssetsRoute';
 
 import {
 	type CandidateSupportFailure,
@@ -421,5 +426,31 @@ describe('wallet live-state notice', () => {
 		expect(walletStatusAnnouncement('empty', 0, 'Live state resolved for 3 candidates.')).toBe(
 			'Live state resolved for 3 candidates.'
 		);
+	});
+});
+
+describe('wallet asset group entries', () => {
+	it('places previews in activity order so confirmation updates a card in place', () => {
+		const newer = {
+			...resolved('newer', '1', '0'),
+			activity: { processId: 'newer', height: 30, timestamp: 30, sources: ['transfer' as const] },
+		};
+		const older = {
+			...resolved('older', '1', '0'),
+			activity: { processId: 'older', height: 10, timestamp: 10, sources: ['transfer' as const] },
+		};
+		const preview = {
+			asset: { id: 'middle', name: 'Middle' },
+			collection: newer.collection,
+			activity: { processId: 'middle', height: 20, timestamp: 20, sources: ['transfer' as const] },
+			state: 'checking' as const,
+		};
+
+		expect(walletAssetGroupEntries([newer, older], [preview]).map((entry) => entry.id)).toEqual([
+			'newer',
+			'middle',
+			'older',
+		]);
+		expect(walletAssetGroupEntries([], [preview])[0]).toEqual({ id: 'middle', preview });
 	});
 });
