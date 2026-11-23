@@ -9,6 +9,7 @@ import {
 } from '../helpers/progressive-assets';
 import {
 	listedUniquePrice,
+	walletAssetGroupEmptyCopy,
 	walletAssetGroupEntries,
 	walletFailureBlock,
 	walletStatusAnnouncement,
@@ -379,6 +380,12 @@ describe('wallet assets failure block', () => {
 		// Discovery error wins over every other block.
 		expect(walletFailureBlock({ error: 'Index unavailable.', failures: 2, phase: 'error' }, 0)).toBe('error');
 		expect(walletFailureBlock({ error: 'Index unavailable.', failures: 0, phase: 'error' }, 3)).toBe('error');
+	});
+
+	it('does not leave an empty group checking after discovery fails', () => {
+		expect(walletAssetGroupEmptyCopy('tokens', false, false)).toBe('Checking for tokens…');
+		expect(walletAssetGroupEmptyCopy('uniques', false, true)).toBe('Could not check for uniques.');
+		expect(walletAssetGroupEmptyCopy('listed tokens', true, false)).toBe('No listed tokens.');
 	});
 
 	it('shows no failure block while resolving or when everything resolved', () => {

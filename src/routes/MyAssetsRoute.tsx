@@ -464,6 +464,7 @@ export default function MyAssetsRoute({
 						kind="tokens"
 						onViewChange={setTokenView}
 						settled={status.phase === 'done'}
+						unavailable={status.phase === 'error'}
 						view={tokenView}
 					/>
 					<AssetGroup
@@ -474,6 +475,7 @@ export default function MyAssetsRoute({
 						kind="uniques"
 						onViewChange={setUniqueView}
 						settled={status.phase === 'done'}
+						unavailable={status.phase === 'error'}
 						view={uniqueView}
 					/>
 				</>
@@ -518,6 +520,15 @@ export type WalletFailureBlock = 'none' | 'error' | 'partial' | 'empty';
  * empty state (which carries its own failure copy and Retry). A partial-failure
  * banner never stacks above an empty state saying the same thing.
  */
+/**
+ * What an empty asset group says. After a discovery error nothing more is being checked, so it must
+ * not keep saying "Checking…" under the error notice, nor claim there are no assets.
+ */
+export function walletAssetGroupEmptyCopy(assetLabel: string, settled: boolean, unavailable: boolean) {
+	if (settled) return `No ${assetLabel}.`;
+	return unavailable ? `Could not check for ${assetLabel}.` : `Checking for ${assetLabel}…`;
+}
+
 export function walletFailureBlock(
 	status: Pick<WalletResolutionStatus, 'error' | 'failures' | 'phase'>,
 	visibleCount: number
@@ -574,6 +585,7 @@ const AssetGroup = React.memo(function AssetGroup({
 	kind,
 	onViewChange,
 	settled,
+	unavailable,
 	view,
 }: {
 	title: string;
@@ -583,6 +595,8 @@ const AssetGroup = React.memo(function AssetGroup({
 	kind: 'tokens' | 'uniques';
 	onViewChange(view: 'all' | 'listed'): void;
 	settled: boolean;
+	/** Discovery ended in an error, so an empty group is unknown rather than empty or still checking. */
+	unavailable: boolean;
 	view: 'all' | 'listed';
 }) {
 	const pageSize = useProgressiveAssetPageSize();
@@ -704,7 +718,7 @@ const AssetGroup = React.memo(function AssetGroup({
 					</span>
 				</>
 			) : (
-				<p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `Checking for ${assetLabel}…`}</p>
+				<p className="asset-group-empty">{walletAssetGroupEmptyCopy(assetLabel, settled, unavailable)}</p>
 			)}
 			{entries.length && limit < entries.length ? (
 				<>
