@@ -7,8 +7,13 @@ import {
 	completePrivateJwk,
 	connectWallet,
 	createLatestAddressCommitter,
+	InvalidLocalWalletError,
 	isValidWalletJwk,
+	LOCAL_WALLET_UNLOCK_FAILED_MESSAGE,
+	localWalletSigningJwk,
 	restoreBrowserWalletAfterDisconnect,
+	storedLocalWalletFailureAction,
+	unlockStoredLocalWallet,
 } from './WalletProvider';
 
 function deferred<T>() {
@@ -184,5 +189,96 @@ describe('local Arweave keyfiles', () => {
 		} as any);
 		expect(['p', 'q', 'dp', 'dq', 'qi'].every((field) => typeof (completed as any)[field] === 'string')).toBe(true);
 		expect(completed.e).toBe(encoded(17));
+	});
+});
+
+describe('saved browser wallet unlock', () => {
+	const storedWallet = { kty: 'RSA', n: 'public-key', e: 'AQAB', d: 'private-key' } as any;
+	const address = 'a'.repeat(43);
+	const harness = () => {
+		const committed: Array<string | null> = [];
+		const requests = createLatestAddressCommitter((next) => committed.push(next));
+		const clear = vi.fn();
+		return { clear, committed, requests };
+	};
+
+	it('keeps the saved keyfile and reports a retryable failure when the Arweave chunk cannot load', async () => {
+		const { clear, committed, requests } = harness();
+		const result = await unlockStoredLocalWallet(storedWallet, {
+			activate: async () => {
+				throw new TypeError('Failed to fetch dynamically imported module');
+			},
+			commit: requests.begin(),
+			clear,
+		});
+
+		expect(clear).not.toHaveBeenCalled();
+		expect(committed).toEqual([null]);
+		expect(result).toEqual({
+			address: null,
+			state: { status: 'failed', message: LOCAL_WALLET_UNLOCK_FAILED_MESSAGE },
+		});
+	});
+
+	it('connects the saved keyfile on retry after a transient failure', async () => {
+		const { clear, committed, requests } = harness();
+		const activate = vi
+			.fn<(jwk: unknown) => Promise<string>>()
+			.mockRejectedValueOnce(new DOMException('crypto.subtle is unavailable', 'NotSupportedError'))
+			.mockResolvedValueOnce(address);
+
+		const failed = await unlockStoredLocalWallet(storedWallet, { activate, commit: requests.begin(), clear });
+		const retried = await unlockStoredLocalWallet(storedWallet, { activate, commit: requests.begin(), clear });
+
+		expect(failed?.state.status).toBe('failed');
+		expect(retried).toEqual({ address, state: { status: 'idle' } });
+		expect(committed).toEqual([null, address]);
+		expect(clear).not.toHaveBeenCalled();
+	});
+
+	it('removes only a keyfile that is itself invalid', async () => {
+		const { clear, committed, requests } = harness();
+		const result = await unlockStoredLocalWallet(storedWallet, {
+			activate: async () => {
+				throw new InvalidLocalWalletError(new Error('Could not complete the private RSA keyfile.'));
+			},
+			commit: requests.begin(),
+			clear,
+		});
+
+		expect(clear).toHaveBeenCalledTimes(1);
+		expect(committed).toEqual([null]);
+		expect(result).toEqual({ address: null, state: { status: 'idle' } });
+	});
+
+	it('neither clears the keyfile nor changes state when a newer wallet action superseded the unlock', async () => {
+		const { clear, committed, requests } = harness();
+		const unlock = unlockStoredLocalWallet(storedWallet, {
+			activate: async () => {
+				throw new InvalidLocalWalletError(new Error('invalid'));
+			},
+			commit: requests.begin(),
+			clear,
+		});
+		requests.invalidate();
+
+		await expect(unlock).resolves.toBeNull();
+		expect(clear).not.toHaveBeenCalled();
+		expect(committed).toEqual([]);
+	});
+
+	it('classifies a keyfile whose private fields cannot be decoded as invalid, and other errors as transient', () => {
+		let thrown: unknown;
+		try {
+			localWalletSigningJwk({ kty: 'RSA', n: 'AQAB', e: 'AQAB', d: '***' } as any);
+		} catch (cause) {
+			thrown = cause;
+		}
+		expect(thrown).toBeInstanceOf(InvalidLocalWalletError);
+		expect(storedLocalWalletFailureAction(thrown)).toBe('clear');
+		expect(storedLocalWalletFailureAction(new TypeError('Failed to fetch dynamically imported module'))).toBe(
+			'keep'
+		);
+		expect(storedLocalWalletFailureAction(new Error('offline'))).toBe('keep');
 	});
 });
