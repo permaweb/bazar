@@ -12,6 +12,7 @@ import {
 	walletAssetGroupEmptyCopy,
 	walletAssetGroupEntries,
 	walletFailureBlock,
+	walletResolutionSlot,
 	walletStatusAnnouncement,
 } from '../routes/MyAssetsRoute';
 
@@ -419,6 +420,26 @@ describe('wallet live-state notice', () => {
 		);
 		// The status region and the visible banner use the same sentence.
 		expect(walletResolutionCopy(done, failure).announcement).toBe(walletUnavailableCandidatesCopy(done, failure));
+	});
+
+	it('keeps the status slot above the groups once checks finish, so painted cards hold still', () => {
+		const working = { ...done, phase: 'resolving' as const };
+		expect(walletResolutionSlot(working, 'none', true, 'Checking asset candidates. 50% complete.')).toEqual({
+			settled: false,
+		});
+		// Partial: a short count in the slot; the full explanation and Retry sit after the groups.
+		expect(walletResolutionSlot(done, 'partial', false, 'unused')).toEqual({
+			settled: true,
+			detail: '2 of 14 candidates could not be checked.',
+		});
+		const clean = { ...done, failures: 0 };
+		expect(walletResolutionSlot(clean, 'none', false, 'Live state resolved for 14 candidates.')).toEqual({
+			settled: true,
+			detail: 'Live state resolved for 14 candidates.',
+		});
+		// The empty state and a discovery error carry their own blocks.
+		expect(walletResolutionSlot(done, 'empty', false, '')).toBeNull();
+		expect(walletResolutionSlot({ ...done, phase: 'error' }, 'error', false, '')).toBeNull();
 	});
 
 	it('leaves one live-state message once a visible notice states the outcome', () => {
