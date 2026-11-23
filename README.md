@@ -117,6 +117,11 @@ directly to one or more AO-Core nodes:
 http://127.0.0.1:3000/?node=https://alpha.example,https://charlie.example#/asset/…
 ```
 
+Bazar tries the listed nodes in order, and the first node answers every read. A
+read moves to the next node on an error, a not-found, or no headers within 1.5
+seconds. Process-state reads also move on an HTML answer or an answer without
+state. List the fastest correct node first.
+
 Applying the header control persists the peer list and transport selection in the
 page URL. Bazar does not silently switch to its local fallback after a request has
 been sent through PermawebOS; local AO.js is selected only when PermawebOS is

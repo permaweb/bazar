@@ -714,3 +714,159 @@ describe('Bazar default compute peers', () => {
 		stop();
 	});
 });
+
+describe('Bazar configured AO peer order', () => {
+	const ids = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((letter) => letter.repeat(43));
+	const processState = (body = 'state') =>
+		new Response(body, {
+			headers: { 'at-slot': '65', 'content-type': 'multipart/form-data; boundary="state"' },
+		});
+	/** Requests for application paths, leaving out AO.js peer discovery. */
+	const reads = (requested: string[]) => requested.filter((url) => !url.includes('/~meta@1.0/'));
+	const transport = (answer: (url: string, init?: RequestInit) => Promise<Response>) => {
+		const requested: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				requested.push(url);
+				return url.includes('/~meta@1.0/')
+					? Promise.resolve(new Response('', { status: 404 }))
+					: answer(url, init);
+			})
+		);
+		return requested;
+	};
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.resetModules();
+	});
+
+	it('sends every read of a ?node= selection to its first peer while it answers', async () => {
+		vi.stubGlobal(
+			'window',
+			browserWindow(undefined, '?node=https://primary.example,https://fallback.example', false)
+		);
+		const requested = transport(async () => processState());
+
+		for (const id of ids) {
+			await aoFetch()(`/${id}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+			await aoFetch()(`/${id}~message@1.0`, { method: 'HEAD' });
+		}
+
+		expect(reads(requested)).toHaveLength(ids.length * 2);
+		expect(reads(requested).every((url) => url.startsWith('https://primary.example/'))).toBe(true);
+	});
+
+	it('sends every read of a VITE_COMPUTE_GATEWAY list to its first peer while it answers', async () => {
+		vi.stubEnv('VITE_COMPUTE_GATEWAY', 'https://primary.example,https://fallback.example');
+		vi.resetModules();
+		const configured = await import('./ao');
+		vi.stubGlobal('window', browserWindow(undefined, '', false));
+		const requested = transport(async () => processState());
+
+		for (const id of ids) await configured.aoFetch()(`/${id}~process@1.0/now`, { method: 'HEAD' });
+
+		expect(configured.aoPeers()).toEqual(['https://primary.example', 'https://fallback.example']);
+		expect(reads(requested)).toHaveLength(ids.length);
+		expect(reads(requested).every((url) => url.startsWith('https://primary.example/'))).toBe(true);
+	});
+
+	it('hedges a read of a ?node= selection to the second peer after the hedge delay', async () => {
+		vi.useFakeTimers();
+		try {
+			vi.stubGlobal(
+				'window',
+				browserWindow(undefined, '?node=https://slow.example,https://fallback.example', false)
+			);
+			let abandoned = false;
+			const requested = transport((url, init) => {
+				if (url.startsWith('https://fallback.example/')) return Promise.resolve(processState('fallback'));
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => {
+						abandoned = true;
+						reject(init.signal?.reason);
+					});
+				});
+			});
+
+			const response = aoFetch()(`/${ids[0]}~process@1.0/compute&max-age=60`);
+			await vi.advanceTimersByTimeAsync(AO_READ_HEDGE_AFTER_MS - 1);
+			expect(reads(requested)).toEqual([`https://slow.example/${ids[0]}~process@1.0/compute&max-age=60`]);
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(await (await response).text()).toBe('fallback');
+			expect(reads(requested)).toEqual([
+				`https://slow.example/${ids[0]}~process@1.0/compute&max-age=60`,
+				`https://fallback.example/${ids[0]}~process@1.0/compute&max-age=60`,
+			]);
+			expect(abandoned).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([
+		['an HTML shell', () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } })],
+		['state without the evaluated slot', () => new Response(null, { headers: { device: 'process@1.0' } })],
+	])('falls through from a first peer that answers a state read with %s', async (_label, answer) => {
+		vi.stubGlobal(
+			'window',
+			browserWindow(undefined, '?node=https://static.example,https://compute.example', false)
+		);
+		const requested = transport(async (url) =>
+			url.startsWith('https://static.example/') ? answer() : processState()
+		);
+
+		const response = await aoFetch()(`/${ids[1]}~process@1.0/now`, { method: 'HEAD' });
+
+		expect(response.headers.get('at-slot')).toBe('65');
+		expect(reads(requested)).toEqual([
+			`https://static.example/${ids[1]}~process@1.0/now`,
+			`https://compute.example/${ids[1]}~process@1.0/now`,
+		]);
+	});
+
+	it.each([
+		['HEAD', ''],
+		['GET', '/serialize~json@1.0'],
+	] as const)(
+		'falls through a linked-table %s message read that the first peer answers 404',
+		async (method, tail) => {
+			vi.stubGlobal(
+				'window',
+				browserWindow(undefined, '?node=https://partial.example,https://complete.example', false)
+			);
+			const requested = transport(async (url) =>
+				url.startsWith('https://partial.example/')
+					? new Response('not_found', { status: 404 })
+					: new Response('{"device":"json@1.0"}', { headers: { device: 'json@1.0' } })
+			);
+			const path = `/${ids[2]}~message@1.0${tail}`;
+
+			const response = await aoFetch()(path, { method });
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get('device')).toBe('json@1.0');
+			expect(reads(requested)).toEqual([`https://partial.example${path}`, `https://complete.example${path}`]);
+		}
+	);
+
+	it('serves a single-peer selection and fails, rather than hangs, when it cannot answer a message', async () => {
+		vi.stubGlobal('window', browserWindow(undefined, '?node=https://only.example', false));
+		const requested = transport(async (url) =>
+			url.includes('~message@1.0') ? new Response('not_found', { status: 404 }) : processState()
+		);
+
+		const state = await aoFetch()(`/${ids[3]}~process@1.0/now`, { method: 'HEAD' });
+		expect(state.headers.get('at-slot')).toBe('65');
+		await expect(aoFetch()(`/${ids[3]}~message@1.0`, { method: 'HEAD' })).rejects.toThrow(
+			'ao.js-response-quorum-not-met'
+		);
+		expect(reads(requested)).toEqual([
+			`https://only.example/${ids[3]}~process@1.0/now`,
+			`https://only.example/${ids[3]}~message@1.0`,
+		]);
+	});
+});
