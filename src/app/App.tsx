@@ -5862,10 +5862,30 @@ export function activityCatalogueRevealDelay(
 	return Math.max(0, Math.min(quietMs, settledAt + capMs - now));
 }
 
-/** True once the market has settled and its membership has been quiet briefly (or the cap passed). Stays true. */
-function useActivityCatalogueRevealed(marketLoading: boolean, collections: readonly Collection[]) {
+/**
+ * Longest claimed rows wait for the market to settle before they paint anyway. A slow index can keep
+ * the catalogue streaming for most of a minute; past this the rows paint with the names they have
+ * and upgrade in place (the title is one ellipsised line), rather than leaving only a spinner.
+ */
+export const ACTIVITY_ROWS_WAIT_CAP_MS = 8_000;
+
+/** How long rows the catalogue already claims may still wait, measured from when they were first claimed. */
+export function activityRowsRevealDelay(claimedAt: number, now: number, capMs = ACTIVITY_ROWS_WAIT_CAP_MS) {
+	return Math.max(0, claimedAt + capMs - now);
+}
+
+/**
+ * True once the market has settled and its membership has been quiet briefly (or the cap passed), or
+ * once claimed rows have waited ACTIVITY_ROWS_WAIT_CAP_MS for that. Stays true.
+ */
+function useActivityCatalogueRevealed(
+	marketLoading: boolean,
+	collections: readonly Collection[],
+	rowsClaimed: boolean
+) {
 	const [revealed, setRevealed] = React.useState(false);
 	const settledAt = React.useRef<number | null>(null);
+	const claimedAt = React.useRef<number | null>(null);
 	const membershipKey = React.useMemo(() => activityCatalogueMembershipKey(collections), [collections]);
 	React.useEffect(() => {
 		if (revealed || marketLoading) return;
@@ -5874,6 +5894,13 @@ function useActivityCatalogueRevealed(marketLoading: boolean, collections: reado
 		const timer = window.setTimeout(() => setRevealed(true), activityCatalogueRevealDelay(settledAt.current, now));
 		return () => window.clearTimeout(timer);
 	}, [marketLoading, membershipKey, revealed]);
+	React.useEffect(() => {
+		if (revealed || !rowsClaimed) return;
+		const now = Date.now();
+		claimedAt.current ??= now;
+		const timer = window.setTimeout(() => setRevealed(true), activityRowsRevealDelay(claimedAt.current, now));
+		return () => window.clearTimeout(timer);
+	}, [revealed, rowsClaimed]);
 	return revealed;
 }
 
@@ -5934,8 +5961,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const claimedEvents = filterGlobalActivity(catalogueEvents, activityFilter);
 	// The page is read in parallel with the catalogue, but rows wait for the catalogue to settle so
 	// collections streaming in do not insert rows between ones already painted. Names for the rows
-	// already claimed are asked for meanwhile, so they paint named.
-	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections);
+	// already claimed are asked for meanwhile, so they paint named. A catalogue that is still
+	// streaming ACTIVITY_ROWS_WAIT_CAP_MS after rows were first claimed no longer holds them back.
+	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections, claimedEvents.length > 0);
 	const filteredEvents = catalogueRevealed ? claimedEvents : [];
 	const busy = loading || (!catalogueRevealed && !error);
 	React.useEffect(() => {

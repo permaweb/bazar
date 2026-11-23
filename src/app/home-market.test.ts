@@ -17,8 +17,10 @@ import {
 import {
 	ACTIVITY_CATALOGUE_QUIET_MS,
 	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
+	ACTIVITY_ROWS_WAIT_CAP_MS,
 	activityCatalogueMembershipKey,
 	activityCatalogueRevealDelay,
+	activityRowsRevealDelay,
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembership,
@@ -1759,6 +1761,17 @@ describe('Home market summary retries', () => {
 		// A collection streamed in 2.2 s after settle: only the time left to the cap remains.
 		expect(activityCatalogueRevealDelay(1_000, 3_200)).toBe(ACTIVITY_CATALOGUE_WAIT_CAP_MS - 2_200);
 		expect(activityCatalogueRevealDelay(1_000, 1_000 + ACTIVITY_CATALOGUE_WAIT_CAP_MS + 1)).toBe(0);
+	});
+
+	it('paints claimed activity rows by a bounded deadline while the catalogue is still streaming', () => {
+		// Round 3 under a 20 s index delay: rows were claimed but only a spinner showed until ~50 s.
+		expect(ACTIVITY_ROWS_WAIT_CAP_MS).toBe(8_000);
+		expect(activityRowsRevealDelay(1_000, 1_000)).toBe(ACTIVITY_ROWS_WAIT_CAP_MS);
+		// Collections streaming in meanwhile do not push the deadline back: it runs from the first claim.
+		expect(activityRowsRevealDelay(1_000, 6_000)).toBe(ACTIVITY_ROWS_WAIT_CAP_MS - 5_000);
+		expect(activityRowsRevealDelay(1_000, 1_000 + ACTIVITY_ROWS_WAIT_CAP_MS + 1)).toBe(0);
+		// A market that settles soon after the rows are claimed still paints them on its own quiet time.
+		expect(ACTIVITY_CATALOGUE_QUIET_MS).toBeLessThan(ACTIVITY_ROWS_WAIT_CAP_MS);
 	});
 
 	it('keys activity catalogue membership on collections and member counts, not names', () => {
