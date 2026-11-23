@@ -208,7 +208,7 @@ import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
-import { applyStableOrder } from 'helpers/stable-order';
+import { applyStableOrder, stableOrderDiffers } from 'helpers/stable-order';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
@@ -6221,12 +6221,20 @@ function CollectionView() {
 		[activityByAsset, cardPrices, collection?.kind, defaultIndex, deferredQuery, initial, sort, visibleAssets]
 	);
 	// Cards already painted keep their slots while listing activity and prices stream in; the grid re-ranks
-	// when the viewer changes the sort or filters, or once the listing scan has settled.
+	// when the viewer changes the sort or filters, asks for the newer order, or once the listing scan has
+	// settled. A large collection's scan can run for minutes, so the newer order is offered meanwhile.
+	const [assetOrderRevision, setAssetOrderRevision] = React.useState(0);
+	const rankedAssetIds = rankedAssets.map((asset) => asset.id);
 	const assetOrder = useStableOrder(
-		rankedAssets.map((asset) => asset.id),
-		collectionAssetOrderKey(sort, initial, deferredQuery, listedOnly),
+		rankedAssetIds,
+		`${collectionAssetOrderKey(sort, initial, deferredQuery, listedOnly)}|${assetOrderRevision}`,
 		!activityState.loading && !cardPricesLoading
 	);
+	const newerAssetOrder = stableOrderDiffers(assetOrder, rankedAssetIds, limit);
+	const applyNewerAssetOrder = () => {
+		setAssetOrderRevision((current) => current + 1);
+		window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
+	};
 	const filtered = React.useMemo(
 		() => applyStableOrder(rankedAssets, assetOrder, (asset) => asset.id),
 		[assetOrder, rankedAssets]
@@ -7351,6 +7359,20 @@ function CollectionView() {
 					})}
 				</div>
 			)}
+			{/* Zero-height, with the offer fixed to the bottom of the viewport, so it never moves the grid. */}
+			<div className="collection-order-notice" aria-live="polite">
+				{newerAssetOrder ? (
+					<Button
+						aria-controls={assetGridId}
+						className="collection-order-notice-button with-icon"
+						onClick={applyNewerAssetOrder}
+						size="custom"
+						type="button"
+					>
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Show newer order
+					</Button>
+				) : null}
+			</div>
 			<p
 				className={
 					filtered.length > pageSize && limit >= filtered.length

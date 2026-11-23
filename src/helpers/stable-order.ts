@@ -57,3 +57,13 @@ export function applyStableOrder<T>(items: readonly T[], ids: readonly string[],
 	const byId = new Map(items.map((item) => [idOf(item), item]));
 	return ids.flatMap((id) => (byId.has(id) ? [byId.get(id) as T] : []));
 }
+
+/**
+ * Whether re-ranking now would change what the first `count` slots show, so a long-loading view can offer
+ * the newer order instead of moving painted cards on its own.
+ */
+export function stableOrderDiffers(displayed: readonly string[], ranked: readonly string[], count: number) {
+	const shown = Math.min(count, displayed.length, ranked.length);
+	for (let index = 0; index < shown; index += 1) if (displayed[index] !== ranked[index]) return true;
+	return false;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyStableOrder, nextStableOrder } from './stable-order';
+import { applyStableOrder, nextStableOrder, stableOrderDiffers } from './stable-order';
 
 describe('nextStableOrder', () => {
 	it('keeps the order stable until loading settles or the viewer re-sorts', () => {
@@ -47,5 +47,15 @@ describe('applyStableOrder', () => {
 			{ id: 'c', value: 3 },
 		];
 		expect(applyStableOrder(items, ['c', 'x', 'a'], (item) => item.id)).toEqual([items[2], items[0]]);
+	});
+});
+
+describe('stableOrderDiffers', () => {
+	it('reports a newer order only when it would change the slots on show', () => {
+		expect(stableOrderDiffers(['a', 'b', 'c'], ['a', 'b', 'c'], 3)).toBe(false);
+		expect(stableOrderDiffers(['a', 'b', 'c'], ['b', 'a', 'c'], 3)).toBe(true);
+		// Only slots beyond the revealed cards differ.
+		expect(stableOrderDiffers(['a', 'b', 'c'], ['a', 'c', 'b'], 1)).toBe(false);
+		expect(stableOrderDiffers([], [], 12)).toBe(false);
 	});
 });
