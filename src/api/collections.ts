@@ -1,5 +1,6 @@
 import { mapConcurrent } from 'helpers/concurrency';
 import {
+	arweaveDataFallbackUrls,
 	arweaveDataUrl,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -1537,22 +1538,7 @@ function imageCollection(
 }
 
 async function fetchJson<T>(path: string, signal?: AbortSignal, process = false): Promise<T> {
-	if (!process && /^[A-Za-z0-9_-]{43}$/.test(path)) {
-		const { response, body: responseBody } = await fetchTextWithDeadline(
-			fetch,
-			`${arweaveGatewayFromLocation()}/tx/${path}/data`,
-			{ signal },
-			{
-				timeoutError: 'collection-data-timeout',
-			}
-		);
-		if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
-		const body = (responseBody ?? '').trim();
-		if (!/^[A-Za-z0-9_-]+$/.test(body) || body === 'Accepted') {
-			throw new Error('collection-data-pending');
-		}
-		return JSON.parse(decodeBase64Url(body)) as T;
-	}
+	if (!process && ARWEAVE_ID.test(path)) return fetchArweaveItemJson<T>(path, signal);
 	const url = process && path.startsWith('http') ? path : `${arweaveGatewayFromLocation()}/${path}`;
 	const { response, body } = await fetchJsonWithDeadline<any>(
 		fetch,
@@ -1565,6 +1551,39 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 	if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
 	if (body === undefined) throw new Error('collection-fetch-empty');
 	return (process ? body : (body as any)?.data ?? body) as T;
+}
+
+/**
+ * Read an item's JSON bytes on the route its gateway kind serves them (`/raw/<id>` on AR.IO,
+ * `/<id>` on HyperBEAM), trying the same content candidates as artwork in order. `/tx/<id>/data`
+ * returned the body base64url-encoded (a third larger) from the L1 data route instead.
+ */
+async function fetchArweaveItemJson<T>(id: string, signal?: AbortSignal): Promise<T> {
+	let failure: unknown = new Error('collection-data-unavailable');
+	const candidates = arweaveDataFallbackUrls(arweaveDataUrl(id));
+	for (const [index, url] of candidates.entries()) {
+		throwIfAborted(signal);
+		try {
+			const { response, body } = await fetchTextWithDeadline(
+				fetch,
+				url,
+				{ signal },
+				{ timeoutError: 'collection-data-timeout' }
+			);
+			if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
+			// An AR.IO sandbox redirect can answer 200 with no body for an item still being seeded.
+			if (!body?.trim()) throw new Error('collection-data-pending');
+			return JSON.parse(body) as T;
+		} catch (cause) {
+			throwIfAborted(signal);
+			// A host can answer 200 with a page that is not the item (an SPA or ArNS index.html
+			// fallback, a captive or error page), so malformed JSON moves on like any other miss and
+			// is final only from the last candidate.
+			if (cause instanceof SyntaxError && index === candidates.length - 1) throw cause;
+			failure = cause;
+		}
+	}
+	throw failure;
 }
 
 function decodeBase64Url(value: string): string {
