@@ -29,6 +29,7 @@ import {
 	retainedAssetGroupLimit,
 } from 'helpers/progressive-assets';
 import { applyStableOrder } from 'helpers/stable-order';
+import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
 import { useWallet } from 'providers/WalletProvider';
@@ -63,9 +64,11 @@ import {
 } from '../app/marketplace-error';
 import {
 	runWalletDiscovery,
+	walletAssetGroupCount,
 	type WalletCandidatePreview,
 	walletCandidatePreviews,
 	type WalletDiscovery,
+	walletEntryWithCurrentName,
 } from '../app/wallet-discovery';
 
 export default function MyAssetsRoute({
@@ -602,6 +605,7 @@ const AssetGroup = React.memo(function AssetGroup({
 	unavailable: boolean;
 	view: 'all' | 'listed';
 }) {
+	const { collections, rememberIndexedAssets } = React.useContext(MarketContext);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
 	const gridId = React.useId();
@@ -620,6 +624,23 @@ const AssetGroup = React.memo(function AssetGroup({
 	);
 	const gridRef = React.useRef<HTMLDivElement>(null);
 	useGridReorderMotion(gridRef, order);
+	// Shown cards, preview or confirmed, carry the name the market store holds now; short-ID titles
+	// among them are asked for through the shared batched name lookup.
+	const shownEntries = React.useMemo(
+		() =>
+			entries.slice(0, limit).map((entry) => {
+				const source = entry.preview ?? entry.result;
+				return { entry, asset: walletEntryWithCurrentName(source.asset, source.collection, collections) };
+			}),
+		[collections, entries, limit]
+	);
+	useIndexedAssetNames(
+		shownEntries.flatMap(({ entry, asset }) =>
+			(entry.preview ?? entry.result).collection.kind === 'images' ? [asset] : []
+		),
+		rememberIndexedAssets
+	);
+	const count = walletAssetGroupCount(results.length, previews);
 	const resultCountRef = React.useRef(entries.length);
 	const [revealAnnouncement, setRevealAnnouncement] = React.useState('');
 	resultCountRef.current = entries.length;
@@ -641,8 +662,19 @@ const AssetGroup = React.memo(function AssetGroup({
 		<section className="asset-group">
 			<div className="asset-group-title">
 				<div className="asset-group-heading">
-					<h2 aria-label={`${title}, ${results.length.toLocaleString()}`}>{title}</h2>
-					<span aria-hidden="true">{results.length.toLocaleString()}</span>
+					<h2
+						aria-label={`${title}, ${count.shown.toLocaleString()}${
+							count.detail ? `, ${count.detail}` : ''
+						}`}
+					>
+						{title}
+					</h2>
+					<span aria-hidden="true">{count.shown.toLocaleString()}</span>
+					{count.detail ? (
+						<small aria-hidden="true" className="asset-group-pending-count">
+							{count.detail}
+						</small>
+					) : null}
 				</div>
 				<MarketSelect<'all' | 'listed'>
 					label={`${title} view`}
@@ -658,13 +690,13 @@ const AssetGroup = React.memo(function AssetGroup({
 			{entries.length ? (
 				<>
 					<div className="asset-grid" id={gridId} ref={gridRef}>
-						{entries.slice(0, limit).map(({ result, preview }, index) => {
+						{shownEntries.map(({ entry: { result, preview }, asset }, index) => {
 							if (preview) {
 								return (
 									<AssetCard
 										key={preview.asset.id}
 										collection={preview.collection}
-										asset={preview.asset}
+										asset={asset}
 										orderId={preview.asset.id}
 										badge={preview.state === 'unavailable' ? 'State unavailable' : 'Checking…'}
 										priority={index < 2}
@@ -684,7 +716,7 @@ const AssetGroup = React.memo(function AssetGroup({
 								<AssetCard
 									key={result.asset.id}
 									collection={result.collection}
-									asset={result.asset}
+									asset={asset}
 									orderId={result.asset.id}
 									badge={view === 'listed' || listed ? 'For sale' : 'Owned'}
 									priority={index < 2}

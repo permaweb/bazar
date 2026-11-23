@@ -14,6 +14,10 @@ import {
 } from 'api/collections';
 
 import {
+	ACTIVITY_CATALOGUE_QUIET_MS,
+	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
+	activityCatalogueMembershipKey,
+	activityCatalogueRevealDelay,
 	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembership,
@@ -46,12 +50,16 @@ import {
 	globalActivityCollection,
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
+	globalCatalogueActivity,
 	HOME_ASSET_PAGE_SIZE,
 	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	HOME_DISCOVER_UNIQUE_PREVIEW,
 	HOME_SUMMARY_AUTO_RETRY_LIMIT,
 	HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS,
+	HOME_TOKEN_CHANGE_MAX_AGE_MS,
+	HOME_TOKEN_CHANGE_REFRESH_MS,
+	HOME_TOKEN_CHANGE_RETRY_MS,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
@@ -89,7 +97,11 @@ import {
 	homeTabFromPathname,
 	homeTabPath,
 	homeTokenPlaceholderRows,
+	homeTokenPriceChangeCurrent,
+	homeTokenPriceChangeDueAt,
+	homeTokenPriceChangeFailed,
 	homeTokenPriceChangeLabel,
+	homeTokenPriceChangeNextCheck,
 	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
 	homeTokenPriceChangeRequests,
@@ -1356,11 +1368,48 @@ describe('Home market summary retries', () => {
 		expect(homeSummaryAutoRetryDue({ ...due, computeCircuitOpen: true })).toBe(false);
 	});
 
-	it('reads each token row 24h change once and ends its spinner at the display deadline', () => {
+	it('refreshes token 24h changes within a bounded age and retries failures instead of caching them', () => {
+		const read = (value: number | null | 'unavailable', at = 0) => ({ value, readAt: at, checkedAt: at });
+		// A good value is read again after the refresh time and never shown past the max age.
+		expect(HOME_TOKEN_CHANGE_REFRESH_MS).toBeLessThan(HOME_TOKEN_CHANGE_MAX_AGE_MS);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS - 1)).toEqual([]);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS)).toEqual(['a']);
+		expect(homeTokenPriceChangeCurrent(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS)).toBe(4);
+		expect(homeTokenPriceChangeCurrent(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS + 1)).toBe('unavailable');
+		expect(homeTokenPriceChangeCurrent(undefined, 0)).toBeUndefined();
+		// "Unavailable" is not kept for the session: it is retried while the row stays visible.
+		expect(homeTokenPriceChangeRequests(['a'], { a: read('unavailable') }, HOME_TOKEN_CHANGE_RETRY_MS - 1)).toEqual(
+			[]
+		);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read('unavailable') }, HOME_TOKEN_CHANGE_RETRY_MS)).toEqual([
+			'a',
+		]);
+		// A failed refresh keeps a still-current value, retries it soon, and lets it lapse at the max age.
+		const refreshedFailure = homeTokenPriceChangeFailed(read(4), HOME_TOKEN_CHANGE_REFRESH_MS);
+		expect(refreshedFailure).toEqual({ value: 4, readAt: 0, checkedAt: HOME_TOKEN_CHANGE_REFRESH_MS });
+		expect(homeTokenPriceChangeDueAt(refreshedFailure)).toBe(
+			HOME_TOKEN_CHANGE_REFRESH_MS + HOME_TOKEN_CHANGE_RETRY_MS
+		);
+		expect(homeTokenPriceChangeFailed(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS + 1).value).toBe('unavailable');
+		expect(homeTokenPriceChangeFailed(undefined, 5).value).toBe('unavailable');
+		// The next check is the earliest refresh, retry or expiry among visible rows; unread rows are asked now.
+		expect(homeTokenPriceChangeNextCheck(['a', 'b', 'c'], { a: read(4), b: read('unavailable', 10) }, 100)).toBe(
+			10 + HOME_TOKEN_CHANGE_RETRY_MS
+		);
+		expect(homeTokenPriceChangeNextCheck(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS + 5)).toBe(
+			HOME_TOKEN_CHANGE_MAX_AGE_MS + 1
+		);
+		expect(homeTokenPriceChangeNextCheck(['c'], {}, 0)).toBeNull();
+	});
+
+	it('reads each token row 24h change once while current and ends its spinner at the display deadline', () => {
 		expect(HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS).toBe(8_000);
-		// Rows that reorder or page back in keep the value already read.
-		expect(homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: 1.5, c: 'unavailable' })).toEqual(['b']);
-		expect(homeTokenPriceChangeRequests(['a'], { a: null })).toEqual([]);
+		const read = (value: number | null | 'unavailable', at = 0) => ({ value, readAt: at, checkedAt: at });
+		// Rows that reorder or page back in keep the value already read while it is current.
+		expect(
+			homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: read(1.5), c: read('unavailable') }, 1_000)
+		).toEqual(['b']);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(null) }, 1_000)).toEqual([]);
 		expect(homeTokenPriceChangePending(undefined, false)).toBe(true);
 		expect(homeTokenPriceChangePending(undefined, true)).toBe(false);
 		expect(homeTokenPriceChangeLabel(null)).toBe('—');
@@ -1629,6 +1678,64 @@ describe('Home market summary retries', () => {
 		expect(globalActivityCollection(collections, nameId)?.id).toBe('names');
 		expect(globalActivityCollection(collections, hiddenId)).toBeUndefined();
 		expect(globalActivityCollection(collections, 'x'.repeat(43))).toBeUndefined();
+	});
+
+	it('keeps raw activity rows so collections that load later reveal theirs without a re-read', () => {
+		const tokenId = 't'.repeat(43);
+		const imageId = 'i'.repeat(43);
+		const foreignId = 'f'.repeat(43);
+		const event = (id: string, processId: string) => ({ id, processId } as CollectionActivityEvent);
+		const events = [event('1', imageId), event('2', foreignId), event('3', tokenId)];
+		const tokens: Collection = {
+			id: 'tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [{ id: tokenId, name: 'Token' }],
+		};
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [{ id: imageId, name: 'Image' }],
+		};
+
+		expect(globalCatalogueActivity(events, []).map((item) => item.id)).toEqual([]);
+		expect(globalCatalogueActivity(events, [tokens]).map((item) => item.id)).toEqual(['3']);
+		// The same loaded rows, filtered again once a streamed collection claims one; gateway order holds.
+		expect(globalCatalogueActivity(events, [tokens, images]).map((item) => item.id)).toEqual(['1', '3']);
+	});
+
+	it('paints activity rows after a short catalogue quiet time, capped from market settle', () => {
+		expect(activityCatalogueRevealDelay(1_000, 1_000)).toBe(ACTIVITY_CATALOGUE_QUIET_MS);
+		// A collection streamed in 2.2 s after settle: only the time left to the cap remains.
+		expect(activityCatalogueRevealDelay(1_000, 3_200)).toBe(ACTIVITY_CATALOGUE_WAIT_CAP_MS - 2_200);
+		expect(activityCatalogueRevealDelay(1_000, 1_000 + ACTIVITY_CATALOGUE_WAIT_CAP_MS + 1)).toBe(0);
+	});
+
+	it('keys activity catalogue membership on collections and member counts, not names', () => {
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [{ id: 'i'.repeat(43), name: 'iiiiii…iiiii' }],
+		};
+		const names: Collection = {
+			id: 'names',
+			name: 'Names',
+			description: '',
+			kind: 'names',
+			assets: [],
+			namespace: { manifestId: 'm'.repeat(43), namesById: { ['n'.repeat(43)]: 'name' } },
+		};
+		const key = activityCatalogueMembershipKey([images, names]);
+		expect(key).toBe('images:1,names:1');
+		expect(
+			activityCatalogueMembershipKey([{ ...images, assets: [{ ...images.assets[0], name: 'Named' }] }, names])
+		).toBe(key);
+		expect(activityCatalogueMembershipKey([images])).not.toBe(key);
 	});
 
 	it('filters global activity by submitted market action', () => {

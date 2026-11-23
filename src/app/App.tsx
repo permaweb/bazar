@@ -3289,12 +3289,73 @@ export function homeTokenPriceChangeLabel(change: number | null | 'unavailable')
 /** How long a token row may say "Checking…" for its 24h change before it shows "—". */
 export const HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS = 8_000;
 
-/** Visible token rows whose 24h change has not been read yet. */
+export type HomeTokenPriceChange = number | null | 'unavailable';
+
+/** One token row's 24h change: the value, when it was read, and when a read for it last settled. */
+export type HomeTokenPriceChangeEntry = { value: HomeTokenPriceChange; readAt: number; checkedAt: number };
+
+/** A visible row's 24h change is read again once it is this old. */
+export const HOME_TOKEN_CHANGE_REFRESH_MS = 3 * 60_000;
+/** A 24h change older than this is no longer shown as current. */
+export const HOME_TOKEN_CHANGE_MAX_AGE_MS = 6 * 60_000;
+/** A failed read (or failed refresh) is tried again after this while its row stays visible. */
+export const HOME_TOKEN_CHANGE_RETRY_MS = 60_000;
+
+const NO_TOKEN_PRICE_CHANGES: Readonly<Record<string, HomeTokenPriceChangeEntry>> = Object.freeze({});
+
+/** When a row's 24h change is due to be read: now if never read, else after its refresh or retry time. */
+export function homeTokenPriceChangeDueAt(entry: HomeTokenPriceChangeEntry | undefined) {
+	if (!entry) return Number.NEGATIVE_INFINITY;
+	if (entry.value === 'unavailable') return entry.checkedAt + HOME_TOKEN_CHANGE_RETRY_MS;
+	return Math.max(entry.readAt + HOME_TOKEN_CHANGE_REFRESH_MS, entry.checkedAt + HOME_TOKEN_CHANGE_RETRY_MS);
+}
+
+/** What a row may show now: a value read within the max age, otherwise "unavailable" ("—"). */
+export function homeTokenPriceChangeCurrent(
+	entry: HomeTokenPriceChangeEntry | undefined,
+	now: number
+): HomeTokenPriceChange | undefined {
+	if (!entry) return undefined;
+	if (entry.value === 'unavailable' || now - entry.readAt > HOME_TOKEN_CHANGE_MAX_AGE_MS) return 'unavailable';
+	return entry.value;
+}
+
+/** A failed read keeps a value that is still within its max age (and retries it); otherwise it is "unavailable". */
+export function homeTokenPriceChangeFailed(
+	previous: HomeTokenPriceChangeEntry | undefined,
+	now: number
+): HomeTokenPriceChangeEntry {
+	if (previous && homeTokenPriceChangeCurrent(previous, now) !== 'unavailable')
+		return { ...previous, checkedAt: now };
+	return { value: 'unavailable', readAt: now, checkedAt: now };
+}
+
+/** Visible token rows whose 24h change has never been read, or is due for a refresh or retry. */
 export function homeTokenPriceChangeRequests(
 	tokenIds: readonly string[],
-	known: Readonly<Record<string, number | null | 'unavailable'>>
+	known: Readonly<Record<string, HomeTokenPriceChangeEntry>>,
+	now = Date.now()
 ) {
-	return [...new Set(tokenIds)].filter((tokenId) => tokenId && known[tokenId] === undefined);
+	return [...new Set(tokenIds)].filter((tokenId) => tokenId && homeTokenPriceChangeDueAt(known[tokenId]) <= now);
+}
+
+/** The next time a visible row needs a read or stops being current, or null when nothing is pending. */
+export function homeTokenPriceChangeNextCheck(
+	tokenIds: readonly string[],
+	known: Readonly<Record<string, HomeTokenPriceChangeEntry>>,
+	now: number
+) {
+	let next: number | null = null;
+	for (const tokenId of new Set(tokenIds)) {
+		const entry = known[tokenId];
+		if (!entry) continue;
+		const expiresAt =
+			entry.value === 'unavailable' ? Number.POSITIVE_INFINITY : entry.readAt + HOME_TOKEN_CHANGE_MAX_AGE_MS + 1;
+		for (const at of [homeTokenPriceChangeDueAt(entry), expiresAt]) {
+			if (at > now && Number.isFinite(at)) next = next === null ? at : Math.min(next, at);
+		}
+	}
+	return next;
 }
 
 /** A late value still replaces "—"; the deadline only ends the spinner. */
@@ -3847,11 +3908,13 @@ function Home() {
 	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
 	const [tokenPriceChangeState, setTokenPriceChangeState] = React.useState<{
 		scope: string;
-		values: Record<string, number | null | 'unavailable'>;
+		values: Record<string, HomeTokenPriceChangeEntry>;
 	}>({ scope: homeListingSnapshotScope, values: {} });
 	// Values read for another index or AO routing scope are dropped, not shown.
 	const tokenPriceChanges =
-		tokenPriceChangeState.scope === homeListingSnapshotScope ? tokenPriceChangeState.values : {};
+		tokenPriceChangeState.scope === homeListingSnapshotScope
+			? tokenPriceChangeState.values
+			: NO_TOKEN_PRICE_CHANGES;
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : summaryWindow;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
@@ -3922,52 +3985,95 @@ function Home() {
 		},
 		[assetSummaryQueue]
 	);
-	const tokenPriceChangesRef = React.useRef(tokenPriceChanges);
-	tokenPriceChangesRef.current = tokenPriceChanges;
+	// Reads in flight survive rows moving or paging; only a scope change or leaving Home cancels them.
+	const tokenPriceChangeReads = React.useRef({ ids: new Set<string>(), controllers: new Set<AbortController>() });
+	const [tokenPriceChangeClock, setTokenPriceChangeClock] = React.useState(0);
 	React.useEffect(() => {
-		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) return;
-		// Rows that move or page in and out keep the change already read for them.
-		const tokenIds = homeTokenPriceChangeRequests(visibleDiscoverTokenKey.split(','), tokenPriceChangesRef.current);
-		if (!tokenIds.length) return;
-		const scope = homeListingSnapshotScope;
-		const publish = (values: Record<string, number | null | 'unavailable'>) =>
-			setTokenPriceChangeState((current) => ({
-				scope,
-				values: { ...(current.scope === scope ? current.values : {}), ...values },
-			}));
-		const controller = new AbortController();
-		const eventLimit = 200;
-		void discoverCollectionActivity({
-			actions: ['make-offer'],
-			limit: eventLimit,
-			recipients: tokenIds,
-			signal: controller.signal,
-		}).then(
-			(events) => {
-				if (controller.signal.aborted) return;
-				const now = Date.now();
-				const windowComplete = events.length < eventLimit;
-				publish(
-					Object.fromEntries(
-						tokenIds.map((tokenId) => [
-							tokenId,
-							homeTokenPriceChangePercent(
-								events.filter((event) => event.processId === tokenId),
-								now,
-								windowComplete
-							),
-						])
-					)
-				);
-			},
-			() => {
-				if (!controller.signal.aborted) {
-					publish(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable' as const])));
-				}
-			}
+		const reads = tokenPriceChangeReads.current;
+		return () => {
+			for (const controller of reads.controllers) controller.abort();
+			reads.controllers.clear();
+			reads.ids.clear();
+		};
+	}, [homeListingSnapshotScope]);
+	React.useEffect(() => {
+		// A tab coming back re-checks what its visible rows show.
+		const resume = () => {
+			if (document.visibilityState === 'visible') setTokenPriceChangeClock((clock) => clock + 1);
+		};
+		document.addEventListener('visibilitychange', resume);
+		return () => document.removeEventListener('visibilitychange', resume);
+	}, []);
+	React.useEffect(() => {
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey || document.visibilityState === 'hidden') return;
+		const visibleIds = visibleDiscoverTokenKey.split(',');
+		const now = Date.now();
+		const reads = tokenPriceChangeReads.current;
+		// Rows that move or page in and out keep a change while it is current; a due row is read again.
+		const tokenIds = homeTokenPriceChangeRequests(visibleIds, tokenPriceChanges, now).filter(
+			(tokenId) => !reads.ids.has(tokenId)
 		);
-		return () => controller.abort();
-	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
+		if (tokenIds.length) {
+			const scope = homeListingSnapshotScope;
+			const publish = (
+				next: (tokenId: string, previous: HomeTokenPriceChangeEntry | undefined) => HomeTokenPriceChangeEntry
+			) =>
+				setTokenPriceChangeState((current) => {
+					const values = { ...(current.scope === scope ? current.values : {}) };
+					for (const tokenId of tokenIds) values[tokenId] = next(tokenId, values[tokenId]);
+					return { scope, values };
+				});
+			const controller = new AbortController();
+			reads.controllers.add(controller);
+			for (const tokenId of tokenIds) reads.ids.add(tokenId);
+			const settle = () => {
+				reads.controllers.delete(controller);
+				for (const tokenId of tokenIds) reads.ids.delete(tokenId);
+			};
+			const eventLimit = 200;
+			void discoverCollectionActivity({
+				actions: ['make-offer'],
+				limit: eventLimit,
+				recipients: tokenIds,
+				signal: controller.signal,
+			}).then(
+				(events) => {
+					if (controller.signal.aborted) return;
+					settle();
+					const readAt = Date.now();
+					const windowComplete = events.length < eventLimit;
+					publish((tokenId) => ({
+						value: homeTokenPriceChangePercent(
+							events.filter((event) => event.processId === tokenId),
+							readAt,
+							windowComplete
+						),
+						readAt,
+						checkedAt: readAt,
+					}));
+				},
+				() => {
+					if (controller.signal.aborted) return;
+					settle();
+					const failedAt = Date.now();
+					publish((_tokenId, previous) => homeTokenPriceChangeFailed(previous, failedAt));
+				}
+			);
+		}
+		const next = homeTokenPriceChangeNextCheck(visibleIds, tokenPriceChanges, now);
+		if (next === null) return;
+		const timer = window.setTimeout(
+			() => setTokenPriceChangeClock((clock) => clock + 1),
+			Math.max(0, next - Date.now())
+		);
+		return () => window.clearTimeout(timer);
+	}, [
+		homeListingSnapshotScope,
+		shouldLoadAssetSummaries,
+		tokenPriceChangeClock,
+		tokenPriceChanges,
+		visibleDiscoverTokenKey,
+	]);
 	const overdueTokenPriceChanges = useHomeDisplayDeadlines(
 		homeListingSnapshotScope,
 		visibleDiscoverTokens.map(({ asset }) => asset.id).filter((id) => tokenPriceChanges[id] === undefined),
@@ -4762,7 +4868,7 @@ function Home() {
 		<div className="token-market-list" ref={listRef} role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
-				const change = tokenPriceChanges[asset.id];
+				const change = homeTokenPriceChangeCurrent(tokenPriceChanges[asset.id], Date.now());
 				return (
 					<TokenMarketRow
 						asset={{ ...asset, image: assetImages[asset.id] ?? asset.image }}
@@ -5264,6 +5370,14 @@ export function globalActivityCollection(collections: Collection[], processId: s
 	return indexed.get(processId);
 }
 
+/**
+ * The loaded activity rows the catalogue claims as it stands now. The global pager keeps every
+ * indexed row, so a collection that loads after a page landed reveals its rows on the next render.
+ */
+export function globalCatalogueActivity(events: CollectionActivityEvent[], collections: Collection[]) {
+	return events.filter((event) => Boolean(globalActivityCollection(collections, event.processId)));
+}
+
 export function globalActivityRecipientIds(collections: Collection[]) {
 	const ids = new Set<string>();
 	for (const collection of collections) {
@@ -5310,6 +5424,54 @@ export function visibleActivityAssets(
 	});
 }
 
+/** Quiet time after the catalogue last changed before activity rows are painted. */
+export const ACTIVITY_CATALOGUE_QUIET_MS = 600;
+/** Longest the rows wait for that quiet time once the market shell has settled. */
+export const ACTIVITY_CATALOGUE_WAIT_CAP_MS = 2_500;
+
+/** Which collections, and how many members each, the catalogue holds; name or media updates do not count. */
+export function activityCatalogueMembershipKey(collections: readonly Collection[]) {
+	return collections
+		.map(
+			(collection) =>
+				`${collection.id}:${
+					collection.kind === 'names'
+						? Object.keys(collection.namespace?.namesById ?? {}).length
+						: collection.assets.length
+				}`
+		)
+		.join(',');
+}
+
+/**
+ * How long to wait before painting activity rows, measured from the latest catalogue change: a
+ * short quiet time, so collections that stream in just after the market settles are already
+ * counted, but never past the cap measured from when the market settled.
+ */
+export function activityCatalogueRevealDelay(
+	settledAt: number,
+	now: number,
+	quietMs = ACTIVITY_CATALOGUE_QUIET_MS,
+	capMs = ACTIVITY_CATALOGUE_WAIT_CAP_MS
+) {
+	return Math.max(0, Math.min(quietMs, settledAt + capMs - now));
+}
+
+/** True once the market has settled and its membership has been quiet briefly (or the cap passed). Stays true. */
+function useActivityCatalogueRevealed(marketLoading: boolean, collections: readonly Collection[]) {
+	const [revealed, setRevealed] = React.useState(false);
+	const settledAt = React.useRef<number | null>(null);
+	const membershipKey = React.useMemo(() => activityCatalogueMembershipKey(collections), [collections]);
+	React.useEffect(() => {
+		if (revealed || marketLoading) return;
+		const now = Date.now();
+		settledAt.current ??= now;
+		const timer = window.setTimeout(() => setRevealed(true), activityCatalogueRevealDelay(settledAt.current, now));
+		return () => window.clearTimeout(timer);
+	}, [marketLoading, membershipKey, revealed]);
+	return revealed;
+}
+
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
 	const { rememberIndexedAssets } = React.useContext(MarketContext);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
@@ -5321,17 +5483,16 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const [error, setError] = React.useState<string | null>(null);
 	const [announcement, setAnnouncement] = React.useState('');
 	const activityListId = React.useId();
-	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
-	const activityScope = React.useMemo(() => JSON.stringify([...activityRecipients].sort()), [activityRecipients]);
-	const pager = React.useMemo(() => {
-		const recipients = new Set<string>(JSON.parse(activityScope));
-		return createGlobalActivityPager({ acceptProcessId: (id) => recipients.has(id) });
-	}, [activityScope]);
+	// One pager for the panel's lifetime. It keeps every indexed row and the catalogue filter runs at
+	// render, so collections streaming in (or growing after the market settles) reveal their rows
+	// instead of discarding the loaded page and aborting the read in flight.
+	const [pager] = React.useState(() => createGlobalActivityPager({}));
+	const loadAnnouncementPending = React.useRef(false);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
 		setAnnouncement('');
-	}, [activityFilter, pager]);
+	}, [activityFilter]);
 
 	React.useEffect(() => {
 		const controller = new AbortController();
@@ -5340,12 +5501,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setHasNextPage(cached.hasNextPage);
 		setError(null);
 		setLoading(true);
-		if (marketLoading) return () => controller.abort();
-		if (!activityRecipients.length) {
-			setLoading(false);
-			setHasNextPage(false);
-			return () => controller.abort();
-		}
 		void (async () => {
 			let current = cached;
 			try {
@@ -5358,7 +5513,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				setEvents(current.events);
 				setHasNextPage(current.hasNextPage);
 				if (request.kind === 'more') setActivityLimit((limit) => limit + 20);
-				setAnnouncement(`${current.events.length.toLocaleString()} indexed events loaded.`);
+				loadAnnouncementPending.current = true;
 			} catch (cause) {
 				if (controller.signal.aborted) return;
 				setError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
@@ -5368,11 +5523,23 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			setLoading(false);
 		})();
 		return () => controller.abort();
-	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
+	}, [activityFilter, pager, request]);
 
-	const filteredEvents = filterGlobalActivity(events, activityFilter);
+	const catalogueEvents = React.useMemo(() => globalCatalogueActivity(events, collections), [collections, events]);
+	const claimedEvents = filterGlobalActivity(catalogueEvents, activityFilter);
+	// The page is read in parallel with the catalogue, but rows wait for the catalogue to settle so
+	// collections streaming in do not insert rows between ones already painted. Names for the rows
+	// already claimed are asked for meanwhile, so they paint named.
+	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections);
+	const filteredEvents = catalogueRevealed ? claimedEvents : [];
+	const busy = loading || (!catalogueRevealed && !error);
+	React.useEffect(() => {
+		if (!catalogueRevealed || loading || !loadAnnouncementPending.current) return;
+		loadAnnouncementPending.current = false;
+		setAnnouncement(`${catalogueEvents.length.toLocaleString()} indexed events loaded.`);
+	}, [catalogueEvents.length, catalogueRevealed, loading]);
 	useIndexedAssetNames(
-		visibleActivityAssets(filteredEvents.slice(0, activityLimit), (event) =>
+		visibleActivityAssets(claimedEvents.slice(0, activityLimit), (event) =>
 			globalActivityCollection(collections, event.processId)
 		),
 		rememberIndexedAssets
@@ -5392,7 +5559,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const canReveal = activityLimit < filteredEvents.length;
 	return (
 		<div
-			aria-busy={loading}
+			aria-busy={busy}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
@@ -5415,13 +5582,13 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</Button>
 				))}
 			</div>
-			{loading ? (
+			{busy ? (
 				<div className="global-activity-loading">
-					<Loading label={events.length ? 'Loading activity…' : 'Loading recent activity…'} />
+					<Loading label={filteredEvents.length ? 'Loading activity…' : 'Loading recent activity…'} />
 				</div>
 			) : null}
 			{error ? (
-				events.length ? (
+				filteredEvents.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
 							This page could not be loaded. Your loaded activity is still available. {error}
@@ -5443,7 +5610,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				}`}
 				events={filteredEvents.slice(0, activityLimit)}
 				id={activityListId}
-				loading={loading}
+				loading={busy}
 				resolveAsset={(event) => {
 					const collection = resolveCollection(event);
 					return collection ? collectionAsset(collection, event.processId) : undefined;
@@ -5453,7 +5620,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			<p className="sr-only" role="status" aria-live="polite">
 				{announcement}
 			</p>
-			{!loading && !error && !filteredEvents.length ? (
+			{!busy && !error && !filteredEvents.length ? (
 				<div className="empty-state">
 					<h3>No matching activity loaded</h3>
 					<p>
@@ -5467,7 +5634,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				<Button
 					aria-controls={activityListId}
 					className="load-more"
-					disabled={loading}
+					disabled={busy}
 					size="custom"
 					type="button"
 					onClick={() => {
@@ -5478,14 +5645,14 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 								globalActivityRevealDescription(
 									nextLimit,
 									filteredEvents.length,
-									events.length,
+									catalogueEvents.length,
 									activityFilter !== 'all'
 								)
 							);
 						} else requestPage('more');
 					}}
 				>
-					{loading
+					{busy
 						? 'Loading activity…'
 						: canReveal
 						? `Show ${Math.min(20, filteredEvents.length - activityLimit)} more events`
@@ -5493,7 +5660,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						? 'Load older activity'
 						: 'Check older activity'}
 				</Button>
-			) : !loading && !error ? (
+			) : !busy && !error ? (
 				<p className="collection-result-count">End of indexed activity for this filter.</p>
 			) : null}
 		</div>

@@ -5,7 +5,13 @@ import { parseAssetState } from 'api/asset-marketplace';
 import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from 'api/collections';
 
 import { initialWalletResolutionStatus, walletDiscoverySession, type WalletResolutionStatus } from './App';
-import { runWalletDiscovery, walletCandidatePreviews, type WalletDiscoveryOptions } from './wallet-discovery';
+import {
+	runWalletDiscovery,
+	walletAssetGroupCount,
+	walletCandidatePreviews,
+	type WalletDiscoveryOptions,
+	walletEntryWithCurrentName,
+} from './wallet-discovery';
 
 const wallet = 'W'.repeat(43);
 const assetA = 'A'.repeat(43);
@@ -313,5 +319,54 @@ describe('wallet discovery run', () => {
 		await runWalletDiscovery(test.options).finished;
 
 		expect(test.status()).toMatchObject({ phase: 'done', total: 1, resolved: 1 });
+	});
+});
+
+describe('wallet asset group presentation', () => {
+	// An ID-only manifest entry starts with its short-ID title.
+	const placeholder = { id: assetA, name: `${assetA.slice(0, 7)}…${assetA.slice(-6)}` };
+	const snapshot: Collection = {
+		id: 'images',
+		name: 'Images',
+		description: '',
+		kind: 'images',
+		assets: [placeholder],
+	};
+
+	it('shows the name the batched lookup stored after a preview was built', () => {
+		const named: Collection = {
+			...snapshot,
+			assets: [{ id: assetA, name: 'Sunset', image: `https://arweave.net/raw/${assetA}` }],
+		};
+		expect(walletEntryWithCurrentName(placeholder, snapshot, [named])).toEqual({
+			id: assetA,
+			name: 'Sunset',
+			image: `https://arweave.net/raw/${assetA}`,
+		});
+		// Nothing better known yet: the card keeps what it had.
+		expect(walletEntryWithCurrentName(placeholder, snapshot, [snapshot])).toBe(placeholder);
+		expect(walletEntryWithCurrentName(placeholder, snapshot, [])).toBe(placeholder);
+		// A resolved title is never replaced by a placeholder.
+		const titled = { id: assetA, name: 'Sunrise' };
+		expect(walletEntryWithCurrentName(titled, snapshot, [named]).name).toBe('Sunrise');
+		// Token and name cards are left alone; their titles come from their own indexes.
+		const tokens: Collection = { ...snapshot, id: 'tokens', kind: 'tokens' };
+		expect(walletEntryWithCurrentName(placeholder, tokens, [{ ...named, id: 'tokens', kind: 'tokens' }])).toBe(
+			placeholder
+		);
+	});
+
+	it('counts every card a group shows and names the ones live state has not confirmed', () => {
+		expect(walletAssetGroupCount(0, [])).toEqual({ shown: 0, checking: 0, unverified: 0, detail: '' });
+		expect(walletAssetGroupCount(0, [{ state: 'unavailable' }, { state: 'unavailable' }])).toEqual({
+			shown: 2,
+			checking: 0,
+			unverified: 2,
+			detail: '2 unverified',
+		});
+		expect(walletAssetGroupCount(3, [{ state: 'checking' }, { state: 'unavailable' }]).detail).toBe(
+			'1 checking · 1 unverified'
+		);
+		expect(walletAssetGroupCount(3, []).shown).toBe(3);
 	});
 });
