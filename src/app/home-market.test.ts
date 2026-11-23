@@ -51,6 +51,7 @@ import {
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
 	homeCollectionAssetCountLabel,
+	homeCollectionFloorsPending,
 	homeDiscoverBusy,
 	homeDiscoverDisplay,
 	homeDiscoverPagesFull,
@@ -1318,6 +1319,35 @@ describe('Home market summary retries', () => {
 				HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
 			)
 		).toEqual({ overdue: ['a'], nextDeadline: 16_000 });
+	});
+
+	it('settles the Collections tab when floors arrive, fail or pass their display deadline', () => {
+		const ready: HomeMarketSummary = { status: 'resolved', value: null };
+		const failed: HomeMarketSummary = { status: 'unavailable', source: 'index', kind: 'rate-limited' };
+		const base = {
+			shellLoading: false,
+			retrying: false,
+			collectionIds: ['a', 'b', 'c'],
+			floors: { a: ready, b: failed } as Record<string, HomeMarketSummary>,
+			overdue: new Set<string>(),
+		};
+		expect(homeCollectionFloorsPending(base)).toBe(true);
+		expect(homeCollectionFloorsPending({ ...base, overdue: new Set(['c']) })).toBe(false);
+		expect(homeCollectionFloorsPending({ ...base, floors: { ...base.floors, c: ready } })).toBe(false);
+		expect(homeCollectionFloorsPending({ ...base, overdue: new Set(['c']), retrying: true })).toBe(true);
+		expect(homeCollectionFloorsPending({ ...base, collectionIds: [], floors: {}, shellLoading: true })).toBe(true);
+		// The overdue floor and the failed floor are offered for retry together.
+		expect(
+			collectionPriceRetryNotice({
+				activityError: false,
+				activityLoading: false,
+				cardPricesFailed: false,
+				cardPricesLoading: false,
+				listedOnly: false,
+				overdue: 1,
+				unavailable: 1,
+			})
+		).toEqual({ visible: true, unavailable: 2 });
 	});
 
 	it('shows the home loader only while results are pending and no assets are visible', () => {

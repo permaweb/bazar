@@ -3379,6 +3379,25 @@ export function homeDiscoverPagesFull(
 	return sections.every(({ shown, pageSize, page, pageCount }) => shown >= pageSize || page < pageCount);
 }
 
+/**
+ * The Collections tab is busy while the shell has no collections yet, a retry
+ * runs, or a floor is still inside its display deadline. Failed and overdue
+ * floors are settled cards ("Unavailable" / "Price unavailable").
+ */
+export function homeCollectionFloorsPending(state: {
+	shellLoading: boolean;
+	retrying: boolean;
+	collectionIds: readonly string[];
+	floors: Readonly<Record<string, HomeMarketSummary>>;
+	overdue: ReadonlySet<string>;
+}) {
+	return homeMarketHasPending(
+		state.shellLoading || state.retrying,
+		state.collectionIds.filter((collectionId) => !state.overdue.has(collectionId)),
+		state.floors
+	);
+}
+
 export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount: number) {
 	return pending && visibleAssetCount === 0;
 }
@@ -4480,16 +4499,17 @@ function Home() {
 		.map((collection) => collection.id)
 		.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable');
 	const summaryFailureKey = `${failedAssetIds.join(',')}|${failedCollectionIds.join(',')}`;
-	const retryMarketSummaries = () => {
+	const retryMarketSummaries = (overdueCollectionIds: Iterable<string> = []) => {
 		if (summaryRetrying) return;
 		retryAssetSummaries.current = new Set(
 			assets.map(({ asset }) => asset.id).filter((assetId) => assetPrices[assetId]?.status === 'unavailable')
 		);
-		retryCollectionSummaries.current = new Set(
-			collections
+		retryCollectionSummaries.current = new Set([
+			...collections
 				.map((collection) => collection.id)
-				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable')
-		);
+				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable'),
+			...overdueCollectionIds,
+		]);
 		const retryGroups = new Set<'assets' | 'collections'>();
 		if (retryAssetSummaries.current.size) retryGroups.add('assets');
 		if (retryCollectionSummaries.current.size) retryGroups.add('collections');
@@ -4536,11 +4556,40 @@ function Home() {
 	);
 	const assetSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('assets');
 	const collectionSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('collections');
-	const collectionResultsPending = homeMarketHasPending(
-		market.loading || collectionSummariesRetrying || failedCollectionIds.length > 0,
-		collections.map((collection) => collection.id),
-		collectionFloors
+	// A floor that has not arrived by the display deadline says "Price unavailable";
+	// a retry re-arms the deadline for the floors it restarts.
+	const [collectionFloorDeadlineRun, setCollectionFloorDeadlineRun] = React.useState(0);
+	const overdueCollectionFloors = useHomeDisplayDeadlines(
+		`${aoRoutingScope}|${collectionFloorDeadlineRun}`,
+		shouldLoadCollectionSummaries
+			? collections.map((collection) => collection.id).filter((collectionId) => !collectionFloors[collectionId])
+			: [],
+		COLLECTION_PRICE_DISPLAY_DEADLINE_MS
 	);
+	const overdueCollectionFloorIds = collections
+		.map((collection) => collection.id)
+		.filter((collectionId) => !collectionFloors[collectionId] && overdueCollectionFloors.has(collectionId));
+	const collectionResultsPending = homeCollectionFloorsPending({
+		shellLoading: marketShellLoading,
+		retrying: collectionSummariesRetrying,
+		collectionIds: collections.map((collection) => collection.id),
+		floors: collectionFloors,
+		overdue: overdueCollectionFloors,
+	});
+	const collectionFloorRetryNotice = collectionPriceRetryNotice({
+		activityError: false,
+		activityLoading: false,
+		cardPricesFailed: false,
+		cardPricesLoading: collectionSummariesRetrying,
+		listedOnly: false,
+		overdue: collectionSummariesRetrying ? 0 : overdueCollectionFloorIds.length,
+		unavailable: failedCollectionIds.length,
+	});
+	const retryCollectionFloors = () => {
+		summaryAutoRetryRounds.current = 0;
+		setCollectionFloorDeadlineRun((run) => run + 1);
+		retryMarketSummaries(overdueCollectionFloorIds);
+	};
 	const discoverResultsPending = homeDiscoverPending({
 		marketLoading: market.loading,
 		retrying: assetSummariesRetrying,
@@ -4807,6 +4856,26 @@ function Home() {
 									id="home-collections-panel"
 									role="tabpanel"
 								>
+									{collectionFloorRetryNotice.visible && !market.error ? (
+										<div className="inline-error retry-notice">
+											<span role="status">
+												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
+												{collectionFloorRetryNotice.unavailable === 1
+													? 'floor remains'
+													: 'floors remain'}{' '}
+												unavailable. The collections stay browsable.
+											</span>
+											<Button
+												className="with-icon"
+												disabled={summaryRetrying}
+												onClick={retryCollectionFloors}
+												size="custom"
+												type="button"
+											>
+												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+											</Button>
+										</div>
+									) : null}
 									{collections.length || collectionResultsPending ? (
 										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
@@ -4815,9 +4884,11 @@ function Home() {
 													collection.assets.find((asset) => asset.image) ??
 													collection.assets[0];
 												const floor = collectionFloors[collection.id];
+												const floorOverdue =
+													!floor && overdueCollectionFloors.has(collection.id);
 												const floorPending =
-													!floor ||
-													(collectionSummariesRetrying && floor.status === 'unavailable');
+													(!floor && !floorOverdue) ||
+													(collectionSummariesRetrying && floor?.status === 'unavailable');
 												return (
 													<Link
 														className={`home-feature-card feature-${index}`}
@@ -4902,6 +4973,8 @@ function Home() {
 																				'N/A'
 																			)}
 																		</ArCurrencyText>
+																	) : floorOverdue ? (
+																		collectionCardPriceLabel(undefined, false, true)
 																	) : (
 																		<HomePendingMarketValue />
 																	)}
