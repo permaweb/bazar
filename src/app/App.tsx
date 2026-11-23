@@ -672,7 +672,7 @@ export function App() {
 							<Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
 							<Route path="/asset/:collectionId/:assetId/pending" element={<PendingAssetView />} />
 							<Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
-							<Route path="*" element={<Navigate to="/" replace />} />
+							<Route path="*" element={<NotFoundRoute />} />
 						</Routes>
 					</main>
 				</OperationActivityProvider>
@@ -12170,6 +12170,20 @@ export function RouteState({
 		</section>
 	);
 }
+
+// Catch-all route. It keeps the unmatched URL in the address bar and names it,
+// instead of silently replacing it with Discover.
+export function NotFoundRoute() {
+	const { pathname } = useLocation();
+	return (
+		<RouteState title="Page not found" backTo="/discover" backLabel="Discover">
+			<p>
+				This Bazar link does not match a page: <code>{pathname}</code>. Check the address or continue browsing.
+			</p>
+		</RouteState>
+	);
+}
+
 function assetDescription(state: AssetState | null, fallback: string) {
 	if (!state) return formatTokenDescription(fallback);
 	if (typeof state.raw.description === 'string' && state.raw.description.trim()) {

@@ -35,7 +35,7 @@ import { Tooltip } from 'components/Tooltip';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
-import { winstonToAr } from '../app/App';
+import { RouteState, winstonToAr } from '../app/App';
 import { announceFungibleOperationActivityChange } from '../app/operation-activity';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -258,15 +258,9 @@ export default function DispatchRoute() {
 
 	if (!validId) {
 		return (
-			<section className="create-page dispatch-page">
-				<div className="create-heading">
-					<div>
-						<p className="eyebrow">Dispatch</p>
-						<h1>Unknown token</h1>
-					</div>
-					<p>The address in the URL is not a 43-character Arweave process ID.</p>
-				</div>
-			</section>
+			<RouteState title="Unknown token" backTo="/discover" backLabel="Discover">
+				<p>The address in the URL is not a 43-character Arweave process ID.</p>
+			</RouteState>
 		);
 	}
 
