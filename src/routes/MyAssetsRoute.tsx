@@ -52,6 +52,7 @@ import {
 	walletDiscoverySessionIsCurrent,
 	walletResolutionCopy,
 	type WalletResolutionStatus,
+	walletUnavailableCandidatesCopy,
 } from '../app/App';
 import {
 	marketplaceErrorMessage as errorMessage,
@@ -385,6 +386,7 @@ export default function MyAssetsRoute({
 		aggregateFailureMessage
 	);
 	const failureBlock = walletFailureBlock(status, visibleResults.length);
+	const unavailableCopy = walletUnavailableCandidatesCopy(status, aggregateFailureMessage);
 	return (
 		<section className={pageClassName}>
 			{!embedded ? (
@@ -408,18 +410,14 @@ export default function MyAssetsRoute({
 			) : null}
 			{failureBlock === 'partial' ? (
 				<div className="my-assets-heading-status retry-notice">
-					<span role="status">
-						{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
-						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
-						remain visible.
-					</span>
+					<span role="status">{unavailableCopy}</span>
 					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
 						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 					</Button>
 				</div>
 			) : null}
 			<p className="sr-only" aria-live="polite" role="status">
-				{resolutionCopy.announcement}
+				{walletStatusAnnouncement(failureBlock, status.failures, resolutionCopy.announcement)}
 			</p>
 			{working ? (
 				<div className="my-assets-resolution-status" aria-busy="true">
@@ -466,11 +464,15 @@ export default function MyAssetsRoute({
 							? 'Ownership could not be checked'
 							: 'No indexed candidates currently resolve to this address'}
 					</h3>
-					<p>
-						{status.failures
-							? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates still need to be checked.`
-							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this profile opens; live state remains authoritative for every candidate found.'}
-					</p>
+					{status.failures ? (
+						<p role="status">{unavailableCopy}</p>
+					) : (
+						<p>
+							Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed
+							candidates appear the next time this profile opens; live state remains authoritative for
+							every candidate found.
+						</p>
+					)}
 					{status.failures ? (
 						<Button
 							className="with-icon retry-notice-action"
@@ -503,6 +505,17 @@ export function walletFailureBlock(
 	if (status.phase !== 'done') return 'none';
 	if (!visibleCount) return 'empty';
 	return status.failures ? 'partial' : 'none';
+}
+
+/**
+ * The polite status region carries progress. Once a visible notice states the
+ * outcome (with its own status role and Retry), the region is cleared so the
+ * surface shows and announces one live-state message instead of two.
+ */
+export function walletStatusAnnouncement(failureBlock: WalletFailureBlock, failures: number, announcement: string) {
+	if (failureBlock === 'error' || failureBlock === 'partial') return '';
+	if (failureBlock === 'empty' && failures) return '';
+	return announcement;
 }
 
 export function listedUniquePrice(result: ResolvedAsset, address: string): string | undefined {

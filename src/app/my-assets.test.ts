@@ -7,7 +7,7 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from '../helpers/progressive-assets';
-import { listedUniquePrice, walletFailureBlock } from '../routes/MyAssetsRoute';
+import { listedUniquePrice, walletFailureBlock, walletStatusAnnouncement } from '../routes/MyAssetsRoute';
 
 import {
 	type CandidateSupportFailure,
@@ -23,6 +23,7 @@ import {
 	walletResolutionCopy,
 	walletResolutionIsDeterminate,
 	walletResolutionShowsProgress,
+	walletUnavailableCandidatesCopy,
 } from './App';
 
 const processId = 'P'.repeat(43);
@@ -379,5 +380,46 @@ describe('wallet assets failure block', () => {
 		expect(walletFailureBlock({ error: null, failures: 1, phase: 'resolving' }, 0)).toBe('none');
 		expect(walletFailureBlock(done, 3)).toBe('none');
 		expect(walletFailureBlock(done, 0)).toBe('empty');
+	});
+});
+
+describe('wallet live-state notice', () => {
+	const done = {
+		phase: 'done' as const,
+		discoveryComplete: true,
+		discovered: 14,
+		resolved: 14,
+		total: 14,
+		failures: 2,
+		indexFailures: 0,
+		rateLimited: 0,
+		indexRateLimited: 0,
+		error: null,
+	};
+	const failure = 'Live state could not be read through the configured AO peers.';
+
+	it('names only the candidates that could not be checked', () => {
+		expect(walletUnavailableCandidatesCopy(done, failure)).toBe(
+			'Live state could not be read through the configured AO peers. 2 of 14 candidates could not be checked.'
+		);
+		expect(walletUnavailableCandidatesCopy({ failures: 1, total: 1 }, '')).toBe(
+			'1 of 1 candidate could not be checked.'
+		);
+		// The status region and the visible banner use the same sentence.
+		expect(walletResolutionCopy(done, failure).announcement).toBe(walletUnavailableCandidatesCopy(done, failure));
+	});
+
+	it('leaves one live-state message once a visible notice states the outcome', () => {
+		const announcement = walletResolutionCopy(done, failure).announcement;
+		expect(walletStatusAnnouncement(walletFailureBlock(done, 3), done.failures, announcement)).toBe('');
+		expect(walletStatusAnnouncement(walletFailureBlock(done, 0), done.failures, announcement)).toBe('');
+		expect(walletStatusAnnouncement('error', 0, '')).toBe('');
+		// Progress and a clean finish still announce through the status region.
+		expect(walletStatusAnnouncement('none', 0, 'Checking asset candidates. 50% complete.')).toBe(
+			'Checking asset candidates. 50% complete.'
+		);
+		expect(walletStatusAnnouncement('empty', 0, 'Live state resolved for 3 candidates.')).toBe(
+			'Live state resolved for 3 candidates.'
+		);
 	});
 });
