@@ -227,6 +227,7 @@ import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
+import { Footer } from 'navigation/Footer';
 import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
@@ -699,6 +700,7 @@ export function App() {
 							<Route path="*" element={<Navigate to="/" replace />} />
 						</Routes>
 					</main>
+					<Footer />
 				</OperationActivityProvider>
 			</HashRouter>
 		</MarketContext.Provider>
