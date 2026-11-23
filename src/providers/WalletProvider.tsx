@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Copy, Download, FileUp, KeyRound, Wallet, X } from 'lucide-react';
+import { Check, CircleAlert, Copy, Download, FileUp, KeyRound, Wallet, X } from 'lucide-react';
 
 import type { JWKInterface } from 'arweave/web/lib/wallet';
 
@@ -32,6 +32,11 @@ type WalletDialogAction = BrowserWalletId | 'generate' | 'import' | null;
  * freshly generated key that has not been confirmed as saved. Exposed as `data-phase` on the dialog.
  */
 export type WalletDialogPhase = 'choosing' | 'connecting' | 'generating' | 'importing' | 'backup';
+
+/** Result of the generated-address Copy button. `copied` and `failed` fall back to `idle` after a moment. */
+export type AddressCopyState = 'idle' | 'copied' | 'failed';
+
+const COPY_FEEDBACK_MS = 2000;
 
 /**
  * Where the connected wallet's key lives. `local` means Bazar holds the only stored copy of the
@@ -297,7 +302,8 @@ function WalletConnectionDialog({
 	const [action, setAction] = React.useState<WalletDialogAction>(null);
 	const [error, setError] = React.useState('');
 	const [generatedWallet, setGeneratedWallet] = React.useState<GeneratedWallet | null>(null);
-	const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
+	const [copyState, setCopyState] = React.useState<AddressCopyState>('idle');
+	const copyResetTimer = React.useRef<number | null>(null);
 	const [generatedWalletDownloaded, setGeneratedWalletDownloaded] = React.useState(false);
 	// Each open or close starts a new session. A browser connect stays dismissible because an
 	// extension prompt can wait forever, so its late result must not close or mark up a later session.
@@ -318,12 +324,19 @@ function WalletConnectionDialog({
 		generatedWallet?.address,
 		connectDialogRestoreFallback
 	);
+	const clearCopyResetTimer = React.useCallback(() => {
+		if (copyResetTimer.current === null) return;
+		window.clearTimeout(copyResetTimer.current);
+		copyResetTimer.current = null;
+	}, []);
+	React.useEffect(() => clearCopyResetTimer, [clearCopyResetTimer]);
 
 	React.useEffect(() => {
 		session.current += 1;
 		addressAtOpen.current = open ? wallet.address : null;
 		setAction(null);
 		setError('');
+		clearCopyResetTimer();
 		setCopyState('idle');
 		setGeneratedWallet(null);
 		setGeneratedWalletDownloaded(false);
@@ -389,7 +402,22 @@ function WalletConnectionDialog({
 		setGeneratedWalletDownloaded(false);
 		onClose();
 	};
+	const copyGeneratedAddress = async () => {
+		if (!generatedWallet) return;
+		const started = session.current;
+		const result = await copyText(generatedWallet.address);
+		if (started !== session.current) return;
+		clearCopyResetTimer();
+		setCopyState(result);
+		copyResetTimer.current = window.setTimeout(() => {
+			copyResetTimer.current = null;
+			setCopyState('idle');
+		}, COPY_FEEDBACK_MS);
+	};
 	const backup = generatedKeyfileBackupStep(generatedWalletDownloaded);
+	const copyFeedback = addressCopyFeedback(copyState);
+	const permawebOsLabel = browserWalletConnectLabel('permaweb-os', action);
+	const wanderLabel = browserWalletConnectLabel('wander', action);
 
 	return (
 		<div
@@ -437,30 +465,29 @@ function WalletConnectionDialog({
 								<code>{generatedWallet.address}</code>
 							</div>
 							<Button
+								aria-label="Copy address"
 								className="with-icon"
-								onClick={async () => {
-									try {
-										await navigator.clipboard.writeText(generatedWallet.address);
-										setCopyState('copied');
-									} catch {
-										setCopyState('failed');
-									}
-								}}
+								onClick={() => void copyGeneratedAddress()}
 								type="button"
 								size="custom"
 							>
-								<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
-								<span aria-live="polite">
-									{copyState === 'copied'
-										? 'Copied'
-										: copyState === 'failed'
-										? 'Copy failed'
-										: 'Copy'}
-								</span>
+								{copyState === 'copied' ? (
+									<Check className="ui-icon ui-icon--sm" aria-hidden="true" />
+								) : copyState === 'failed' ? (
+									<CircleAlert className="ui-icon ui-icon--sm" aria-hidden="true" />
+								) : (
+									<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
+								)}
+								<span>{copyFeedback.label}</span>
 							</Button>
+							<span className="sr-only" aria-live="polite" role="status">
+								{copyFeedback.status}
+							</span>
 						</div>
 						<Button
+							aria-describedby="wallet-keyfile-warning"
 							className="wide with-icon"
+							data-dialog-initial={backup.initialFocus === 'download' || undefined}
 							onClick={downloadGeneratedWallet}
 							type="button"
 							size="custom"
@@ -472,7 +499,7 @@ function WalletConnectionDialog({
 						{backup.canFinish ? (
 							<Button
 								className="wide with-icon"
-								data-dialog-initial
+								data-dialog-initial={backup.initialFocus === 'finish' || undefined}
 								onClick={finishGeneratedWallet}
 								type="button"
 								size="custom"
@@ -482,7 +509,7 @@ function WalletConnectionDialog({
 								{backup.finishLabel}
 							</Button>
 						) : null}
-						<p className="wallet-keyfile-warning">
+						<p className="wallet-keyfile-warning" id="wallet-keyfile-warning">
 							<strong>Keep this file safe.</strong> Anyone with it controls the wallet, and it cannot be
 							recovered if lost.
 						</p>
@@ -499,6 +526,7 @@ function WalletConnectionDialog({
 									</div>
 								</div>
 								<Button
+									aria-label={permawebOsLabel.name}
 									data-dialog-initial
 									onClick={() => void connectBrowserWallet('permaweb-os')}
 									disabled={action !== null}
@@ -506,7 +534,7 @@ function WalletConnectionDialog({
 									size="custom"
 									variant="primary"
 								>
-									{action === 'permaweb-os' ? 'Connecting…' : 'Connect'}
+									{permawebOsLabel.text}
 								</Button>
 							</div>
 							<div className="wallet-option">
@@ -518,13 +546,14 @@ function WalletConnectionDialog({
 									</div>
 								</div>
 								<Button
+									aria-label={wanderLabel.name}
 									onClick={() => void connectBrowserWallet('wander')}
 									disabled={action !== null}
 									type="button"
 									size="custom"
 									variant="primary"
 								>
-									{action === 'wander' ? 'Connecting…' : 'Connect'}
+									{wanderLabel.text}
 								</Button>
 							</div>
 							<div className="wallet-option">
@@ -673,6 +702,10 @@ export function localWalletExportJson(wallet: unknown): string | null {
 	return isValidWalletJwk(wallet) ? JSON.stringify(wallet, null, 2) : null;
 }
 
+/**
+ * The backup panel's step. `initialFocus` names the control that takes focus when the panel opens:
+ * Download keyfile, the only way out of the panel, rather than the first control (Copy).
+ */
 export function generatedKeyfileBackupStep(downloaded: boolean) {
 	return downloaded
 		? {
@@ -680,13 +713,51 @@ export function generatedKeyfileBackupStep(downloaded: boolean) {
 				downloadLabel: 'Download again',
 				finishLabel: 'I saved the keyfile',
 				canFinish: true,
+				initialFocus: 'finish' as const,
 		  }
 		: {
 				hint: 'Download this keyfile before closing.',
 				downloadLabel: 'Download keyfile',
 				finishLabel: 'I saved the keyfile',
 				canFinish: false,
+				initialFocus: 'download' as const,
 		  };
+}
+
+/**
+ * Copies text to the clipboard and reports the outcome instead of rejecting. The clipboard is missing
+ * in insecure contexts and writes can be denied by permissions, so both resolve to `failed`.
+ */
+export async function copyText(
+	text: string,
+	writeText: (text: string) => Promise<void> = (value) => navigator.clipboard.writeText(value)
+): Promise<Exclude<AddressCopyState, 'idle'>> {
+	try {
+		await writeText(text);
+		return 'copied';
+	} catch {
+		return 'failed';
+	}
+}
+
+/** The generated-address Copy button's visible label and the status announced for each copy state. */
+export function addressCopyFeedback(state: AddressCopyState) {
+	switch (state) {
+		case 'copied':
+			return { label: 'Copied', status: 'Address copied.' };
+		case 'failed':
+			return { label: 'Copy failed', status: 'Address could not be copied. Select it and copy it manually.' };
+		default:
+			return { label: 'Copy', status: '' };
+	}
+}
+
+/** Visible text and a wallet-specific accessible name for a browser wallet's Connect button. */
+export function browserWalletConnectLabel(walletId: BrowserWalletId, action: WalletDialogAction) {
+	const walletName = walletId === 'permaweb-os' ? 'PermawebOS' : 'Wander';
+	return action === walletId
+		? { text: 'Connecting…', name: `Connecting ${walletName}…` }
+		: { text: 'Connect', name: `Connect ${walletName}` };
 }
 
 export function walletDialogPhase(action: WalletDialogAction, generatedWallet: unknown): WalletDialogPhase {
