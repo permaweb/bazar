@@ -35,7 +35,8 @@
 .artwork-image {
 	transition: opacity 180ms ease;
 }
-.artwork-image.is-loading {
+.artwork-image.is-loading,
+.artwork-image.is-deferred {
 	opacity: 0 !important;
 }
 .artwork-fallback {

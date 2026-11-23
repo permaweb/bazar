@@ -313,6 +313,24 @@ export function artworkFetchPriority(
 	return scheduled && !startedInView ? 'low' : requested;
 }
 
+/**
+ * The state class the visible image carries. Lazy artwork that is not near the viewport and has not
+ * started is `is-deferred`, not `is-loading`: it is waiting to be scrolled to, not downloading, so a
+ * card clipped below a scroller or past the fold does not read as in-progress work. Near artwork
+ * waiting for a host slot is queued for the viewer and stays `is-loading`; so does a failed
+ * candidate waiting for its one retry.
+ */
+export function artworkStateClass({
+	near,
+	scheduled,
+	started,
+	status,
+}: Pick<ArtworkStartState, 'near' | 'scheduled' | 'started' | 'status'>): string {
+	if (status === 'loaded') return 'is-loaded';
+	if (status === 'loading' && !artworkHasStarted({ scheduled, started }) && !near) return 'is-deferred';
+	return 'is-loading';
+}
+
 export function startArtworkCandidateTimer(
 	state: Pick<ArtworkLoadState, 'nextIndex' | 'status'>,
 	sourceCount: number,
@@ -438,7 +456,9 @@ export function ArtworkImage({
 			{...(priority ? { fetchpriority: priority } : {})}
 			ref={imageRef}
 			alt={alt}
-			className={`artwork-image is-${status === 'error' ? 'loading' : status}${className ? ` ${className}` : ''}`}
+			className={`artwork-image ${artworkStateClass({ near, scheduled, started, status })}${
+				className ? ` ${className}` : ''
+			}`}
 			decoding={decoding}
 			loading={loading}
 			src={visibleSrc}
