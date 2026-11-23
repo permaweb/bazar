@@ -46,7 +46,10 @@ function directAoFetch(): BazarAoPeerFetch {
 
 export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): BazarAoPeerFetch {
 	const peers = Object.freeze(nodeList(nodes));
-	const client = createAo(peerConfig(peers, override ? false : 'discover'), override);
+	const client = createAo(
+		peerConfig(peers, override ? false : 'discover'),
+		admitProcessStateReads(override ?? ((input, init) => globalThis.fetch(input, init)))
+	);
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
 	const routed = ((input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init)) as BazarAoPeerFetch;
 	let readiness: Promise<readonly string[]> | undefined;
@@ -171,4 +174,37 @@ function routeDefaultPeerRequest(input: RequestInfo | URL, origins: ReadonlySet<
 	} catch {
 		return input;
 	}
+}
+
+/** The current or cached state of one process, as Bazar's readers request it. */
+const PROCESS_STATE_READ = /^\/[A-Za-z0-9_-]{43}~process@1\.0\/(?:now|compute)(?:&[^/]*)?$/;
+
+function isProcessStateRead(input: RequestInfo | URL): boolean {
+	try {
+		return PROCESS_STATE_READ.test(new URL(requestPath(input), 'http://ao.invalid').pathname);
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * A successful process state answer always carries the slot it was evaluated at.
+ * Static hosts answer device paths with their HTML shell, and some peers return
+ * header-only shells without state; neither may be parsed as process state.
+ */
+function inadmissibleProcessState(response: Response): boolean {
+	if (!response.ok) return false;
+	if (/^\s*text\/html\b/i.test(response.headers.get('content-type') ?? '')) return true;
+	if (response.headers.get('codec-device')?.toLowerCase() === 'json@1.0') return false;
+	return !response.headers.has('at-slot');
+}
+
+/** Fail a peer's inadmissible state answer so AO.js routes the read to the next peer. */
+function admitProcessStateReads(fetcher: typeof fetch): typeof fetch {
+	return async (input, init) => {
+		const response = await fetcher(input, init);
+		if (!isProcessStateRead(input) || !inadmissibleProcessState(response)) return response;
+		void response.body?.cancel().catch(() => undefined);
+		throw new Error('ao-inadmissible-process-state');
+	};
 }

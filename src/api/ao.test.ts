@@ -10,6 +10,7 @@ import {
 } from 'helpers/config';
 
 import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from './ao';
+import { readAssetState } from './asset-marketplace';
 
 function injectedAoFetch(peers: string[]): PermawebOsAoFetch {
 	const fetcher = vi.fn(async () => new Response('from-permawebos')) as unknown as PermawebOsAoFetch;
@@ -396,5 +397,103 @@ describe('Bazar AO.js routing', () => {
 
 		expect(response.status).toBe(404);
 		expect(await response.text()).toBe('not_found');
+	});
+});
+
+describe('Bazar AO.js process state admissibility', () => {
+	const processIds = ['IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', 'A'.repeat(43), 'B'.repeat(43), 'C'.repeat(43)];
+	const spaShell = () =>
+		new Response('<!doctype html><title>Bazar</title>', { headers: { 'content-type': 'text/html' } });
+	const processState = (slot = 65) =>
+		new Response(null, {
+			headers: {
+				'at-slot': String(slot),
+				'content-type': 'multipart/form-data; boundary="state"',
+				device: 'process@1.0',
+				'execution-device': 'token@1.0',
+				name: 'Computed state',
+				'total-supply': '1',
+			},
+		});
+
+	it('routes a state read past a static host that answers with its HTML shell', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://compute.example'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				return url.startsWith('https://bazar.example/') ? spaShell() : processState();
+			}) as typeof fetch
+		);
+
+		for (const processId of processIds) {
+			const result = await readAssetState(processId, { fetch: routed, includeBalances: false });
+			expect(result.state.raw).toMatchObject({ 'at-slot': '65', name: 'Computed state' });
+			expect(result.state.raw).not.toHaveProperty('content-type', 'text/html');
+		}
+		expect(requested.some((url) => url.startsWith('https://bazar.example/'))).toBe(true);
+	});
+
+	it('routes a state read past a header-only answer without the evaluated slot', async () => {
+		const requested: string[] = [];
+		const routed = createBazarAoFetch(
+			['https://hollow.example', 'https://compute.example'],
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				return url.startsWith('https://hollow.example/')
+					? new Response(null, { headers: { 'content-type': 'multipart/form-data; boundary="empty"' } })
+					: processState(12);
+			}) as typeof fetch
+		);
+
+		for (const processId of processIds) {
+			const response = await routed(`/${processId}~process@1.0/compute&max-age=60`, { method: 'HEAD' });
+			expect(response.headers.get('at-slot')).toBe('12');
+		}
+		expect(requested.some((url) => url.startsWith('https://hollow.example/'))).toBe(true);
+	});
+
+	it('never parses state when every peer answers a state read with HTML', async () => {
+		const routed = createBazarAoFetch(
+			['https://bazar.example', 'https://static.example'],
+			vi.fn(async () => spaShell()) as typeof fetch
+		);
+
+		await expect(
+			readAssetState(processIds[0], { fetch: routed, includeBalances: false, maxAge: 0 })
+		).rejects.toThrow('ao-inadmissible-process-state');
+	});
+
+	it('accepts linked message and mounted-device reads that carry no slot', async () => {
+		const routed = createBazarAoFetch(
+			['https://compute.example'],
+			vi.fn(async () => new Response(null, { headers: { device: 'trie@1.0' } })) as typeof fetch
+		);
+
+		const message = await routed(`/${'M'.repeat(43)}~message@1.0`, { method: 'HEAD' });
+		const device = await routed(`/${processIds[0]}~process@1.0/compute&max-age=60/balances/device`);
+
+		expect(message.headers.get('device')).toBe('trie@1.0');
+		expect(device.ok).toBe(true);
+	});
+
+	it('leaves peer discovery free to read the HyperBuddy page', async () => {
+		const requested: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				return url.includes('/~meta@1.0/') ? spaShell() : processState(7);
+			})
+		);
+		const routed = createBazarAoFetch(['https://compute.example']);
+
+		const response = await routed(`/${processIds[0]}~process@1.0/now`, { method: 'HEAD' });
+
+		expect(response.headers.get('at-slot')).toBe('7');
+		expect(requested).toContain('https://compute.example/~meta@1.0/info/format~hyperbuddy@1.0');
 	});
 });
