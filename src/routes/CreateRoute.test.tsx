@@ -1,5 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
@@ -738,4 +739,32 @@ describe('mint failure copy by mode', () => {
 			expect(createMintErrorMessage(mode, new Error('mint-upload-503'))).toMatch(/Transaction activity/);
 		}
 	);
+});
+
+describe('collection image selection', () => {
+	// CreateRoute has no render harness here (node environment, no DOM), so these guard the
+	// wiring; the selection rules themselves are unit-tested in CollectionSelectionNotice.test.tsx.
+	const source = readFileSync(new URL('./CreateRoute.tsx', import.meta.url), 'utf8');
+	const collectionEstimateEffect =
+		source.match(
+			/React\.useEffect\(\(\) => \{\s*(?:setEstimateFailures\([^;]*;\s*)?if \(mode !== 'collection'[\s\S]*?\n\t\}, \[[^\]]*\]\);/
+		)?.[0] ?? '';
+
+	it('keeps the over-10 notice out of the error slot that the estimate run clears', () => {
+		// The effect's start-of-run message handling (create-estimate-error-and-retry) anchors the match.
+		expect(collectionEstimateEffect).toContain('setFormMessage(messageAfterEstimateStart)');
+		expect(collectionEstimateEffect).not.toContain('Dropped');
+		expect(source).not.toMatch(/setError\([^;]*up to 10 images/);
+		expect(source).toContain('<CollectionSelectionNotice dropped={collectionDropped} />');
+	});
+
+	it('appends from "Add images" and replaces from the dropzone', () => {
+		expect(source).toMatch(/openFilePicker\('append'\)\}[\s\S]{0,120}\/> Add images/);
+		// The dropzone's click and drop handlers come from fileDropzoneProps (create-result-panel-per-mode).
+		expect(source).toMatch(/fileDropzoneProps\(\s*working,\s*\(\) => openFilePicker\('replace'\),/);
+		expect(source).toMatch(
+			/selectCollectionFiles\(Array\.from\(event\.target\.files \?\? \[\]\), collectionPickMode\.current\);/
+		);
+		expect(source).toMatch(/collectionPickMode\.current = 'replace';\s*\/\/[^\n]*\n\s*event\.target\.value = '';/);
+	});
 });

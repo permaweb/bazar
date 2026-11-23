@@ -49,6 +49,11 @@ import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
+import {
+	type CollectionPickMode,
+	CollectionSelectionNotice,
+	pickCollectionFiles,
+} from 'components/CollectionSelectionNotice';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
 import {
@@ -1015,6 +1020,10 @@ export default function CreateRoute() {
 	const [audioMetadata, setAudioMetadata] = React.useState<EmbeddedAudioMetadata>({});
 	const [readingAudioMetadata, setReadingAudioMetadata] = React.useState(false);
 	const [collectionFiles, setCollectionFiles] = React.useState<File[]>([]);
+	// Images the 10-per-batch cap left out of the last selection change. Kept apart from `error`,
+	// which the estimate effects clear, so the notice stays until the selection changes again.
+	const [collectionDropped, setCollectionDropped] = React.useState(0);
+	const collectionPickMode = React.useRef<CollectionPickMode>('replace');
 	const [preview, setPreview] = React.useState('');
 	const [artworkPreview, setArtworkPreview] = React.useState('');
 	const [collectionPreviews, setCollectionPreviews] = React.useState<string[]>([]);
@@ -1330,11 +1339,17 @@ export default function CreateRoute() {
 			}
 		}
 	};
-	const selectCollectionFiles = (next: File[]) => {
-		setCollectionFiles(next.slice(0, 10));
+	const selectCollectionFiles = (picked: File[], pickMode: CollectionPickMode = 'replace') => {
+		const selection = pickCollectionFiles(collectionFiles, picked, pickMode);
+		setCollectionFiles(selection.files);
+		setCollectionDropped(selection.dropped);
 		setCollectionEstimate(null);
-		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null, 'selection');
+		setError(null);
 		setCollectionResult(null);
+	};
+	const openFilePicker = (pickMode: CollectionPickMode) => {
+		collectionPickMode.current = pickMode;
+		fileInput.current?.click();
 	};
 	const selectLogo = (next: File | null) => {
 		if (next) {
@@ -1696,7 +1711,7 @@ export default function CreateRoute() {
 							size="custom"
 							{...fileDropzoneProps(
 								working,
-								() => fileInput.current?.click(),
+								() => openFilePicker('replace'),
 								(files) => {
 									if (mode === 'collection') selectCollectionFiles(files);
 									else selectFile(files[0] ?? null);
@@ -1756,8 +1771,12 @@ export default function CreateRoute() {
 								: 'image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,.mp3,.wav'
 						}
 						onChange={(event) => {
-							if (mode === 'collection') selectCollectionFiles(Array.from(event.target.files ?? []));
-							else selectFile(event.target.files?.[0] ?? null);
+							if (mode === 'collection') {
+								selectCollectionFiles(Array.from(event.target.files ?? []), collectionPickMode.current);
+								collectionPickMode.current = 'replace';
+								// Clear the input so picking the same image again (e.g. after removing it) fires onChange.
+								event.target.value = '';
+							} else selectFile(event.target.files?.[0] ?? null);
 						}}
 					/>
 					{mode === 'asset' && file ? (
@@ -1872,13 +1891,14 @@ export default function CreateRoute() {
 							<Button
 								type="button"
 								disabled={working}
-								onClick={() => fileInput.current?.click()}
+								onClick={() => openFilePicker('append')}
 								size="custom"
 							>
 								<Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Add images
 							</Button>
 						</div>
 					) : null}
+					{mode === 'collection' ? <CollectionSelectionNotice dropped={collectionDropped} /> : null}
 				</div>
 
 				<form

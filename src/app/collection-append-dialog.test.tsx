@@ -150,6 +150,26 @@ describe('CollectionAppendDialog', () => {
 		expect(submitButton(retryable.markup)).not.toContain('disabled=""');
 	});
 
+	it('says how many images the 10-file cap left out, as a note rather than an error', () => {
+		const { markup } = render({ dropped: 4 });
+		const note = markup.indexOf('4 images were not added.');
+
+		expect(note).toBeGreaterThan(markup.indexOf('</label>'));
+		expect(markup).toContain('<p class="mint-notice collection-selection-notice" role="status"><svg');
+		expect(markup).not.toContain('role="alert"');
+
+		expect(render({ dropped: 0 }).markup).not.toContain('were not added');
+	});
+
+	it('keeps the first 10 picked images and reports the rest from CollectionView', () => {
+		const source = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
+
+		// CollectionView has no render harness (no DOM environment); guard the wiring instead.
+		expect(source).not.toContain('setAppendFiles(files.slice(0, 10))');
+		expect(source).toMatch(/mergeCollectionFiles\(\[\], files\)[\s\S]{0,120}setAppendDropped\(/);
+		expect(source).toContain('dropped={appendDropped}');
+	});
+
 	it('shows keyboard focus on the dropzone that hides its file input', () => {
 		const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
 
