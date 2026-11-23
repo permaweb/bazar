@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CollectionActivityEvent, ResolvedAsset } from 'api/asset-discovery';
 import {
@@ -63,6 +63,7 @@ import {
 	homeMarketShowsInitialLoader,
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
+	HomeMarketTabs,
 	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
@@ -81,6 +82,7 @@ import {
 	pendingCollectionPriceAssets,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
+	PRESERVE_ROUTE_FOCUS,
 	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
@@ -89,6 +91,8 @@ import {
 	restartCollectionPriceDeadlines,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
+	routeFocusAction,
+	routeFocusPreserved,
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
 	verifiedAssetForDetail,
@@ -1960,5 +1964,77 @@ describe('Collection live listing truth', () => {
 		expect(iterations).toBe(1);
 		expect(merged).toHaveLength(10_000);
 		expect(new Set(merged.map((result) => result.asset.id)).size).toBe(10_000);
+	});
+});
+
+describe('Route focus policy', () => {
+	it('keeps focus on first load and moves it to main on a new view', () => {
+		expect(routeFocusAction(null, '/discover')).toBe('initial');
+		expect(routeFocusAction('/discover', '/discover')).toBe('initial');
+		expect(routeFocusAction('/discover', '/asset/a/b', { navigationType: 'PUSH' })).toBe('new-view');
+		expect(routeFocusAction('/discover', '/discover?q=art', { navigationType: 'PUSH' })).toBe('new-view');
+	});
+	it('treats a preserveFocus push or replace as an in-view update', () => {
+		expect(routeFocusAction('/discover', '/collections', { preserveFocus: true, navigationType: 'PUSH' })).toBe(
+			'in-view'
+		);
+		expect(routeFocusAction('/collections', '/activity', { preserveFocus: true, navigationType: 'REPLACE' })).toBe(
+			'in-view'
+		);
+		expect(routeFocusAction(null, '/collections', { preserveFocus: true, navigationType: 'PUSH' })).toBe('initial');
+	});
+	it('still moves focus when Back lands on an entry that stored preserveFocus', () => {
+		expect(routeFocusAction('/asset/a/b', '/collections', { preserveFocus: true, navigationType: 'POP' })).toBe(
+			'new-view'
+		);
+	});
+	it('reads preserveFocus only from a strict true flag in location.state', () => {
+		expect(routeFocusPreserved(PRESERVE_ROUTE_FOCUS.state)).toBe(true);
+		expect(routeFocusPreserved(null)).toBe(false);
+		expect(routeFocusPreserved({ fungibleOperationActivityId: 'x' })).toBe(false);
+		expect(routeFocusPreserved({ preserveFocus: 'yes' })).toBe(false);
+	});
+});
+
+describe('Home market tabs', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	it('renders one tab stop with the selected tab and the panel wiring', () => {
+		const html = renderToStaticMarkup(
+			React.createElement(HomeMarketTabs, { active: 'collections', onSelect() {} })
+		);
+		expect(html.match(/tabindex="0"/g)).toHaveLength(1);
+		expect(html.match(/tabindex="-1"/g)).toHaveLength(2);
+		expect(html).toMatch(/aria-selected="true"[^>]*id="home-collections-tab"[^>]*tabindex="0"/);
+		expect(html).toContain('aria-controls="home-activity-panel"');
+		expect(html).toContain('role="tablist"');
+	});
+	it('moves selection and focus with Arrow, Home and End keys', () => {
+		const focused: string[] = [];
+		vi.stubGlobal('window', { requestAnimationFrame: (callback: () => void) => callback() });
+		vi.stubGlobal('document', { getElementById: (id: string) => ({ focus: () => focused.push(id) }) });
+		const selected: string[] = [];
+		const tablist = HomeMarketTabs({ active: 'discover', onSelect: (tab) => selected.push(tab) });
+		const tabs = React.Children.toArray(
+			(tablist.props as { children: React.ReactNode }).children
+		) as React.ReactElement<{ onKeyDown(event: unknown): void }>[];
+		const press = (index: number, key: string) => {
+			let prevented = false;
+			tabs[index].props.onKeyDown({ key, preventDefault: () => (prevented = true) });
+			return prevented;
+		};
+		expect(press(0, 'ArrowRight')).toBe(true);
+		expect(press(0, 'ArrowLeft')).toBe(true);
+		expect(press(1, 'End')).toBe(true);
+		expect(press(2, 'Home')).toBe(true);
+		expect(press(2, 'ArrowDown')).toBe(true);
+		expect(press(0, 'Enter')).toBe(false);
+		expect(selected).toEqual(['collections', 'activity', 'activity', 'discover', 'discover']);
+		expect(focused).toEqual([
+			'home-collections-tab',
+			'home-activity-tab',
+			'home-activity-tab',
+			'home-discover-tab',
+			'home-discover-tab',
+		]);
 	});
 });
