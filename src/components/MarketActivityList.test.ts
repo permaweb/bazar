@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 import { parseAssetState } from 'api/asset-marketplace';
 
+import { toHostAccount } from 'helpers/host-account';
+
 import {
 	formatMarketActivityTimestamp,
+	marketActivityDetail,
 	marketActivityLabel,
 	MarketActivityList,
 	marketActivityRefreshDelay,
@@ -15,6 +18,21 @@ describe('market activity labels', () => {
 	it('presents a purchase reservation as a submitted purchase', () => {
 		expect(marketActivityLabel('register-interest')).toBe('Purchase submitted');
 		expect(marketActivityLabel('register-interest', true)).toBe('Purchase confirmed');
+	});
+
+	it('names a host-form transfer recipient by its raw address', () => {
+		const raw = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
+		const event = {
+			action: 'transfer' as const,
+			actor: 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc',
+			height: 1,
+			id: 'transaction',
+			processId: 'process',
+			recipient: toHostAccount(raw)!,
+			timestamp: 1,
+		};
+		expect(marketActivityDetail(event)).toBe('To 1uTLV5G…82YZw');
+		expect(marketActivityDetail({ ...event, recipient: raw })).toBe('To 1uTLV5G…82YZw');
 	});
 
 	it('labels a reservation with its inclusive payment deadline and only marks it expired afterward', () => {

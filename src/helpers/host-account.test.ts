@@ -6,6 +6,7 @@ import {
 	fromHostAccount,
 	isWalletAddress,
 	sameAccount,
+	shortAccount,
 	toHostAccount,
 } from './host-account';
 import vectors from './host-account.vectors.json';
@@ -60,6 +61,19 @@ describe('HyperBEAM host account encoding', () => {
 		expect(displayAccount(`uri-did-pkh-eip155-1-${ethereum}`)).toBe(ethereum);
 		const nonCanonical = 'uri-did-pkh-eip155-1-0xBD8EE4A54FA820421B272E0D51C48068AED08C4F';
 		expect(displayAccount(nonCanonical)).toBe(nonCanonical);
+	});
+
+	it.each(vectors.valid)('shortens the host form $host to the same label as its raw address', ({ raw, host }) => {
+		expect(shortAccount(raw)).toBe(`${raw.slice(0, 7)}…${raw.slice(-5)}`);
+		expect(shortAccount(host)).toBe(shortAccount(raw));
+		expect(shortAccount(host)).not.toContain('uri-di');
+	});
+
+	it('shortens Ethereum host accounts to their address and keeps short values whole', () => {
+		const ethereum = '0xbd8ee4a54fa820421b272e0d51c48068aed08c4f';
+		expect(shortAccount(`uri-did-pkh-eip155-1-${ethereum}`)).toBe('0xbd8ee…08c4f');
+		expect(shortAccount('actor')).toBe('actor');
+		expect(shortAccount('a'.repeat(14))).toBe('a'.repeat(14));
 	});
 });
 

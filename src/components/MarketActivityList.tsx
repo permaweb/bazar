@@ -10,7 +10,7 @@ import type { AssetSummary, Collection } from 'api/collections';
 import { ArCurrencyText } from 'components/ArCurrencyLabel';
 import { Tooltip } from 'components/Tooltip';
 import { WalletAddress } from 'components/WalletAddress';
-import { sameAccount } from 'helpers/host-account';
+import { sameAccount, shortAccount } from 'helpers/host-account';
 
 const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
 const absoluteTime = new Intl.DateTimeFormat(undefined, {
@@ -311,7 +311,7 @@ export function marketActivityLabel(action: CollectionActivityEvent['action'], p
 
 export function marketActivityDetail(event: CollectionActivityEvent) {
 	if (event.action === 'make-offer' && event.asking) return `${winstonToAr(event.asking)} AR total`;
-	if (event.action === 'transfer' && event.recipient) return `To ${shortActivityValue(event.recipient)}`;
+	if (event.action === 'transfer' && event.recipient) return `To ${shortAccount(event.recipient)}`;
 	if (event.action === 'register-interest' && event.orderId) return `Order ${shortActivityValue(event.orderId)}`;
 	if (event.action === 'cancel-order' && event.orderId) return `Order ${shortActivityValue(event.orderId)}`;
 	return '';

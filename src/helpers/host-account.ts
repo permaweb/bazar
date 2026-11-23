@@ -51,6 +51,16 @@ export function displayAccount(account: string): string {
 	return ETHEREUM_HOST_ACCOUNT.exec(account)?.[1] ?? accountAddress(account);
 }
 
+/**
+ * The compact form of an account for labels: the address people recognise
+ * (displayAccount), then the same 7…5 shape the profile identity shows, so a
+ * host-form account never reads as "uri-di…".
+ */
+export function shortAccount(account: string): string {
+	const address = displayAccount(account);
+	return address.length <= 14 ? address : `${address.slice(0, 7)}…${address.slice(-5)}`;
+}
+
 export function sameAccount(left: unknown, right: unknown): boolean {
 	return (
 		typeof left === 'string' &&

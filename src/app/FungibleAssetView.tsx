@@ -93,9 +93,11 @@ import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import {
 	accountAddress,
+	displayAccount,
 	isWalletAddress,
 	NONCANONICAL_WALLET_ADDRESS_MESSAGE,
 	sameAccount,
+	shortAccount,
 } from 'helpers/host-account';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
@@ -4465,7 +4467,7 @@ export function FungiblePurchaseReceiptNavigator({
 export function fungiblePurchaseReceiptOptions(orders: SwapOrder[], state: AssetState) {
 	return orders.map((order, index) => ({
 		value: order.orderId,
-		label: `Listing ${index + 1} · ${tokenLabel(order.quantity, state)} · ${short(order.creator)}`,
+		label: `Listing ${index + 1} · ${tokenLabel(order.quantity, state)} · ${shortAccount(order.creator)}`,
 	}));
 }
 
@@ -4951,14 +4953,14 @@ export function fungibleEmptyBalanceCopy(mode: 'sell' | 'transfer', listed: stri
 
 export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
 	const lot = formatArCurrencyText(`${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`);
-	return action === 'buy' ? `Buy ${lot} from ${order.creator}` : `Cancel listing of ${lot}`;
+	return action === 'buy' ? `Buy ${lot} from ${displayAccount(order.creator)}` : `Cancel listing of ${lot}`;
 }
 
 export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState) {
 	return formatArCurrencyText(
 		`${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(
 			order.asking
-		)} AR total, seller ${order.creator}`
+		)} AR total, seller ${displayAccount(order.creator)}`
 	);
 }
 
@@ -5010,7 +5012,7 @@ export function fungibleTransferSubmitLabel(
 	recipient: string,
 	fullRecipient = false
 ) {
-	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : short(recipient)}`;
+	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : shortAccount(recipient)}`;
 }
 
 function formatGroupedTokenAmount(raw: string, denomination: number) {
@@ -5063,7 +5065,7 @@ function activityDetail(event: CollectionActivityEvent, state: AssetState) {
 		return event.asking ? `${winstonToAr(event.asking)} AR total` : '';
 	}
 	if (event.action === 'transfer') {
-		return event.recipient ? `To ${short(event.recipient)}` : '';
+		return event.recipient ? `To ${shortAccount(event.recipient)}` : '';
 	}
 	if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
 	if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
