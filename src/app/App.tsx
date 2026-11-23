@@ -5281,6 +5281,15 @@ type MarketSelectOption<Value extends string> = {
 	label: string;
 };
 
+/**
+ * While its listbox is open, a MarketSelect owns Escape: an enclosing dialog
+ * (useDialogFocus) must let the first Escape close only the list. Closed, the
+ * attribute is absent so the next Escape dismisses the dialog as usual.
+ */
+export function marketSelectEscapeOwnerAttr(open: boolean): '' | undefined {
+	return open ? '' : undefined;
+}
+
 export function MarketSelect<Value extends string>({
 	label,
 	value,
@@ -5352,6 +5361,7 @@ export function MarketSelect<Value extends string>({
 	return (
 		<div
 			className="market-select"
+			data-dialog-escape-owner={marketSelectEscapeOwnerAttr(open)}
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
 			}}
