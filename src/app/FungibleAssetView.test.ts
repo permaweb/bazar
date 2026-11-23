@@ -49,6 +49,7 @@ import {
 	MatchedListingsReview,
 	nextSettlementAnnouncement,
 	orderbookCumulativeDepths,
+	pendingFungibleOperationActivities,
 	purchaseAmountMatch,
 	purchaseFailureMessageNeedsManualReview,
 	purchaseQuoteIdentity,
@@ -56,6 +57,7 @@ import {
 	purchaseSettlementNeedsManualReview,
 	purchaseStateFrameBuffer,
 	restartFungibleOperationActivity,
+	resumableFungibleOperationActivity,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
 	visibleOrderbookRows,
@@ -394,6 +396,50 @@ describe('fungible operation error semantics', () => {
 
 		expect(activities.map((activity) => activity.operation.kind)).toEqual(['buy', 'sell']);
 		expect(activities.map((activity) => activity.visible)).toEqual([false, true]);
+	});
+
+	it('stops a finished hidden activity from blocking new actions while keeping it reviewable', () => {
+		const finished: FungibleOperationActivity = {
+			id: 'transfer',
+			operation: { kind: 'transfer' },
+			phase: 'done',
+			signer: BUYER,
+			visible: false,
+		};
+		const running: FungibleOperationActivity = {
+			id: 'purchase',
+			operation: { kind: 'buy', availableOrders: [] as SwapOrder[], startingBalance: '0' },
+			phase: 'working',
+			signer: BUYER,
+			visible: false,
+		};
+		const failed: FungibleOperationActivity = {
+			...finished,
+			id: 'listing',
+			operation: { kind: 'sell' },
+			phase: 'error',
+		};
+		const pending = pendingFungibleOperationActivities([finished, running, failed]);
+
+		expect(pending.map((activity) => activity.id)).toEqual(['purchase', 'listing']);
+		expect(pending.find((activity) => activity.operation.kind !== 'buy')?.phase).toBe('error');
+		expect(pendingFungibleOperationActivities([finished])).toEqual([]);
+	});
+
+	it('reopens a running activity but replaces a finished one with the same id', () => {
+		const running: FungibleOperationActivity = {
+			id: 'transfer',
+			operation: { kind: 'transfer' },
+			phase: 'working',
+			signer: BUYER,
+			visible: false,
+		};
+		const finished: FungibleOperationActivity = { ...running, phase: 'done' };
+
+		expect(resumableFungibleOperationActivity([running], 'transfer', BUYER)).toBe(running);
+		expect(resumableFungibleOperationActivity([{ ...running, phase: null }], 'transfer', BUYER)?.phase).toBeNull();
+		expect(resumableFungibleOperationActivity([running], 'transfer', 'other-signer')).toBeUndefined();
+		expect(resumableFungibleOperationActivity([finished], 'transfer', BUYER)).toBeUndefined();
 	});
 
 	it('restarts a recoverable settlement as a visible fresh dialog instance', () => {
