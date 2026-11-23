@@ -126,22 +126,37 @@ export function ProfileStatusAnnouncement({ message }: { message: string | null 
 	);
 }
 
+/** The stored name and picture the editor started from; fixed for one open. */
+type ProfileEditSeed = { displayName: string; avatar: string };
+
+function profileEditSeed(profile: ProfileSummary): ProfileEditSeed {
+	return { displayName: profile.displayName ?? '', avatar: profile.avatar ?? '' };
+}
+
 export function ProfileEditDialog({
 	onClose,
 	onSave,
 	open,
+	ownerConnected,
 	profile,
 	restoreTarget,
 }: {
 	onClose(): void;
 	onSave(update: ProfileEditUpdate, onStatus: (status: string) => void): Promise<void>;
 	open: boolean;
+	/** Whether the connected wallet owns this profile. When it stops, the editor closes unless a save is in flight. */
+	ownerConnected: boolean;
 	profile: ProfileSummary;
 	restoreTarget(): HTMLElement | null;
 }) {
-	const [displayName, setDisplayName] = React.useState('');
+	// Read at open time only: a profile change while the editor is open must not
+	// reseed it and wipe what the owner typed.
+	const profileRef = React.useRef(profile);
+	profileRef.current = profile;
+	const [seed, setSeed] = React.useState(() => profileEditSeed(profile));
+	const [displayName, setDisplayName] = React.useState(seed.displayName);
 	const [avatarFile, setAvatarFile] = React.useState<File | null>(null);
-	const [avatarPreview, setAvatarPreview] = React.useState('');
+	const [avatarPreview, setAvatarPreview] = React.useState(seed.avatar);
 	const [dragging, setDragging] = React.useState(false);
 	const [removeAvatar, setRemoveAvatar] = React.useState(false);
 	// null while editing; the current wallet step while a save is in flight.
@@ -150,35 +165,45 @@ export function ProfileEditDialog({
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const dropzone = React.useRef<HTMLButtonElement>(null);
 	const busy = savePhase !== null;
-	const displayNameChanged = displayName.trim() !== (profile.displayName ?? '').trim();
+	// When the connected wallet stops owning the profile the editor leaves,
+	// unless a save is in flight or its failure is on screen: that outcome stays
+	// until the owner closes it (Save is disabled meanwhile).
+	const visible = open && (ownerConnected || busy || Boolean(error));
+	const displayNameChanged = displayName.trim() !== seed.displayName.trim();
 	const pictureChanged = Boolean(avatarFile) || removeAvatar;
 	const close = React.useCallback(() => {
 		if (!busy) onClose();
 	}, [busy, onClose]);
-	const dialogRef = useDialogFocus<HTMLDivElement>(open, close, restoreTarget);
+	const dialogRef = useDialogFocus<HTMLDivElement>(visible, close, restoreTarget);
 
 	React.useEffect(() => {
 		if (!open) return;
-		setDisplayName(profile.displayName ?? '');
+		const next = profileEditSeed(profileRef.current);
+		setSeed(next);
+		setDisplayName(next.displayName);
 		setAvatarFile(null);
-		setAvatarPreview(profile.avatar ?? '');
+		setAvatarPreview(next.avatar);
 		setDragging(false);
 		setRemoveAvatar(false);
 		setSavePhase(null);
 		setError('');
-	}, [open, profile.avatar, profile.displayName]);
+	}, [open]);
+
+	React.useEffect(() => {
+		if (open && !visible) onClose();
+	}, [onClose, open, visible]);
 
 	React.useEffect(() => {
 		if (!avatarFile) {
-			setAvatarPreview(removeAvatar ? '' : profile.avatar ?? '');
+			setAvatarPreview(removeAvatar ? '' : seed.avatar);
 			return;
 		}
 		const url = URL.createObjectURL(avatarFile);
 		setAvatarPreview(url);
 		return () => URL.revokeObjectURL(url);
-	}, [avatarFile, profile.avatar, removeAvatar]);
+	}, [avatarFile, removeAvatar, seed.avatar]);
 
-	if (!open) return null;
+	if (!visible) return null;
 
 	const submit = async (event: React.FormEvent) => {
 		event.preventDefault();
@@ -330,7 +355,7 @@ export function ProfileEditDialog({
 							Cancel
 						</Button>
 						<Button
-							disabled={busy || (!displayNameChanged && !pictureChanged)}
+							disabled={busy || !ownerConnected || (!displayNameChanged && !pictureChanged)}
 							type="submit"
 							variant="primary"
 						>
@@ -367,11 +392,54 @@ function profileUpdateError(cause: unknown) {
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
+type AccountProfile = Awaited<ReturnType<typeof readAccountProfile>>;
+
+/**
+ * Profile page load state:
+ *   invalid  -- the route address is not an Arweave address (terminal; nothing to retry)
+ *   loading  -- the profile read is in flight
+ *   ready    -- the read resolved; `profile` is null when the address has no profile yet
+ *   error    -- the read failed; Retry starts loading again
+ */
+export type ProfileLoadStatus = 'invalid' | 'loading' | 'ready' | 'error';
+
+export const INVALID_PROFILE_ADDRESS = 'This is not a valid Arweave profile address.';
+
+export function profileLoadView({
+	address,
+	profile,
+	readError,
+	walletAddress,
+}: {
+	address: string;
+	profile: AccountProfile | undefined;
+	readError: string;
+	walletAddress: string | null | undefined;
+}) {
+	const status: ProfileLoadStatus = !ADDRESS.test(address)
+		? 'invalid'
+		: readError
+		? 'error'
+		: profile === undefined
+		? 'loading'
+		: 'ready';
+	return {
+		status,
+		error: status === 'invalid' ? INVALID_PROFILE_ADDRESS : status === 'error' ? readError : '',
+		isLoading: status === 'loading',
+		// Only a loaded profile can be edited: before the read lands, or after it
+		// failed, the editor would start from an empty name, and a picture-only
+		// save would publish that empty name over the stored one.
+		canEdit: status === 'ready' && walletAddress === address,
+		canRetry: status === 'error',
+	};
+}
+
 export default function ProfileRoute() {
 	const { address = '' } = useParams();
 	const wallet = useWallet();
 	const [retry, setRetry] = React.useState(0);
-	const [profile, setProfile] = React.useState<Awaited<ReturnType<typeof readAccountProfile>>>();
+	const [profile, setProfile] = React.useState<AccountProfile>();
 	const [error, setError] = React.useState('');
 	const [editOpen, setEditOpen] = React.useState(false);
 	const [savedNotice, setSavedNotice] = React.useState<string | null>(null);
@@ -381,10 +449,8 @@ export default function ProfileRoute() {
 		setError('');
 		setProfile(undefined);
 		setSavedNotice(null);
-		if (!ADDRESS.test(address)) {
-			setError('This is not a valid Arweave profile address.');
-			return;
-		}
+		// An invalid address is derived by profileLoadView; there is nothing to read.
+		if (!ADDRESS.test(address)) return;
 		const controller = new AbortController();
 		void readAccountProfile(address, { signal: controller.signal }).then(
 			(value) => {
@@ -428,21 +494,23 @@ export default function ProfileRoute() {
 		// edit trigger in a frame; announce the result on the page after that.
 		window.requestAnimationFrame(() => setSavedNotice('Profile saved.'));
 	};
+	const view = profileLoadView({ address, profile, readError: error, walletAddress: wallet.address });
 	return (
 		<>
 			<ProfilePage
-				error={error}
-				isLoading={ADDRESS.test(address) && profile === undefined && !error}
-				onEdit={wallet.address === address ? openEditor : undefined}
-				onRetry={() => setRetry((value) => value + 1)}
+				error={view.error}
+				isLoading={view.isLoading}
+				onEdit={view.canEdit ? openEditor : undefined}
+				onRetry={view.canRetry ? () => setRetry((value) => value + 1) : undefined}
 				profile={summary}
 			>
-				{ADDRESS.test(address) ? <MyAssetsRoute address={address} embedded /> : null}
+				{view.status !== 'invalid' ? <MyAssetsRoute address={address} embedded /> : null}
 			</ProfilePage>
 			<ProfileEditDialog
 				onClose={() => setEditOpen(false)}
 				onSave={saveProfile}
 				open={editOpen}
+				ownerConnected={wallet.address === address}
 				profile={summary}
 				restoreTarget={() => editTrigger.current}
 			/>
