@@ -10,6 +10,7 @@ import {
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 import { fetchJsonWithDeadline, fetchTextWithDeadline, operationWithDeadline } from './fetch-with-deadline';
+import { graphqlEndpointList, type GraphqlResult, graphqlSupportsCount, postGraphql } from './graphql';
 import { assetFromMintState } from './minted-assets';
 
 export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
@@ -40,6 +41,8 @@ export type Collection = {
 	total?: number;
 	cursor?: string;
 	cursorHistory?: string[];
+	/** GraphQL index that issued `cursor` when it is not the preferred endpoint. */
+	cursorIndex?: string;
 	hasMore?: boolean;
 	indexSource?: 'carrier' | 'reference' | 'compiled-fallback';
 	manifestId?: string;
@@ -153,6 +156,7 @@ type CarrierPage = {
 	}>;
 	cursor?: string;
 	hasMore: boolean;
+	endpoint: string;
 };
 
 type BazarCollectionCandidate = {
@@ -511,12 +515,13 @@ export async function discoverBazarCollections(
 ): Promise<Collection[]> {
 	const found = new Map<string, Collection>();
 	let cursor: string | null = null;
+	let endpoints = graphqlEndpointList();
 	const visited = new Set<string>();
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		throwIfAborted(signal);
-		const request = await fetchJsonWithDeadline<BazarCollectionPayload>(
+		const request = await postGraphql<BazarCollectionPayload>(
 			fetch,
-			arweaveGraphqlEndpoint(),
+			endpoints,
 			{
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -544,6 +549,8 @@ export async function discoverBazarCollections(
 			{ timeoutError: 'collection-discovery-timeout' }
 		);
 		const { response, body: payload } = request;
+		// Later pages carry this index's cursor.
+		endpoints = [request.endpoint];
 		if (!response.ok) throw new Error(`collection-discovery-${response.status}`);
 		if (!payload || payload.errors?.length) throw new Error('collection-discovery-query');
 		const connection: BazarCollectionConnection | undefined = payload.data?.transactions;
@@ -592,9 +599,9 @@ export async function discoverBazarCollections(
 /** Resolve a shared collection link even when tag-based discovery omits it. */
 export async function loadBazarCollectionById(id: string, signal?: AbortSignal): Promise<Collection | null> {
 	if (!ARWEAVE_ID.test(id) || !isVisibleCollectionId(id)) return null;
-	const { response, body: payload } = await fetchJsonWithDeadline<BazarCollectionPayload>(
+	const { response, body: payload } = await postGraphql<BazarCollectionPayload>(
 		fetch,
-		arweaveGraphqlEndpoint(),
+		graphqlEndpointList(),
 		{
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -737,15 +744,16 @@ async function postAtomicAssetIndex<T>(
 	query: string,
 	variables: Record<string, unknown>,
 	signal: AbortSignal | undefined,
-	retryDelaysMs: readonly number[]
-): Promise<{ response: Response; body: T | undefined }> {
+	retryDelaysMs: readonly number[],
+	endpoints: readonly string[] = graphqlEndpointList()
+): Promise<GraphqlResult<T>> {
 	for (let attempt = 0; ; attempt += 1) {
-		let result: { response: Response; body: T | undefined } | undefined;
+		let result: GraphqlResult<T> | undefined;
 		let failure: unknown;
 		try {
-			result = await fetchJsonWithDeadline<T>(
+			result = await postGraphql<T>(
 				fetcher,
-				arweaveGraphqlEndpoint(),
+				endpoints,
 				{
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
@@ -807,6 +815,7 @@ export async function enrichImageCollectionAssetMetadata(
 	const unresolvedIds = new Set(unresolved.map((asset) => asset.id));
 	const indexed = new Map<string, AssetSummary>();
 	let cursor: string | null = null;
+	let pageEndpoints = graphqlEndpointList();
 	let collectionIndexComplete = false;
 	const visited = new Set<string>();
 	const indexEdges = (edges: any[]) => {
@@ -817,7 +826,7 @@ export async function enrichImageCollectionAssetMetadata(
 	};
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		try {
-			const { response, body } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
+			const { response, body, endpoint } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
 				fetcher,
 				`query BazarAtomicAssetsByCollection($collection: [String!]!, $after: String) {
 					transactions(
@@ -842,7 +851,8 @@ export async function enrichImageCollectionAssetMetadata(
 				}`,
 				{ collection: [collection.name], after: cursor },
 				signal,
-				retryDelaysMs
+				retryDelaysMs,
+				pageEndpoints
 			);
 			const connection: AtomicAssetIndexConnection | undefined = body?.data?.transactions;
 			if (
@@ -861,6 +871,7 @@ export async function enrichImageCollectionAssetMetadata(
 			if (typeof next !== 'string' || !next || visited.has(next)) break;
 			visited.add(next);
 			cursor = next;
+			pageEndpoints = [endpoint];
 		} catch {
 			throwIfAborted(signal);
 			break;
@@ -946,10 +957,16 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 	};
 }
 
+/** The fungible list's total comes from the `count` extension, so it stays on an index that answers it. */
+function countingGraphqlEndpoint(): string {
+	const endpoints = graphqlEndpointList();
+	return endpoints.find(graphqlSupportsCount) ?? endpoints[0];
+}
+
 async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Promise<FungibleTokenPage> {
 	const result = await fetchJsonWithDeadline<any>(
 		fetch,
-		arweaveGraphqlEndpoint(),
+		countingGraphqlEndpoint(),
 		{
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -1153,6 +1170,7 @@ async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collect
 		total: page.hasMore ? undefined : assets.length,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
+		...carrierCursorIndex(page),
 		hasMore: page.hasMore,
 	};
 }
@@ -1173,7 +1191,7 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 export async function loadMoreCarrierNames(collection: Collection, signal?: AbortSignal): Promise<Collection> {
 	if (collection.kind !== 'names' || !collection.hasMore) return collection;
 	if (!collection.namespace) throw new Error('carrier-namespace-missing');
-	const page = await loadCarrierPage(collection.cursor, signal);
+	const page = await loadCarrierPage(collection.cursor, signal, collection.cursorIndex);
 	const cursorHistory = collection.cursorHistory ?? (collection.cursor ? [collection.cursor] : []);
 	if (page.cursor && (cursorHistory.includes(page.cursor) || cursorHistory.length >= MAX_INDEX_PAGES)) {
 		throw new Error('carrier-index-pagination-stalled');
@@ -1188,15 +1206,27 @@ export async function loadMoreCarrierNames(collection: Collection, signal?: Abor
 		assets,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [...cursorHistory, page.cursor] : cursorHistory,
+		...carrierCursorIndex(page),
 		hasMore: page.hasMore,
 		total: page.hasMore ? undefined : assets.length,
 	};
 }
 
-async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<CarrierPage> {
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+/** Record a non-preferred issuing index so the next page can return to it. */
+function carrierCursorIndex(page: CarrierPage): Pick<Collection, 'cursorIndex'> {
+	return page.endpoint === arweaveGraphqlEndpoint() ? {} : { cursorIndex: page.endpoint };
+}
+
+async function loadCarrierPage(after?: string, signal?: AbortSignal, cursorIndex?: string): Promise<CarrierPage> {
+	const endpoints = graphqlEndpointList();
+	const {
+		response,
+		body: payload,
+		endpoint,
+	} = await postGraphql<any>(
 		fetch,
-		arweaveGraphqlEndpoint(),
+		// A cursor belongs to the index that issued it; only the first page may fall back.
+		after ? [cursorIndex ?? endpoints[0]] : endpoints,
 		{
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -1251,6 +1281,7 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<Ca
 		edges,
 		cursor,
 		hasMore: Boolean(connection.pageInfo.hasNextPage),
+		endpoint,
 	};
 }
 

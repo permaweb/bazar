@@ -22,6 +22,7 @@ export function createGlobalActivityStatsScan(
 	const batches = Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ({
 		recipients: ids.slice(index * 100, (index + 1) * 100),
 		cursor: null as string | null,
+		graphql: options.graphql,
 		visited: new Set<string>(),
 		complete: false,
 	}));
@@ -31,6 +32,7 @@ export function createGlobalActivityStatsScan(
 			events.clear();
 			for (const batch of batches) {
 				batch.cursor = null;
+				batch.graphql = options.graphql;
 				batch.visited.clear();
 				batch.complete = false;
 			}
@@ -55,6 +57,8 @@ export function createGlobalActivityStatsScan(
 									throw new Error('collection-activity-pagination-limit');
 								const page = await discoverCollectionActivityPage({
 									...options,
+									// A resumed cursor stays on the index that issued it.
+									graphql: batch.graphql,
 									recipients: batch.recipients,
 									cursor: batch.cursor,
 									pageSize: 100,
@@ -69,6 +73,7 @@ export function createGlobalActivityStatsScan(
 									events.set(event.id, mergeIndexedActivityEvent(events.get(event.id), event));
 								if (page.hasNextPage) {
 									batch.cursor = page.cursor;
+									batch.graphql = page.graphql;
 									batch.visited.add(page.cursor!);
 								} else batch.complete = true;
 							}

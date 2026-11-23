@@ -8,6 +8,7 @@ import {
 	arweaveGatewayFromLocation,
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
+	arweaveGraphqlEndpoints,
 	bazarAoTransportUrl,
 	currentPermawebOsNetworkPolicy,
 	DEFAULT_ARWEAVE_GATEWAY,
@@ -17,6 +18,7 @@ import {
 	loadPermawebOsNetworkPolicy,
 	normalizeComputeGateways,
 	observerRelayFromLocation,
+	parseGraphqlEndpoints,
 	permanentContentGatewayFromLocation,
 	permawebOsAoAvailable,
 	refreshPermawebOsNetworkPolicy,
@@ -206,6 +208,38 @@ describe('Arweave gateway routing', () => {
 
 		expect(config.arweaveGatewayFromLocation(location())).toBe('https://gateway.example');
 		expect(config.arweaveGraphqlEndpoint()).toBe('https://arweave.net/graphql');
+	});
+
+	it('defaults to arweave.net GraphQL with ardrive.net as the ordered fallback', () => {
+		expect(arweaveGraphqlEndpoints()).toEqual(['https://arweave.net/graphql', 'https://ardrive.net/graphql']);
+	});
+
+	it('parses an ordered GraphQL endpoint list and skips unusable entries', () => {
+		expect(
+			parseGraphqlEndpoints(
+				' https://ardrive.net/graphql ,ftp://bad.example/graphql,,not a url,https://user:pw@x.example/graphql,https://ardrive.net/graphql,http://localhost:4000/graphql'
+			)
+		).toEqual(['https://ardrive.net/graphql', 'http://localhost:4000/graphql']);
+		expect(parseGraphqlEndpoints(undefined)).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+		]);
+		expect(parseGraphqlEndpoints(' , nope ')).toEqual([
+			'https://arweave.net/graphql',
+			'https://ardrive.net/graphql',
+		]);
+	});
+
+	it('reads the GraphQL endpoint order from VITE_GRAPHQL_ENDPOINTS', async () => {
+		vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://ardrive.net/graphql,https://arweave.net/graphql');
+		vi.resetModules();
+		const config = await import('./config');
+
+		expect(config.arweaveGraphqlEndpoints()).toEqual([
+			'https://ardrive.net/graphql',
+			'https://arweave.net/graphql',
+		]);
+		expect(config.arweaveGraphqlEndpoint()).toBe('https://ardrive.net/graphql');
 	});
 
 	it('builds an ordinary Arweave resource URL', () => {

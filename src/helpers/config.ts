@@ -1,5 +1,6 @@
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
 const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
+const configuredGraphqlEndpoints = import.meta.env.VITE_GRAPHQL_ENDPOINTS?.trim();
 
 export type NetworkProviderSummary = {
 	url: string;
@@ -129,9 +130,37 @@ export function arweaveClientConfig(gateway = arweaveGatewayFromLocation()) {
 	};
 }
 
-/** Keep indexed searches independent of the serving host and content gateway overrides. */
+export const DEFAULT_GRAPHQL_ENDPOINTS: readonly string[] = [
+	'https://arweave.net/graphql',
+	'https://ardrive.net/graphql',
+];
+
+/** Parse an ordered, comma-separated GraphQL endpoint list; unusable entries are skipped. */
+export function parseGraphqlEndpoints(value: string | undefined): string[] {
+	const endpoints = new Set<string>();
+	for (const entry of value?.split(',') ?? []) {
+		const candidate = entry.trim();
+		if (!candidate) continue;
+		try {
+			const url = new URL(candidate);
+			if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) endpoints.add(url.href);
+		} catch {
+			// A malformed entry must not take indexed search down with it.
+		}
+	}
+	return endpoints.size ? [...endpoints] : [...DEFAULT_GRAPHQL_ENDPOINTS];
+}
+
+const graphqlEndpoints = parseGraphqlEndpoints(configuredGraphqlEndpoints);
+
+/** Indexed-search endpoints in preference order, independent of the serving host and content gateway. */
+export function arweaveGraphqlEndpoints(): string[] {
+	return [...graphqlEndpoints];
+}
+
+/** The preferred indexed-search endpoint; persisted cursors and scan scopes stay keyed to it. */
 export function arweaveGraphqlEndpoint(): string {
-	return 'https://arweave.net/graphql';
+	return graphqlEndpoints[0];
 }
 
 /** Address an Arweave item through the gateway's ordinary HTTPSig resource route. */

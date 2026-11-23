@@ -4673,11 +4673,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const activityListId = React.useId();
 	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
 	const activityScope = React.useMemo(() => JSON.stringify([...activityRecipients].sort()), [activityRecipients]);
-	const graphql = arweaveGraphqlEndpoint();
 	const pager = React.useMemo(() => {
 		const recipients = new Set<string>(JSON.parse(activityScope));
-		return createGlobalActivityPager({ graphql, acceptProcessId: (id) => recipients.has(id) });
-	}, [activityScope, graphql]);
+		return createGlobalActivityPager({ acceptProcessId: (id) => recipients.has(id) });
+	}, [activityScope]);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
@@ -8786,6 +8785,9 @@ function AssetView() {
 	const activityAssetRef = React.useRef('');
 	const askAssetRef = React.useRef('');
 	const activityLoadMoreRef = React.useRef<AbortController | null>(null);
+	// GraphQL cursors are index-specific: older pages return to the index that issued them.
+	const activityCursorIndexRef = React.useRef<string | undefined>(undefined);
+	const askCursorIndexRef = React.useRef<string | undefined>(undefined);
 	const askLoadMoreRef = React.useRef<AbortController | null>(null);
 	const [activeSection, setActiveSection] = React.useState<
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
@@ -8964,6 +8966,7 @@ function AssetView() {
 					if (!controller.signal.aborted) {
 						setAssetActivity(page.events);
 						setActivityCursor(page.cursor);
+						activityCursorIndexRef.current = page.graphql;
 						setActivityHasNextPage(page.hasNextPage);
 						setActivityTotalCount(page.totalCount);
 						try {
@@ -9011,6 +9014,7 @@ function AssetView() {
 					if (controller.signal.aborted) return;
 					setAssetAskActivity(page.events);
 					setAskCursor(page.cursor);
+					askCursorIndexRef.current = page.graphql;
 					setAskHasNextPage(page.hasNextPage);
 				},
 				(cause) => {
@@ -9034,6 +9038,7 @@ function AssetView() {
 		try {
 			const page = await discoverCollectionActivityPage({
 				cursor: activityCursor,
+				graphql: activityCursorIndexRef.current,
 				pageSize: 100,
 				recipients: [assetId],
 				signal: controller.signal,
@@ -9041,6 +9046,7 @@ function AssetView() {
 			if (controller.signal.aborted || activityAssetRef.current !== assetId) return;
 			setAssetActivity((current) => mergeAssetActivityPages(current, page.events));
 			setActivityCursor(page.cursor);
+			activityCursorIndexRef.current = page.graphql;
 			setActivityHasNextPage(page.hasNextPage);
 		} catch (cause) {
 			if (!controller.signal.aborted) {
@@ -9061,6 +9067,7 @@ function AssetView() {
 			const page = await discoverCollectionActivityPage({
 				actions: ['make-offer', 'register-interest'],
 				cursor: askCursor,
+				graphql: askCursorIndexRef.current,
 				pageSize: 100,
 				recipients: [assetId],
 				signal: controller.signal,
@@ -9068,6 +9075,7 @@ function AssetView() {
 			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
 			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
 			setAskCursor(page.cursor);
+			askCursorIndexRef.current = page.graphql;
 			setAskHasNextPage(page.hasNextPage);
 		} catch (cause) {
 			if (!controller.signal.aborted) {
