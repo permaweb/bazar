@@ -45,6 +45,7 @@ import {
 	fungiblePriceHistory,
 	fungiblePurchaseActivityAmount,
 	FungiblePurchaseComposer,
+	FungiblePurchaseQuoteFailureNotice,
 	FungiblePurchaseReceiptNavigator,
 	fungiblePurchaseReceiptOptions,
 	FungiblePurchaseSequence,
@@ -71,6 +72,7 @@ import {
 	visibleOrderbookRows,
 	waitForSettlementBatch,
 } from './FungibleAssetView';
+import { purchaseQuoteFailure } from './marketplace-error';
 import { PURCHASE_PAYMENT_TARGET } from './purchase-lifecycle';
 
 describe('fungible operation activity progress', () => {
@@ -1705,4 +1707,45 @@ describe('fungibleEmptyBalanceCopy', () => {
 			);
 		}
 	});
+});
+
+describe('fungible purchase quote failure notice', () => {
+	const renderNotice = (cause: unknown) => {
+		const markup = renderToStaticMarkup(
+			React.createElement(FungiblePurchaseQuoteFailureNotice, {
+				...purchaseQuoteFailure(cause),
+				describedBy: 'quote-status',
+				onRetry: () => undefined,
+			})
+		);
+		return { markup, text: markup.replace(/<[^>]+>/g, '') };
+	};
+
+	it('names a wallet balance failure and offers a retry that can help', () => {
+		const { markup, text } = renderNotice(new Error('wallet-balance-503'));
+		expect(text).toContain('Your $AR balance could not be checked. Retry the cost check before buying.');
+		expect(text).not.toContain('Compute hasn’t completed');
+		expect(markup).toContain('role="status"');
+		expect(markup.match(/<button/g)).toHaveLength(1);
+		expect(markup).toContain('aria-describedby="quote-status"');
+		expect(text).toContain('Retry cost check');
+	});
+
+	it('names an unavailable network fee quote and offers a retry', () => {
+		const { markup, text } = renderNotice(new Error('transaction-price-429'));
+		expect(text).toContain('Arweave network fees are unavailable.');
+		expect(text).not.toContain('Compute hasn’t completed');
+		expect(markup).toContain('<button');
+	});
+
+	it.each(['asset-purchase-registration-fee-too-high', 'asset-purchase-invalid-registration-fee'])(
+		'explains a terminal %s listing without a retry that cannot succeed',
+		(code) => {
+			const { markup, text } = renderNotice(new Error(code));
+			expect(text).toContain('The seller needs to');
+			expect(text).not.toContain('Compute hasn’t completed');
+			expect(text).not.toContain('Retry');
+			expect(markup).not.toContain('<button');
+		}
+	);
 });
