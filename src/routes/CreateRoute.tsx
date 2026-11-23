@@ -150,6 +150,89 @@ function AnimatedCreditBadgeIcon() {
 	);
 }
 
+/** A paid create run that has been submitted but may not have reported a wallet phase yet. */
+export type MintSubmission = 'mint' | 'resume';
+
+/** Shown while a run checks the owner, price and balance, before the first wallet prompt. */
+export const MINT_PREFLIGHT_LABEL: Record<MintSubmission, string> = {
+	mint: 'Checking wallet and balance…',
+	resume: 'Recovering the saved upload…',
+};
+
+/**
+ * Runs `run` only when no other run holds `guard`. The guard is taken synchronously, before
+ * the first await, so a second click during the preflight checks cannot start a duplicate paid
+ * mint. Resolves true when `run` ran, false when it was skipped; the guard is released either way.
+ */
+export async function runSingleFlight(guard: { current: boolean }, run: () => Promise<void>): Promise<boolean> {
+	if (guard.current) return false;
+	guard.current = true;
+	try {
+		await run();
+		return true;
+	} finally {
+		guard.current = false;
+	}
+}
+
+type CreateMode = 'asset' | 'collection' | 'fungible';
+
+export function MintSubmitButton({
+	blocked,
+	connected,
+	mode,
+	phaseLabel,
+	submission,
+	working,
+}: {
+	blocked: boolean;
+	connected: boolean;
+	mode: CreateMode;
+	phaseLabel: string;
+	submission: MintSubmission | null;
+	working: boolean;
+}) {
+	return (
+		<Button className="mint-submit" type="submit" size="custom" disabled={working || blocked}>
+			{working
+				? phaseLabel || MINT_PREFLIGHT_LABEL[submission ?? 'mint']
+				: connected
+				? mode === 'asset'
+					? 'Upload and mint'
+					: mode === 'collection'
+					? 'Mint collection'
+					: 'Mint token'
+				: 'Connect wallet to create'}
+			{!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
+		</Button>
+	);
+}
+
+export function MintRecoveryActions({
+	onDismiss,
+	onResume,
+	phaseLabel,
+	submission,
+	working,
+}: {
+	onDismiss: () => void;
+	onResume: () => void;
+	phaseLabel: string;
+	submission: MintSubmission | null;
+	working: boolean;
+}) {
+	return (
+		<div>
+			<Button type="button" onClick={onResume} disabled={working} size="custom">
+				{submission === 'resume' ? phaseLabel || MINT_PREFLIGHT_LABEL.resume : 'Finish mint'}
+			</Button>
+			<Button type="button" onClick={onDismiss} disabled={working} size="custom">
+				Dismiss
+			</Button>
+		</div>
+	);
+}
+
 type FungibleMintDialogProps = {
 	error: string | null;
 	logoPreview: string;
@@ -500,7 +583,9 @@ export default function CreateRoute() {
 	const fungibleProgressButton = React.useRef<HTMLButtonElement>(null);
 	const metadataRequest = React.useRef(0);
 	const artworkRevision = React.useRef(0);
-	const [mode, setMode] = React.useState<'asset' | 'collection' | 'fungible'>('asset');
+	const submissionGuard = React.useRef(false);
+	const [submission, setSubmission] = React.useState<MintSubmission | null>(null);
+	const [mode, setMode] = React.useState<CreateMode>('asset');
 	const [name, setName] = React.useState('');
 	const [description, setDescription] = React.useState('');
 	const [ticker, setTicker] = React.useState('');
@@ -865,7 +950,17 @@ export default function CreateRoute() {
 			transactionIds: [asset.artworkId, asset.id].filter((id): id is string => Boolean(id)),
 		});
 	};
+	const submitOnce = (kind: MintSubmission, run: () => Promise<void>) =>
+		runSingleFlight(submissionGuard, async () => {
+			setSubmission(kind);
+			try {
+				await run();
+			} finally {
+				setSubmission(null);
+			}
+		});
 	const mint = async () => {
+		if (submissionGuard.current) return;
 		if (!wallet.address) {
 			wallet.openConnectDialog();
 			return;
@@ -881,6 +976,10 @@ export default function CreateRoute() {
 			}
 			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
+		await submitOnce('mint', submitMint);
+	};
+	const submitMint = async () => {
+		if (!wallet.address) return;
 		setError(null);
 		setResult(null);
 		setCollectionResult(null);
@@ -970,7 +1069,8 @@ export default function CreateRoute() {
 			}
 		}
 	};
-	const resume = async () => {
+	const resume = () => submitOnce('resume', submitResume);
+	const submitResume = async () => {
 		if (!wallet.address || !draft) return;
 		setError(null);
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
@@ -997,7 +1097,7 @@ export default function CreateRoute() {
 			failUpload(uploadId, message);
 		}
 	};
-	const working = phase !== null || collectionPhase !== null || fungibleSubmitting;
+	const working = submission !== null || phase !== null || collectionPhase !== null || fungibleSubmitting;
 	const phaseLabel = fungiblePhase
 		? {
 				'signing-logo': 'Approve the token logo in your wallet…',
@@ -1081,22 +1181,16 @@ export default function CreateRoute() {
 							finish a self-contained atomic asset.
 						</span>
 					</div>
-					<div>
-						<Button type="button" onClick={() => void resume()} disabled={working} size="custom">
-							Finish mint
-						</Button>
-						<Button
-							type="button"
-							onClick={() => {
-								discardMintDraft(draft.owner);
-								setDraft(null);
-							}}
-							disabled={working}
-							size="custom"
-						>
-							Dismiss
-						</Button>
-					</div>
+					<MintRecoveryActions
+						onDismiss={() => {
+							discardMintDraft(draft.owner);
+							setDraft(null);
+						}}
+						onResume={() => void resume()}
+						phaseLabel={phaseLabel}
+						submission={submission}
+						working={working}
+					/>
 				</div>
 			) : null}
 
@@ -2012,12 +2106,8 @@ export default function CreateRoute() {
 							)}
 						</Button>
 					) : (
-						<Button
-							className="mint-submit"
-							type="submit"
-							size="custom"
-							disabled={
-								working ||
+						<MintSubmitButton
+							blocked={
 								Boolean(wallet.address && readingAudioMetadata) ||
 								Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
 								Boolean(
@@ -2029,18 +2119,12 @@ export default function CreateRoute() {
 								) ||
 								Boolean(wallet.address && mode === 'fungible' && fungibleReady && !fungibleEstimate)
 							}
-						>
-							{working
-								? phaseLabel
-								: wallet.address
-								? mode === 'asset'
-									? 'Upload and mint'
-									: mode === 'collection'
-									? 'Mint collection'
-									: 'Mint token'
-								: 'Connect wallet to create'}
-							{!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
-						</Button>
+							connected={Boolean(wallet.address)}
+							mode={mode}
+							phaseLabel={phaseLabel}
+							submission={submission}
+							working={working}
+						/>
 					)}
 				</form>
 			</div>
