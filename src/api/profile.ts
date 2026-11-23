@@ -26,7 +26,7 @@ export const PROFILE_AVATAR_MAX_BYTES = 10 * 1024 * 1024;
  * profile data read. Shared reads hold one of six slots until they settle, so a read
  * lasts at most this long per index tried plus once more for the data.
  */
-export const PROFILE_REQUEST_TIMEOUT_MS = 8_000;
+export const PROFILE_REQUEST_TIMEOUT_MS = 15_000;
 
 export type AccountProfile = {
 	address: string;

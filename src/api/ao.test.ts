@@ -870,3 +870,12 @@ describe('Bazar configured AO peer order', () => {
 		]);
 	});
 });
+
+describe('AO peer client deadlines', () => {
+	it('gives a peer longer than ao.js default to answer node-info discovery', async () => {
+		const { AO_META_TIMEOUT_MS, peerConfig } = await import('./ao');
+
+		expect(peerConfig(['https://node.example'], 'discover', true).metaTimeoutMs).toBe(AO_META_TIMEOUT_MS);
+		expect(AO_META_TIMEOUT_MS).toBeGreaterThan(5_000);
+	});
+});

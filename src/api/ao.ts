@@ -205,8 +205,13 @@ export function warmAoFetch(onNetworkPolicy?: () => void, options: { probeProces
 export const AO_REQUEST_TIMEOUT_MS = 12_000;
 /** Start the next read peer when the first has not sent headers by then. */
 export const AO_READ_HEDGE_AFTER_MS = 1_500;
+/**
+ * Deadline for a peer's node-info read (rate-limit discovery). ao.js defaults to 5 s; arweave.net
+ * answered in 2.2-3.3 s and passed 5 s on 3 of 7 page loads (2026-11-23), losing discovery.
+ */
+export const AO_META_TIMEOUT_MS = 10_000;
 
-function peerConfig(peers: readonly string[], rateLimit: 'discover' | false, ordered: boolean) {
+export function peerConfig(peers: readonly string[], rateLimit: 'discover' | false, ordered: boolean) {
 	const nodes = peers.map((prefix) => ({ prefix, 'rate-limit': rateLimit } as const));
 	const strategy = ordered ? ('All' as const) : ('By-Base' as const);
 	const readRoute = (method: 'GET' | 'HEAD') => ({
@@ -221,6 +226,7 @@ function peerConfig(peers: readonly string[], rateLimit: 'discover' | false, ord
 	return {
 		nodes,
 		requestTimeoutMs: AO_REQUEST_TIMEOUT_MS,
+		metaTimeoutMs: AO_META_TIMEOUT_MS,
 		...(nodes.length
 			? {
 					routes: [
