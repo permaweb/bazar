@@ -5252,13 +5252,25 @@ input:focus {
 	font-size: var(--type-display);
 }
 .asset-group-heading > span {
-	display: grid;
-	place-items: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
 	min-width: 30px;
 	height: 30px;
+	padding: 0 8px;
 	border-radius: 5px;
 	background: var(--panel);
 	font-size: var(--type-small);
+}
+.asset-group-count-spinner {
+	width: 10px;
+	height: 10px;
+	flex: 0 0 auto;
+	border: 1.5px solid var(--line-dark);
+	border-top-color: var(--ink);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
 }
 .asset-group-heading > small {
 	color: var(--muted);

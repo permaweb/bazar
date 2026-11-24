@@ -619,6 +619,8 @@ const AssetGroup = React.memo(function AssetGroup({
 		rememberIndexedAssets
 	);
 	const count = walletAssetGroupCount(results.length, previews);
+	// Until wallet resolution settles, the count is a running total that can still grow a lot.
+	const countPending = !settled && !unavailable;
 	const resultCountRef = React.useRef(entries.length);
 	const [revealAnnouncement, setRevealAnnouncement] = React.useState('');
 	resultCountRef.current = entries.length;
@@ -641,13 +643,16 @@ const AssetGroup = React.memo(function AssetGroup({
 			<div className="asset-group-title">
 				<div className="asset-group-heading">
 					<h2
-						aria-label={`${title}, ${count.shown.toLocaleString()}${
+						aria-label={`${title}, ${count.shown.toLocaleString()}${countPending ? ' so far' : ''}${
 							count.detail ? `, ${count.detail}` : ''
 						}`}
 					>
 						{title}
 					</h2>
-					<span aria-hidden="true">{count.shown.toLocaleString()}</span>
+					<span aria-hidden="true">
+						{count.shown.toLocaleString()}
+						{countPending ? <i className="asset-group-count-spinner" /> : null}
+					</span>
 					{count.detail ? (
 						<small aria-hidden="true" className="asset-group-pending-count">
 							{count.detail}
