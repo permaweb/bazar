@@ -125,6 +125,11 @@ read moves to the next node on an error, a not-found, or no headers within 1.5
 seconds. Process-state reads also move on an HTML answer or an answer without
 state. List the fastest correct node first.
 
+The published site is built with `VITE_COMPUTE_GATEWAY=https://arweave.net` (see the deploy
+workflow). `bazar.arweave.net` serves the app through an Arweave name and does not compute
+AO process state itself, so reads go straight to arweave.net rather than trying the serving
+origin first.
+
 Applying the header control persists the peer list and transport selection in the
 page URL. Bazar does not silently switch to its local fallback after a request has
 been sent through PermawebOS; local AO.js is selected only when PermawebOS is
