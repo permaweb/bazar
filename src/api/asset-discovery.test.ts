@@ -34,6 +34,17 @@ import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetInd
 
 vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
 
+// These discovery tests exercise pagination and consumer behavior with inline fixture blocks.
+// The transport and index-to-block join are exercised with separate responses in transaction-blocks.test.ts.
+vi.mock('./transaction-blocks', () => ({
+	arweaveTransactionOffset: () => undefined,
+	readTransactionBlocks: async (
+		_fetcher: typeof fetch,
+		_endpoint: string,
+		edges: Array<{ node: { block?: { height: number; timestamp: number } | null } }>
+	) => new Map(edges.map((edge) => [edge, edge.node.block ?? null])),
+}));
+
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
 const assetA = 'A'.repeat(43);

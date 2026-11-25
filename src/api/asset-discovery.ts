@@ -13,6 +13,7 @@ import {
 } from './asset-marketplace';
 import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
 import {
+	defaultFetch,
 	GRAPHQL_RETRY_DELAYS_MS,
 	graphqlEndpointList,
 	graphqlIdBatchSize,
@@ -22,6 +23,12 @@ import {
 	usableGraphqlPayload,
 } from './graphql';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
+import {
+	arweaveTransactionOffset,
+	readTransactionBlocks,
+	type TransactionIndexFilters,
+	type TransactionIndexPage,
+} from './transaction-blocks';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
@@ -102,7 +109,6 @@ type GraphqlNode = {
 	recipient?: string;
 	tags?: Array<{ name: string; value: string }>;
 	owner?: { address?: string };
-	block?: { height?: number; timestamp?: number };
 };
 
 type GraphqlEdge = { cursor: string; node: GraphqlNode };
@@ -110,6 +116,7 @@ type GraphqlConnection = {
 	pageInfo: { hasNextPage: boolean };
 	edges: GraphqlEdge[];
 };
+type CandidatePageBoundary = { offset: bigint; height: number };
 
 type CandidateOptions = {
 	fetch?: typeof fetch;
@@ -281,7 +288,7 @@ const WALLET_CANDIDATES_QUERY = `query WalletAssetCandidates(
 		pageInfo { hasNextPage }
 		edges {
 			cursor
-			node { id recipient tags { name value } owner { address } block { height timestamp } }
+			node { id recipient tags { name value } owner { address } }
 		}
 	}
 	marketActions: transactions(
@@ -294,7 +301,7 @@ const WALLET_CANDIDATES_QUERY = `query WalletAssetCandidates(
 		pageInfo { hasNextPage }
 		edges {
 			cursor
-			node { id recipient tags { name value } owner { address } block { height timestamp } }
+			node { id recipient tags { name value } owner { address } }
 		}
 	}
 	receivedTransfers: transactions(
@@ -306,7 +313,7 @@ const WALLET_CANDIDATES_QUERY = `query WalletAssetCandidates(
 		pageInfo { hasNextPage }
 		edges {
 			cursor
-			node { id recipient tags { name value } owner { address } block { height timestamp } }
+			node { id recipient tags { name value } owner { address } }
 		}
 	}
 }`;
@@ -326,7 +333,7 @@ const MARKET_ACTIVITY_QUERY = `query AssetMarketActivity(
 		pageInfo { hasNextPage }
 		edges {
 			cursor
-			node { id recipient tags { name value } owner { address } block { height timestamp } }
+			node { id recipient tags { name value } owner { address } }
 		}
 	}
 }`;
@@ -346,7 +353,7 @@ const COLLECTION_ACTIVITY_PAGE_QUERY = `query CollectionActivityPage(
 		pageInfo { hasNextPage }
 		edges {
 			cursor
-			node { id recipient tags { name value } owner { address } block { height timestamp } }
+			node { id recipient tags { name value } owner { address } }
 		}
 	}
 }`;
@@ -367,7 +374,7 @@ const COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY = `query CollectionActivityCursorPag
 		pageInfo { hasNextPage }
 		edges {
 			cursor
-			node { id recipient tags { name value } owner { address } block { height timestamp } }
+			node { id recipient tags { name value } owner { address } }
 		}
 	}
 }`;
@@ -817,7 +824,7 @@ export async function discoverWalletAssetCandidates(
 	options: WalletCandidateOptions = {}
 ): Promise<AssetCandidate[]> {
 	if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = options.fetch ?? defaultFetch;
 	// The preferred index scopes the scan; an explicit `graphql` pins every page to it.
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const scan = options.scan ?? createWalletCandidateScan(address, graphql);
@@ -825,9 +832,23 @@ export async function discoverWalletAssetCandidates(
 		throw new TypeError('wallet-candidate-scan-scope-mismatch');
 	}
 	const fallbackEndpoints = options.graphql ? [] : graphqlEndpointList();
+	const filters: Record<WalletCandidateAlias, TransactionIndexFilters> = {
+		initiallyHeld: { tags: [{ name: 'initial-holder', values: [address] }] },
+		marketActions: {
+			owners: [address],
+			tags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
+		},
+		receivedTransfers: {
+			tags: [
+				{ name: 'action', values: ['transfer'] },
+				{ name: 'recipient', values: [address] },
+			],
+		},
+	};
 	const requestPage = async (
 		active: Set<WalletCandidateAlias>,
-		cursors: Record<WalletCandidateAlias, string | null>
+		cursors: Record<WalletCandidateAlias, string | null>,
+		boundaries: Map<WalletCandidateAlias, CandidatePageBoundary>
 	) => {
 		const requestedAliases = [...active];
 		// Only a scan's first page may fall back; its cursors and heads belong to the index that answered
@@ -843,13 +864,10 @@ export async function discoverWalletAssetCandidates(
 				includeInitial: active.has('initiallyHeld'),
 				includeMarket: active.has('marketActions'),
 				includeTransfers: active.has('receivedTransfers'),
-				owners: [address],
-				initialTags: [{ name: 'initial-holder', values: [address] }],
-				marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
-				transferTags: [
-					{ name: 'action', values: ['transfer'] },
-					{ name: 'recipient', values: [address] },
-				],
+				owners: filters.marketActions.owners,
+				initialTags: filters.initiallyHeld.tags,
+				marketTags: filters.marketActions.tags,
+				transferTags: filters.receivedTransfers.tags,
 			},
 		});
 		const connectionsOf = (payload: any) =>
@@ -859,8 +877,10 @@ export async function discoverWalletAssetCandidates(
 					decodeGraphqlConnection(payload, alias, 'asset-discovery-graphql-schema'),
 				])
 			);
-		const stopPreview = scan.answeringIndex ? undefined : previewFirstPage(body, requestedAliases, connectionsOf);
-		try {
+		const stopPreview = scan.answeringIndex
+			? undefined
+			: previewFirstPage(body, requestedAliases, cursors, connectionsOf);
+		const readPage = async (targets: string[]) => {
 			const {
 				response,
 				body: payload,
@@ -869,7 +889,7 @@ export async function discoverWalletAssetCandidates(
 				() =>
 					postGraphql<any>(
 						fetcher,
-						endpoints,
+						targets,
 						{
 							method: 'POST',
 							headers: { 'content-type': 'application/json' },
@@ -888,6 +908,35 @@ export async function discoverWalletAssetCandidates(
 			if (!payload) throw new Error('asset-discovery-graphql-empty');
 			if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
 			return { requestedAliases, endpoint, connections: connectionsOf(payload) };
+		};
+		try {
+			const preferred = await readPage(endpoints);
+			let selected = preferred;
+			let page: Awaited<ReturnType<typeof pageUpdates>>;
+			try {
+				page = await pageUpdates(
+					requestedAliases,
+					preferred.connections,
+					preferred.endpoint,
+					cursors,
+					boundaries
+				);
+			} catch (error) {
+				options.signal?.throwIfAborted();
+				const alternatives = endpoints.filter((endpoint) => endpoint !== preferred.endpoint);
+				if (scan.answeringIndex || preferred.endpoint !== graphql || !alternatives.length) throw error;
+				// A first page has no committed cursor until both reads succeed.
+				stopPreview?.();
+				selected = await readPage(alternatives);
+				page = await pageUpdates(
+					requestedAliases,
+					selected.connections,
+					selected.endpoint,
+					cursors,
+					boundaries
+				);
+			}
+			return { ...selected, page };
 		} finally {
 			stopPreview?.();
 		}
@@ -904,6 +953,7 @@ export async function discoverWalletAssetCandidates(
 	const previewFirstPage = (
 		body: string,
 		aliases: WalletCandidateAlias[],
+		cursors: Record<WalletCandidateAlias, string | null>,
 		connectionsOf: (payload: any) => Map<WalletCandidateAlias, GraphqlConnection>
 	) => {
 		const previewIndex = fallbackEndpoints.find((endpoint) => endpoint !== graphql);
@@ -929,7 +979,14 @@ export async function discoverWalletAssetCandidates(
 					{ timeoutMs: options.requestTimeoutMs, timeoutError: 'asset-discovery-graphql-timeout' }
 				);
 				if (controller.signal.aborted || !usableGraphqlPayload(result)) return;
-				const page = pageUpdates(aliases, connectionsOf(result.body));
+				const page = await pageUpdates(
+					aliases,
+					connectionsOf(result.body),
+					previewIndex,
+					cursors,
+					new Map(),
+					controller.signal
+				);
 				if (controller.signal.aborted || !page.processIds.size) return;
 				await options.onPage?.(
 					sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
@@ -940,36 +997,55 @@ export async function discoverWalletAssetCandidates(
 		}, options.previewAfterMs ?? WALLET_SCAN_PREVIEW_AFTER_MS);
 		return stop;
 	};
-	const pageUpdates = (
+	const pageUpdates = async (
 		requestedAliases: WalletCandidateAlias[],
-		connections: Map<WalletCandidateAlias, GraphqlConnection>
+		connections: Map<WalletCandidateAlias, GraphqlConnection>,
+		endpoint: string,
+		cursors: Record<WalletCandidateAlias, string | null>,
+		boundaries: Map<WalletCandidateAlias, CandidatePageBoundary>,
+		signal = options.signal
 	) => {
 		const processIds = new Set<string>();
 		const updates = new Map<string, AssetCandidate>();
-		for (const alias of requestedAliases) {
-			for (const edge of connections.get(alias)!.edges) {
-				const candidate =
+		const groups = requestedAliases.map((alias) => {
+			const connection = connections.get(alias)!;
+			return {
+				key: alias,
+				connection,
+				indexPage: { edges: connection.edges, after: cursors[alias], filters: filters[alias] },
+				rows: candidateRows(connection, (node) =>
 					alias === 'initiallyHeld'
-						? candidateFromNode(edge.node, 'initial-holder', address, false)
+						? candidateFromNode(node, 'initial-holder', address)
 						: alias === 'marketActions'
-						? candidateFromNode(edge.node, 'market-action', address, true)
-						: candidateFromNode(edge.node, 'transfer', address, false);
-				if (!candidate) continue;
-				if (!updates.has(candidate.processId)) {
-					const existing = scan.found.get(candidate.processId);
-					if (existing) updates.set(candidate.processId, existing);
-				}
-				mergeCandidate(updates, candidate);
-				processIds.add(candidate.processId);
+						? candidateFromNode(node, 'market-action', address, true)
+						: candidateFromNode(node, 'transfer', address)
+				),
+			};
+		});
+		const candidates = await hydrateCandidatePages(groups, boundaries, scan.found, fetcher, endpoint, {
+			signal,
+			requestTimeoutMs: options.requestTimeoutMs,
+		});
+		for (const candidate of candidates) {
+			if (!updates.has(candidate.processId)) {
+				const existing = scan.found.get(candidate.processId);
+				if (existing) updates.set(candidate.processId, existing);
 			}
+			mergeCandidate(updates, candidate);
+			processIds.add(candidate.processId);
 		}
 		return { processIds, updates };
 	};
 
 	const scanToEnd = async () => {
+		const boundaries = new Map<WalletCandidateAlias, CandidatePageBoundary>();
 		while (scan.active.size) {
 			options.signal?.throwIfAborted();
-			const { requestedAliases, connections, endpoint } = await requestPage(scan.active, scan.cursors);
+			const { requestedAliases, connections, endpoint, page } = await requestPage(
+				scan.active,
+				scan.cursors,
+				boundaries
+			);
 			const nextActive = new Set(scan.active);
 			const nextCursors = { ...scan.cursors };
 			const nextVisited = {
@@ -990,7 +1066,6 @@ export async function discoverWalletAssetCandidates(
 				}
 			}
 
-			const page = pageUpdates(requestedAliases, connections);
 			await options.onPage?.(
 				sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
 			);
@@ -1013,6 +1088,7 @@ export async function discoverWalletAssetCandidates(
 		scan.answeringIndex ??= graphql;
 		let pagesThisPass = 0;
 		while (!scan.caughtUp) {
+			const boundaries = new Map<WalletCandidateAlias, CandidatePageBoundary>();
 			if (!scan.catchUp) {
 				scan.catchUp = {
 					active: new Set<WalletCandidateAlias>(['initiallyHeld', 'marketActions', 'receivedTransfers']),
@@ -1037,7 +1113,11 @@ export async function discoverWalletAssetCandidates(
 				}
 				pagesThisPass += 1;
 				const catchUp = scan.catchUp;
-				const { requestedAliases, connections } = await requestPage(catchUp.active, catchUp.cursors);
+				const { requestedAliases, connections, page } = await requestPage(
+					catchUp.active,
+					catchUp.cursors,
+					boundaries
+				);
 				const nextActive = new Set(catchUp.active);
 				const nextCursors = { ...catchUp.cursors };
 				const nextVisited = {
@@ -1064,7 +1144,6 @@ export async function discoverWalletAssetCandidates(
 						);
 					}
 				}
-				const page = pageUpdates(requestedAliases, connections);
 				await options.onPage?.(
 					sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
 				);
@@ -1102,10 +1181,22 @@ export async function discoverWalletAssetCandidates(
 }
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = options.fetch ?? defaultFetch;
 	let endpoints = graphqlEndpointList(options.graphql);
 	const found = new Map<string, AssetCandidate>();
+	const boundaries = new Map<'market', CandidatePageBoundary>();
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
+	const filters: TransactionIndexFilters = {
+		recipients: recipients.length ? recipients : null,
+		tags: [
+			{
+				name: 'action',
+				values: options.listingsOnly
+					? ['make-offer']
+					: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+			},
+		],
+	};
 	let cursor: string | null = null;
 	let pages = 0;
 	const visited = new Set<string>();
@@ -1133,18 +1224,7 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 						headers: { 'content-type': 'application/json' },
 						body: JSON.stringify({
 							query: MARKET_ACTIVITY_QUERY,
-							variables: {
-								cursor,
-								recipients: recipients.length ? recipients : null,
-								tags: [
-									{
-										name: 'action',
-										values: options.listingsOnly
-											? ['make-offer']
-											: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
-									},
-								],
-							},
+							variables: { cursor, ...filters },
 						}),
 						signal: options.signal,
 					},
@@ -1161,10 +1241,21 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 		if (!payload) throw new Error('asset-activity-graphql-empty');
 		if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
 		const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-activity-graphql-schema');
-		const edges = connection.edges;
-		const pageCandidates = edges.flatMap((edge) => {
-			const candidate = candidateFromNode(edge.node, 'market-action');
-			if (!candidate || (options.acceptProcessId && !options.acceptProcessId(candidate.processId))) return [];
+		const rows = candidateRows(connection, (node) => {
+			const candidate = candidateFromNode(node, 'market-action');
+			return candidate && (!options.acceptProcessId || options.acceptProcessId(candidate.processId))
+				? candidate
+				: null;
+		});
+		const hydrated = await hydrateCandidatePages(
+			[{ key: 'market', connection, rows, indexPage: { edges: connection.edges, after: cursor, filters } }],
+			boundaries,
+			found,
+			fetcher,
+			endpoint,
+			options
+		);
+		const pageCandidates = hydrated.flatMap((candidate) => {
 			const firstOccurrence = !found.has(candidate.processId);
 			mergeCandidate(found, candidate);
 			return firstOccurrence ? [candidate] : [];
@@ -1229,7 +1320,7 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 export async function discoverCollectionActivityPage(
 	options: CollectionActivityPageOptions = {}
 ): Promise<CollectionActivityPage> {
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = options.fetch ?? defaultFetch;
 	const allEndpoints = graphqlEndpointList(options.graphql);
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	const actions = [
@@ -1241,6 +1332,10 @@ export async function discoverCollectionActivityPage(
 	];
 	const cursor = options.cursor?.trim() || null;
 	const pageSize = Math.max(1, Math.min(GRAPHQL_PAGE_SIZE, Math.floor(options.pageSize ?? GRAPHQL_PAGE_SIZE)));
+	const filters: TransactionIndexFilters = {
+		recipients: options.recipients === undefined ? null : recipients,
+		tags: [{ name: 'action', values: actions }],
+	};
 
 	if (options.recipients !== undefined && !recipients.length) {
 		return { events: [], cursor: null, hasNextPage: false, totalCount: 0, graphql: allEndpoints[0] };
@@ -1271,8 +1366,7 @@ export async function discoverCollectionActivityPage(
 				variables: {
 					...(cursor ? { cursor } : {}),
 					first: pageSize,
-					recipients: options.recipients === undefined ? null : recipients,
-					tags: [{ name: 'action', values: actions }],
+					...filters,
 				},
 			}),
 			signal: options.signal,
@@ -1288,7 +1382,7 @@ export async function discoverCollectionActivityPage(
 	if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
 	const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-graphql-schema');
 	const requestedRecipients = options.recipients === undefined ? null : new Set(recipients);
-	let events = connection.edges.flatMap((edge) => {
+	let rows = connection.edges.flatMap((edge) => {
 		const event = activityEventFromNode(edge.node);
 		if (
 			!event ||
@@ -1297,10 +1391,10 @@ export async function discoverCollectionActivityPage(
 			(options.acceptProcessId && !options.acceptProcessId(event.processId))
 		)
 			return [];
-		return [event];
+		return [{ edge, event }];
 	});
-	if (options.requiredExecutionDevice && events.length) {
-		const processIds = [...new Set(events.map((event) => event.processId))];
+	if (options.requiredExecutionDevice && rows.length) {
+		const processIds = [...new Set(rows.map(({ event }) => event.processId))];
 		const verified = await verifyProcessDevices(
 			processIds,
 			options.requiredExecutionDevice,
@@ -1308,7 +1402,7 @@ export async function discoverCollectionActivityPage(
 			allEndpoints,
 			options
 		);
-		events = events.filter((event) => verified.has(event.processId));
+		rows = rows.filter(({ event }) => verified.has(event.processId));
 	}
 	const rawCount = includeCount ? payload?.data?.transactions?.count : undefined;
 	const parsedCount = typeof rawCount === 'string' && /^\d+$/.test(rawCount) ? Number(rawCount) : rawCount;
@@ -1318,6 +1412,13 @@ export async function discoverCollectionActivityPage(
 	if (connection.pageInfo.hasNextPage && (!nextCursor || nextCursor === cursor)) {
 		throw new Error('collection-activity-pagination-stalled');
 	}
+	const events = await hydrateActivityEvents(
+		rows,
+		fetcher,
+		endpoint,
+		{ edges: connection.edges, after: cursor, filters },
+		options
+	);
 	return {
 		events,
 		cursor: nextCursor,
@@ -1330,7 +1431,7 @@ export async function discoverCollectionActivityPage(
 export async function discoverCollectionActivity(
 	options: CollectionActivityOptions
 ): Promise<CollectionActivityEvent[]> {
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = options.fetch ?? defaultFetch;
 	const allEndpoints = graphqlEndpointList(options.graphql);
 	let endpoints = allEndpoints;
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
@@ -1347,6 +1448,10 @@ export async function discoverCollectionActivity(
 	const deviceMatches = new Map<string, boolean>();
 	let cursor: string | null = null;
 	const visited = new Set<string>();
+	const filters: TransactionIndexFilters = {
+		recipients: options.recipients === undefined ? null : recipients,
+		tags: [{ name: 'action', values: actions }],
+	};
 
 	if (options.recipients !== undefined && !recipients.length) return [];
 	if (!actions.length) return [];
@@ -1364,16 +1469,7 @@ export async function discoverCollectionActivity(
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					query: MARKET_ACTIVITY_QUERY,
-					variables: {
-						cursor,
-						recipients: options.recipients === undefined ? null : recipients,
-						tags: [
-							{
-								name: 'action',
-								values: actions,
-							},
-						],
-					},
+					variables: { cursor, ...filters },
 				}),
 				signal: options.signal,
 			},
@@ -1393,10 +1489,10 @@ export async function discoverCollectionActivity(
 			if (!event) return [];
 			seen.add(event.id);
 			if (options.acceptProcessId && !options.acceptProcessId(event.processId)) return [];
-			return [event];
+			return [{ edge, event }];
 		});
 		if (options.requiredExecutionDevice && page.length) {
-			const processIds = [...new Set(page.map((event) => event.processId))];
+			const processIds = [...new Set(page.map(({ event }) => event.processId))];
 			const unchecked = processIds.filter((id) => !deviceMatches.has(id));
 			if (unchecked.length) {
 				const verified = await verifyProcessDevices(
@@ -1408,10 +1504,16 @@ export async function discoverCollectionActivity(
 				);
 				for (const id of unchecked) deviceMatches.set(id, verified.has(id));
 			}
-			page = page.filter((event) => deviceMatches.get(event.processId) === true);
+			page = page.filter(({ event }) => deviceMatches.get(event.processId) === true);
 		}
 		const remaining = limit - events.length;
-		const accepted = page.slice(0, remaining);
+		const accepted = await hydrateActivityEvents(
+			page.slice(0, remaining),
+			fetcher,
+			endpoint,
+			{ edges, after: cursor, filters },
+			options
+		);
 		events.push(...accepted);
 		await options.onPage?.(accepted);
 		if (events.length >= limit || !connection.pageInfo.hasNextPage) {
@@ -2225,6 +2327,80 @@ export function bazarAtomicAssetFromState(
 	};
 }
 
+function candidateRows(connection: GraphqlConnection, parse: (node: GraphqlNode) => AssetCandidate | null) {
+	return connection.edges.flatMap((edge) => {
+		const candidate = parse(edge.node);
+		return candidate ? [{ edge, candidate }] : [];
+	});
+}
+
+async function hydrateCandidatePages<Key extends string>(
+	groups: Array<{
+		key: Key;
+		connection: GraphqlConnection;
+		rows: ReturnType<typeof candidateRows>;
+		indexPage: TransactionIndexPage;
+	}>,
+	boundaries: Map<Key, CandidatePageBoundary>,
+	found: ReadonlyMap<string, AssetCandidate>,
+	fetcher: typeof fetch,
+	endpoint: string,
+	options: Pick<CandidateOptions, 'signal' | 'requestTimeoutMs'>
+): Promise<AssetCandidate[]> {
+	// A confirmed last edge bounds strictly smaller weave offsets in this HEIGHT_DESC stream.
+	// Equal offsets can straddle an L1 block boundary. Equal heights can add activity IDs.
+	const needed = groups.flatMap(({ key, rows }) => {
+		const boundary = boundaries.get(key);
+		if (!boundary) return rows;
+		return rows.filter(({ edge, candidate }) => {
+			if ((found.get(candidate.processId)?.height ?? 0) <= boundary.height) return true;
+			const offset = arweaveTransactionOffset(endpoint, edge);
+			return offset === undefined || offset >= boundary.offset;
+		});
+	});
+	const blocks = await readTransactionBlocks(
+		fetcher,
+		endpoint,
+		needed.map(({ edge }) => edge),
+		{ ...options, indexPages: groups.map(({ indexPage }) => indexPage) }
+	);
+	for (const { key, connection } of groups) {
+		const last = connection.edges.at(-1);
+		if (!connection.pageInfo.hasNextPage || !last) continue;
+		const height = blocks.get(last)?.height;
+		const offset = arweaveTransactionOffset(endpoint, last);
+		if (height !== undefined && height > 0 && offset !== undefined) boundaries.set(key, { height, offset });
+	}
+	return groups.flatMap(({ rows }) =>
+		rows.map(({ edge, candidate }) => {
+			const block = blocks.get(edge);
+			return block ? { ...candidate, ...block } : candidate;
+		})
+	);
+}
+
+async function hydrateActivityEvents(
+	rows: Array<{ edge: GraphqlEdge; event: CollectionActivityEvent }>,
+	fetcher: typeof fetch,
+	endpoint: string,
+	indexPage: TransactionIndexPage,
+	options: Pick<CollectionActivityPageOptions, 'signal' | 'requestTimeoutMs' | 'priority'>
+): Promise<CollectionActivityEvent[]> {
+	const blocks = await readTransactionBlocks(
+		fetcher,
+		endpoint,
+		rows.map(({ edge }) => edge),
+		{
+			...options,
+			indexPages: [indexPage],
+		}
+	);
+	return rows.map(({ edge, event }) => {
+		const block = blocks.get(edge);
+		return block ? { ...event, ...block } : event;
+	});
+}
+
 function candidateFromNode(
 	node: GraphqlNode,
 	source: AssetCandidate['sources'][number],
@@ -2242,8 +2418,8 @@ function candidateFromNode(
 	if (source === 'transfer' && (tags.action !== 'transfer' || tags.recipient !== wallet)) return null;
 	return {
 		processId,
-		height: safeNumber(node.block?.height),
-		timestamp: safeNumber(node.block?.timestamp),
+		height: 0,
+		timestamp: 0,
 		activityIds: [node.id],
 		sources: [source],
 		...(source === 'initial-holder'
@@ -2279,8 +2455,8 @@ function activityEventFromNode(node: GraphqlNode): CollectionActivityEvent | nul
 		processId: node.recipient,
 		action: action as CollectionActivityEvent['action'],
 		actor: ADDRESS.test(node.owner?.address ?? '') ? node.owner!.address! : '',
-		height: safeNumber(node.block?.height),
-		timestamp: safeNumber(node.block?.timestamp),
+		height: 0,
+		timestamp: 0,
 		...(action === 'make-offer' && /^[1-9]\d*$/.test(tags.asking ?? '') ? { asking: tags.asking } : {}),
 		...(['make-offer', 'register-interest', 'transfer'].includes(action) &&
 		/^[1-9]\d*$/.test(
@@ -2341,8 +2517,4 @@ function sortCandidates(candidates: AssetCandidate[]): AssetCandidate[] {
 
 function compareActivity(a: AssetCandidate, b: AssetCandidate): number {
 	return b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId);
-}
-
-function safeNumber(value: unknown): number {
-	return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }

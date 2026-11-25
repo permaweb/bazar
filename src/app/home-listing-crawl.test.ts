@@ -4,6 +4,8 @@ import { type AssetCandidate, discoverMarketActivity, type ResolvedAsset } from 
 import { parseAssetState } from 'api/asset-marketplace';
 import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from 'api/collections';
 
+import { withIndexedActivityBlocks } from '../test/indexed-activity';
+
 import { createHomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 
 const wallet = 'W'.repeat(43);
@@ -198,7 +200,7 @@ describe('home listing crawl', () => {
 			signal: new AbortController().signal,
 			discover: (onPage, signal) =>
 				discoverMarketActivity({
-					fetch: fetcher as typeof fetch,
+					fetch: withIndexedActivityBlocks(fetcher),
 					graphql: 'https://graphql.example/graphql',
 					listingsOnly: true,
 					signal,
