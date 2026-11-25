@@ -4,6 +4,9 @@ import { fetchJsonWithDeadline } from './fetch-with-deadline';
 
 const ARWEAVE_NET_ID_BATCH_SIZE = 9;
 
+// Resolve fetch at call time and preserve the browser receiver and a stable cache key.
+export const defaultFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
+
 export type GraphqlResult<T> = {
 	response: Response;
 	body: T | undefined;
@@ -30,7 +33,7 @@ export function graphqlEndpointList(graphql?: string | readonly string[]): strin
 	return endpoints.length ? endpoints : arweaveGraphqlEndpoints();
 }
 
-function isArweaveNetEndpoint(endpoint: string): boolean {
+export function isArweaveNetEndpoint(endpoint: string): boolean {
 	try {
 		const host = new URL(endpoint).hostname;
 		return host === 'arweave.net' || host.endsWith('.arweave.net');

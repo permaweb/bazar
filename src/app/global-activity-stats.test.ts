@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { GLOBAL_ACTIVITY_STATS_STORAGE_KEY } from 'helpers/browser-storage';
 
+import { withIndexedActivityBlocks } from '../test/indexed-activity';
+
 import {
 	createGlobalActivityStatsScan,
 	GLOBAL_ACTIVITY_STATS_MAX_AGE,
@@ -42,7 +44,7 @@ describe('independent global stats scan', () => {
 			bodies.push(JSON.parse(String(init?.body)));
 			return pages.shift()!;
 		});
-		const scan = createGlobalActivityStatsScan([asset], { fetch: fetcher });
+		const scan = createGlobalActivityStatsScan([asset], { fetch: withIndexedActivityBlocks(fetcher) });
 		const stats = await scan.run(new AbortController().signal);
 		expect(stats).toMatchObject({ events: 2, listings: 2, participants: 1 });
 		expect(bodies.map((body) => body.variables.cursor)).toEqual([undefined, 'first', 'second']);
@@ -53,14 +55,13 @@ describe('independent global stats scan', () => {
 		const undated = await page('a', 'last', false).json();
 		undated.data.transactions.edges[0].node.block = null;
 		const pages = [page('a', 'first', true), Response.json(undated)];
-		const stats = await createGlobalActivityStatsScan([asset], { fetch: async () => pages.shift()! }).run(
-			new AbortController().signal
-		);
+		const fetch = withIndexedActivityBlocks(async () => pages.shift()!);
+		const stats = await createGlobalActivityStatsScan([asset], { fetch }).run(new AbortController().signal);
 		expect(stats.events).toBe(1);
 		expect(stats.buckets.reduce((sum, bucket) => sum + bucket.events, 0)).toBe(1);
 	});
 
-	it('bounds the parallel recipient pool and gates every request behind foreground paging', async () => {
+	it('bounds the parallel recipient pool and gates each index page behind foreground paging', async () => {
 		const ids = Array.from({ length: 505 }, (_, index) => index.toString(36).padStart(43, 'X'));
 		const batches: string[][] = [];
 		let active = 0;
@@ -75,7 +76,10 @@ describe('independent global stats scan', () => {
 			active -= 1;
 			return page(String(batches.length), 'tail', false, batch[0]);
 		});
-		await createGlobalActivityStatsScan(ids, { fetch: fetcher }).run(new AbortController().signal, gate);
+		await createGlobalActivityStatsScan(ids, { fetch: withIndexedActivityBlocks(fetcher) }).run(
+			new AbortController().signal,
+			gate
+		);
 		expect(batches.map((batch) => batch.length)).toEqual([100, 100, 100, 100, 100, 5]);
 		expect(new Set(batches.flat()).size).toBe(505);
 		expect(maxActive).toBe(4);
@@ -91,12 +95,12 @@ describe('independent global stats scan', () => {
 			page('c', 'new', false),
 		];
 		const scan = createGlobalActivityStatsScan([asset], {
-			fetch: async (_input, init) => {
+			fetch: withIndexedActivityBlocks(async (_input, init) => {
 				cursors.push(JSON.parse(String(init?.body)).variables.cursor);
 				const response = responses.shift()!;
 				if (response instanceof Error) throw response;
 				return response;
-			},
+			}),
 		});
 		await expect(scan.run(new AbortController().signal)).rejects.toThrow('offline');
 		expect(await scan.run(new AbortController().signal)).toMatchObject({ events: 2 });
@@ -124,7 +128,9 @@ describe('independent global stats scan', () => {
 
 	it('rejects cursor cycles instead of publishing incomplete totals', async () => {
 		const pages = [page('a', 'one', true), page('b', 'two', true), page('c', 'one', true)];
-		const scan = createGlobalActivityStatsScan([asset], { fetch: async () => pages.shift()! });
+		const scan = createGlobalActivityStatsScan([asset], {
+			fetch: withIndexedActivityBlocks(async () => pages.shift()!),
+		});
 		await expect(scan.run(new AbortController().signal)).rejects.toThrow('pagination-stalled');
 	});
 });

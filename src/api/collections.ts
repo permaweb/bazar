@@ -12,6 +12,7 @@ import { type AssetState, readAssetState } from './asset-marketplace';
 import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 import { fetchJsonWithDeadline, fetchTextWithDeadline, operationWithDeadline } from './fetch-with-deadline';
 import {
+	defaultFetch,
 	GRAPHQL_RETRY_DELAYS_MS,
 	graphqlEndpointList,
 	type GraphqlResult,
@@ -20,6 +21,7 @@ import {
 	retryTransientGraphql,
 } from './graphql';
 import { assetFromMintState } from './minted-assets';
+import { type IndexedTransaction, readTransactionBlocks, type TransactionIndexFilters } from './transaction-blocks';
 
 export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 
@@ -177,6 +179,8 @@ type BazarCollectionCandidate = {
 	scheduled: boolean;
 	thumbnailId?: string;
 };
+
+type BazarCollectionRecord = Omit<BazarCollectionCandidate, 'createdAt' | 'createdHeight'>;
 
 type BazarCollectionConnection = {
 	pageInfo: { hasNextPage: boolean };
@@ -598,6 +602,14 @@ export async function discoverBazarCollections(
 	onCollection?: (collection: Collection) => void
 ): Promise<Collection[]> {
 	const found = new Map<string, Collection>();
+	const filters: TransactionIndexFilters = {
+		tags: [
+			{ name: 'device', values: ['process@1.0'] },
+			{ name: 'execution-device', values: ['carrier@1.0'] },
+			{ name: 'ticker', values: ['COLLECTION'] },
+			{ name: 'type', values: ['Process'] },
+		],
+	};
 	let cursor: string | null = null;
 	let endpoints = graphqlEndpointList();
 	const visited = new Set<string>();
@@ -607,29 +619,19 @@ export async function discoverBazarCollections(
 		const request = await retryTransientGraphql(
 			() =>
 				postGraphql<BazarCollectionPayload>(
-					fetch,
+					defaultFetch,
 					pageEndpoints,
 					{
 						method: 'POST',
 						headers: { 'content-type': 'application/json' },
 						body: JSON.stringify({
-							query: `query BazarCollections($after: String) {
-					transactions(
-						after: $after
-						first: 100
-						sort: HEIGHT_DESC
-							tags: [
-								{ name: "device", values: ["process@1.0"] }
-								{ name: "execution-device", values: ["carrier@1.0"] }
-								{ name: "ticker", values: ["COLLECTION"] }
-								{ name: "type", values: ["Process"] }
-						]
-					) {
+							query: `query BazarCollections($after: String, $tags: [TagFilter!]!) {
+					transactions(after: $after, first: 100, sort: HEIGHT_DESC, tags: $tags) {
 						pageInfo { hasNextPage }
-						edges { cursor node { id tags { name value } block { height timestamp } } }
+						edges { cursor node { id tags { name value } } }
 					}
 				}`,
-							variables: { after: cursor },
+							variables: { after: cursor, ...filters },
 						}),
 						signal,
 					},
@@ -647,21 +649,31 @@ export async function discoverBazarCollections(
 		if (!connection || !Array.isArray(connection.edges) || typeof connection.pageInfo?.hasNextPage !== 'boolean') {
 			throw new Error('collection-discovery-schema');
 		}
-		const candidates: BazarCollectionCandidate[] = connection.edges.flatMap((edge: unknown) => {
+		const candidates = connection.edges.flatMap((value) => {
 			try {
-				return [parseBazarCollectionCandidate(edge)];
+				const { edge, record } = parseBazarCollectionRecord(value);
+				return isVisibleCollectionId(record.id) ? [{ edge, record }] : [];
 			} catch {
 				return [];
 			}
 		});
-		await mapConcurrent(candidates, 4, async (candidate) => {
+		const blocks = await readTransactionBlocks(
+			defaultFetch,
+			request.endpoint,
+			candidates.map(({ edge }) => edge),
+			{ signal, indexPages: [{ edges: connection.edges, after: cursor, filters }] }
+		);
+		await mapConcurrent(candidates, 4, async ({ edge, record }) => {
+			const block = blocks.get(edge);
+			if (!block) return;
+			const createdAt = block.timestamp * 1_000;
+			const createdHeight = block.height;
 			try {
-				if (!isVisibleCollectionId(candidate.id)) return;
-				const collection = await loadDiscoveredImageCollection(candidate, signal);
+				const collection = await loadDiscoveredImageCollection(record, signal);
 				const discovered = {
 					...collection,
-					createdAt: candidate.createdAt,
-					createdHeight: candidate.createdHeight,
+					createdAt,
+					createdHeight,
 				};
 				found.set(discovered.id, discovered);
 				onCollection?.(discovered);
@@ -692,7 +704,7 @@ export async function loadBazarCollectionById(id: string, signal?: AbortSignal):
 	const { response, body: payload } = await retryTransientGraphql(
 		() =>
 			postGraphql<BazarCollectionPayload>(
-				fetch,
+				defaultFetch,
 				graphqlEndpointList(),
 				{
 					method: 'POST',
@@ -725,13 +737,19 @@ export async function loadBazarCollectionById(id: string, signal?: AbortSignal):
 }
 
 function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
+	const { record } = parseBazarCollectionRecord(edge);
+	if (!Number.isSafeInteger(edge.node?.block?.height) || !Number.isSafeInteger(edge.node?.block?.timestamp)) {
+		throw new Error('collection-discovery-schema');
+	}
+	return { ...record, createdAt: edge.node.block.timestamp * 1_000, createdHeight: edge.node.block.height };
+}
+
+function parseBazarCollectionRecord(edge: any): { edge: IndexedTransaction; record: BazarCollectionRecord } {
 	if (
 		!edge ||
 		typeof edge.cursor !== 'string' ||
 		!ARWEAVE_ID.test(edge.node?.id) ||
-		!Array.isArray(edge.node?.tags) ||
-		!Number.isSafeInteger(edge.node?.block?.height) ||
-		!Number.isSafeInteger(edge.node?.block?.timestamp)
+		!Array.isArray(edge.node?.tags)
 	) {
 		throw new Error('collection-discovery-schema');
 	}
@@ -753,17 +771,18 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		throw new Error('collection-discovery-schema');
 	}
 	return {
-		id: edge.node.id,
-		manifestId,
-		createdAt: edge.node.block.timestamp * 1_000,
-		createdHeight: edge.node.block.height,
-		scheduled,
-		...(ARWEAVE_ID.test(tags.thumbnail ?? '') ? { thumbnailId: tags.thumbnail } : {}),
+		edge,
+		record: {
+			id: edge.node.id,
+			manifestId,
+			scheduled,
+			...(ARWEAVE_ID.test(tags.thumbnail ?? '') ? { thumbnailId: tags.thumbnail } : {}),
+		},
 	};
 }
 
 async function loadDiscoveredImageCollection(
-	candidate: BazarCollectionCandidate,
+	candidate: BazarCollectionRecord,
 	signal?: AbortSignal
 ): Promise<Collection> {
 	let manifestId = candidate.manifestId;
@@ -1480,7 +1499,7 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal, cursorIndex
 	} = await retryTransientGraphql(
 		() =>
 			postGraphql<any>(
-				fetch,
+				defaultFetch,
 				// A cursor belongs to the index that issued it; only the first page may fall back.
 				after ? [cursorIndex ?? endpoints[0]] : endpoints,
 				{

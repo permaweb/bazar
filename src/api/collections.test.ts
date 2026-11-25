@@ -49,6 +49,12 @@ const emptyHiddenCollectionAssetIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS
 
 const encodeTag = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 
+function collectionBlocks(id: string, height: number, timestamp: number, cursor = 'candidate') {
+	return Response.json({
+		data: { transactions: { edges: [{ cursor, node: { id, block: { height, timestamp } } }] } },
+	});
+}
+
 beforeEach(() => {
 	replaceHiddenCollectionAssetIndex(emptyHiddenCollectionAssetIndex);
 });
@@ -774,14 +780,12 @@ describe('collection index loading', () => {
 		const edge = (
 			id: string,
 			manifestId: string,
-			height: number,
 			tags: Array<{ name: string; value: string }>,
 			manifestTag = 'initial-value'
 		) => ({
 			cursor: `${id.slice(0, 1)}-cursor`,
 			node: {
 				id,
-				block: { height, timestamp: height * 10 },
 				tags: [
 					{ name: 'device', value: 'process@1.0' },
 					{ name: 'execution-device', value: 'carrier@1.0' },
@@ -795,18 +799,22 @@ describe('collection index loading', () => {
 			JSON.stringify({ name, description: `${name} description`, assets: [asset] });
 		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+			if (body?.query?.includes('TransactionBlocks')) {
+				expect(body.variables.ids).toEqual([currentId]);
+				return collectionBlocks(currentId, 20, 200, `${currentId.slice(0, 1)}-cursor`);
+			}
 			if (body?.query?.includes('BazarCollections')) {
 				return Response.json({
 					data: {
 						transactions: {
 							pageInfo: { hasNextPage: false },
 							edges: [
-								edge(currentId, currentManifest, 20, [
+								edge(currentId, currentManifest, [
 									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
 									{ name: 'scheduler-mode', value: 'all' },
 									{ name: 'ticker', value: 'COLLECTION' },
 								]),
-								edge(hiddenId, hiddenManifest, 10, [
+								edge(hiddenId, hiddenManifest, [
 									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
 									{ name: 'scheduler-mode', value: 'all' },
 									{ name: 'ticker', value: 'COLLECTION' },
@@ -857,9 +865,10 @@ describe('collection index loading', () => {
 		const discoveryBody = fetcher.mock.calls.find(
 			([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
 		)?.[1]?.body;
-		const discoveryQuery = JSON.parse(String(discoveryBody)).query;
+		const { query: discoveryQuery, variables } = JSON.parse(String(discoveryBody));
 		expect(discoveryQuery).toContain('sort: HEIGHT_DESC');
-		expect(discoveryQuery).toContain('{ name: "ticker", values: ["COLLECTION"] }');
+		expect(discoveryQuery).not.toMatch(/\bblock\s*\{/);
+		expect(variables.tags).toContainEqual({ name: 'ticker', values: ['COLLECTION'] });
 		expect(discoveryQuery).not.toContain('{ name: "app-name"');
 		expect(
 			fetcher.mock.calls.some(
@@ -898,6 +907,7 @@ describe('collection index loading', () => {
 			'fetch',
 			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
 				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+				if (body?.query?.includes('TransactionBlocks')) return collectionBlocks(carrierId, 2, 3);
 				if (body?.query?.includes('BazarCollections')) {
 					return Response.json({
 						data: {
@@ -908,7 +918,6 @@ describe('collection index loading', () => {
 										cursor: 'candidate',
 										node: {
 											id: carrierId,
-											block: { height: 2, timestamp: 3 },
 											tags: [
 												{ name: 'device', value: 'process@1.0' },
 												{ name: 'execution-device', value: 'carrier@1.0' },
@@ -1420,6 +1429,7 @@ describe('collection index loading', () => {
 		});
 		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+			if (body?.query?.includes('TransactionBlocks')) return collectionBlocks(collectionId, 2, 3);
 			if (body?.query?.includes('BazarCollections')) {
 				return Response.json({
 					data: {
@@ -1430,7 +1440,6 @@ describe('collection index loading', () => {
 									cursor: 'candidate',
 									node: {
 										id: collectionId,
-										block: { height: 2, timestamp: 3 },
 										tags: [
 											{ name: 'device', value: 'process@1.0' },
 											{ name: 'execution-device', value: 'carrier@1.0' },

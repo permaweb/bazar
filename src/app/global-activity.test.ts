@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { withIndexedActivityBlocks } from '../test/indexed-activity';
+
 import { createGlobalActivityPager } from './global-activity';
 
 vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
@@ -26,20 +28,22 @@ function setup(
 	options: Pick<Parameters<typeof createGlobalActivityPager>[0], 'graphql'> = {}
 ) {
 	const requests: Array<{ url: string; query: string; variables: any }> = [];
-	const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		requests.push({ url: String(input), ...JSON.parse(String(init?.body)) });
-		const next = responses.shift();
-		if (next instanceof Error) throw next;
-		if (!next) throw new Error('unexpected-request');
-		return next;
-	});
+	const fetcher = vi.fn(
+		withIndexedActivityBlocks(async (input, init) => {
+			requests.push({ url: String(input), ...JSON.parse(String(init?.body)) });
+			const next = responses.shift();
+			if (next instanceof Error) throw next;
+			if (!next) throw new Error('unexpected-request');
+			return next;
+		})
+	);
 	const pager = createGlobalActivityPager({ ...options, fetch: fetcher, acceptProcessId: (id) => id === asset });
 	return { pager, fetcher, requests };
 }
 
 describe('global activity native pagination', () => {
-	it('makes one bounded native GraphQL request and checks marketplace membership locally', async () => {
-		const { pager, requests } = setup([response([edge('a'), edge('f', 'raw-tail', foreign)])]);
+	it('scans one bounded index page and fetches blocks only for marketplace rows', async () => {
+		const { pager, requests, fetcher } = setup([response([edge('a'), edge('f', 'raw-tail', foreign)])]);
 		const page = await pager.load('all');
 		expect(page.events.map((event) => event.id)).toEqual(['a'.repeat(43)]);
 		expect(page).toMatchObject({ cursor: 'raw-tail', hasNextPage: true, loaded: true });
@@ -48,16 +52,19 @@ describe('global activity native pagination', () => {
 		expect(requests[0].query).toContain('sort: HEIGHT_DESC');
 		expect(requests[0].query).toContain('after: $cursor');
 		expect(requests[0].query).not.toContain('count');
+		expect(requests[0].query).not.toMatch(/\bblock\s*\{/);
 		expect(requests[0].variables).toMatchObject({ first: 100, recipients: null });
 		expect(requests[0].variables.tags).toEqual([
 			{ name: 'action', values: ['make-offer', 'register-interest', 'transfer', 'cancel-order'] },
 		]);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).variables.ids).toEqual(['a'.repeat(43)]);
 	});
 
 	it('keeps every indexed row when no membership filter is given, for a render-time catalogue filter', async () => {
 		const requests: unknown[] = [];
 		const pager = createGlobalActivityPager({
-			fetch: vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			fetch: withIndexedActivityBlocks(async (_input, init) => {
 				requests.push(JSON.parse(String(init?.body)));
 				return response([edge('a'), edge('f', 'raw-tail', foreign)]);
 			}),
@@ -195,13 +202,14 @@ describe('global activity native pagination', () => {
 		expect(pager.get('all')).toMatchObject({ loaded: false, events: [] });
 	});
 
-	it('returns registration submissions with one GraphQL request and no purchase verification', async () => {
+	it('returns registration submissions with no purchase verification', async () => {
 		const registration = edge('r', 'registration', asset, 'register-interest');
 		const { pager, requests, fetcher } = setup([response([registration], false)]);
 		const page = await pager.load('all');
 		expect(page.events).toMatchObject([{ id: 'r'.repeat(43), action: 'register-interest' }]);
 		expect(page.events[0].purchaseProof).toBeUndefined();
-		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(requests).toHaveLength(1);
+		expect(fetcher).toHaveBeenCalledTimes(2);
 		expect(requests[0].url).toBe('https://arweave.net/graphql');
 	});
 });
