@@ -5,7 +5,6 @@ import { arweaveGraphqlEndpoint } from 'helpers/config';
 import {
 	type AssetCandidate,
 	bazarAtomicAssetFromState,
-	clearCompletedWalletCandidateScan,
 	type CollectionActivityEvent,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
@@ -27,10 +26,13 @@ import {
 	searchBazarAtomicAssetsByName,
 	storeCompletedWalletCandidateScan,
 	verifyAssetCandidateSupport,
+	WALLET_SCAN_PREVIEW_AFTER_MS,
 	walletAssetGroup,
 } from './asset-discovery';
-import { parseAssetState } from './asset-marketplace';
+import { parseAssetState, readAssetState } from './asset-marketplace';
 import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from './collections';
+
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
 
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
@@ -114,13 +116,48 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'AntiqueWhite',
 				contentType: 'image/png',
-				image: `https://arweave.net/${processId}`,
+				image: `https://arweave.net/raw/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'Created on Bazar', kind: 'images' },
 		});
 		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
 		expect(request.variables).toEqual({ id: processId });
 		expect(request.query).toContain('BazarAtomicAssetById');
+	});
+
+	it('retries a deep-link lookup that every index failed transiently', async () => {
+		const processId = 'P'.repeat(43);
+		const tags = [
+			{ name: 'device', value: 'process@1.0' },
+			{ name: 'execution-device', value: 'token@1.0' },
+			{ name: 'swap-device', value: 'arweave-swap@1.0' },
+			{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+			{ name: 'scheduler-mode', value: 'all' },
+			{ name: 'initial-holder', value: wallet },
+			{ name: 'total-supply', value: '1' },
+			{ name: 'denomination', value: '0' },
+			{ name: 'ticker', value: 'ASSET' },
+			{ name: 'name', value: 'AntiqueWhite' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
+			{ name: 'Content-Type', value: 'image/png' },
+		];
+		const requests: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			// arweave.net times out and the fallback index is busy; arweave.net answers the retry.
+			if (requests.length === 1) throw new Error('asset-index-graphql-timeout');
+			if (requests.length === 2) return new Response('busy', { status: 503 });
+			return Response.json({ data: { transaction: { id: processId, tags } } });
+		});
+
+		await expect(
+			loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch, retryDelaysMs: [0] })
+		).resolves.toMatchObject({ asset: { id: processId, name: 'AntiqueWhite' } });
+		expect(requests).toEqual([
+			'https://arweave.net/graphql',
+			'https://index.example/graphql',
+			'https://arweave.net/graphql',
+		]);
 	});
 
 	it('rejects an indexed process ID that does not declare the Atomic Asset contract', async () => {
@@ -168,8 +205,8 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'OBELISK',
 				contentType: 'text/html',
-				media: `https://arweave.net/${processId}`,
-				image: `https://arweave.net/${previewId}`,
+				media: `https://arweave.net/raw/${processId}`,
+				image: `https://arweave.net/raw/${previewId}`,
 			},
 		});
 	});
@@ -229,7 +266,7 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'lucifer shrek',
 				contentType: 'image/webp',
-				image: `https://arweave.net/${processId}`,
+				image: `https://arweave.net/raw/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'Created on Bazar' },
 		});
@@ -261,15 +298,340 @@ describe('Bazar atomic asset search', () => {
 describe('wallet candidate discovery', () => {
 	it('ends a stalled GraphQL page with a stable timeout', async () => {
 		vi.useFakeTimers();
-		const fetcher = vi.fn(() => new Promise<Response>(() => undefined));
+		const fetcher = vi.fn((_input: RequestInfo | URL) => new Promise<Response>(() => undefined));
 		const discovery = discoverWalletAssetCandidates(wallet, {
 			fetch: fetcher as typeof fetch,
 			requestTimeoutMs: 50,
+			retryDelaysMs: [],
 		});
 		const rejection = expect(discovery).rejects.toThrow('asset-discovery-graphql-timeout');
 
-		await vi.advanceTimersByTimeAsync(50);
+		// The first page tries arweave.net, then the fallback index, each with its own deadline.
+		await vi.advanceTimersByTimeAsync(100);
 		await rejection;
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			'https://arweave.net/graphql',
+			'https://index.example/graphql',
+		]);
+	});
+
+	it('retries a page that timed out once before reporting the index unavailable', async () => {
+		vi.useFakeTimers();
+		const page = {
+			data: {
+				initiallyHeld: {
+					pageInfo: { hasNextPage: false },
+					edges: [
+						{
+							cursor: 'initial-1',
+							node: {
+								id: assetA,
+								tags: [{ name: 'initial-holder', value: wallet }],
+								block: { height: 10, timestamp: 100 },
+							},
+						},
+					],
+				},
+				marketActions: { pageInfo: { hasNextPage: false }, edges: [] },
+				receivedTransfers: { pageInfo: { hasNextPage: false }, edges: [] },
+			},
+		};
+		const fetcher = vi
+			.fn()
+			.mockImplementationOnce(() => new Promise<Response>(() => undefined))
+			.mockImplementationOnce(async () => Response.json(page));
+		const discovery = discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			// One index: this covers the retry, not the endpoint fallback.
+			graphql: arweaveGraphqlEndpoint(),
+			requestTimeoutMs: 50,
+			retryDelaysMs: [1_000],
+		});
+
+		await vi.advanceTimersByTimeAsync(50 + 1_000);
+		const result = await discovery;
+
+		expect(result.map(({ processId }) => processId)).toEqual([assetA]);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		const [first, second] = fetcher.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+		expect(second).toEqual(first);
+	});
+
+	it('falls back to the next index for a page without a cursor and keeps its cursor pages there', async () => {
+		const held = (id: string, cursor: string, hasNextPage: boolean) => ({
+			pageInfo: { hasNextPage },
+			edges: [
+				{
+					cursor,
+					node: {
+						id,
+						tags: [{ name: 'initial-holder', value: wallet }],
+						block: { height: 10, timestamp: 100 },
+					},
+				},
+			],
+		});
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const requests: Array<{ url: string; initialCursor: unknown }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const { variables } = JSON.parse(String(init?.body));
+			requests.push({ url: String(input), initialCursor: variables.initialCursor });
+			if (String(input) === arweaveGraphqlEndpoint()) return new Response('busy', { status: 503 });
+			if (requests.length === 2) {
+				return Response.json({
+					data: {
+						initiallyHeld: held(assetA, 'index-1', true),
+						marketActions: empty,
+						receivedTransfers: empty,
+					},
+				});
+			}
+			if (variables.initialCursor === 'index-1') {
+				return Response.json({ data: { initiallyHeld: held(assetB, 'index-2', false) } });
+			}
+			// The catch-up pass finds the same head it recorded, on the index that recorded it.
+			return Response.json({
+				data: {
+					initiallyHeld: held(assetA, 'index-1', true),
+					marketActions: empty,
+					receivedTransfers: empty,
+				},
+			});
+		});
+		const scan = createWalletCandidateScan(wallet);
+
+		const result = await discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			scan,
+			catchUp: true,
+			retryDelaysMs: [],
+		});
+
+		expect(result.map(({ processId }) => processId).sort()).toEqual([assetA, assetB].sort());
+		expect(requests).toEqual([
+			{ url: 'https://arweave.net/graphql', initialCursor: null },
+			{ url: 'https://index.example/graphql', initialCursor: null },
+			// the fallback index issued the cursor, so the next page never goes back to arweave.net.
+			{ url: 'https://index.example/graphql', initialCursor: 'index-1' },
+			{ url: 'https://index.example/graphql', initialCursor: null },
+		]);
+		expect(scan.caughtUp).toBe(true);
+		// The scan keeps its preferred-index scope; the catch-up page went to the index that recorded the heads.
+		expect(scan.graphql).toBe(arweaveGraphqlEndpoint());
+		expect(scan.answeringIndex).toBe('https://index.example/graphql');
+	});
+
+	it('never stores or resumes a scan a fallback index answered, so the next visit rescans the preferred index', async () => {
+		const held = (id: string) => ({
+			pageInfo: { hasNextPage: false },
+			edges: [
+				{
+					cursor: `cursor-${id}`,
+					node: {
+						id,
+						tags: [{ name: 'initial-holder', value: wallet }],
+						block: { height: 10, timestamp: 100 },
+					},
+				},
+			],
+		});
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const storage = memoryStorage();
+		// An older visit stored a scan the preferred index answered.
+		const older = createWalletCandidateScan(wallet);
+		older.active.clear();
+		older.caughtUp = true;
+		older.answeringIndex = arweaveGraphqlEndpoint();
+		older.heads = { initiallyHeld: assetC, marketActions: null, receivedTransfers: null };
+		older.found.set(assetC, { processId: assetC, height: 1, timestamp: 1, sources: ['initial-holder'] });
+		expect(storeCompletedWalletCandidateScan(storage, older)).toBe(true);
+
+		// Visit 1: arweave.net is down and the fallback index answers with head H (assetA).
+		const visit1 = vi.fn(async (input: RequestInfo | URL) =>
+			String(input) === arweaveGraphqlEndpoint()
+				? new Response('busy', { status: 503 })
+				: Response.json({
+						data: { initiallyHeld: held(assetA), marketActions: empty, receivedTransfers: empty },
+				  })
+		);
+		const scan = createWalletCandidateScan(wallet);
+		await discoverWalletAssetCandidates(wallet, {
+			fetch: visit1 as typeof fetch,
+			scan,
+			catchUp: true,
+			retryDelaysMs: [],
+		});
+		expect(scan.caughtUp).toBe(true);
+		expect(scan.answeringIndex).toBe('https://index.example/graphql');
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(false);
+		expect(storage.values.size).toBe(0);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)).toBeUndefined();
+		expect(resumeCompletedWalletCandidateScan(scan, wallet)).toBeUndefined();
+
+		// Visit 2: arweave.net answers without H. A fresh scan reads it in full instead of comparing
+		// the fallback index's heads there (which used to fail with asset-discovery-head-watermark-missing).
+		const visit2 = vi.fn(async (input: RequestInfo | URL) => {
+			expect(String(input)).toBe(arweaveGraphqlEndpoint());
+			return Response.json({
+				data: { initiallyHeld: held(assetB), marketActions: empty, receivedTransfers: empty },
+			});
+		});
+		const fresh = createWalletCandidateScan(wallet);
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: visit2 as typeof fetch,
+				scan: fresh,
+				catchUp: true,
+				retryDelaysMs: [],
+			})
+		).resolves.toMatchObject([{ processId: assetB }]);
+		expect(fresh.answeringIndex).toBe(arweaveGraphqlEndpoint());
+		expect(storeCompletedWalletCandidateScan(storage, fresh)).toBe(true);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)?.heads.initiallyHeld).toBe(assetB);
+	});
+
+	it('catches a stored preferred-index scan up on that index only, never on a fallback', async () => {
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
+		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
+		scan.found.set(assetA, { processId: assetA, height: 1, timestamp: 1, sources: ['initial-holder'] });
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, scan);
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
+		expect(restored.answeringIndex).toBe(arweaveGraphqlEndpoint());
+		const fetcher = vi.fn(async (_input: RequestInfo | URL) => new Response('busy', { status: 503 }));
+
+		// arweave.net's heads are never compared on the fallback index, so the catch-up fails on arweave.net.
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: fetcher as typeof fetch,
+				scan: restored,
+				catchUp: true,
+				retryDelaysMs: [],
+			})
+		).rejects.toThrow('asset-discovery-graphql-503');
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([arweaveGraphqlEndpoint()]);
+	});
+
+	it('previews a slow preferred first page from the next index without letting it answer the scan', async () => {
+		vi.useFakeTimers();
+		const held = (ids: string[]) => ({
+			pageInfo: { hasNextPage: false },
+			edges: ids.map((id) => ({
+				cursor: `cursor-${id}`,
+				node: { id, tags: [{ name: 'initial-holder', value: wallet }], block: { height: 10, timestamp: 100 } },
+			})),
+		});
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const answer = (ids: string[]) =>
+			Response.json({ data: { initiallyHeld: held(ids), marketActions: empty, receivedTransfers: empty } });
+		const requests: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			// arweave.net answers the first page after 5 s (and the catch-up at once) with both assets;
+			// the fallback index answers at once but lacks assetB.
+			if (String(input) !== arweaveGraphqlEndpoint()) return answer([assetA]);
+			if (requests.filter((url) => url === arweaveGraphqlEndpoint()).length === 1)
+				await new Promise((resolve) => setTimeout(resolve, 5_000));
+			return answer([assetB, assetA]);
+		});
+		const pages: string[][] = [];
+		const scan = createWalletCandidateScan(wallet);
+		const discovery = discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			scan,
+			catchUp: true,
+			retryDelaysMs: [],
+			onPage: (candidates) => {
+				pages.push(candidates.map(({ processId }) => processId));
+			},
+		});
+
+		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS - 1);
+		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(requests).toEqual([arweaveGraphqlEndpoint(), 'https://index.example/graphql']);
+		// The preview reaches the caller while the preferred page is still pending, and leaves the scan alone.
+		expect(pages).toEqual([[assetA]]);
+		expect(scan.found.size).toBe(0);
+		expect(scan.answeringIndex).toBeUndefined();
+		expect(scan.heads.initiallyHeld).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(5_000);
+		const result = await discovery;
+		expect(result.map(({ processId }) => processId).sort()).toEqual([assetA, assetB].sort());
+		// Then the preferred first page and its catch-up pass, each with both assets.
+		expect(pages.slice(1).map((page) => [...page].sort())).toEqual([
+			[assetA, assetB].sort(),
+			[assetA, assetB].sort(),
+		]);
+		// Only the preferred index answered the scan, so it is stored and resumed as before.
+		expect(scan.answeringIndex).toBe(arweaveGraphqlEndpoint());
+		expect(scan.heads.initiallyHeld).toBe(assetB);
+		const storage = memoryStorage();
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		expect(
+			requests.filter((url) => url !== arweaveGraphqlEndpoint()),
+			'the catch-up pass is not previewed'
+		).toHaveLength(1);
+	});
+
+	it('does not preview a first page the preferred index answers in time, nor a stored scan catch-up', async () => {
+		vi.useFakeTimers();
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const requests: string[] = [];
+		const slowArweave = (delayMs: number) =>
+			vi.fn(async (input: RequestInfo | URL) => {
+				requests.push(String(input));
+				if (String(input) === arweaveGraphqlEndpoint())
+					await new Promise((resolve) => setTimeout(resolve, delayMs));
+				return Response.json({
+					data: { initiallyHeld: empty, marketActions: empty, receivedTransfers: empty },
+				});
+			});
+		const onPage = vi.fn();
+
+		const fresh = discoverWalletAssetCandidates(wallet, {
+			fetch: slowArweave(WALLET_SCAN_PREVIEW_AFTER_MS - 500) as typeof fetch,
+			retryDelaysMs: [],
+			onPage,
+		});
+		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS * 2);
+		await fresh;
+		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
+
+		// A stored scan already has its index: a slow catch-up there is never previewed elsewhere.
+		const stored = createWalletCandidateScan(wallet);
+		stored.active.clear();
+		stored.caughtUp = true;
+		stored.answeringIndex = arweaveGraphqlEndpoint();
+		stored.heads = { initiallyHeld: null, marketActions: null, receivedTransfers: null };
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, stored);
+		requests.length = 0;
+		const catchUp = discoverWalletAssetCandidates(wallet, {
+			fetch: slowArweave(WALLET_SCAN_PREVIEW_AFTER_MS * 3) as typeof fetch,
+			scan: loadCompletedWalletCandidateScan(storage, wallet)!,
+			catchUp: true,
+			retryDelaysMs: [],
+			onPage,
+		});
+		await vi.advanceTimersByTimeAsync(WALLET_SCAN_PREVIEW_AFTER_MS * 4);
+		await catchUp;
+		expect(requests).toEqual([arweaveGraphqlEndpoint()]);
+	});
+
+	it('keeps every page on an explicitly configured index', async () => {
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: fetcher as typeof fetch,
+				graphql: arweaveGraphqlEndpoint(),
+				retryDelaysMs: [],
+			})
+		).rejects.toThrow('asset-discovery-graphql-503');
 		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 
@@ -428,6 +790,7 @@ describe('wallet candidate discovery', () => {
 		const options = {
 			fetch: fetcher as typeof fetch,
 			scan,
+			retryDelaysMs: [],
 			onPage: (page: AssetCandidate[]) => {
 				emitted.push(page.map(({ processId }) => processId));
 			},
@@ -548,6 +911,7 @@ describe('wallet candidate discovery', () => {
 			fetch: fetcher as typeof fetch,
 			scan,
 			catchUp: true,
+			retryDelaysMs: [],
 			onPage: (page: AssetCandidate[]) => {
 				emitted.push(page.map(({ processId }) => processId));
 			},
@@ -652,6 +1016,7 @@ describe('wallet candidate discovery', () => {
 		const options = {
 			fetch: fetcher as typeof fetch,
 			scan,
+			retryDelaysMs: [],
 			onPage: (page: AssetCandidate[]) => {
 				for (const candidate of page) {
 					seen.set(candidate.processId, (seen.get(candidate.processId) ?? 0) + 1);
@@ -682,6 +1047,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: processAt(0), marketActions: null, receivedTransfers: null };
 		for (let index = 0; index < 16_000; index += 1) {
 			const processId = processAt(index);
@@ -742,6 +1108,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
 		scan.found.set(assetA, {
 			processId: assetA,
@@ -789,10 +1156,11 @@ describe('wallet candidate discovery', () => {
 		expect(restored.caughtUp).toBe(true);
 	});
 
-	it('keeps checkpoint retry fail-closed but restarts cleanly after a cached head disappears', async () => {
+	it('rescans the wallet once when a stored head disappears, and fails closed if it disappears again', async () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
 		scan.found.set(assetA, {
 			processId: assetA,
@@ -802,18 +1170,17 @@ describe('wallet candidate discovery', () => {
 		});
 		const storage = memoryStorage();
 		storeCompletedWalletCandidateScan(storage, scan);
-		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
 		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
-		const fetcher = vi.fn(async () =>
+		const headPage = (id: string) =>
 			Response.json({
 				data: {
 					initiallyHeld: {
 						pageInfo: { hasNextPage: false },
 						edges: [
 							{
-								cursor: 'new-head',
+								cursor: `head-${id}`,
 								node: {
-									id: assetC,
+									id,
 									tags: [{ name: 'initial-holder', value: wallet }],
 									block: { height: 2, timestamp: 2 },
 								},
@@ -823,30 +1190,38 @@ describe('wallet candidate discovery', () => {
 					marketActions: empty,
 					receivedTransfers: empty,
 				},
-			})
-		);
+			});
+		const fetcher = vi.fn(async () => headPage(assetC));
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
 
-		for (let attempt = 0; attempt < 2; attempt += 1) {
-			await expect(
-				discoverWalletAssetCandidates(wallet, {
-					fetch: fetcher as typeof fetch,
-					scan: restored,
-					catchUp: true,
-				})
-			).rejects.toThrow('asset-discovery-head-watermark-missing');
-		}
-		expect(fetcher).toHaveBeenCalledTimes(2);
-
-		clearCompletedWalletCandidateScan(storage, wallet);
-		const restarted = loadCompletedWalletCandidateScan(storage, wallet) ?? createWalletCandidateScan(wallet);
+		// The catch-up page lacks head A; the scan starts over and reads the wallet in full.
 		await expect(
 			discoverWalletAssetCandidates(wallet, {
 				fetch: fetcher as typeof fetch,
-				scan: restarted,
+				scan: restored,
 				catchUp: true,
 			})
-		).resolves.toMatchObject([{ processId: assetC }]);
-		expect(fetcher).toHaveBeenCalledTimes(4);
+		).resolves.toEqual([expect.objectContaining({ processId: assetC })]);
+		// Catch-up page, full-scan page, then the catch-up that confirms the new head.
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(restored.caughtUp).toBe(true);
+		expect(restored.found.has(assetA)).toBe(false);
+		expect(storeCompletedWalletCandidateScan(storage, restored)).toBe(true);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)?.heads.initiallyHeld).toBe(assetC);
+
+		// An index whose head moves on every read is not trusted after the one rescan.
+		const heads = [assetB, nameAsset, traditionalName];
+		const unstable = vi.fn(async () => headPage(heads.shift()!));
+		const again = loadCompletedWalletCandidateScan(storage, wallet)!;
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: unstable as typeof fetch,
+				scan: again,
+				catchUp: true,
+			})
+		).rejects.toThrow('asset-discovery-head-watermark-missing');
+		expect(unstable).toHaveBeenCalledTimes(3);
+		expect(storeCompletedWalletCandidateScan(storage, again)).toBe(false);
 	});
 
 	it('fails open for incomplete, corrupt, mismatched, or unavailable scan storage', () => {
@@ -855,6 +1230,7 @@ describe('wallet candidate discovery', () => {
 		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(false);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
 		scan.found.set(assetA, {
 			processId: assetA,
@@ -888,6 +1264,7 @@ describe('wallet candidate discovery', () => {
 					setItem: () => {
 						throw new Error('quota');
 					},
+					removeItem: () => undefined,
 				},
 				scan
 			)
@@ -899,6 +1276,7 @@ describe('wallet candidate discovery', () => {
 		const scan = createWalletCandidateScan(wallet);
 		scan.active.clear();
 		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
 		scan.heads = { initiallyHeld: nameAsset, marketActions: null, receivedTransfers: null };
 		const candidate: AssetCandidate = {
 			processId: nameAsset,
@@ -1227,6 +1605,66 @@ describe('wallet candidate discovery', () => {
 		expect(fetcher).toHaveBeenCalledTimes(3);
 	});
 
+	it('retries a listing page every index failed before reporting the index unavailable', async () => {
+		const requests: Array<{ url: string; cursor: unknown }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const { cursor } = JSON.parse(String(init?.body)).variables;
+			requests.push({ url: String(input), cursor });
+			// The first page: both indexes busy, then answered by arweave.net on the retry.
+			if (requests.length <= 2) return new Response('busy', { status: 503 });
+			if (cursor === null) {
+				return Response.json({
+					data: {
+						transactions: { pageInfo: { hasNextPage: true }, edges: [activityEdge('page-1', assetA, 10)] },
+					},
+				});
+			}
+			// The cursor page times out once on its issuing index and is retried there.
+			if (requests.length === 4) throw new Error('asset-activity-graphql-timeout');
+			return Response.json({
+				data: {
+					transactions: { pageInfo: { hasNextPage: false }, edges: [activityEdge('page-2', assetB, 9)] },
+				},
+			});
+		});
+
+		const candidates = await discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			listingsOnly: true,
+			retryDelaysMs: [0, 0],
+		});
+
+		expect(candidates.map(({ processId }) => processId)).toEqual([assetA, assetB]);
+		expect(requests).toEqual([
+			{ url: 'https://arweave.net/graphql', cursor: null },
+			{ url: 'https://index.example/graphql', cursor: null },
+			{ url: 'https://arweave.net/graphql', cursor: null },
+			{ url: 'https://arweave.net/graphql', cursor: 'page-1' },
+			{ url: 'https://arweave.net/graphql', cursor: 'page-1' },
+		]);
+	});
+
+	it('keeps batched summary reads single-shot so they do not stack with the caller retry', async () => {
+		// Home card summaries and collection pages call this without retryDelaysMs; they retry
+		// failed batches themselves (HOME_SUMMARY_AUTO_RETRY_LIMIT), so each batch tries every index once.
+		const fetcher = vi.fn(async (_input: RequestInfo | URL) => new Response('busy', { status: 503 }));
+
+		await expect(
+			discoverMarketActivityBatched({
+				fetch: fetcher as typeof fetch,
+				listingsOnly: true,
+				recipients: [assetA, assetB],
+				batchSize: 1,
+			})
+		).rejects.toThrow('asset-activity-batch-failed');
+		expect(fetcher.mock.calls.map(([input]) => String(input)).sort()).toEqual([
+			'https://arweave.net/graphql',
+			'https://arweave.net/graphql',
+			'https://index.example/graphql',
+			'https://index.example/graphql',
+		]);
+	});
+
 	it('scopes collection activity by recipients and can query listings only', async () => {
 		const fetcher = vi.fn(
 			async () =>
@@ -1324,6 +1762,9 @@ describe('wallet candidate discovery', () => {
 				batchSize: 2,
 				concurrency: 1,
 				fetch: fetcher as typeof fetch,
+				// One index, no retries: this covers batch isolation, not endpoint fallback or retry.
+				graphql: 'https://arweave.net/graphql',
+				retryDelaysMs: [],
 				recipients,
 				onBatch: (_candidates, batch) => {
 					completed.push(batch);
@@ -1349,6 +1790,8 @@ describe('wallet candidate discovery', () => {
 					batchSize: 2,
 					concurrency: 2,
 					fetch: fetcher as typeof fetch,
+					graphql: 'https://arweave.net/graphql',
+					retryDelaysMs: [],
 					recipients,
 				});
 				throw new Error('expected activity failure');
@@ -1435,6 +1878,39 @@ describe('wallet candidate discovery', () => {
 		expect(emitted).toEqual([[assetA], [assetB]]);
 		expect(result.map((candidate) => candidate.processId)).toEqual([assetA, assetB]);
 		expect(result[0].height).toBe(30);
+	});
+
+	it('reports the index that answered each activity page', async () => {
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const cursor = JSON.parse(String(init?.body)).variables.cursor;
+			if (String(input) === 'https://arweave.net/graphql') return new Response('busy', { status: 429 });
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: !cursor },
+						edges: [activityEdge(cursor ? 'fallback-2' : 'fallback-1', cursor ? assetB : assetA, 30)],
+					},
+				},
+			});
+		});
+		const pages: Array<[string[], string | undefined]> = [];
+
+		await discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			onPage: (candidates, graphql) => {
+				pages.push([candidates.map((candidate) => candidate.processId), graphql]);
+			},
+		});
+
+		expect(pages).toEqual([
+			[[assetA], 'https://index.example/graphql'],
+			[[assetB], 'https://index.example/graphql'],
+		]);
+		expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+			'https://arweave.net/graphql',
+			'https://index.example/graphql',
+			'https://index.example/graphql',
+		]);
 	});
 
 	it('can bound a recent market scan without requiring the complete history', async () => {
@@ -1631,7 +2107,63 @@ describe('wallet candidate discovery', () => {
 				fetch: fetcher as typeof fetch,
 				recipients: [assetA],
 			})
-		).resolves.toEqual({ events: [], cursor: null, hasNextPage: false, totalCount: null });
+		).resolves.toEqual({
+			events: [],
+			cursor: null,
+			hasNextPage: false,
+			totalCount: null,
+			graphql: 'https://arweave.net/graphql',
+		});
+	});
+
+	it('falls back to a count-free query on an index that rejects count and keeps its cursor there', async () => {
+		const requests: Array<{ url: string; query: string; variables: any }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			const body = JSON.parse(String(init?.body));
+			requests.push({ url, ...body });
+			if (url === 'https://arweave.net/graphql') return new Response('busy', { status: 503 });
+			if (/\bcount\b/.test(body.query)) {
+				return Response.json(
+					{ errors: [{ message: 'Cannot query field "count" on type "TransactionConnection".' }] },
+					{ status: 400 }
+				);
+			}
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: !body.variables.cursor },
+						edges: [activityEdge(body.variables.cursor ? 'index-2' : 'index-1', assetA, 42)],
+					},
+				},
+			});
+		});
+
+		const first = await discoverCollectionActivityPage({
+			fetch: fetcher as typeof fetch,
+			recipients: [assetA],
+		});
+		expect(first).toMatchObject({
+			cursor: 'index-1',
+			hasNextPage: true,
+			totalCount: null,
+			graphql: 'https://index.example/graphql',
+		});
+		expect(requests.map(({ url, query }) => [url, /\bcount\b/.test(query)])).toEqual([
+			['https://arweave.net/graphql', true],
+			['https://index.example/graphql', false],
+		]);
+
+		const second = await discoverCollectionActivityPage({
+			fetch: fetcher as typeof fetch,
+			recipients: [assetA],
+			cursor: first.cursor,
+			graphql: first.graphql,
+		});
+		expect(second).toMatchObject({ hasNextPage: false, graphql: 'https://index.example/graphql' });
+		expect(requests.slice(2).map(({ url, variables }) => [url, variables.cursor])).toEqual([
+			['https://index.example/graphql', 'index-1'],
+		]);
 	});
 
 	it('keeps the registered fill quantity needed to price purchase activity', async () => {
@@ -1733,6 +2265,8 @@ describe('wallet candidate discovery', () => {
 			discoverCollectionActivityBatched({
 				concurrency: 1,
 				fetch: fetcher as typeof fetch,
+				// One index: this covers batch isolation, not endpoint fallback.
+				graphql: 'https://arweave.net/graphql',
 				recipients,
 				onBatch: (_events, batch) => {
 					completed.push(batch);
@@ -2404,6 +2938,67 @@ describe('live candidate resolution', () => {
 		).resolves.toEqual({ supported: [candidate], unavailable: [] });
 	});
 
+	it('retries a support batch that every index failed transiently', async () => {
+		const processId = 'Q'.repeat(43);
+		const candidate: AssetCandidate = { processId, height: 10, timestamp: 0, sources: ['transfer'] };
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		let request = 0;
+		const fetcher = vi.fn(async () => {
+			request += 1;
+			if (request === 1) throw new Error('asset-support-graphql-timeout');
+			if (request === 2) return new Response('busy', { status: 503 });
+			return Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [{ cursor: 'f', node: { id: processId } }] },
+					atomic: { pageInfo: { hasNextPage: false }, edges: [] },
+				},
+			});
+		});
+
+		await expect(
+			verifyAssetCandidateSupport([candidate], [tokenCollection], {
+				fetch: fetcher as typeof fetch,
+				retryDelaysMs: [0],
+			})
+		).resolves.toEqual({ supported: [candidate], unavailable: [] });
+		expect(fetcher).toHaveBeenCalledTimes(3);
+	});
+
+	it('shares one retry budget across support batches so an outage is reported in bounded time', async () => {
+		// 36 unindexed candidates make four 9-ID batches, two in flight at a time.
+		const candidates: AssetCandidate[] = Array.from({ length: 36 }, (_, index) => ({
+			processId: index.toString(36).padStart(43, 'Q'),
+			height: 10,
+			timestamp: 0,
+			sources: ['transfer'],
+		}));
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+
+		const result = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
+			fetch: fetcher as typeof fetch,
+			graphql: 'https://arweave.net/graphql',
+			retryDelaysMs: [0, 0],
+		});
+
+		expect(result.supported).toEqual([]);
+		expect(result.unavailable).toHaveLength(36);
+		// The two first batches spend their retries (3 attempts each); the next two are tried once.
+		expect(fetcher).toHaveBeenCalledTimes(8);
+	});
+
 	it('verifies and reconstructs Bazar audio assets with artwork without origin-local storage', async () => {
 		const processId = 'U'.repeat(43);
 		const mediaId = 'M'.repeat(43);
@@ -2485,8 +3080,8 @@ describe('live candidate resolution', () => {
 				id: processId,
 				name: 'Portable asset',
 				contentType: 'audio/mpeg',
-				media: `https://arweave.net/${mediaId}`,
-				image: `https://arweave.net/${artworkId}`,
+				media: `https://arweave.net/raw/${mediaId}`,
+				image: `https://arweave.net/raw/${artworkId}`,
 			},
 			collection: { id: 'created-assets', name: 'Portable collection' },
 		});
@@ -2499,7 +3094,7 @@ describe('live candidate resolution', () => {
 				'asset-artwork': undefined,
 			})
 		);
-		expect(embeddedImage?.asset.image).toBe(`https://arweave.net/${processId}`);
+		expect(embeddedImage?.asset.image).toBe(`https://arweave.net/raw/${processId}`);
 		await expect(
 			resolveAssetCandidates(verification.supported, [tokenCollection], {
 				read: async () => ({ provider: 'https://compute.example', state }),
@@ -2510,6 +3105,155 @@ describe('live candidate resolution', () => {
 				collection: { id: 'created-assets', name: 'Portable collection' },
 			},
 		]);
+	});
+
+	it('shows a standalone Bazar mint whose live state is served as a multipart message', async () => {
+		// Shaped on Ominous Dwelling (79OR…), minted at block 2048287 and listed at 2048303. The process
+		// keeps its PNG as data, so the node answers a HEAD compute read with the multipart framing as
+		// `content-type`; `image/png` only appears in the signed mint record and the response body.
+		const processId = '79ORfEkmKfcFZ1XkVUy_zP32bx1PweLWqgt9dvf8_2Y';
+		const creator = 'kaYP9bJtpqON8Kyy3RbqnqdtDBDUsPTQTNUCvZtKiFI';
+		const holder = 'uri-did-ar-kayp9bjtpqon8kyy3rbqnqdtdbdusptqtnucvztkifi4w3mt4vh4';
+		const balancesId = 'CiMpfJBtfv_jkrwCrkKnBc3BgxbVLoNejDjAM280dfE';
+		const ordersId = 'Iqvvnz4RBQIfWvDESCv1EbFrEtAYPzWbjTDoLehUBnc';
+		const orderMessageId = 'BFwApv35VkLQxtmeNW8L3t44QoehgBFK4_xpU-BTdA8';
+		const listingId = 'L3LkZjPa7RNOORR7Nk969_IFq2nHu_Z3hkunYeUFjx4';
+		const candidate: AssetCandidate = {
+			processId,
+			height: 2048303,
+			timestamp: 1795446674,
+			activityIds: [listingId],
+			sources: ['initial-holder', 'market-action'],
+			device: 'token@1.0',
+			processDevice: 'process@1.0',
+			assetType: 'non-fungible',
+			swapDevice: 'arweave-swap@1.0',
+			schedulerDevice: 'arweave-scheduler@1.0',
+			schedulerMode: 'all',
+		};
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const mintTags = [
+			['content-type', 'image/png'],
+			['hint-ui-style', 'non-fungible'],
+			['creator', creator],
+			['implements', 'ANS-110'],
+			['title', 'Ominous Dwelling'],
+			['device', 'process@1.0'],
+			['type', 'Process'],
+			['execution-device', 'token@1.0'],
+			['swap-device', 'arweave-swap@1.0'],
+			['scheduler-device', 'arweave-scheduler@1.0'],
+			['scheduler-mode', 'all'],
+			['initial-holder', creator],
+			['total-supply', '1'],
+			['denomination', '0'],
+			['ticker', 'ASSET'],
+			['name', 'Ominous Dwelling'],
+		].map(([name, value]) => ({ name, value }));
+		const graphql = vi.fn(async () =>
+			Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+					atomic: {
+						pageInfo: { hasNextPage: false },
+						edges: [{ cursor: 'atomic', node: { id: processId, tags: mintTags } }],
+					},
+				},
+			})
+		);
+		const compute = vi.fn(async (input: RequestInfo | URL) => {
+			const path = String(input);
+			if (path.startsWith(`/${processId}~process@1.0/`)) {
+				return new Response(null, {
+					headers: {
+						anchor: 'RpbiAWh0p8J4fM6lkS6lkBc9lPlY3Pqf335EzuzY5ylO_7zMjpAx__K5Q5c-aZZR',
+						'ao-body-key': 'data',
+						'ao-types': 'atom=("requires-determinism"), integer=("at-slot" "swap-height")',
+						'at-slot': '1',
+						balances: `ao:${balancesId}`,
+						'content-type': 'multipart/form-data; boundary="TZXKwew89BgOYS8bM78MbL8HdBlXbTXVM8vRwa_xGv8"',
+						creator,
+						denomination: '0',
+						description: 'Pixel Mosaic · replay seed pm1-20000000000000000000000000000000',
+						device: 'process@1.0',
+						'execution-device': 'token@1.0',
+						'hint-ui-style': 'non-fungible',
+						implements: 'ANS-110',
+						'initial-holder': creator,
+						'input-prefix': 'process',
+						name: 'Ominous Dwelling',
+						orders: `ao:${ordersId}`,
+						process: `ao:${processId}`,
+						'requires-determinism': 'true',
+						reward: '3391872646',
+						'scheduler-device': 'arweave-scheduler@1.0',
+						'scheduler-mode': 'all',
+						'swap-device': 'arweave-swap@1.0',
+						'swap-height': '2048303',
+						ticker: 'ASSET',
+						title: 'Ominous Dwelling',
+						'total-supply': '1',
+						type: 'Process',
+					},
+				});
+			}
+			if (path === `/${balancesId}~message@1.0/serialize~json@1.0`) {
+				return new Response(JSON.stringify({ device: 'json@1.0', [holder]: 0 }));
+			}
+			if (path === `/${ordersId}~message@1.0`) {
+				return new Response(null, {
+					headers: { device: 'message@1.0', [listingId.toLowerCase()]: `ao:${orderMessageId}` },
+				});
+			}
+			if (path === `/${orderMessageId}~message@1.0`) {
+				return new Response(null, {
+					headers: {
+						'ao-types': 'integer=("asking" "created-at" "deadline" "deposit" "minimum-fee" "quantity")',
+						asking: '2000000000000',
+						'created-at': '2048303',
+						creator: holder,
+						deadline: '20',
+						deposit: '0',
+						device: 'message@1.0',
+						'minimum-fee': '0',
+						'order-id': listingId,
+						quantity: '1',
+						recipient: holder,
+						status: 'open',
+					},
+				});
+			}
+			return new Response('not found', { status: 404 });
+		});
+
+		const verification = await verifyAssetCandidateSupport([candidate], [tokenCollection], {
+			fetch: graphql as typeof fetch,
+		});
+		expect(verification).toEqual({ supported: [candidate], unavailable: [] });
+		const resolved = await resolveAssetCandidates(verification.supported, [tokenCollection], {
+			requireHolderBalances: true,
+			read: (id, signal) =>
+				readAssetState(id, { fetch: compute as typeof fetch, signal, currentHeight: 2048400 }),
+		});
+
+		expect(resolved).toMatchObject([
+			{
+				asset: {
+					id: processId,
+					name: 'Ominous Dwelling',
+					contentType: 'image/png',
+					image: `https://arweave.net/raw/${processId}`,
+				},
+				collection: { id: 'created-assets', kind: 'images' },
+			},
+		]);
+		expect(walletAssetGroup(resolved[0], creator)).toBe('listed');
 	});
 
 	it('excludes unsupported indexed media without reporting an index failure or retrying healthy candidates', async () => {
@@ -2648,6 +3392,7 @@ describe('live candidate resolution', () => {
 		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
 			graphql: 'https://arweave.net/graphql',
+			retryDelaysMs: [],
 			onVerified: (batch) => {
 				verifiedBatches.push(batch.map((candidate) => candidate.processId));
 			},
@@ -2955,5 +3700,255 @@ describe('live candidate resolution', () => {
 				wallet
 			)
 		).toBe('owned');
+	});
+});
+
+describe('slow index retry for market activity', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('gives the retry of a timed-out market-activity read the longer deadline', async () => {
+		vi.useFakeTimers();
+		let attempt = 0;
+		const fetcher = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((resolve, reject) => {
+					attempt += 1;
+					const answerAfterMs = 20_000; // a cold arweave.net query, past the 15 s first deadline
+					const timer = setTimeout(
+						() =>
+							resolve(
+								Response.json({
+									data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+								})
+							),
+						answerAfterMs
+					);
+					init?.signal?.addEventListener('abort', () => {
+						clearTimeout(timer);
+						reject(init.signal?.reason);
+					});
+				})
+		);
+		const read = discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			recipients: ['A'.repeat(43)],
+			listingsOnly: true,
+			retryDelaysMs: [1_000],
+			retryTimeoutMs: 45_000,
+		});
+		const outcome = expect(read).resolves.toEqual([]);
+
+		// This file configures two indexes, so the first attempt spends 15 s on each before the retry.
+		await vi.advanceTimersByTimeAsync(2 * 15_000 + 1_000 + 20_000);
+
+		await outcome;
+		expect(attempt).toBe(3);
+	});
+
+	it('keeps the first deadline for retries when no retry deadline is given', async () => {
+		vi.useFakeTimers();
+		const fetcher = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+				})
+		);
+		const read = discoverMarketActivity({
+			fetch: fetcher as typeof fetch,
+			recipients: ['A'.repeat(43)],
+			retryDelaysMs: [1_000],
+		});
+		const outcome = expect(read).rejects.toThrow();
+
+		await vi.advanceTimersByTimeAsync(2 * 15_000 + 1_000 + 2 * 15_000);
+
+		await outcome;
+		expect(fetcher).toHaveBeenCalledTimes(4);
+	});
+});
+
+describe('batched market activity in an index outage', () => {
+	it('stops starting batches after consecutive failures and reports them', async () => {
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+		const recipients = Array.from({ length: 10 }, (_, index) => `${String.fromCharCode(65 + index)}`.repeat(43));
+
+		await expect(
+			discoverMarketActivityBatched({
+				fetch: fetcher as typeof fetch,
+				recipients,
+				batchSize: 2,
+				concurrency: 1,
+				listingsOnly: true,
+				stopAfterConsecutiveFailures: 2,
+			})
+		).rejects.toThrow('asset-activity-batch-failed');
+		// Two batches, each tried once on each of this file's two indexes; three batches never start.
+		expect(fetcher).toHaveBeenCalledTimes(4);
+	});
+
+	it('keeps going after a failure that a success interrupts', async () => {
+		let call = 0;
+		const fetcher = vi.fn(async () => {
+			call += 1;
+			// Batch 1 fails on both indexes, batch 2 succeeds, batches 3-5 succeed.
+			if (call <= 2) return new Response('busy', { status: 503 });
+			return Response.json({ data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } } });
+		});
+		const recipients = Array.from({ length: 10 }, (_, index) => `${String.fromCharCode(65 + index)}`.repeat(43));
+
+		await expect(
+			discoverMarketActivityBatched({
+				fetch: fetcher as typeof fetch,
+				recipients,
+				batchSize: 2,
+				concurrency: 1,
+				stopAfterConsecutiveFailures: 2,
+			})
+		).rejects.toThrow('asset-activity-batch-failed');
+		expect(fetcher).toHaveBeenCalledTimes(2 + 4);
+	});
+});
+
+describe("a standalone mint found through the wallet's own mint record", () => {
+	const wallet = 'kaYP9bJtpqON8Kyy3RbqnqdtDBDUsPTQTNUCvZtKiFI';
+	const processId = 'MINT'.repeat(10) + 'abc';
+	const mintTags = [
+		['content-type', 'image/png'],
+		['hint-ui-style', 'non-fungible'],
+		['device', 'process@1.0'],
+		['execution-device', 'token@1.0'],
+		['swap-device', 'arweave-swap@1.0'],
+		['scheduler-device', 'arweave-scheduler@1.0'],
+		['scheduler-mode', 'all'],
+		['initial-holder', wallet],
+		['total-supply', '1'],
+		['denomination', '0'],
+		['ticker', 'ASSET'],
+		['name', 'Standalone Mint'],
+	].map(([name, value]) => ({ name, value }));
+	const tokens: Collection = {
+		id: 'fungible-tokens',
+		name: 'Tokens',
+		description: 'Tokens',
+		kind: 'tokens',
+		assets: [],
+	};
+
+	async function scanCandidate(): Promise<AssetCandidate> {
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					initiallyHeld: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: 'initial-1',
+								node: {
+									id: processId,
+									tags: mintTags,
+									block: { height: 2048287, timestamp: 1795444746 },
+								},
+							},
+						],
+					},
+					marketActions: empty,
+					receivedTransfers: empty,
+				},
+			})
+		);
+		const [candidate] = await discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			graphql: arweaveGraphqlEndpoint(),
+			retryDelaysMs: [],
+		});
+		return candidate;
+	}
+
+	it('keeps the mint media type and needs no second index query', async () => {
+		const candidate = await scanCandidate();
+
+		expect(candidate.mintContentType).toBe('image/png');
+		expect(partitionAssetCandidateSupport([candidate], [tokens])).toEqual({
+			supported: [candidate],
+			unverified: [],
+		});
+		const noIndex = vi.fn(async () => new Response('down', { status: 503 }));
+		await expect(
+			verifyAssetCandidateSupport([candidate], [tokens], { fetch: noIndex as typeof fetch })
+		).resolves.toEqual({ supported: [candidate], unavailable: [] });
+		expect(noIndex).not.toHaveBeenCalled();
+	});
+
+	it('rebuilds the asset from multipart live state with the scan media type, without the verification cache', () => {
+		const state = parseAssetState({
+			'content-type': 'multipart/form-data; boundary="x"',
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			ticker: 'ASSET',
+			name: 'Standalone Mint',
+			'total-supply': '1',
+			denomination: 0,
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+
+		expect(bazarAtomicAssetFromState(processId, state)).toBeNull();
+		expect(bazarAtomicAssetFromState(processId, state, 'image/png')).toMatchObject({
+			asset: { id: processId, name: 'Standalone Mint', contentType: 'image/png' },
+			collection: { id: 'created-assets' },
+		});
+	});
+
+	it('keeps the mint media type in a stored scan', async () => {
+		const candidate = await scanCandidate();
+		const values = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => void values.set(key, value),
+			removeItem: (key: string) => void values.delete(key),
+		};
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.answeringIndex = arweaveGraphqlEndpoint();
+		scan.heads = { initiallyHeld: processId, marketActions: null, receivedTransfers: null };
+		scan.found.set(processId, candidate);
+
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		expect(loadCompletedWalletCandidateScan(storage, wallet)?.found.get(processId)?.mintContentType).toBe(
+			'image/png'
+		);
+	});
+});
+
+describe('stored wallet scan version', () => {
+	it('seeds a full rescan from a version 1 scan, whose candidates lack the mint media type', () => {
+		const owner = 'kaYP9bJtpqON8Kyy3RbqnqdtDBDUsPTQTNUCvZtKiFI';
+		const held = 'H'.repeat(43);
+		const graphql = arweaveGraphqlEndpoint();
+		const values = new Map<string, string>([
+			[
+				`bazar.wallet-candidate-scan:v1:${owner}:${encodeURIComponent(graphql)}`,
+				JSON.stringify({ v: 1, a: owner, g: graphql, h: [held, null, null], c: [[held, 10, 20, 1]] }),
+			],
+		]);
+		const storage = { getItem: (key: string) => values.get(key) ?? null };
+
+		const scan = loadCompletedWalletCandidateScan(storage, owner, graphql);
+
+		expect([...(scan?.found.keys() ?? [])]).toEqual([held]);
+		// Not resumed from its heads: every alias is scanned again, so mint records fill in the media type.
+		expect(scan?.caughtUp).toBe(false);
+		expect([...(scan?.active ?? [])].sort()).toEqual(['initiallyHeld', 'marketActions', 'receivedTransfers']);
+		expect(scan?.heads).toEqual({
+			initiallyHeld: undefined,
+			marketActions: undefined,
+			receivedTransfers: undefined,
+		});
 	});
 });

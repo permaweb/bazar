@@ -37,19 +37,22 @@ import {
 	type SwapOrder,
 } from 'api/asset-marketplace';
 import { acquireAssetObserverNetwork, type AssetObserverNetworkLease } from 'api/asset-observers';
-import { readAssetStateWithDeadline } from 'api/asset-state-store';
+import { readCurrentAssetState } from 'api/asset-state-store';
 import {
 	AssetTransactionClient,
 	dispatchAndConfirm,
 	type PreparedPurchase,
 	type PurchaseBatchPreparationEvent,
+	purchaseOrderSafetyError,
 } from 'api/asset-transactions';
 import type { AssetSummary, Collection } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import {
 	filledOrder,
 	formatTokenAmount,
 	matchOrderFills,
 	matchSortedOrderFills,
+	MAXIMUM_ASSET_OFFER_PRICE,
 	type OrderFill,
 	parseTokenAmount,
 } from 'api/order-matching';
@@ -90,22 +93,51 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
-import { accountAddress, sameAccount } from 'helpers/host-account';
+import {
+	accountAddress,
+	displayAccount,
+	isWalletAddress,
+	NONCANONICAL_WALLET_ADDRESS_MESSAGE,
+	sameAccount,
+	shortAccount,
+} from 'helpers/host-account';
 import { optionalMotionBehavior } from 'helpers/motion';
-import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
+import {
+	formatArAmount,
+	formatGroupedTokenAmount,
+	formatTickerLabel,
+	formatTokenDescription,
+	formatTokenQuantity,
+	parseArAmount,
+} from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
-import { collectionDisplayName, MarketSelect } from './App';
 import {
+	ASSET_STATE_UNAVAILABLE_HEADING,
+	collectionDisplayName,
+	MarketSelect,
+	type PurchaseSequenceStepState,
+	purchaseSequenceStepStatus,
+} from './App';
+import {
+	ASSET_OFFER_TOTAL_CAP_ERROR,
+	isTerminalPurchaseFailureCode,
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceOperationFailure,
 	marketplaceOperationFailure,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
+	type PurchaseQuoteFailure,
+	purchaseQuoteFailure,
 } from './marketplace-error';
 import {
 	announceFungibleOperationActivityChange,
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
+	initialOperationPhase,
+	type OperationActivityPhase,
+	operationAfterProvenRejection,
 	operationRecoveryCanStillApply,
 } from './operation-activity';
 import {
@@ -136,6 +168,7 @@ import {
 	PURCHASE_PAYMENT_TARGET,
 	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseFailureCode,
 	type PurchaseGatewayContext,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
@@ -147,8 +180,10 @@ import {
 	purchaseObservationPendingState,
 	purchaseObservationResumeState,
 	purchaseObservationRetryDelay,
+	type PurchaseObservationRetryKind,
 	purchaseObservationRetryKind,
 	purchaseObservationRetryMessage,
+	shouldClearRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
 import { useDialogFocus } from './useDialogFocus';
@@ -175,6 +210,8 @@ type Props = {
 	onAskLoadMore(): void;
 	onAskRetry(): void;
 	loading: boolean;
+	/** False while the page shows bounded compute state before current state. */
+	stateCurrent?: boolean;
 	error: string | null;
 	provider: string;
 	verifiedAt: number | null;
@@ -203,7 +240,7 @@ type BatchResume = {
 };
 
 export type FungibleOperation =
-	| { kind: 'sell'; quantity?: string; unitPrice?: string; resumeId?: string }
+	| { kind: 'sell'; quantity?: string; unitPrice?: string; startingSlot?: number; resumeId?: string }
 	| {
 			kind: 'transfer';
 			quantity?: string;
@@ -232,6 +269,22 @@ export function appendFungibleOperationActivity(
 	activity: FungibleOperationActivity
 ) {
 	return [...current.map((item) => ({ ...item, visible: false })), activity];
+}
+
+/** A finished activity stays listed so its outcome can be reviewed, but it no longer blocks or relabels actions. */
+export function pendingFungibleOperationActivities(activities: FungibleOperationActivity[]) {
+	return activities.filter((activity) => activity.phase !== 'done');
+}
+
+/** The running activity a new request for the same id should reopen; a finished one is replaced instead. */
+export function resumableFungibleOperationActivity(
+	activities: FungibleOperationActivity[],
+	id: string,
+	signer: string
+) {
+	return pendingFungibleOperationActivities(activities).find(
+		(activity) => activity.id === id && activity.signer === signer
+	);
 }
 
 export function restartFungibleOperationActivity(activity: FungibleOperationActivity, now = Date.now()) {
@@ -279,8 +332,6 @@ export function fungiblePriceHistory(events: CollectionActivityEvent[], denomina
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
-const TERMINAL_PURCHASE_FAILURES = new Set(['asset-purchase-rejected', 'asset-purchase-proof-mismatch']);
-const TERMINAL_PURCHASE_FAILURE_MESSAGES = new Set(['asset purchase rejected', 'asset purchase proof mismatch']);
 
 export type FungibleHolder = {
 	address: string;
@@ -594,16 +645,40 @@ export function FungibleHolderChart({
 }
 
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
-	if (state?.stage !== 'failed' || !state.error) return false;
-	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
-	return TERMINAL_PURCHASE_FAILURE_MESSAGES.has(state.error.message.trim().toLowerCase());
+	return state?.stage === 'failed' && isTerminalPurchaseFailureCode(purchaseFailureCode(state));
 }
 
-export function purchaseFailureMessageNeedsManualReview(message?: string) {
-	if (!message) return false;
-	const normalized = message.trim().toLowerCase();
-	if (TERMINAL_PURCHASE_FAILURE_MESSAGES.has(normalized)) return true;
-	return [...TERMINAL_PURCHASE_FAILURE_MESSAGES].some((failure) => normalized.endsWith(`. ${failure}`));
+/**
+ * How a failed batch buy may continue, decided from each lot's own state.
+ * - `none`: no lot was rejected after payment.
+ * - `resumable`: some lots were rejected after payment, but another
+ *   incomplete lot still has saved work to continue, so its receipts stay.
+ * - `manual-review`: every incomplete lot was rejected after payment;
+ *   nothing can resume, so the asset may be unlocked.
+ */
+export type BatchPurchaseFailureReview =
+	| { kind: 'none' }
+	| { kind: 'resumable'; rejectedAfterPayment: number }
+	| { kind: 'manual-review'; rejectedAfterPayment: number };
+
+export function batchPurchaseRejectedAfterPaymentNotice(review: BatchPurchaseFailureReview): string {
+	if (review.kind !== 'resumable') return '';
+	const one = review.rejectedAfterPayment === 1;
+	return `The process rejected ${
+		one ? 'one listing' : `${review.rejectedAfterPayment} listings`
+	} after payment. Resuming only rechecks ${one ? 'its' : 'their'} saved receipts and never pays again. `;
+}
+
+export function batchPurchaseFailureReview(states: Array<PurchaseState | undefined>): BatchPurchaseFailureReview {
+	let rejectedAfterPayment = 0;
+	let resumable = false;
+	for (const state of states) {
+		if (state?.stage === 'complete') continue;
+		if (purchaseSettlementNeedsManualReview(state)) rejectedAfterPayment += 1;
+		else resumable = true;
+	}
+	if (!rejectedAfterPayment) return { kind: 'none' };
+	return { kind: resumable ? 'resumable' : 'manual-review', rejectedAfterPayment };
 }
 
 function currentPurchaseGatewayContext(): PurchaseGatewayContext {
@@ -632,6 +707,7 @@ export function FungibleAssetView({
 	onAskLoadMore,
 	onAskRetry,
 	loading,
+	stateCurrent = true,
 	error,
 	onRefresh,
 	stateRecoveryAction,
@@ -653,9 +729,10 @@ export function FungibleAssetView({
 	);
 	const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
 	const hasWalletActivities = walletActivities.length > 0;
-	const hasBusyWalletActivities = walletActivities.some((activity) => (activity.phase ?? 'form') !== 'error');
-	const activePurchaseActivity = walletActivities.find((activity) => activity.operation.kind === 'buy');
-	const activeAssetActivity = walletActivities.find((activity) => activity.operation.kind !== 'buy');
+	const pendingWalletActivities = pendingFungibleOperationActivities(walletActivities);
+	const hasBusyWalletActivities = pendingWalletActivities.some((activity) => (activity.phase ?? 'form') !== 'error');
+	const activePurchaseActivity = pendingWalletActivities.find((activity) => activity.operation.kind === 'buy');
+	const activeAssetActivity = pendingWalletActivities.find((activity) => activity.operation.kind !== 'buy');
 	const showOperationActivity = React.useCallback((id: string) => {
 		setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
 	}, []);
@@ -696,9 +773,7 @@ export function FungibleAssetView({
 				const show = options?.show ?? true;
 				const signer = wallet.address;
 				const id = fungibleOperationActivityId(asset.id, signer, next.kind);
-				const existing = operationActivitiesRef.current.find(
-					(activity) => activity.id === id && activity.signer === signer
-				);
+				const existing = resumableFungibleOperationActivity(operationActivitiesRef.current, id, signer);
 				if (existing) {
 					if (show) showOperationActivity(existing.id);
 					return;
@@ -753,10 +828,11 @@ export function FungibleAssetView({
 	const visibleActivityRows = activity.slice(0, activityLimit);
 	const openOrders = React.useMemo(() => orders.filter((order) => order.status === 'open'), [orders]);
 	const purchasableOrders = React.useMemo(
-		() =>
-			openOrders.filter(
-				(order) => !sameAccount(order.creator, wallet.address) && !sameAccount(order.recipient, wallet.address)
-			),
+		() => purchasableOrdersFor(openOrders, wallet.address),
+		[openOrders, wallet.address]
+	);
+	const unsafeExcludedQuantity = React.useMemo(
+		() => unsafeExcludedQuantityFor(openOrders, wallet.address),
 		[openOrders, wallet.address]
 	);
 	const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
@@ -780,7 +856,7 @@ export function FungibleAssetView({
 	const listingUnitPriceError =
 		listingUnitPrice.trim() && !safeArPrice(listingUnitPrice)
 			? 'Enter a positive AR price with no more than 12 decimal places.'
-			: '';
+			: fungibleListingTotalError(listingQuantity, listingUnitPrice, state);
 	const listingQuote =
 		listingAmount !== null && listingAmount <= listingBalance
 			? safeLotQuote(listingQuantity, listingUnitPrice, state)
@@ -944,7 +1020,8 @@ export function FungibleAssetView({
 		if (recoverySuppressed) resumeButtonRef.current?.focus();
 	}, [recoverySuppressed]);
 	React.useEffect(() => {
-		if (!wallet.address || hasWalletActivities || recoverySuppressed) return;
+		// Recovery may discard signed local work, so it waits for current state.
+		if (!wallet.address || hasWalletActivities || recoverySuppressed || !stateCurrent) return;
 		const activeClaimKeys = [
 			operationClaimStorageKey(asset.id, wallet.address, 'purchase'),
 			operationClaimStorageKey(asset.id, wallet.address, 'asset'),
@@ -1076,6 +1153,7 @@ export function FungibleAssetView({
 						kind: 'sell',
 						quantity: saved.quantity,
 						unitPrice: saved.unitPrice,
+						startingSlot: saved.startingSlot,
 						resumeId: saved.txId,
 					},
 					{ show: false }
@@ -1102,6 +1180,7 @@ export function FungibleAssetView({
 		purchaseKey,
 		recoverySuppressed,
 		state,
+		stateCurrent,
 		storageVersion,
 		wallet.address,
 	]);
@@ -1112,6 +1191,7 @@ export function FungibleAssetView({
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery) || signedRecoveryLocksAsset;
 	const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
 	const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
+	const refreshWalletBalances = wallet.refreshBalances;
 	const handleOperationActivityChange = React.useCallback(
 		(
 			id: string,
@@ -1122,9 +1202,12 @@ export function FungibleAssetView({
 			setOperationActivities((current) =>
 				current.map((activity) => (activity.id === id ? { ...activity, phase: update.phase } : activity))
 			);
-			if (update.phase === 'done') void onRefresh();
+			if (update.phase === 'done') {
+				void onRefresh();
+				refreshWalletBalances();
+			}
 		},
-		[onRefresh, publishOperationActivity]
+		[onRefresh, publishOperationActivity, refreshWalletBalances]
 	);
 
 	React.useEffect(() => {
@@ -1234,7 +1317,12 @@ export function FungibleAssetView({
 			</header>
 			{loading ? <Loading label="Computing current state…" /> : null}
 			{error ? (
-				<ErrorPanel message={error} onRetry={() => void onRefresh()} secondaryAction={stateRecoveryAction} />
+				<ErrorPanel
+					heading={ASSET_STATE_UNAVAILABLE_HEADING}
+					message={error}
+					onRetry={() => void onRefresh()}
+					secondaryAction={stateRecoveryAction}
+				/>
 			) : null}
 			<div className="asset-detail-layout">
 				<div className="asset-commerce-column asset-commerce-primary">
@@ -1286,7 +1374,12 @@ export function FungibleAssetView({
 								{purchasableOrders.length ? (
 									<FungiblePurchaseComposer
 										availableQuantity={purchasableQuantity.toString()}
-										excludedQuantity={(BigInt(forSale) - purchasableQuantity).toString()}
+										excludedQuantity={(
+											BigInt(forSale) -
+											purchasableQuantity -
+											BigInt(unsafeExcludedQuantity)
+										).toString()}
+										unsafeExcludedQuantity={unsafeExcludedQuantity}
 										error={purchaseAmountResult.error}
 										match={purchaseAmountResult.match}
 										onChange={(quantity) => {
@@ -1304,7 +1397,14 @@ export function FungibleAssetView({
 									<div className="asset-buy-summary asset-buy-summary-empty">
 										<span>Purchase amount</span>
 										<h1>No purchasable listings</h1>
-										<small>No open listings are available to this wallet.</small>
+										<small>
+											{BigInt(unsafeExcludedQuantity) > 0n
+												? `${tokenLabel(
+														unsafeExcludedQuantity,
+														state
+												  )} is listed with a reservation fee above Bazar's limit, so it can't be bought here.`
+												: 'No open listings are available to this wallet.'}
+										</small>
 									</div>
 								)}
 							</div>
@@ -1334,14 +1434,14 @@ export function FungibleAssetView({
 										<h1>
 											{wallet.address
 												? holderBalancesAvailable
-													? 'No liquid tokens'
+													? fungibleEmptyBalanceCopy('sell', listed, state).title
 													: 'Balance unavailable'
 												: 'Connect to list'}
 										</h1>
 										<small>
 											{wallet.address
 												? holderBalancesAvailable
-													? 'Tokens already listed for sale are not available for a new listing.'
+													? fungibleEmptyBalanceCopy('sell', listed, state).detail
 													: 'Complete holder balance state is required before listing tokens.'
 												: 'Connect your wallet to see the tokens available to list.'}
 										</small>
@@ -1363,7 +1463,7 @@ export function FungibleAssetView({
 												? 'Balance unavailable'
 												: listingBalance > 0n
 												? tokenLabel(liquid, state)
-												: 'No liquid tokens'
+												: fungibleEmptyBalanceCopy('transfer', listed, state).title
 											: 'Connect to transfer'}
 									</h1>
 									<small>
@@ -1372,7 +1472,7 @@ export function FungibleAssetView({
 												? 'Complete holder balance state is required before transferring tokens.'
 												: listingBalance > 0n
 												? 'Choose a recipient and amount in the transfer review.'
-												: 'Tokens listed for sale are not available to transfer.'
+												: fungibleEmptyBalanceCopy('transfer', listed, state).detail
 											: 'Connect your wallet to see the tokens available to transfer.'}
 									</small>
 								</div>
@@ -1490,7 +1590,7 @@ export function FungibleAssetView({
 							<TokenPriceChart
 								error={askError}
 								floorValue={best ? unitPriceWinston(best, state.denomination).toString() : null}
-								formatValue={(value) => `${winstonToAr(value)} AR / ${ticker}`}
+								formatValue={(value) => fungibleUnitPriceLabel(value, state)}
 								hasNextPage={askHasNextPage}
 								loading={askLoading}
 								loadingMore={askLoadingMore}
@@ -1528,7 +1628,7 @@ export function FungibleAssetView({
 												data-label="Price (AR)"
 												role="cell"
 											>
-												{winstonToAr(unitPriceWinston(order, state.denomination).toString())}
+												{formatArAmount(unitPriceWinston(order, state.denomination).toString())}
 											</strong>
 											<span
 												aria-label={tokenLabel(order.quantity, state)}
@@ -1538,11 +1638,11 @@ export function FungibleAssetView({
 												{formatGroupedTokenAmount(order.quantity, state.denomination)}
 											</span>
 											<span
-												aria-label={`${winstonToAr(order.asking)} AR`}
+												aria-label={`${formatArAmount(order.asking)} AR`}
 												data-label="Value (AR)"
 												role="cell"
 											>
-												{winstonToAr(order.asking)}
+												{formatArAmount(order.asking)}
 											</span>
 											<span data-label="Seller" role="cell">
 												<WalletAddress address={order.creator} label="seller" />
@@ -1879,6 +1979,13 @@ export function FungibleAssetView({
 						)
 					}
 					onActivityChange={(update) => handleOperationActivityChange(activity.id, update)}
+					onOperation={(operation) =>
+						setOperationActivities((current) =>
+							current.map((candidate) =>
+								candidate.id === activity.id ? { ...candidate, operation } : candidate
+							)
+						)
+					}
 					onRestart={() => {
 						setRecoverySuppressed(false);
 						setOperationActivities((current) =>
@@ -1945,7 +2052,7 @@ export type FungiblePurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
 	label: string;
 	detail: string;
-	state: 'done' | 'active' | 'next';
+	state: PurchaseSequenceStepState;
 };
 
 const PAYMENT_PURCHASE_STAGES = new Set([
@@ -2001,12 +2108,17 @@ export function FungiblePurchaseSequence({
 		<section aria-label="Purchase transaction sequence" className="purchase-sequence">
 			<ol>
 				{steps.map((step, index) => (
-					<li className={step.state} key={step.key}>
+					<li
+						aria-current={step.state === 'active' ? 'step' : undefined}
+						className={step.state}
+						key={step.key}
+					>
 						<span aria-hidden="true" className="purchase-sequence-marker">
 							{step.state === 'done' ? <Check /> : index + 1}
 						</span>
 						<span className="purchase-sequence-copy">
 							<strong>{step.label}</strong>
+							<span className="sr-only">{`, ${purchaseSequenceStepStatus(step.state)}`}</span>
 						</span>
 					</li>
 				))}
@@ -2025,6 +2137,7 @@ function FungibleOperationDialog({
 	restoreFallback,
 	onHide,
 	onActivityChange,
+	onOperation,
 	onRestart,
 	onClose,
 }: {
@@ -2039,6 +2152,7 @@ function FungibleOperationDialog({
 	onActivityChange(
 		update: Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>
 	): void;
+	onOperation(operation: FungibleOperation): void;
 	onRestart(): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
@@ -2068,14 +2182,13 @@ function FungibleOperationDialog({
 	);
 	const [unitPrice, setUnitPrice] = React.useState(operation.kind === 'sell' ? operation.unitPrice ?? '' : '');
 	const [recipient, setRecipient] = React.useState(operation.kind === 'transfer' ? operation.recipient ?? '' : '');
-	const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
-		operation.kind === 'buy' && operation.resume
-			? recoveryApprovalCount
-				? 'approval'
-				: 'working'
-			: operation.kind !== 'buy' && operation.resumeId
-			? 'working'
-			: 'form'
+	const [phase, setPhase] = React.useState<OperationActivityPhase>(
+		initialOperationPhase({
+			kind: operation.kind,
+			hasResume: operation.kind === 'buy' && Boolean(operation.resume),
+			hasResumeId: operation.kind !== 'buy' && Boolean(operation.resumeId),
+			recoveryApprovalCount,
+		})
 	);
 	const [message, setMessage] = React.useState('');
 	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
@@ -2097,7 +2210,7 @@ function FungibleOperationDialog({
 	const [estimatedCost, setEstimatedCost] = React.useState<string | null>(null);
 	const [estimatedWalletBalance, setEstimatedWalletBalance] = React.useState<string | null>(null);
 	const [canAfford, setCanAfford] = React.useState<boolean | null>(null);
-	const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	const [quoteState, setQuoteState] = React.useState<FungiblePurchaseQuoteState>({ status: 'idle' });
 	const [quoteRetry, setQuoteRetry] = React.useState(0);
 	const [hiding, setHiding] = React.useState(false);
 	const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
@@ -2110,8 +2223,10 @@ function FungibleOperationDialog({
 	const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
+	// A listing saved without a baseline predates exact-slot listing checks and
+	// keeps the open-order wait, so 'sell' never falls back to slot 0.
 	const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
-		(operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
+		operation.kind !== 'buy' && Number.isSafeInteger(operation.startingSlot)
 			? { startingSlot: operation.startingSlot! }
 			: (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
 			? { startingSlot: 0 }
@@ -2162,6 +2277,13 @@ function FungibleOperationDialog({
 	const currentListed = BigInt(listedBalanceOf(state, owner));
 	const listingQuote = operation.kind === 'sell' ? safeLotQuote(quantity, unitPrice, state) : null;
 	const unitPriceValid = safeArPrice(unitPrice);
+	const unitPriceGuidance = !unitPrice
+		? ''
+		: !unitPriceValid
+		? 'Enter a positive AR price with no more than 12 decimal places.'
+		: operation.kind === 'sell'
+		? fungibleListingTotalError(quantity, unitPrice, state)
+		: '';
 	const transferRecipient =
 		operation.kind === 'transfer' ? (operation.recipient ?? recipient).trim() : recipient.trim();
 	const recipientError =
@@ -2212,7 +2334,7 @@ function FungibleOperationDialog({
 			setEstimatedCost(null);
 			setEstimatedWalletBalance(null);
 			setCanAfford(null);
-			setQuoteState('idle');
+			setQuoteState({ status: 'idle' });
 			return;
 		}
 		const controller = new AbortController();
@@ -2220,7 +2342,7 @@ function FungibleOperationDialog({
 		setEstimatedCost(null);
 		setEstimatedWalletBalance(null);
 		setCanAfford(null);
-		setQuoteState('loading');
+		setQuoteState({ status: 'loading' });
 		const quoteTimer = window.setTimeout(() => {
 			void Promise.all([
 				client.estimatePurchaseBatchCosts(matchedOrders, asset.id, controller.signal),
@@ -2232,15 +2354,15 @@ function FungibleOperationDialog({
 						setEstimatedCost(total.toString());
 						setEstimatedWalletBalance(walletBalance.toString());
 						setCanAfford(walletBalance >= total);
-						setQuoteState('ready');
+						setQuoteState({ status: 'ready' });
 					}
 				})
-				.catch(() => {
+				.catch((cause) => {
 					if (!controller.signal.aborted) {
 						setEstimatedCost(null);
 						setEstimatedWalletBalance(null);
 						setCanAfford(null);
-						setQuoteState('error');
+						setQuoteState({ status: 'error', ...purchaseQuoteFailure(cause) });
 					}
 				});
 		}, 250);
@@ -2308,7 +2430,7 @@ function FungibleOperationDialog({
 				}
 			);
 			if (freshOperation) {
-				({ state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 }));
+				({ state: freshState } = await readCurrentAssetState(asset.id, { signal }));
 				const expectedOrders =
 					operation.kind === 'buy'
 						? matchedFills.map((fill) => fill.sourceOrder)
@@ -2328,11 +2450,13 @@ function FungibleOperationDialog({
 					state.denomination
 				);
 				if (stateError) throw new Error(stateError);
-				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
-					const startingSlot = Number(freshState.raw['at-slot']);
-					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
-					}
+				const startingSlot = Number(freshState.raw['at-slot']);
+				const hasStartingSlot = Number.isSafeInteger(startingSlot) && startingSlot >= 0;
+				if ((operation.kind === 'cancel' || operation.kind === 'transfer') && !hasStartingSlot) {
+					throw new Error('asset-action-starting-slot-unavailable');
+				}
+				// Listings without a slot keep the open-order wait rather than refusing to sign.
+				if (operation.kind !== 'buy' && hasStartingSlot) {
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
 				}
@@ -2406,7 +2530,11 @@ function FungibleOperationDialog({
 				...(operation.kind === 'cancel'
 					? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
 					: operation.kind === 'sell'
-					? { quantity, unitPrice }
+					? {
+							quantity,
+							unitPrice,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+					  }
 					: {
 							quantity,
 							recipient: transferRecipient,
@@ -2443,28 +2571,24 @@ function FungibleOperationDialog({
 			setConsensus(null);
 			await dispatchAndConfirm(prepared, {
 				signal,
-				target: 5,
+				target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 				onViews: setViews,
 				onConsensus: setConsensus,
 				onProgress: (progress) => setConfirmations(progress.confirmations),
 			});
-			setConfirmations(5);
-			setMessage('Five confirmations reached. Waiting for live token state…');
+			setConfirmations(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+			setMessage(`${ASSET_TRANSACTION_CONFIRMATION_TARGET} confirmations reached. Waiting for live token state…`);
 			if (operation.kind === 'sell') {
 				const expectedQuantity =
 					rawQuantity || parseTokenAmount(operation.quantity ?? quantity, state.denomination);
 				const expectedAsking =
 					asking || lotAsking(expectedQuantity, operation.unitPrice ?? unitPrice, state.denomination);
-				await client.waitForOfferAcceptance(
-					asset.id,
-					{
-						orderId: prepared.id,
-						seller: owner,
-						quantity: expectedQuantity,
-						asking: expectedAsking,
-					},
-					signal
-				);
+				const expectedOffer = { seller: owner, quantity: expectedQuantity, asking: expectedAsking };
+				if (exactActionBaseline) {
+					await client.waitForExactOffer(asset.id, prepared.id, expectedOffer, exactActionBaseline, signal);
+				} else {
+					await client.waitForOfferAcceptance(asset.id, { orderId: prepared.id, ...expectedOffer }, signal);
+				}
 			} else if (operation.kind === 'cancel') {
 				await client.waitForExactCancellation(
 					asset.id,
@@ -2510,7 +2634,9 @@ function FungibleOperationDialog({
 			if (attemptRef.current.signal.aborted) return;
 			if (
 				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				['asset-cancel-rejected', 'fungible-transfer-rejected', 'asset-offer-rejected'].includes(
+					cause.message
+				) &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(
@@ -2520,6 +2646,9 @@ function FungibleOperationDialog({
 				);
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
+				// The discarded signature must never be resumed, so "Try again" starts a fresh attempt.
+				onOperation(operationAfterProvenRejection(operation));
+				exactActionBaselineRef.current = null;
 			}
 			setFailureKind(marketplaceOperationFailure(cause));
 			setMessage(errorMessage(cause));
@@ -2745,6 +2874,8 @@ function FungibleOperationDialog({
 				},
 			};
 			let observationRetryAttempt = 0;
+			// Set while this lot's "checking again" copy is shown; cleared once its retried run moves past that step.
+			let retryCheckingKind: PurchaseObservationRetryKind | null = null;
 			while (true) {
 				const purchase = new SwapPurchase(network, coordinatedAdapter, {
 					registrationTarget: PURCHASE_REGISTRATION_TARGET,
@@ -2759,6 +2890,12 @@ function FungibleOperationDialog({
 				const update = (purchaseState: PurchaseState) => {
 					if (attemptRef.current.signal.aborted || recoveryConflict) return;
 					purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseState);
+					if (retryCheckingKind && shouldClearRetryMessage(retryCheckingKind, purchaseState)) {
+						// The message is shared by every lot: only clear the copy this lot set.
+						const checking = purchaseObservationCheckingMessage(retryCheckingKind);
+						retryCheckingKind = null;
+						setMessage((current) => (current === checking ? '' : current));
+					}
 					const previousSnapshot = entry.snapshot;
 					entry.snapshot = latestRecoverableSnapshot(previousSnapshot, purchase.snapshot());
 					if (entry.snapshot === previousSnapshot) return;
@@ -2777,11 +2914,10 @@ function FungibleOperationDialog({
 					}
 					update(purchaseState);
 					if (retryKind) return;
-					const failureCode =
-						purchaseState.error?.code === 'unexpected'
-							? purchaseState.error.message
-							: purchaseState.error?.code;
-					const repaired = repairRejectedPurchase(entry.snapshot, failureCode);
+					const repaired = repairRejectedPurchase(
+						entry.snapshot,
+						purchaseFailureCode(purchaseState) ?? undefined
+					);
 					for (const id of repaired.discardIds) {
 						localStorage.removeItem(`bazar-signed-transaction:${id}`);
 					}
@@ -2826,6 +2962,7 @@ function FungibleOperationDialog({
 				setMessage(purchaseObservationRetryMessage(finalState, delay));
 				await waitForPurchaseObservationRetry(delay, signal);
 				setMessage(purchaseObservationCheckingMessage(retryKind));
+				retryCheckingKind = retryKind;
 			}
 		});
 
@@ -2900,7 +3037,7 @@ function FungibleOperationDialog({
 		operation.kind === 'buy'
 			? `${tokenLabel(completedPurchaseQuantity.toString(), state)} received from ${visibleOrders.length} ${
 					visibleOrders.length === 1 ? 'listing' : 'listings'
-			  } · ${winstonToAr(
+			  } · ${formatArAmount(
 					visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString()
 			  )} AR paid to sellers.`
 			: operation.kind === 'sell' && enteredQuantity && listingQuote
@@ -2912,9 +3049,10 @@ function FungibleOperationDialog({
 			: 'The live token state now reflects this action.';
 	const settlementSummary = batchSettlementSummary(visibleOrders.map((order) => purchaseStates[order.orderId]));
 	const incompletePurchases = visibleOrders.length - settlementSummary.settled;
-	const purchaseNeedsManualReview =
-		visibleOrders.some((order) => purchaseSettlementNeedsManualReview(purchaseStates[order.orderId])) ||
-		purchaseFailureMessageNeedsManualReview(message);
+	const purchaseFailureReview = batchPurchaseFailureReview(
+		visibleOrders.map((order) => purchaseStates[order.orderId])
+	);
+	const purchaseNeedsManualReview = purchaseFailureReview.kind === 'manual-review';
 	const signedWork = Boolean(transaction || recoverableBatch);
 	React.useEffect(() => {
 		if (operation.kind !== 'buy' || phase !== 'working') return;
@@ -2954,7 +3092,7 @@ function FungibleOperationDialog({
 				{
 					key: operation.kind,
 					label: operationLabel(operation.kind),
-					target: 5,
+					target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
@@ -2997,6 +3135,25 @@ function FungibleOperationDialog({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
+	// A gateway-rejected signature is discarded and the same dialog returns to its form, keeping the user's
+	// input, so the next submit signs a replacement.
+	const discardRejectedSignatureAndSignAgain = (rejected: PreparedTransaction) => {
+		removeWalletRecordIf<any>(
+			localStorage,
+			operationStorageKey(asset.id, owner),
+			(record) => record?.txId === rejected.id
+		);
+		localStorage.removeItem(`bazar-signed-transaction:${rejected.id}`);
+		setTransaction(null);
+		onOperation(operationAfterProvenRejection(operation));
+		exactActionBaselineRef.current = null;
+		setViews([]);
+		setConfirmations(0);
+		setConsensus(null);
+		setFailureKind(null);
+		setMessage('');
+		setPhase('form');
+	};
 	const restartPurchase = () => {
 		if (!recoverableBatch) {
 			setMessage('');
@@ -3119,7 +3276,7 @@ function FungibleOperationDialog({
 							<div>
 								<span>Seller subtotal</span>
 								<strong>
-									{winstonToAr(
+									{formatArAmount(
 										visibleOrders
 											.reduce((total, order) => total + BigInt(order.asking), 0n)
 											.toString()
@@ -3187,10 +3344,8 @@ function FungibleOperationDialog({
 												Price per {tickerDisplay} in <ArCurrencyLabel />
 											</span>
 											<input
-												aria-describedby={
-													unitPrice && !unitPriceValid ? priceGuidanceId : undefined
-												}
-												aria-invalid={Boolean(unitPrice) && !unitPriceValid}
+												aria-describedby={unitPriceGuidance ? priceGuidanceId : undefined}
+												aria-invalid={Boolean(unitPriceGuidance)}
 												inputMode="decimal"
 												value={unitPrice}
 												onChange={(event) => setUnitPrice(event.target.value)}
@@ -3221,11 +3376,9 @@ function FungibleOperationDialog({
 											Enter a quantity up to {tokenLabel(currentLiquid.toString(), state)}.
 										</p>
 									) : null}
-									{unitPrice && !unitPriceValid ? (
+									{unitPriceGuidance ? (
 										<p id={priceGuidanceId} className="trade-guidance" role="alert">
-											<ArCurrencyText>
-												Enter a positive AR price with no more than 12 decimal places.
-											</ArCurrencyText>
+											<ArCurrencyText>{unitPriceGuidance}</ArCurrencyText>
 										</p>
 									) : null}
 									<p className="settlement-disclosure">
@@ -3308,7 +3461,7 @@ function FungibleOperationDialog({
 										<strong>Return this listing to your balance?</strong>
 										<span>
 											{tokenLabel(operation.order.quantity, state)} ·{' '}
-											{winstonToAr(operation.order.asking)} <ArCurrencyLabel /> total
+											{formatArAmount(operation.order.asking)} <ArCurrencyLabel /> total
 										</span>
 										<span>
 											After network confirmation:{' '}
@@ -3333,7 +3486,7 @@ function FungibleOperationDialog({
 								<>
 									{matchedOrders.length ? (
 										<section
-											aria-busy={quoteState === 'loading'}
+											aria-busy={quoteState.status === 'loading'}
 											className="purchase-confirmation"
 											aria-label="Purchase summary"
 										>
@@ -3345,16 +3498,16 @@ function FungibleOperationDialog({
 												<div>
 													<dt>Seller total</dt>
 													<dd>
-														{winstonToAr(matchedAsking.toString())} <ArCurrencyLabel />
+														{formatArAmount(matchedAsking.toString())} <ArCurrencyLabel />
 													</dd>
 												</div>
 												<div>
 													<dt>Network fees</dt>
 													<dd>
-														{quoteState === 'error' ? (
+														{quoteState.status === 'error' ? (
 															'Unavailable'
 														) : estimatedCost ? (
-															<ArCurrencyText>{`${winstonToAr(
+															<ArCurrencyText>{`${formatArAmount(
 																(BigInt(estimatedCost) - matchedAsking).toString()
 															)} AR`}</ArCurrencyText>
 														) : (
@@ -3365,10 +3518,10 @@ function FungibleOperationDialog({
 												<div className="purchase-confirmation-total">
 													<dt>Maximum total</dt>
 													<dd>
-														{quoteState === 'error' ? (
+														{quoteState.status === 'error' ? (
 															'Quote unavailable'
 														) : estimatedCost ? (
-															<ArCurrencyText>{`${winstonToAr(
+															<ArCurrencyText>{`${formatArAmount(
 																estimatedCost
 															)} AR`}</ArCurrencyText>
 														) : (
@@ -3379,12 +3532,12 @@ function FungibleOperationDialog({
 												<div>
 													<dt>Wallet after</dt>
 													<dd>
-														{quoteState === 'error' ? (
+														{quoteState.status === 'error' ? (
 															'—'
 														) : canAfford === false ? (
 															<ArCurrencyText>Insufficient AR</ArCurrencyText>
 														) : estimatedCost && estimatedWalletBalance ? (
-															<ArCurrencyText>{`${winstonToAr(
+															<ArCurrencyText>{`${formatArAmount(
 																(
 																	BigInt(estimatedWalletBalance) -
 																	BigInt(estimatedCost)
@@ -3406,31 +3559,24 @@ function FungibleOperationDialog({
 									{matchedOrders.length ? (
 										<p id={quoteStatusId} className="sr-only" aria-live="polite" role="status">
 											<ArCurrencyText>
-												{quoteState === 'ready' && estimatedCost
-													? `Purchase quote ready. Maximum total ${winstonToAr(
+												{quoteState.status === 'ready' && estimatedCost
+													? `Purchase quote ready. Maximum total ${formatArAmount(
 															estimatedCost
 													  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
-													: quoteState === 'error'
-													? 'Purchase quote unavailable. Retry the cost check before buying.'
+													: quoteState.status === 'error'
+													? quoteState.message
 													: 'Checking the wallet balance and network fees.'}
 											</ArCurrencyText>
 										</p>
 									) : null}
 									{matchedOrders.length ? (
-										quoteState === 'error' ? (
-											<div className="inline-error retry-notice" role="status">
-												<span>Compute hasn’t completed yet. Please try again.</span>
-												<Button
-													aria-describedby={quoteStatusId}
-													className="with-icon"
-													onClick={() => setQuoteRetry((value) => value + 1)}
-													type="button"
-													size="custom"
-												>
-													<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-													Retry
-												</Button>
-											</div>
+										quoteState.status === 'error' ? (
+											<FungiblePurchaseQuoteFailureNotice
+												message={quoteState.message}
+												retryable={quoteState.retryable}
+												describedBy={quoteStatusId}
+												onRetry={() => setQuoteRetry((value) => value + 1)}
+											/>
 										) : null
 									) : null}
 									{canAfford === false ? (
@@ -3483,7 +3629,7 @@ function FungibleOperationDialog({
 									{operation.kind === 'buy' && matchedOrders.length
 										? `Buy ${tokenLabel(matchedQuantity.toString(), state)} · ${
 												estimatedCost
-													? `${winstonToAr(estimatedCost)} AR max`
+													? `${formatArAmount(estimatedCost)} AR max`
 													: 'checking total…'
 										  }`
 										: operation.kind === 'sell' && listingQuote && enteredQuantity
@@ -3563,7 +3709,11 @@ function FungibleOperationDialog({
 								startedAt={submittedAtRef.current}
 								steps={singleSteps}
 								activeStep={operation.kind}
-								pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
+								pendingAfterConfirmation={postConfirmationPendingLabel(
+									confirmations,
+									ASSET_TRANSACTION_CONFIRMATION_TARGET,
+									message
+								)}
 							/>
 						) : (
 							<Loading label="Preparing the signed transaction…" />
@@ -3724,7 +3874,7 @@ function FungibleOperationDialog({
 											<span>Order</span>
 											<Tooltip content={activeOrder.orderId} placement="top">
 												{(tooltipId) => (
-													<strong aria-describedby={tooltipId}>
+													<strong aria-describedby={tooltipId} tabIndex={0}>
 														{short(activeOrder.orderId)}
 													</strong>
 												)}
@@ -3774,51 +3924,31 @@ function FungibleOperationDialog({
 							<Button data-dialog-initial onClick={() => onClose(false)} size="custom">
 								View updated token
 							</Button>
-						) : failureKind === 'transaction-not-sent' && transaction ? (
-							<>
-								<p>No transaction was submitted. Retry this signature or discard it to start over.</p>
-								<div className="dialog-actions">
-									<Button data-dialog-initial onClick={() => void submit()} size="custom">
-										Retry transfer
-									</Button>
-									<Button
-										size="custom"
-										onClick={() => {
-											const discarded = removeWalletRecoveryAndSignatures<any>(
-												localStorage,
-												operationStorageKey(asset.id, owner),
-												(record) => record?.txId === transaction.id,
-												[transaction.id],
-												owner
-											);
-											if (!discarded) {
-												setMessage(
-													'This saved transfer changed in another tab. Close this panel and review the active action.'
-												);
-												return;
-											}
-											setTransaction(null);
-											onClose(false, false);
-										}}
-										variant="danger"
-									>
-										Discard transfer
-									</Button>
-								</div>
-							</>
+						) : failureKind === 'transaction-not-sent' && transaction && operation.kind !== 'buy' ? (
+							<FungibleNotSentRecovery
+								kind={operation.kind}
+								onRetry={() => void submit()}
+								onDiscard={() => {
+									const discarded = removeWalletRecoveryAndSignatures<any>(
+										localStorage,
+										operationStorageKey(asset.id, owner),
+										(record) => record?.txId === transaction.id,
+										[transaction.id],
+										owner
+									);
+									if (!discarded) {
+										setMessage(fungibleNotSentRecoveryCopy(operation.kind).changed);
+										return;
+									}
+									setTransaction(null);
+									onClose(false, false);
+								}}
+							/>
 						) : failureKind === 'transaction-rejected' && transaction ? (
 							<Button
 								data-dialog-initial
 								size="custom"
-								onClick={() => {
-									removeWalletRecordIf<any>(
-										localStorage,
-										operationStorageKey(asset.id, owner),
-										(record) => record?.txId === transaction.id
-									);
-									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-									onClose(false);
-								}}
+								onClick={() => discardRejectedSignatureAndSignAgain(transaction)}
 								variant="danger"
 							>
 								Discard rejected signature and sign again
@@ -3833,6 +3963,7 @@ function FungibleOperationDialog({
 									</p>
 								) : recoverableBatch ? (
 									<p>
+										{batchPurchaseRejectedAfterPaymentNotice(purchaseFailureReview)}
 										Completed settlements will not be retried; only incomplete settlements will
 										continue.
 									</p>
@@ -3880,59 +4011,92 @@ function FungibleOperationDialog({
 	);
 }
 
+/** Operations that sign one prepared transaction; purchases recover through their own batch flow. */
+export type FungibleSignedOperationKind = Exclude<FungibleOperation['kind'], 'buy'>;
+
+export function fungibleNotSentRecoveryCopy(kind: FungibleSignedOperationKind) {
+	return notSentRecoveryCopy(kind);
+}
+
+export function FungibleNotSentRecovery({
+	kind,
+	onDiscard,
+	onRetry,
+}: {
+	kind: FungibleSignedOperationKind;
+	onDiscard(): void;
+	onRetry(): void;
+}) {
+	const copy = fungibleNotSentRecoveryCopy(kind);
+	return (
+		<>
+			<p>{NOT_SENT_RECOVERY_NOTE}</p>
+			<div className="dialog-actions">
+				<Button data-dialog-initial onClick={onRetry} size="custom">
+					{copy.retry}
+				</Button>
+				<Button size="custom" onClick={onDiscard} variant="danger">
+					{copy.discard}
+				</Button>
+			</div>
+		</>
+	);
+}
+
+export type FungiblePurchaseQuoteState =
+	| { status: 'idle' | 'loading' | 'ready' }
+	| ({ status: 'error' } & PurchaseQuoteFailure);
+
+export function FungiblePurchaseQuoteFailureNotice({
+	message,
+	retryable,
+	describedBy,
+	onRetry,
+}: PurchaseQuoteFailure & { describedBy?: string; onRetry: () => void }) {
+	return (
+		<div className="inline-error retry-notice" role="status">
+			<span>
+				<ArCurrencyText>{message}</ArCurrencyText>
+			</span>
+			{retryable ? (
+				<Button
+					aria-describedby={describedBy}
+					className="with-icon"
+					onClick={onRetry}
+					type="button"
+					size="custom"
+				>
+					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry cost check
+				</Button>
+			) : null}
+		</div>
+	);
+}
+
 export function FungibleOperationErrorAlert({ message }: { message: string }) {
 	return <OperationErrorAlert title="Could not complete this action" message={message} />;
 }
 
-export function MatchedListingsReview({
-	onRemove,
-	orders,
-	state,
-}: {
-	onRemove?(order: SwapOrder): void;
-	orders: SwapOrder[];
-	state: AssetState;
-}) {
-	return (
-		<section aria-label="Purchase overview" className="matched-listings">
-			<div className="matched-listings-heading">
-				<strong>Purchase overview</strong>
-				<span>
-					{orders.length} {orders.length === 1 ? 'listing' : 'listings'}
-				</span>
-			</div>
-			{orders.length ? (
-				<ul aria-label="Matched seller addresses" tabIndex={orders.length > 4 ? 0 : undefined}>
-					{orders.map((order) => (
-						<li key={order.orderId}>
-							<span>
-								<strong>{tokenLabel(order.quantity, state)}</strong>
-								<small>
-									<ArCurrencyText>
-										{`${orderPriceLabel(order, state)} · ${winstonToAr(order.asking)} AR total`}
-									</ArCurrencyText>
-								</small>
-							</span>
-							<WalletIdentity address={order.creator} />
-							{onRemove ? (
-								<Button
-									aria-label={`Remove ${fungibleListingAccessibleLabel(order, state)} from purchase`}
-									onClick={() => onRemove(order)}
-									size="custom"
-									type="button"
-									variant="danger"
-								>
-									Remove
-								</Button>
-							) : null}
-						</li>
-					))}
-				</ul>
-			) : (
-				<p className="matched-listings-empty">Your purchase overview is empty.</p>
-			)}
-		</section>
-	);
+function ownOrder(order: SwapOrder, walletAddress: unknown) {
+	return sameAccount(order.creator, walletAddress) || sameAccount(order.recipient, walletAddress);
+}
+
+/**
+ * Open orders this wallet can buy: not its own, and with a reservation fee the
+ * purchase path accepts. An order that fails purchaseOrderSafetyError is left out
+ * whole, even though a small enough partial fill of it would pass, because the
+ * matcher would otherwise pick it first and block every larger buy.
+ */
+export function purchasableOrdersFor(openOrders: SwapOrder[], walletAddress: unknown): SwapOrder[] {
+	return openOrders.filter((order) => !ownOrder(order, walletAddress) && purchaseOrderSafetyError(order) === null);
+}
+
+/** Quantity in other sellers' open orders left out because their reservation fee is unsafe. */
+export function unsafeExcludedQuantityFor(openOrders: SwapOrder[], walletAddress: unknown): string {
+	return openOrders
+		.filter((order) => !ownOrder(order, walletAddress) && purchaseOrderSafetyError(order) !== null)
+		.reduce((total, order) => total + BigInt(order.quantity), 0n)
+		.toString();
 }
 
 export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state: AssetState) {
@@ -3965,6 +4129,7 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 export function FungiblePurchaseComposer({
 	availableQuantity,
 	excludedQuantity = '0',
+	unsafeExcludedQuantity = '0',
 	error,
 	match,
 	onChange,
@@ -3974,6 +4139,7 @@ export function FungiblePurchaseComposer({
 }: {
 	availableQuantity: string;
 	excludedQuantity?: string;
+	unsafeExcludedQuantity?: string;
 	error: string;
 	match: ReturnType<typeof matchOrderFills>;
 	onChange(quantity: string): void;
@@ -4014,6 +4180,12 @@ export function FungiblePurchaseComposer({
 					{BigInt(excludedQuantity) > 0n
 						? ` · ${tokenLabel(excludedQuantity, state)} from your listing excluded`
 						: ''}
+					{BigInt(unsafeExcludedQuantity) > 0n
+						? ` · ${tokenLabel(
+								unsafeExcludedQuantity,
+								state
+						  )} excluded: reservation fee above Bazar's limit`
+						: ''}
 				</small>
 			</div>
 			<div className="purchase-composer-panel purchase-composer-pay" aria-live="polite">
@@ -4025,7 +4197,7 @@ export function FungiblePurchaseComposer({
 					<span>Seller total</span>
 				</div>
 				<div className="purchase-composer-value">
-					<strong>{match ? winstonToAr(match.totalAsking) : '0'}</strong>
+					<strong>{match ? formatArAmount(match.totalAsking) : '0'}</strong>
 					<span className="purchase-composer-token">
 						<ArCurrencyLabel />
 					</span>
@@ -4166,7 +4338,7 @@ export function PurchaseRoute({ fills, state }: { fills: OrderFill[]; state: Ass
 							</small>
 						</span>
 						<span className="purchase-route-total">
-							{winstonToAr(order.asking)} <ArCurrencyLabel />
+							{formatArAmount(order.asking)} <ArCurrencyLabel />
 						</span>
 						<WalletAddress address={order.creator} label="seller" />
 					</li>
@@ -4235,14 +4407,18 @@ export function FungiblePurchaseReceiptNavigator({
 						<dt>Order</dt>
 						<dd>
 							<Tooltip content={order.orderId} placement="top">
-								{(tooltipId) => <span aria-describedby={tooltipId}>{short(order.orderId)}</span>}
+								{(tooltipId) => (
+									<span aria-describedby={tooltipId} tabIndex={0}>
+										{short(order.orderId)}
+									</span>
+								)}
 							</Tooltip>
 						</dd>
 					</div>
 					<div>
 						<dt>Seller payment</dt>
 						<dd>
-							{winstonToAr(order.asking)} <ArCurrencyLabel />
+							{formatArAmount(order.asking)} <ArCurrencyLabel />
 						</dd>
 					</div>
 				</dl>
@@ -4304,7 +4480,7 @@ export function FungiblePurchaseReceiptNavigator({
 export function fungiblePurchaseReceiptOptions(orders: SwapOrder[], state: AssetState) {
 	return orders.map((order, index) => ({
 		value: order.orderId,
-		label: `Listing ${index + 1} · ${tokenLabel(order.quantity, state)} · ${short(order.creator)}`,
+		label: `Listing ${index + 1} · ${tokenLabel(order.quantity, state)} · ${shortAccount(order.creator)}`,
 	}));
 }
 
@@ -4628,20 +4804,21 @@ export async function waitForSettlementBatch(running: Promise<PurchaseState>[]):
 		(result) => result.status === 'rejected' || result.value.stage !== 'complete' || !result.value.success
 	);
 	if (failed.length) {
+		// A lot that reached a failed state shows its own friendly reason in the
+		// per-listing panel, so only reasons with no lot state are repeated here.
 		const reasons = [
 			...new Set(
-				failed.flatMap((result) => {
-					if (result.status === 'rejected') {
-						return [result.reason instanceof Error ? result.reason.message : String(result.reason)];
-					}
-					return result.value.error?.message ? [result.value.error.message] : [];
-				})
+				failed.flatMap((result) =>
+					result.status === 'rejected'
+						? [result.reason instanceof Error ? result.reason.message : String(result.reason)]
+						: []
+				)
 			),
 		];
 		throw new Error(
 			`${failed.length} of ${settled.length} settlements need attention.${
 				reasons.length ? ` ${reasons.join(' ')}` : ''
-			}`
+			} Each listing below shows its own status and saved receipts.`
 		);
 	}
 	return settled.map((result) => (result as PromiseFulfilledResult<PurchaseState>).value);
@@ -4718,23 +4895,42 @@ export function nextSettlementAnnouncement(
 }
 
 function lotAsking(rawQuantity: string, unitPrice: string, denomination: number): string {
-	const price = BigInt(arToWinston(unitPrice));
+	const price = BigInt(parseArAmount(unitPrice));
 	const quantity = BigInt(rawQuantity);
 	const scale = 10n ** BigInt(denomination);
 	return ((price * quantity + scale - 1n) / scale).toString();
 }
 
-function safeLotQuote(quantity: string, price: string, state: AssetState): string | null {
+/** The lot total in winston, exactly as makeOffer will receive it, or null
+ * while the quantity or unit price is not a valid amount. */
+function safeLotAsking(quantity: string, price: string, state: Pick<AssetState, 'denomination'>): bigint | null {
 	try {
-		return winstonToAr(lotAsking(parseTokenAmount(quantity, state.denomination), price, state.denomination));
+		return BigInt(lotAsking(parseTokenAmount(quantity, state.denomination), price, state.denomination));
 	} catch {
 		return null;
 	}
 }
 
+/** The displayed listing total, or null when the lot cannot be listed: invalid
+ * inputs, or a total above the protocol cap makeOffer enforces. */
+export function safeLotQuote(quantity: string, price: string, state: Pick<AssetState, 'denomination'>): string | null {
+	const asking = safeLotAsking(quantity, price, state);
+	return asking === null || asking > MAXIMUM_ASSET_OFFER_PRICE ? null : formatArAmount(asking);
+}
+
+/** Inline copy when a valid lot's total is above MAXIMUM_ASSET_OFFER_PRICE. */
+export function fungibleListingTotalError(
+	quantity: string,
+	price: string,
+	state: Pick<AssetState, 'denomination'>
+): string {
+	const asking = safeLotAsking(quantity, price, state);
+	return asking !== null && asking > MAXIMUM_ASSET_OFFER_PRICE ? ASSET_OFFER_TOTAL_CAP_ERROR : '';
+}
+
 function safeArPrice(value: string): boolean {
 	try {
-		return BigInt(arToWinston(value)) > 0n;
+		return BigInt(parseArAmount(value)) > 0n;
 	} catch {
 		return false;
 	}
@@ -4754,29 +4950,50 @@ function unitPriceWinston(order: SwapOrder, denomination: number): bigint {
 	return (BigInt(order.asking) * scale + BigInt(order.quantity) - 1n) / BigInt(order.quantity);
 }
 
+/** The one AR-per-token price label on the token page, shared by the order
+ * book and the price chart ('0.5 $AR / $PIXL'). */
+export function fungibleUnitPriceLabel(unitWinston: string, state: Pick<AssetState, 'ticker'>) {
+	return formatArCurrencyText(`${formatArAmount(unitWinston)} AR / ${formatTickerLabel(state.ticker, 'token')}`);
+}
+
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
-	return formatArCurrencyText(
-		`${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR / ${formatTickerLabel(
-			state.ticker,
-			'token'
-		)}`
-	);
+	return fungibleUnitPriceLabel(unitPriceWinston(order, state.denomination).toString(), state);
 }
 
 function tokenLabel(raw: string, state: AssetState) {
-	return `${formatGroupedTokenAmount(raw, state.denomination)} ${formatTickerLabel(state.ticker, 'tokens')}`;
+	return formatTokenQuantity(raw, state, 'tokens');
+}
+
+/**
+ * Copy for the Sell and Transfer panels when the connected wallet has no liquid
+ * balance. `listed` counts open and reserved orders (listedBalanceOf); only open
+ * listings can be cancelled, so the copy says so rather than blaming listings
+ * when the wallet holds none of the token.
+ */
+export function fungibleEmptyBalanceCopy(mode: 'sell' | 'transfer', listed: string, state: AssetState) {
+	const ticker = formatTickerLabel(state.ticker || 'Token');
+	if (BigInt(listed) > 0n) {
+		return {
+			title: `No liquid ${ticker}`,
+			detail: `${tokenLabel(listed, state)} is in open or reserved listings; cancel an open listing to free it.`,
+		};
+	}
+	return {
+		title: `No ${ticker} in this wallet`,
+		detail: `This wallet holds no ${ticker} to ${mode === 'sell' ? 'list' : 'transfer'}.`,
+	};
 }
 
 export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
-	const lot = formatArCurrencyText(`${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`);
-	return action === 'buy' ? `Buy ${lot} from ${order.creator}` : `Cancel listing of ${lot}`;
+	const lot = formatArCurrencyText(`${tokenLabel(order.quantity, state)} for ${formatArAmount(order.asking)} AR`);
+	return action === 'buy' ? `Buy ${lot} from ${displayAccount(order.creator)}` : `Cancel listing of ${lot}`;
 }
 
 export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState) {
 	return formatArCurrencyText(
-		`${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(
+		`${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${formatArAmount(
 			order.asking
-		)} AR total, seller ${order.creator}`
+		)} AR total, seller ${displayAccount(order.creator)}`
 	);
 }
 
@@ -4816,6 +5033,7 @@ export function fungibleOperationStateError(
 export function fungibleTransferRecipientError(recipient: string, owner: string) {
 	const normalized = recipient.trim();
 	if (!ADDRESS.test(normalized)) return 'Enter a 43-character Arweave wallet address.';
+	if (!isWalletAddress(normalized)) return NONCANONICAL_WALLET_ADDRESS_MESSAGE;
 	if (normalized === owner)
 		return 'Choose a different wallet. Sending tokens to this wallet would not change its balance.';
 	return '';
@@ -4827,26 +5045,7 @@ export function fungibleTransferSubmitLabel(
 	recipient: string,
 	fullRecipient = false
 ) {
-	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : short(recipient)}`;
-}
-
-function formatGroupedTokenAmount(raw: string, denomination: number) {
-	const [whole, fraction] = formatTokenAmount(raw, denomination).split('.');
-	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return fraction ? `${grouped}.${fraction}` : grouped;
-}
-
-function winstonToAr(value: string) {
-	const raw = BigInt(value);
-	const whole = raw / 1_000_000_000_000n;
-	const fraction = (raw % 1_000_000_000_000n).toString().padStart(12, '0').replace(/0+$/, '');
-	return fraction ? `${whole}.${fraction}` : whole.toString();
-}
-
-function arToWinston(value: string) {
-	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || value === '0') throw new Error('Enter a positive AR amount.');
-	const [whole, decimals = ''] = value.split('.');
-	return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
+	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : shortAccount(recipient)}`;
 }
 
 function assetDescription(state: AssetState, fallback: string) {
@@ -4867,18 +5066,20 @@ export function batchStageLabel(state?: PurchaseState) {
 	if (state.stage === 'registration-accepting') return 'Checking reservation';
 	if (state.stage === 'ownership-verifying') return 'Checking receipt';
 	if (state.stage.includes('payment')) {
-		return `Pay ${Math.min(state.payment?.consensus.confirmations ?? 0, 5)}/5`;
+		const confirmations = state.payment?.consensus.confirmations ?? 0;
+		return `Pay ${Math.min(confirmations, PURCHASE_PAYMENT_TARGET)}/${PURCHASE_PAYMENT_TARGET}`;
 	}
 	if (state.stage === 'signing' || state.stage === 'idle') return 'Preparing';
-	return `Reserve ${Math.min(state.registration?.consensus.confirmations ?? 0, 5)}/5`;
+	const confirmations = state.registration?.consensus.confirmations ?? 0;
+	return `Reserve ${Math.min(confirmations, PURCHASE_REGISTRATION_TARGET)}/${PURCHASE_REGISTRATION_TARGET}`;
 }
 
 function activityDetail(event: CollectionActivityEvent, state: AssetState) {
 	if (event.action === 'make-offer') {
-		return event.asking ? `${winstonToAr(event.asking)} AR total` : '';
+		return event.asking ? `${formatArAmount(event.asking)} AR total` : '';
 	}
 	if (event.action === 'transfer') {
-		return event.recipient ? `To ${short(event.recipient)}` : '';
+		return event.recipient ? `To ${shortAccount(event.recipient)}` : '';
 	}
 	if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
 	if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
@@ -4888,7 +5089,9 @@ function activityDetail(event: CollectionActivityEvent, state: AssetState) {
 export function fungibleActivityAmount(event: CollectionActivityEvent, state: AssetState) {
 	if (!event.quantity) return '';
 	const quantity = tokenLabel(event.quantity, state);
-	return event.action === 'make-offer' && event.asking ? `${quantity} for ${winstonToAr(event.asking)} AR` : quantity;
+	return event.action === 'make-offer' && event.asking
+		? `${quantity} for ${formatArAmount(event.asking)} AR`
+		: quantity;
 }
 
 export function fungiblePurchaseActivityAmount(
@@ -4915,7 +5118,7 @@ export function fungiblePurchaseActivityAmount(
 		const lot = BigInt(listedQuantity);
 		if (fill <= 0n || lot <= 0n || fill > lot) return fungibleActivityAmount(event, state);
 		const paid = (BigInt(asking) * fill + lot - 1n) / lot;
-		return `${tokenLabel(event.quantity, state)} for ${winstonToAr(paid.toString())} AR`;
+		return `${tokenLabel(event.quantity, state)} for ${formatArAmount(paid.toString())} AR`;
 	} catch {
 		return fungibleActivityAmount(event, state);
 	}

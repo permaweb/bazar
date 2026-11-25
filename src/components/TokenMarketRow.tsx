@@ -22,6 +22,7 @@ export function TokenMarketRow({
 	priority = false,
 	onFollow,
 	onWarm,
+	orderId,
 }: {
 	asset: AssetSummary;
 	collection: Collection;
@@ -32,11 +33,14 @@ export function TokenMarketRow({
 	priority?: boolean;
 	onFollow?: () => void;
 	onWarm?: () => void;
+	/** Identifies the row to useGridReorderMotion. */
+	orderId?: string;
 }) {
 	const ticker = asset.ticker?.trim() || 'TOKEN';
 	return (
 		<Link
 			className="token-market-row"
+			data-order-id={orderId}
 			onClick={onFollow}
 			onFocus={onWarm}
 			onMouseEnter={onWarm}

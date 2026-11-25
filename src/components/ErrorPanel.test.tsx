@@ -22,4 +22,14 @@ describe('ErrorPanel', () => {
 		expect(markup).not.toContain('Compute hasn’t completed yet');
 		expect(markup).not.toContain('Please try again.');
 	});
+
+	it('accepts a context-specific heading', () => {
+		const markup = renderToStaticMarkup(
+			<ErrorPanel heading="Live state unavailable" message="HTTP 404" onRetry={vi.fn()} />
+		);
+
+		expect(markup).toContain('<strong>Live state unavailable</strong>');
+		expect(markup).toContain('aria-label="Live state unavailable. HTTP 404"');
+		expect(markup).not.toContain('Unable to load');
+	});
 });

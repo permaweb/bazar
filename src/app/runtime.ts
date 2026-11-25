@@ -18,12 +18,15 @@ async function importAtomicTransactionRuntime() {
 }
 
 export function loadAtomicTransactionRuntime() {
-	atomicRuntime ??= importAtomicTransactionRuntime();
+	atomicRuntime ??= importAtomicTransactionRuntime().catch((cause) => {
+		atomicRuntime = undefined;
+		throw cause;
+	});
 	return atomicRuntime;
 }
 
 export function preloadAtomicTransactionRuntime() {
-	void loadAtomicTransactionRuntime();
+	void loadAtomicTransactionRuntime().catch(() => undefined);
 }
 
 export function loadAssetObserverRuntime() {

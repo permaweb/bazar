@@ -1,5 +1,9 @@
+import { AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX } from './browser-storage';
+
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
 const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
+const configuredGraphqlEndpoints = import.meta.env.VITE_GRAPHQL_ENDPOINTS?.trim();
+const configuredObserverRelay = import.meta.env.VITE_ARWEAVE_OBSERVER_RELAY?.trim();
 
 export type NetworkProviderSummary = {
 	url: string;
@@ -129,17 +133,67 @@ export function arweaveClientConfig(gateway = arweaveGatewayFromLocation()) {
 	};
 }
 
-/** Keep indexed searches independent of the serving host and content gateway overrides. */
+/**
+ * arweave.net's index only. A deployment that runs or trusts another index lists it, in
+ * preference order, in `VITE_GRAPHQL_ENDPOINTS`; reads then fall back along that list.
+ */
+export const DEFAULT_GRAPHQL_ENDPOINTS: readonly string[] = ['https://arweave.net/graphql'];
+
+/** Parse an ordered, comma-separated GraphQL endpoint list; unusable entries are skipped. */
+export function parseGraphqlEndpoints(value: string | undefined): string[] {
+	const endpoints = new Set<string>();
+	for (const entry of value?.split(',') ?? []) {
+		const candidate = entry.trim();
+		if (!candidate) continue;
+		try {
+			const url = new URL(candidate);
+			if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) endpoints.add(url.href);
+		} catch {
+			// A malformed entry must not take indexed search down with it.
+		}
+	}
+	return endpoints.size ? [...endpoints] : [...DEFAULT_GRAPHQL_ENDPOINTS];
+}
+
+const graphqlEndpoints = parseGraphqlEndpoints(configuredGraphqlEndpoints);
+
+/** Indexed-search endpoints in preference order, independent of the serving host and content gateway. */
+export function arweaveGraphqlEndpoints(): string[] {
+	return [...graphqlEndpoints];
+}
+
+/** The preferred indexed-search endpoint; persisted cursors and scan scopes stay keyed to it. */
 export function arweaveGraphqlEndpoint(): string {
-	return 'https://arweave.net/graphql';
+	return graphqlEndpoints[0];
 }
 
-/** Address an Arweave item through the gateway's ordinary HTTPSig resource route. */
+/**
+ * arweave.net (and its subdomains, such as bazar.arweave.net) redirects `/<id>` to a `<b32>`
+ * sandbox that answers 200 with an empty body for process-with-data items, so content reads use
+ * `/raw/<id>` there. HyperBEAM nodes and other gateways serve `/<id>` directly.
+ */
+export function isArweaveNetGateway(gateway: string): boolean {
+	let hostname: string;
+	try {
+		hostname = new URL(gateway).hostname.toLowerCase();
+	} catch {
+		return false;
+	}
+	return hostname === 'arweave.net' || hostname.endsWith('.arweave.net');
+}
+
+/** Address an Arweave item's bytes through the route the gateway kind serves them on. */
 export function arweaveDataUrl(id: string, gateway = arweaveGatewayFromLocation()): string {
-	return `${gateway}/${id}`;
+	const base = gateway.replace(/\/+$/, '');
+	return isArweaveNetGateway(base) ? `${base}/raw/${id}` : `${base}/${id}`;
 }
 
-/** Ordinary resource URLs for one Arweave item, ordered across the selected serving peers. */
+/**
+ * Content URLs for one Arweave item: the PermawebOS permanent-content provider (or the selected
+ * gateway), a same-origin arweave.net gateway, the caller's URL, then the deployment's configured
+ * default gateway (`VITE_ARWEAVE_GATEWAY`, else arweave.net). An active PermawebOS network policy
+ * names its own content providers, so that fallback is left out.
+ */
 export function arweaveDataFallbackUrls(
 	value: string,
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
@@ -152,16 +206,21 @@ export function arweaveDataFallbackUrls(
 	} catch {
 		return [value];
 	}
-	const match = url.pathname.match(/^\/([A-Za-z0-9_-]{43})$/);
+	const match = url.pathname.match(/^\/(?:raw\/)?([A-Za-z0-9_-]{43})$/);
 	if (!match) return [value];
+	const id = match[1];
 	const policy = usesPermawebOsAo(location, scope) ? currentPermawebOsNetworkPolicy(scope) : undefined;
 	const computeOrigins = new Set(policy?.ao.processReads.map(({ url: provider }) => new URL(provider).origin));
-	const permanent = arweaveDataUrl(match[1], permanentContentGatewayFromLocation(location, scope));
+	const permanent = arweaveDataUrl(id, permanentContentGatewayFromLocation(location, scope));
+	const servingOrigin = locationOrigin(location);
+	const requested = isArweaveNetGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
 	return [
 		...new Set([
-			...(computeOrigins.has(url.origin) && url.origin !== new URL(permanent).origin ? [] : [value]),
 			permanent,
-			arweaveDataUrl(match[1], arweaveGatewayFromLocation(location)),
+			arweaveDataUrl(id, arweaveGatewayFromLocation(location)),
+			...(isArweaveNetGateway(servingOrigin) ? [arweaveDataUrl(id, servingOrigin)] : []),
+			...(computeOrigins.has(url.origin) && url.origin !== new URL(permanent).origin ? [] : [requested]),
+			...(policy ? [] : [arweaveDataUrl(id, DEFAULT_ARWEAVE_GATEWAY)]),
 		]),
 	];
 }
@@ -190,20 +249,113 @@ export function usesPermawebOsAo(
 	);
 }
 
-export function fallbackAoPeersFromLocation(
+/** Upstream-neutral compute peers tried after the serving origin when no AO peer is selected or configured. */
+export const DEFAULT_COMPUTE_GATEWAYS: readonly string[] = Object.freeze(['https://arweave.net']);
+
+/** Serving origins known, or known not, to lack process compute in this page load. */
+const servingOriginsWithoutCompute = new Map<string, boolean>();
+
+export type AoPeerPlan = {
+	peers: string[];
+	/** A `?node=` selection, VITE_COMPUTE_GATEWAY, or the last-resort default peers. */
+	source: 'selected' | 'configured' | 'default';
+	/**
+	 * Peers are a priority order: the first answers every read and the next is tried
+	 * when it fails, answers inadmissibly, or is still silent after the hedge delay.
+	 * Every plan with peers is ordered; only the empty plan outside HTTP(S) is not.
+	 */
+	ordered: boolean;
+	/** The serving origin, while it still leads the default peers. */
+	servingOrigin?: string;
+};
+
+function sessionStore(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
+	return globalThis.window?.sessionStorage ?? undefined;
+}
+
+/** A drop is kept in sessionStorage so later page loads in the same tab start without the origin. */
+function servingOriginWithoutCompute(origin: string): boolean {
+	let dropped = servingOriginsWithoutCompute.get(origin);
+	if (dropped === undefined) {
+		try {
+			dropped = sessionStore()?.getItem(`${AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX}${origin}`) === '1';
+		} catch {
+			dropped = false;
+		}
+		servingOriginsWithoutCompute.set(origin, dropped);
+	}
+	return dropped;
+}
+
+export function aoPeerPlanFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
-): string[] {
+): AoPeerPlan {
 	const requested = location && queryValue(location, 'node')?.trim();
 	const override = requested && normalizeComputeGateways(requested, location?.protocol);
-	if (override) return override;
+	if (override) return { peers: override, source: 'selected', ordered: true };
 
 	if (configuredComputeGateway) {
 		const configured = normalizeComputeGateways(configuredComputeGateway);
 		if (!configured) throw new TypeError('invalid-compute-gateways');
-		return configured;
+		return { peers: configured, source: 'configured', ordered: true };
 	}
 
-	return location && ['http:', 'https:'].includes(location.protocol) ? [locationOrigin(location)] : [];
+	if (!location || !['http:', 'https:'].includes(location.protocol))
+		return { peers: [], source: 'default', ordered: false };
+	const origin = locationOrigin(location);
+	if (servingOriginWithoutCompute(origin))
+		return { peers: [...DEFAULT_COMPUTE_GATEWAYS], source: 'default', ordered: true };
+	return {
+		peers: [...new Set([origin, ...DEFAULT_COMPUTE_GATEWAYS])],
+		source: 'default',
+		ordered: true,
+		servingOrigin: origin,
+	};
+}
+
+/** Bazar's peer plan as it stood before any serving origin was dropped from it. */
+function undroppedAoPeers(location: GatewayLocation | undefined): string[] {
+	const plan = aoPeerPlanFromLocation(location);
+	// Only the default peers ever lead with the serving origin; selected and configured lists are used as given.
+	if (!location || plan.source !== 'default' || plan.servingOrigin || !plan.peers.length) return plan.peers;
+	return [...new Set([locationOrigin(location), ...plan.peers])];
+}
+
+export function fallbackAoPeersFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+): string[] {
+	return aoPeerPlanFromLocation(location).peers;
+}
+
+/**
+ * Stop routing last-resort AO reads to a serving origin that cannot compute process
+ * state, for the rest of this tab session where sessionStorage is available and for
+ * this page load otherwise.
+ */
+export function markServingOriginWithoutCompute(origin: string): void {
+	servingOriginsWithoutCompute.set(origin, true);
+	try {
+		sessionStore()?.setItem(`${AO_SERVING_ORIGIN_WITHOUT_COMPUTE_STORAGE_PREFIX}${origin}`, '1');
+	} catch {
+		// Kept in memory for this page load.
+	}
+}
+
+/**
+ * The `node` query value that selects these AO peers, or null when they are the
+ * default plan, so submitting the peer editor unchanged keeps default routing
+ * instead of pinning the defaults as a user selection.
+ */
+export function aoPeerSelectionQuery(peers: readonly string[], location: GatewayLocation): string | null {
+	const selected = [...new Set(peers)];
+	const { protocol, hostname, port } = location;
+	const unselected = { protocol, hostname, port, search: '', hash: '' };
+	const defaults = [aoPeerPlanFromLocation(unselected).peers, undroppedAoPeers(unselected)];
+	const isDefault = defaults.some(
+		(peers) => selected.length === peers.length && selected.every((peer, index) => peer === peers[index])
+	);
+	// A selection carried in the hash query outlives removing ?node=, so it must be overridden explicitly.
+	return isDefault && !queryValue({ search: '', hash: location.hash }, 'node') ? null : selected.join(',');
 }
 
 export async function loadPermawebOsNetworkPolicy(
@@ -270,6 +422,16 @@ export function observerRelayFromLocation(
 		const policy = currentPermawebOsNetworkPolicy(scope);
 		if (policy) return policy.ao.observerRelay?.url ?? '';
 	}
+	// A deployment whose first AO peer is not a relay names one (an AO-Core node
+	// that runs `~relay@1.0`) with `VITE_ARWEAVE_OBSERVER_RELAY`.
+	if (configuredObserverRelay && !prefersPermawebOsAo(location, scope)) {
+		try {
+			const relay = new URL(configuredObserverRelay);
+			if (['http:', 'https:'].includes(relay.protocol) && !relay.username && !relay.password) return relay.origin;
+		} catch {
+			// An unusable value falls back to the first AO peer.
+		}
+	}
 	return gatewaysFromLocation(location, scope)[0] ?? '';
 }
 
@@ -293,8 +455,11 @@ export function aoRoutingScopeFromLocation(
 		if (fetcher && strictNetworkPolicyFetchers.has(fetcher)) {
 			return `permawebos-policy-unavailable:${networkPolicyRevisions.get(fetcher) ?? 0}`;
 		}
+		return gatewaysFromLocation(location, scope).join(',');
 	}
-	return gatewaysFromLocation(location, scope).join(',');
+	// Dropping a serving origin that cannot compute changes which peer answers, not
+	// which state is read; keeping it in the scope avoids restarting every keyed read.
+	return undroppedAoPeers(location).join(',');
 }
 
 export function gatewayFromLocation(

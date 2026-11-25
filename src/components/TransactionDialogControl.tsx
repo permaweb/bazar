@@ -11,8 +11,22 @@ export type TransactionDialogDismissAction =
 
 export const TRANSACTION_DIALOG_HIDE_DURATION_MS = 480;
 
+// 'approval' is only ever a restored recovery phase: a saved purchase waiting for the
+// wallet approvals it is still missing. Closing it keeps it for later (resumeLater), so
+// Transaction activity is the way back to it from any page.
 export function isTransactionActivityVisible(phase: TransactionDialogPhase) {
-	return phase !== 'approval' && phase !== 'done';
+	return phase !== 'done';
+}
+
+export function transactionActivityHeading(counts: { uploadAttention: number; approval: number; working: number }) {
+	const { uploadAttention, approval, working } = counts;
+	if (uploadAttention)
+		return `${uploadAttention.toLocaleString()} ${
+			uploadAttention === 1 ? 'upload needs' : 'uploads need'
+		} attention`;
+	if (approval) return `${approval.toLocaleString()} ${approval === 1 ? 'needs' : 'need'} your approval`;
+	if (working) return `${working} running in the background`;
+	return 'No transactions running';
 }
 
 type DialogMotionRect = Pick<DOMRect, 'height' | 'left' | 'top' | 'width'>;

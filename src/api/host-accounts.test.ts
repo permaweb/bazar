@@ -125,16 +125,17 @@ describe('host-form account state boundaries', () => {
 		expect(fungibleHolders(state({ [seller.raw]: '1', [seller.host]: '0' }))).toEqual([]);
 	});
 
-	it('retains host accounts in linked maps and trie leaves', async () => {
-		for (const root of [
-			{ [seller.host]: '1' },
-			{ device: 'trie@1.0', [seller.host.slice(0, 20)]: `ao:${'C'.repeat(43)}` },
-		]) {
+	it('retains host accounts in a linked direct JSON map and leaves linked tries unread', async () => {
+		for (const [root, expected] of [
+			[{ device: 'json@1.0', [seller.host]: '1' }, { [seller.host]: '1' }],
+			[{ device: 'trie@1.0', [seller.host.slice(0, 20)]: `ao:${'C'.repeat(43)}` }, {}],
+		] as const) {
+			const requested: string[] = [];
 			const result = await readAssetState(processId, {
 				provider: 'https://compute.example',
 				fetch: async (input) => {
 					const url = String(input);
-					if (url.endsWith('/balances/device')) return new Response('message@1.0');
+					requested.push(url);
 					const body = url.includes('B'.repeat(43))
 						? root
 						: url.includes('C'.repeat(43))
@@ -143,7 +144,9 @@ describe('host-form account state boundaries', () => {
 					return Response.json(body, { headers: { 'codec-device': 'json@1.0' } });
 				},
 			});
-			expect(result.state.balances).toEqual({ [seller.host]: '1' });
+			expect(result.state.balances).toEqual(expected);
+			expect(result.state.holderBalancesAvailable).toBe(Object.keys(expected).length > 0);
+			expect(requested.some((url) => url.includes('C'.repeat(43)))).toBe(false);
 		}
 	});
 

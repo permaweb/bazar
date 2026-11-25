@@ -19,6 +19,13 @@ jobs:
             - run: npm run deploy:main
               env:
                   DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+                  # Temporary: arweave.net does not serve ~relay@1.0 yet, so transaction
+                  # observers reach Arweave's own nodes through mystical.computer's relay.
+                  # Remove once arweave.net relays (see README, "observers").
+                  VITE_ARWEAVE_OBSERVER_RELAY: https://mystical.computer
+                  # The serving name (bazar.arweave.net) is not an AO-Core compute peer, so
+                  # compute goes straight to arweave.net instead of probing the origin first.
+                  VITE_COMPUTE_GATEWAY: https://arweave.net
 
     publish-staging:
         if: github.ref == 'refs/heads/staging'
@@ -32,3 +39,10 @@ jobs:
             - run: npm run deploy:staging
               env:
                   DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+                  # Temporary: arweave.net does not serve ~relay@1.0 yet, so transaction
+                  # observers reach Arweave's own nodes through mystical.computer's relay.
+                  # Remove once arweave.net relays (see README, "observers").
+                  VITE_ARWEAVE_OBSERVER_RELAY: https://mystical.computer
+                  # The serving name (bazar.arweave.net) is not an AO-Core compute peer, so
+                  # compute goes straight to arweave.net instead of probing the origin first.
+                  VITE_COMPUTE_GATEWAY: https://arweave.net

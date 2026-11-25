@@ -7,7 +7,14 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from '../helpers/progressive-assets';
-import { listedUniquePrice } from '../routes/MyAssetsRoute';
+import {
+	listedUniquePrice,
+	walletAssetGroupEmptyCopy,
+	walletAssetGroupEntries,
+	walletFailureBlock,
+	walletResolutionSlot,
+	walletStatusAnnouncement,
+} from '../routes/MyAssetsRoute';
 
 import {
 	type CandidateSupportFailure,
@@ -23,6 +30,7 @@ import {
 	walletResolutionCopy,
 	walletResolutionIsDeterminate,
 	walletResolutionShowsProgress,
+	walletUnavailableCandidatesCopy,
 } from './App';
 
 const processId = 'P'.repeat(43);
@@ -91,24 +99,16 @@ describe('My assets retry bookkeeping', () => {
 	});
 
 	it('resumes only the same in-memory discovery scope and replaces explicit refreshes', () => {
-		const collections = [
-			{
-				id: 'tokens',
-				name: 'Tokens',
-				description: '',
-				kind: 'tokens' as const,
-				assets: [],
-				manifestId: 'M'.repeat(43),
-			},
-		];
-		const scope = walletDiscoveryScope(wallet, 'https://arweave.net', collections);
+		// Collections are not part of the scope: streaming collections refine the
+		// running session instead of replacing it.
+		const scope = walletDiscoveryScope(wallet, 'https://arweave.net');
 		const session = walletDiscoverySession(undefined, `${scope}|refresh:0`, wallet);
 		session.complete = true;
 
 		expect(walletDiscoverySession(session, `${scope}|refresh:0`, wallet)).toBe(session);
 		expect(walletDiscoverySession(session, `${scope}|refresh:1`, wallet)).not.toBe(session);
-		expect(walletDiscoveryScope('X'.repeat(43), 'https://arweave.net', collections)).not.toBe(scope);
-		expect(walletDiscoveryScope(wallet, 'https://other.example', collections)).not.toBe(scope);
+		expect(walletDiscoveryScope('X'.repeat(43), 'https://arweave.net')).not.toBe(scope);
+		expect(walletDiscoveryScope(wallet, 'https://other.example')).not.toBe(scope);
 		expect(walletDiscoverySessionIsCurrent(session, `${scope}|refresh:0`)).toBe(true);
 		expect(walletDiscoverySessionIsCurrent(session, `${scope}|refresh:1`)).toBe(false);
 		expect(walletDiscoverySessionIsCurrent(session, '')).toBe(false);
@@ -367,5 +367,118 @@ describe('My assets retry bookkeeping', () => {
 				error: null,
 			})
 		).toBe(true);
+	});
+});
+
+describe('wallet assets failure block', () => {
+	const done = { error: null, failures: 0, phase: 'done' as const };
+
+	it('shows one failure block per wallet assets surface', () => {
+		// Partial failure with nothing visible: only the empty state (it carries the failure copy and Retry).
+		expect(walletFailureBlock({ ...done, failures: 2 }, 0)).toBe('empty');
+		// Partial failure above assets that are visible: only the banner.
+		expect(walletFailureBlock({ ...done, failures: 2 }, 3)).toBe('partial');
+		// Discovery error wins over every other block.
+		expect(walletFailureBlock({ error: 'Index unavailable.', failures: 2, phase: 'error' }, 0)).toBe('error');
+		expect(walletFailureBlock({ error: 'Index unavailable.', failures: 0, phase: 'error' }, 3)).toBe('error');
+	});
+
+	it('does not leave an empty group checking after discovery fails', () => {
+		expect(walletAssetGroupEmptyCopy('tokens', false, false)).toBe('Checking for tokens…');
+		expect(walletAssetGroupEmptyCopy('uniques', false, true)).toBe('Could not check for uniques.');
+		expect(walletAssetGroupEmptyCopy('listed tokens', true, false)).toBe('No listed tokens.');
+	});
+
+	it('shows no failure block while resolving or when everything resolved', () => {
+		expect(walletFailureBlock({ error: null, failures: 1, phase: 'resolving' }, 0)).toBe('none');
+		expect(walletFailureBlock(done, 3)).toBe('none');
+		expect(walletFailureBlock(done, 0)).toBe('empty');
+	});
+});
+
+describe('wallet live-state notice', () => {
+	const done = {
+		phase: 'done' as const,
+		discoveryComplete: true,
+		discovered: 14,
+		resolved: 14,
+		total: 14,
+		failures: 2,
+		indexFailures: 0,
+		rateLimited: 0,
+		indexRateLimited: 0,
+		error: null,
+	};
+	const failure = 'Live state could not be read through the configured AO peers.';
+
+	it('names only the candidates that could not be checked', () => {
+		expect(walletUnavailableCandidatesCopy(done, failure)).toBe(
+			'Live state could not be read through the configured AO peers. 2 of 14 candidates could not be checked.'
+		);
+		expect(walletUnavailableCandidatesCopy({ failures: 1, total: 1 }, '')).toBe(
+			'1 of 1 candidate could not be checked.'
+		);
+		// The status region and the visible banner use the same sentence.
+		expect(walletResolutionCopy(done, failure).announcement).toBe(walletUnavailableCandidatesCopy(done, failure));
+	});
+
+	it('keeps the status slot above the groups once checks finish, so painted cards hold still', () => {
+		const working = { ...done, phase: 'resolving' as const };
+		expect(walletResolutionSlot(working, 'none', true, 'Checking asset candidates. 50% complete.')).toEqual({
+			settled: false,
+		});
+		// Partial: a short count in the slot; the full explanation and Retry sit after the groups.
+		expect(walletResolutionSlot(done, 'partial', false, 'unused')).toEqual({
+			settled: true,
+			detail: '2 of 14 candidates could not be checked.',
+		});
+		const clean = { ...done, failures: 0 };
+		expect(walletResolutionSlot(clean, 'none', false, 'Live state resolved for 14 candidates.')).toEqual({
+			settled: true,
+			detail: 'Live state resolved for 14 candidates.',
+		});
+		// The empty state and a discovery error carry their own blocks.
+		expect(walletResolutionSlot(done, 'empty', false, '')).toBeNull();
+		expect(walletResolutionSlot({ ...done, phase: 'error' }, 'error', false, '')).toBeNull();
+	});
+
+	it('leaves one live-state message once a visible notice states the outcome', () => {
+		const announcement = walletResolutionCopy(done, failure).announcement;
+		expect(walletStatusAnnouncement(walletFailureBlock(done, 3), done.failures, announcement)).toBe('');
+		expect(walletStatusAnnouncement(walletFailureBlock(done, 0), done.failures, announcement)).toBe('');
+		expect(walletStatusAnnouncement('error', 0, '')).toBe('');
+		// Progress and a clean finish still announce through the status region.
+		expect(walletStatusAnnouncement('none', 0, 'Checking asset candidates. 50% complete.')).toBe(
+			'Checking asset candidates. 50% complete.'
+		);
+		expect(walletStatusAnnouncement('empty', 0, 'Live state resolved for 3 candidates.')).toBe(
+			'Live state resolved for 3 candidates.'
+		);
+	});
+});
+
+describe('wallet asset group entries', () => {
+	it('places previews in activity order so confirmation updates a card in place', () => {
+		const newer = {
+			...resolved('newer', '1', '0'),
+			activity: { processId: 'newer', height: 30, timestamp: 30, sources: ['transfer' as const] },
+		};
+		const older = {
+			...resolved('older', '1', '0'),
+			activity: { processId: 'older', height: 10, timestamp: 10, sources: ['transfer' as const] },
+		};
+		const preview = {
+			asset: { id: 'middle', name: 'Middle' },
+			collection: newer.collection,
+			activity: { processId: 'middle', height: 20, timestamp: 20, sources: ['transfer' as const] },
+			state: 'checking' as const,
+		};
+
+		expect(walletAssetGroupEntries([newer, older], [preview]).map((entry) => entry.id)).toEqual([
+			'newer',
+			'middle',
+			'older',
+		]);
+		expect(walletAssetGroupEntries([], [preview])[0]).toEqual({ id: 'middle', preview });
 	});
 });

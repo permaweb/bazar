@@ -1,5 +1,6 @@
 import { mapConcurrent } from 'helpers/concurrency';
 import {
+	arweaveDataFallbackUrls,
 	arweaveDataUrl,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -10,6 +11,14 @@ import {
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 import { fetchJsonWithDeadline, fetchTextWithDeadline, operationWithDeadline } from './fetch-with-deadline';
+import {
+	GRAPHQL_RETRY_DELAYS_MS,
+	graphqlEndpointList,
+	type GraphqlResult,
+	graphqlSupportsCount,
+	postGraphql,
+	retryTransientGraphql,
+} from './graphql';
 import { assetFromMintState } from './minted-assets';
 
 export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
@@ -40,10 +49,14 @@ export type Collection = {
 	total?: number;
 	cursor?: string;
 	cursorHistory?: string[];
+	/** GraphQL index that issued `cursor` when it is not the preferred endpoint. */
+	cursorIndex?: string;
 	hasMore?: boolean;
 	indexSource?: 'carrier' | 'reference' | 'compiled-fallback';
 	manifestId?: string;
 	namespace?: NamesNamespaceIndex;
+	/** Content URL of the collection process's `Thumbnail` tag: a cover sized for cards and avatars. */
+	thumbnail?: string;
 };
 
 export type NamesNamespaceIndex = {
@@ -153,6 +166,7 @@ type CarrierPage = {
 	}>;
 	cursor?: string;
 	hasMore: boolean;
+	endpoint: string;
 };
 
 type BazarCollectionCandidate = {
@@ -161,6 +175,7 @@ type BazarCollectionCandidate = {
 	createdAt: number;
 	createdHeight: number;
 	scheduled: boolean;
+	thumbnailId?: string;
 };
 
 type BazarCollectionConnection = {
@@ -192,6 +207,12 @@ const SHOW_TEST_CATALOGUE_ITEMS = testCatalogueItemsRequested();
 
 const HIDDEN_COLLECTION_ASSET_IDS = new Map<string, ReadonlySet<string>>();
 
+/**
+ * Hidden collections whose membership could not be read yet. Kept in memory only, so the persisted index never
+ * records an empty set; every later loadCollections run (including Retry) re-reads them in the background.
+ */
+const UNAVAILABLE_HIDDEN_COLLECTION_IDS = new Set<string>();
+
 export function isHiddenCollectionId(id: string): boolean {
 	return hiddenCollectionIds.has(id);
 }
@@ -202,22 +223,29 @@ export function isVisibleCollectionId(id: string): boolean {
 
 export function isVisibleAssetId(id: string): boolean {
 	if (SHOW_TEST_CATALOGUE_ITEMS) return true;
-	if (!hiddenCollectionAssetIndexComplete() || hiddenAssetIds.has(id)) return false;
+	return hiddenCollectionAssetIndexSettled() && !isKnownHiddenAssetId(id);
+}
+
+function isKnownHiddenAssetId(id: string): boolean {
+	if (SHOW_TEST_CATALOGUE_ITEMS) return false;
+	if (hiddenAssetIds.has(id)) return true;
 	for (const assetIds of HIDDEN_COLLECTION_ASSET_IDS.values()) {
-		if (assetIds.has(id)) return false;
+		if (assetIds.has(id)) return true;
 	}
-	return true;
+	return false;
 }
 
 function registerHiddenCollectionAssets(collections: Collection[]): void {
 	for (const collection of collections) {
 		if (!isHiddenCollectionId(collection.id)) continue;
 		HIDDEN_COLLECTION_ASSET_IDS.set(collection.id, new Set(collection.assets.map((asset) => asset.id)));
+		UNAVAILABLE_HIDDEN_COLLECTION_IDS.delete(collection.id);
 	}
 }
 
 export function replaceHiddenCollectionAssetIndex(index: Readonly<Record<string, readonly string[]>>): void {
 	HIDDEN_COLLECTION_ASSET_IDS.clear();
+	UNAVAILABLE_HIDDEN_COLLECTION_IDS.clear();
 	for (const collectionId of HIDDEN_COLLECTION_IDS) {
 		const assetIds = index[collectionId];
 		if (assetIds)
@@ -235,6 +263,17 @@ export function hiddenCollectionAssetIndexComplete(): boolean {
 	return (
 		SHOW_TEST_CATALOGUE_ITEMS ||
 		HIDDEN_COLLECTION_IDS.every((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId))
+	);
+}
+
+/** Every hidden manifest is either known or was unavailable this load and degrades to not hiding its members. */
+export function hiddenCollectionAssetIndexSettled(): boolean {
+	return (
+		SHOW_TEST_CATALOGUE_ITEMS ||
+		HIDDEN_COLLECTION_IDS.every(
+			(collectionId) =>
+				HIDDEN_COLLECTION_ASSET_IDS.has(collectionId) || UNAVAILABLE_HIDDEN_COLLECTION_IDS.has(collectionId)
+		)
 	);
 }
 
@@ -267,8 +306,7 @@ const IMAGE_COLLECTIONS = [
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
-const ASSET_INDEX_RETRY_DELAYS_MS = [1_000, 3_000] as const;
-const ASSET_INDEX_RETRY_AFTER_MAX_MS = 10_000;
+const ASSET_INDEX_RETRY_DELAYS_MS = GRAPHQL_RETRY_DELAYS_MS;
 export const BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS = 300_000;
 export const COLLECTION_AO_READ_TIMEOUT_MS = 45_000;
 
@@ -373,27 +411,64 @@ type CollectionSource = {
 	fallback?: () => Collection;
 };
 
-async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void> {
-	if (hiddenCollectionAssetIndexComplete()) return;
-	const missing = HIDDEN_COLLECTION_IDS.filter((collectionId) => !HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
-	await mapConcurrent(missing, 4, async (collectionId) => {
-		const transaction = await fetchJson<{ tags?: Array<{ name: string; value: string }> }>(
-			`tx/${collectionId}`,
-			signal,
-			true
-		);
-		const tags = Object.fromEntries(
-			(transaction.tags ?? []).map((tag) => [decodeBase64Url(tag.name), decodeBase64Url(tag.value)])
-		);
-		const manifestId = tags['initial-value'] ?? tags['reference-value'];
-		if (typeof manifestId !== 'string' || !ARWEAVE_ID.test(manifestId)) {
-			throw new Error('hidden-collection-reference-invalid');
+async function loadHiddenCollectionAssets(collectionId: string, signal?: AbortSignal): Promise<void> {
+	const transaction = await fetchJson<{ tags?: Array<{ name: string; value: string }> }>(
+		`tx/${collectionId}`,
+		signal,
+		true
+	);
+	const tags = Object.fromEntries(
+		(transaction.tags ?? []).map((tag) => [decodeBase64Url(tag.name), decodeBase64Url(tag.value)])
+	);
+	const manifestId = tags['initial-value'] ?? tags['reference-value'];
+	if (typeof manifestId !== 'string' || !ARWEAVE_ID.test(manifestId)) {
+		throw new Error('hidden-collection-reference-invalid');
+	}
+	registerHiddenCollectionAssets([
+		imageCollection(collectionId, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
+	]);
+}
+
+/**
+ * Read hidden-collection membership; a manifest that cannot be read degrades to not hiding its members.
+ * Every manifest is read at once: asset visibility (and with it every asset page's first state read)
+ * waits for the slowest one, so a queued fifth manifest would add a whole gateway deadline.
+ */
+async function loadHiddenCollectionMembership(collectionIds: readonly string[], signal?: AbortSignal): Promise<void> {
+	await mapConcurrent(collectionIds, collectionIds.length, async (collectionId) => {
+		try {
+			await loadHiddenCollectionAssets(collectionId, signal);
+		} catch (cause) {
+			throwIfAborted(signal);
+			UNAVAILABLE_HIDDEN_COLLECTION_IDS.add(collectionId);
+			console.warn(
+				`Hidden collection ${collectionId} membership is unavailable; its assets are not hidden.`,
+				cause
+			);
 		}
-		registerHiddenCollectionAssets([
-			imageCollection(collectionId, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
-		]);
 	});
-	if (!hiddenCollectionAssetIndexComplete()) throw new Error('hidden-collection-index-unavailable');
+}
+
+/** Resolve membership not yet attempted; manifests already known to be unavailable do not hold visibility back. */
+async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void> {
+	if (hiddenCollectionAssetIndexSettled()) return;
+	await loadHiddenCollectionMembership(
+		HIDDEN_COLLECTION_IDS.filter(
+			(collectionId) =>
+				!HIDDEN_COLLECTION_ASSET_IDS.has(collectionId) && !UNAVAILABLE_HIDDEN_COLLECTION_IDS.has(collectionId)
+		),
+		signal
+	);
+}
+
+/** Re-read manifests that were unavailable on an earlier load. Resolves true when any of them is now known. */
+async function retryUnavailableHiddenCollections(signal?: AbortSignal): Promise<boolean> {
+	const unavailable = HIDDEN_COLLECTION_IDS.filter((collectionId) =>
+		UNAVAILABLE_HIDDEN_COLLECTION_IDS.has(collectionId)
+	);
+	if (!unavailable.length) return false;
+	await loadHiddenCollectionMembership(unavailable, signal);
+	return unavailable.some((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
 }
 
 export async function loadCollections(
@@ -402,17 +477,13 @@ export async function loadCollections(
 	onVisibilityReady?: () => void,
 	onBackgroundUnavailable?: (label: string) => void
 ): Promise<CollectionLoadResult> {
-	await ensureHiddenCollectionAssets(signal);
-	onVisibilityReady?.();
+	let visibilitySettled = false;
 	const sources: CollectionSource[] = [
 		{ label: 'Arweave names', load: (progress) => loadNames(signal, progress) },
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
-			fallback: () => ({
-				...fungibleTokenCollection(isVisibleAssetId(FUNGIBLE_TOKEN_ID) ? [defaultFungibleToken()] : []),
-				indexSource: 'compiled-fallback',
-			}),
+			fallback: compiledFungibleTokenCollection,
 		},
 		...IMAGE_COLLECTIONS.map(({ reference, manifest }, index) => ({
 			label: `Permanent artwork collection ${index + 1}`,
@@ -423,13 +494,32 @@ export async function loadCollections(
 	let discoveredCollections: Collection[] = [];
 	const successes = new Array<boolean>(sources.length).fill(false);
 	const failures = new Array<boolean>(sources.length).fill(false);
-	const publish = () =>
-		onProgress?.(
-			deduplicateCollections([
-				...collections.filter((item): item is Collection => Boolean(item)),
-				...discoveredCollections,
-			])
-		);
+	const loadedCollections = () =>
+		deduplicateCollections([
+			...collections.filter((item): item is Collection => Boolean(item)),
+			...discoveredCollections,
+		]).map(withVisibleCollectionAssets);
+	// Sources start immediately; nothing is published until hidden membership is settled, so no hidden asset
+	// is ever shown while the index is still loading.
+	const publish = () => {
+		if (visibilitySettled) onProgress?.(loadedCollections());
+	};
+	// Started before ensureHiddenCollectionAssets so it only retries manifests that failed on an earlier load.
+	// It runs in the background: those members stay visible until it succeeds, then the next publish hides them.
+	void retryUnavailableHiddenCollections(signal).then(
+		(recovered) => {
+			if (recovered && !signal?.aborted && (successes.some(Boolean) || discoveredCollections.length)) publish();
+		},
+		() => undefined
+	);
+	const visibility = ensureHiddenCollectionAssets(signal).then(() => {
+		throwIfAborted(signal);
+		visibilitySettled = true;
+		onVisibilityReady?.();
+		if (successes.some(Boolean) || discoveredCollections.length) publish();
+	});
+	// Surface an abort through the awaited source path below instead of an unhandled rejection.
+	visibility.catch(() => undefined);
 	let discoveryUnavailable = false;
 	const discovery = operationWithDeadline(
 		(discoverySignal) =>
@@ -471,11 +561,9 @@ export async function loadCollections(
 			if (successes.some(Boolean)) publish();
 		})
 	);
+	await visibility;
 	if (!successes.some(Boolean) && !discoveredCollections.length) await discovery;
-	const loaded = deduplicateCollections([
-		...collections.filter((item): item is Collection => Boolean(item)),
-		...discoveredCollections,
-	]);
+	const loaded = loadedCollections();
 	if (!successes.some(Boolean) && !discoveredCollections.length) throw new Error('collection-indexes-unavailable');
 	return {
 		collections: loaded,
@@ -511,17 +599,21 @@ export async function discoverBazarCollections(
 ): Promise<Collection[]> {
 	const found = new Map<string, Collection>();
 	let cursor: string | null = null;
+	let endpoints = graphqlEndpointList();
 	const visited = new Set<string>();
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		throwIfAborted(signal);
-		const request = await fetchJsonWithDeadline<BazarCollectionPayload>(
-			fetch,
-			arweaveGraphqlEndpoint(),
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: `query BazarCollections($after: String) {
+		const pageEndpoints = endpoints;
+		const request = await retryTransientGraphql(
+			() =>
+				postGraphql<BazarCollectionPayload>(
+					fetch,
+					pageEndpoints,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							query: `query BazarCollections($after: String) {
 					transactions(
 						after: $after
 						first: 100
@@ -537,13 +629,18 @@ export async function discoverBazarCollections(
 						edges { cursor node { id tags { name value } block { height timestamp } } }
 					}
 				}`,
-					variables: { after: cursor },
-				}),
-				signal,
-			},
-			{ timeoutError: 'collection-discovery-timeout' }
+							variables: { after: cursor },
+						}),
+						signal,
+					},
+					{ timeoutError: 'collection-discovery-timeout' }
+				),
+			GRAPHQL_RETRY_DELAYS_MS,
+			signal
 		);
 		const { response, body: payload } = request;
+		// Later pages carry this index's cursor.
+		endpoints = [request.endpoint];
 		if (!response.ok) throw new Error(`collection-discovery-${response.status}`);
 		if (!payload || payload.errors?.length) throw new Error('collection-discovery-query');
 		const connection: BazarCollectionConnection | undefined = payload.data?.transactions;
@@ -592,24 +689,29 @@ export async function discoverBazarCollections(
 /** Resolve a shared collection link even when tag-based discovery omits it. */
 export async function loadBazarCollectionById(id: string, signal?: AbortSignal): Promise<Collection | null> {
 	if (!ARWEAVE_ID.test(id) || !isVisibleCollectionId(id)) return null;
-	const { response, body: payload } = await fetchJsonWithDeadline<BazarCollectionPayload>(
-		fetch,
-		arweaveGraphqlEndpoint(),
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				query: `query BazarCollectionById($ids: [ID!]!) {
+	const { response, body: payload } = await retryTransientGraphql(
+		() =>
+			postGraphql<BazarCollectionPayload>(
+				fetch,
+				graphqlEndpointList(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query BazarCollectionById($ids: [ID!]!) {
 					transactions(ids: $ids, first: 1) {
 						pageInfo { hasNextPage }
 						edges { cursor node { id tags { name value } block { height timestamp } } }
 					}
 				}`,
-				variables: { ids: [id] },
-			}),
-			signal,
-		},
-		{ timeoutError: 'collection-lookup-timeout' }
+						variables: { ids: [id] },
+					}),
+					signal,
+				},
+				{ timeoutError: 'collection-lookup-timeout' }
+			),
+		GRAPHQL_RETRY_DELAYS_MS,
+		signal
 	);
 	if (!response.ok) throw new Error(`collection-lookup-${response.status}`);
 	if (!payload || payload.errors?.length) throw new Error('collection-lookup-query');
@@ -656,6 +758,7 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		createdAt: edge.node.block.timestamp * 1_000,
 		createdHeight: edge.node.block.height,
 		scheduled,
+		...(ARWEAVE_ID.test(tags.thumbnail ?? '') ? { thumbnailId: tags.thumbnail } : {}),
 	};
 }
 
@@ -668,7 +771,23 @@ async function loadDiscoveredImageCollection(
 		manifestId = (await liveCarrierManifestId(candidate.id, signal)) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
-	return imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal));
+	const collection = imageCollection(
+		candidate.id,
+		manifestId,
+		'carrier',
+		await fetchJson<ImageManifest>(manifestId, signal)
+	);
+	return candidate.thumbnailId
+		? { ...collection, thumbnail: arweaveDataUrl(candidate.thumbnailId, permanentContentGatewayFromLocation()) }
+		: collection;
+}
+
+/**
+ * The image a collection card or avatar shows: the collection's own thumbnail when its process
+ * carries one (Dumdumz: a 91 KB GIF), otherwise the first asset artwork (often 1-3 MB originals).
+ */
+export function collectionCoverImage(collection: Pick<Collection, 'assets' | 'thumbnail'>): string | undefined {
+	return collection.thumbnail ?? collection.assets.find((asset) => asset.image)?.image;
 }
 
 async function liveCarrierManifestId(processId: string, signal?: AbortSignal): Promise<string | undefined> {
@@ -725,7 +844,8 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		!ARWEAVE_ID.test(tags['initial-holder'] ?? '')
 	)
 		return undefined;
-	return assetFromMintState(node.id, tags) ?? undefined;
+	// A `title` tag is the conventional display name on assets that predate the `name` tag.
+	return assetFromMintState(node.id, tags, tags.title) ?? undefined;
 }
 
 /**
@@ -737,15 +857,14 @@ async function postAtomicAssetIndex<T>(
 	query: string,
 	variables: Record<string, unknown>,
 	signal: AbortSignal | undefined,
-	retryDelaysMs: readonly number[]
-): Promise<{ response: Response; body: T | undefined }> {
-	for (let attempt = 0; ; attempt += 1) {
-		let result: { response: Response; body: T | undefined } | undefined;
-		let failure: unknown;
-		try {
-			result = await fetchJsonWithDeadline<T>(
+	retryDelaysMs: readonly number[],
+	endpoints: readonly string[] = graphqlEndpointList()
+): Promise<GraphqlResult<T>> {
+	return retryTransientGraphql(
+		() =>
+			postGraphql<T>(
 				fetcher,
-				arweaveGraphqlEndpoint(),
+				endpoints,
 				{
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
@@ -753,53 +872,26 @@ async function postAtomicAssetIndex<T>(
 					signal,
 				},
 				{ timeoutError: 'collection-asset-index-timeout' }
-			);
-		} catch (error) {
-			throwIfAborted(signal);
-			failure = error;
-		}
-		const status = result?.response.status ?? 0;
-		const transient = !result || status === 429 || status >= 500;
-		if (!transient || attempt >= retryDelaysMs.length) {
-			if (result) return result;
-			throw failure;
-		}
-		await waitBeforeRetry(retryAfterMs(result?.response) ?? retryDelaysMs[attempt], signal);
-	}
+			),
+		retryDelaysMs,
+		signal
+	);
 }
 
-function retryAfterMs(response: Response | undefined): number | undefined {
-	const seconds = Number(response?.headers.get('retry-after') ?? NaN);
-	return Number.isFinite(seconds) && seconds >= 0
-		? Math.min(seconds * 1_000, ASSET_INDEX_RETRY_AFTER_MAX_MS)
-		: undefined;
-}
-
-function waitBeforeRetry(ms: number, signal?: AbortSignal): Promise<void> {
-	throwIfAborted(signal);
-	return new Promise((resolve, reject) => {
-		const onAbort = () => {
-			clearTimeout(timer);
-			try {
-				throwIfAborted(signal);
-			} catch (error) {
-				reject(error);
-			}
-		};
-		const timer = setTimeout(() => {
-			signal?.removeEventListener('abort', onAbort);
-			resolve();
-		}, ms);
-		signal?.addEventListener('abort', onAbort, { once: true });
-	});
-}
-
-/** Replace ID-only manifest placeholders with immutable transaction metadata. */
+/**
+ * Replace ID-only manifest placeholders with immutable transaction metadata.
+ *
+ * `onProgress` receives the collection with every asset indexed so far after each
+ * GraphQL page or ID batch, so titles appear as soon as their tags arrive instead
+ * of after the whole (possibly multi-page) index walk. The resolved collection is
+ * the last object passed to `onProgress` when nothing changed after it.
+ */
 export async function enrichImageCollectionAssetMetadata(
 	collection: Collection,
 	signal?: AbortSignal,
 	fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
-	retryDelaysMs: readonly number[] = ASSET_INDEX_RETRY_DELAYS_MS
+	retryDelaysMs: readonly number[] = ASSET_INDEX_RETRY_DELAYS_MS,
+	onProgress?: (partial: Collection) => void
 ): Promise<Collection> {
 	if (collection.kind !== 'images') return collection;
 	const unresolved = collection.assets.filter((asset) => asset.name === shortId(asset.id));
@@ -807,17 +899,29 @@ export async function enrichImageCollectionAssetMetadata(
 	const unresolvedIds = new Set(unresolved.map((asset) => asset.id));
 	const indexed = new Map<string, AssetSummary>();
 	let cursor: string | null = null;
+	let pageEndpoints = graphqlEndpointList();
 	let collectionIndexComplete = false;
 	const visited = new Set<string>();
+	let latest = collection;
+	let latestSize = 0;
+	const snapshot = () => {
+		if (indexed.size !== latestSize) {
+			latestSize = indexed.size;
+			latest = { ...collection, assets: collection.assets.map((asset) => indexed.get(asset.id) ?? asset) };
+		}
+		return latest;
+	};
 	const indexEdges = (edges: any[]) => {
+		const before = indexed.size;
 		for (const edge of edges) {
 			const asset = indexedAtomicAsset(edge?.node ?? {});
 			if (asset && unresolvedIds.has(asset.id)) indexed.set(asset.id, asset);
 		}
+		if (indexed.size !== before && !signal?.aborted) onProgress?.(snapshot());
 	};
 	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
 		try {
-			const { response, body } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
+			const { response, body, endpoint } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
 				fetcher,
 				`query BazarAtomicAssetsByCollection($collection: [String!]!, $after: String) {
 					transactions(
@@ -842,7 +946,8 @@ export async function enrichImageCollectionAssetMetadata(
 				}`,
 				{ collection: [collection.name], after: cursor },
 				signal,
-				retryDelaysMs
+				retryDelaysMs,
+				pageEndpoints
 			);
 			const connection: AtomicAssetIndexConnection | undefined = body?.data?.transactions;
 			if (
@@ -861,6 +966,7 @@ export async function enrichImageCollectionAssetMetadata(
 			if (typeof next !== 'string' || !next || visited.has(next)) break;
 			visited.add(next);
 			cursor = next;
+			pageEndpoints = [endpoint];
 		} catch {
 			throwIfAborted(signal);
 			break;
@@ -893,11 +999,152 @@ export async function enrichImageCollectionAssetMetadata(
 			// Keep the stable ID fallback when GraphQL has not indexed an asset yet.
 		}
 	});
-	if (!indexed.size) return collection;
-	return {
-		...collection,
-		assets: collection.assets.map((asset) => indexed.get(asset.id) ?? asset),
-	};
+	return snapshot();
+}
+
+/** Upper bound for one exact-ID name lookup; visible pages are 8-30 cards, so a page is one request. */
+export const INDEXED_ASSET_NAME_BATCH_SIZE = 100;
+
+/** A display name from the permanent index, with the asset's media when it is a Bazar Atomic Asset. */
+export type IndexedAssetName = Pick<AssetSummary, 'id' | 'name'> & Partial<AssetSummary>;
+
+export type IndexedAssetNameOptions = {
+	signal?: AbortSignal;
+	fetch?: typeof fetch;
+	retryDelaysMs?: readonly number[];
+};
+
+/**
+ * Name precedence for one indexed transaction: a valid Bazar Atomic Asset (its `name` tag, then
+ * the legacy `title` tag, with its media) first; otherwise a bare `name` or `title` tag. Anything
+ * else yields nothing, so the caller keeps its short-ID placeholder as the last resort.
+ */
+function indexedAssetName(node: AtomicAssetIndexNode): IndexedAssetName | undefined {
+	const atomic = indexedAtomicAsset(node);
+	if (atomic) return atomic;
+	if (typeof node.id !== 'string' || !ARWEAVE_ID.test(node.id) || !Array.isArray(node.tags)) return undefined;
+	const tags = new Map<string, string>();
+	for (const tag of node.tags as Array<{ name?: unknown; value?: unknown }>) {
+		if (tag && typeof tag.name === 'string' && typeof tag.value === 'string') {
+			tags.set(tag.name.toLowerCase(), tag.value.trim());
+		}
+	}
+	const name = tags.get('name') || tags.get('title');
+	return name ? { id: node.id, name } : undefined;
+}
+
+const INDEXED_ASSET_NAMES_QUERY = `query BazarAssetNamesByIds($ids: [ID!]!, $first: Int!, $after: String) {
+	transactions(ids: $ids, first: $first, after: $after) {
+		pageInfo { hasNextPage }
+		edges { cursor node { id tags { name value } } }
+	}
+}`;
+
+/**
+ * Resolve display names for the asset IDs a page is showing, in one GraphQL request per page.
+ *
+ * `first` matches the batch, so arweave.net answers every ID at once (measured 2026-11-23: 30
+ * and 60 IDs in one `ids` filter, all returned, `hasNextPage: false`; its default `first` of 10
+ * is what truncated earlier batches). A truncated answer is still followed by cursor on the
+ * index that issued it. IDs the index does not know are omitted. A batch that fails outright
+ * throws only when nothing at all was resolved, so the caller may retry later.
+ */
+export async function loadIndexedAssetNames(
+	ids: readonly string[],
+	options: IndexedAssetNameOptions = {}
+): Promise<Map<string, IndexedAssetName>> {
+	const { signal } = options;
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const retryDelaysMs = options.retryDelaysMs ?? ASSET_INDEX_RETRY_DELAYS_MS;
+	const unique = [...new Set(ids)].filter((id) => ARWEAVE_ID.test(id) && isVisibleAssetId(id));
+	const found = new Map<string, IndexedAssetName>();
+	let failure: unknown;
+	for (let offset = 0; offset < unique.length; offset += INDEXED_ASSET_NAME_BATCH_SIZE) {
+		const batch = unique.slice(offset, offset + INDEXED_ASSET_NAME_BATCH_SIZE);
+		const wanted = new Set(batch);
+		let after: string | null = null;
+		let endpoints = graphqlEndpointList();
+		const visited = new Set<string>();
+		try {
+			for (let page = 0; page < batch.length; page += 1) {
+				const { response, body, endpoint } = await postAtomicAssetIndex<AtomicAssetIndexPayload>(
+					fetcher,
+					INDEXED_ASSET_NAMES_QUERY,
+					{ ids: batch, first: batch.length, after },
+					signal,
+					retryDelaysMs,
+					endpoints
+				);
+				const connection: AtomicAssetIndexConnection | undefined = body?.data?.transactions;
+				if (!response.ok || body?.errors?.length || !Array.isArray(connection?.edges)) {
+					if (page === 0) throw new Error(`asset-name-index-${response.status}`);
+					break;
+				}
+				for (const edge of connection.edges) {
+					const entry = indexedAssetName(edge?.node ?? {});
+					if (entry && wanted.has(entry.id)) found.set(entry.id, entry);
+				}
+				const next: unknown = connection.edges.at(-1)?.cursor;
+				if (
+					connection.pageInfo?.hasNextPage !== true ||
+					batch.every((id) => found.has(id)) ||
+					typeof next !== 'string' ||
+					!next ||
+					visited.has(next)
+				)
+					break;
+				visited.add(next);
+				after = next;
+				endpoints = [endpoint];
+			}
+		} catch (cause) {
+			throwIfAborted(signal);
+			failure ??= cause;
+		}
+	}
+	if (failure !== undefined && !found.size) throw failure;
+	return found;
+}
+
+/** True for the short-ID title an ID-only manifest entry starts with (or a blank name). */
+export function isPlaceholderAssetName(asset: Pick<AssetSummary, 'id' | 'name'>): boolean {
+	return !asset.name.trim() || asset.name === shortId(asset.id);
+}
+
+/** Take a resolved display name over a short-ID placeholder, never the other way round. */
+export function preferResolvedAssetName<T extends Pick<AssetSummary, 'id' | 'name'>>(
+	asset: T,
+	current: Pick<AssetSummary, 'id' | 'name'> | undefined
+): T {
+	if (!current || current.id !== asset.id || !isPlaceholderAssetName(asset) || isPlaceholderAssetName(current))
+		return asset;
+	return { ...asset, name: current.name };
+}
+
+/**
+ * Merge indexed names into the loaded image collections, replacing only short-ID placeholders.
+ * Returns the same array when nothing changed so store updates stay referentially stable.
+ */
+export function withIndexedAssetNames(
+	collections: Collection[],
+	indexed: ReadonlyMap<string, IndexedAssetName>
+): Collection[] {
+	if (!indexed.size) return collections;
+	let changed = false;
+	const next = collections.map((collection) => {
+		if (collection.kind !== 'images') return collection;
+		let touched = false;
+		const assets = collection.assets.map((asset) => {
+			const entry = indexed.get(asset.id);
+			if (!entry || !isPlaceholderAssetName(asset) || isPlaceholderAssetName(entry)) return asset;
+			touched = true;
+			return { ...asset, ...entry, id: asset.id };
+		});
+		if (!touched) return collection;
+		changed = true;
+		return { ...collection, assets };
+	});
+	return changed ? next : collections;
 }
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -909,7 +1156,7 @@ async function loadFungibleTokens(signal?: AbortSignal): Promise<Collection> {
 	const page = await loadFungibleTokenPage(undefined, signal);
 	const includeConfiguredToken =
 		ARWEAVE_ID.test(FUNGIBLE_TOKEN_ID) &&
-		isVisibleAssetId(FUNGIBLE_TOKEN_ID) &&
+		!isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) &&
 		!page.assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID);
 	const assets = includeConfiguredToken ? [defaultFungibleToken(), ...page.assets] : page.assets;
 	const total = page.hasMore ? Math.max(assets.length, page.total - page.hiddenAssetCount) : assets.length;
@@ -946,15 +1193,28 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 	};
 }
 
+/** The fungible list's total comes from the `count` extension, so it stays on an index that answers it. */
+function countingGraphqlEndpoint(): string {
+	const endpoints = graphqlEndpointList();
+	return endpoints.find(graphqlSupportsCount) ?? endpoints[0];
+}
+
+/**
+ * The token list stays on the counting index (arweave.net; another index may reject `count` or hold
+ * fewer tokens), so a slow arweave.net moment is retried there instead of falling back to an index
+ * that could drop tokens.
+ */
 async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Promise<FungibleTokenPage> {
-	const result = await fetchJsonWithDeadline<any>(
-		fetch,
-		arweaveGraphqlEndpoint(),
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				query: `query FungibleTokens($after: String) {
+	const result = await retryTransientGraphql(
+		() =>
+			fetchJsonWithDeadline<any>(
+				fetch,
+				countingGraphqlEndpoint(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query FungibleTokens($after: String) {
 					transactions(
 					after: $after
 					first: 100
@@ -1005,13 +1265,16 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 						edges { cursor node { id bundledIn { id } tags { name value } } }
 					}
 				}`,
-				variables: { after: after ?? null },
-			}),
-			signal,
-		},
-		{
-			timeoutError: 'fungible-index-timeout',
-		}
+						variables: { after: after ?? null },
+					}),
+					signal,
+				},
+				{
+					timeoutError: 'fungible-index-timeout',
+				}
+			),
+		GRAPHQL_RETRY_DELAYS_MS,
+		signal
 	);
 	const response = result.response;
 	const payload: any = result.body;
@@ -1042,7 +1305,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
 		// Some gateways represent an unbundled transaction as { id: "" }.
-		if (node.bundledIn?.id || !isVisibleAssetId(node.id)) {
+		if (node.bundledIn?.id || isKnownHiddenAssetId(node.id)) {
 			hiddenIndexedAssets += 1;
 			continue;
 		}
@@ -1086,7 +1349,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			throw new Error('fungible-index-schema');
 		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
 		for (const { node } of legacy.edges) {
-			if (node.bundledIn?.id || !isVisibleAssetId(node.id)) continue;
+			if (node.bundledIn?.id || isKnownHiddenAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
 			legacyAssets.set(node.id, {
@@ -1130,6 +1393,14 @@ function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection 
 	};
 }
 
+/** The token collection without its index: only the configured token, marked as a compiled fallback. */
+export function compiledFungibleTokenCollection(): Collection {
+	return {
+		...fungibleTokenCollection(isKnownHiddenAssetId(FUNGIBLE_TOKEN_ID) ? [] : [defaultFungibleToken()]),
+		indexSource: 'compiled-fallback',
+	};
+}
+
 function defaultFungibleToken(): AssetSummary {
 	return {
 		id: FUNGIBLE_TOKEN_ID,
@@ -1146,13 +1417,14 @@ async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collect
 		return namespace;
 	});
 	const [namespace, page] = await Promise.all([namespaceRequest, loadCarrierPage(undefined, signal)]);
-	const assets = carrierAssets(page, namespace).filter((asset) => isVisibleAssetId(asset.id));
+	const assets = carrierAssets(page, namespace).filter((asset) => !isKnownHiddenAssetId(asset.id));
 	return {
 		...namesNamespaceCollection(namespace),
 		assets,
 		total: page.hasMore ? undefined : assets.length,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
+		...carrierCursorIndex(page),
 		hasMore: page.hasMore,
 	};
 }
@@ -1173,14 +1445,14 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 export async function loadMoreCarrierNames(collection: Collection, signal?: AbortSignal): Promise<Collection> {
 	if (collection.kind !== 'names' || !collection.hasMore) return collection;
 	if (!collection.namespace) throw new Error('carrier-namespace-missing');
-	const page = await loadCarrierPage(collection.cursor, signal);
+	const page = await loadCarrierPage(collection.cursor, signal, collection.cursorIndex);
 	const cursorHistory = collection.cursorHistory ?? (collection.cursor ? [collection.cursor] : []);
 	if (page.cursor && (cursorHistory.includes(page.cursor) || cursorHistory.length >= MAX_INDEX_PAGES)) {
 		throw new Error('carrier-index-pagination-stalled');
 	}
 	const seen = new Set(collection.assets.map((asset) => asset.id));
 	const additions = carrierAssets(page, collection.namespace).filter(
-		(asset) => isVisibleAssetId(asset.id) && !seen.has(asset.id)
+		(asset) => !isKnownHiddenAssetId(asset.id) && !seen.has(asset.id)
 	);
 	const assets = [...collection.assets, ...additions];
 	return {
@@ -1188,20 +1460,34 @@ export async function loadMoreCarrierNames(collection: Collection, signal?: Abor
 		assets,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [...cursorHistory, page.cursor] : cursorHistory,
+		...carrierCursorIndex(page),
 		hasMore: page.hasMore,
 		total: page.hasMore ? undefined : assets.length,
 	};
 }
 
-async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<CarrierPage> {
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
-		fetch,
-		arweaveGraphqlEndpoint(),
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				query: `query CarrierAssets($after: String) {
+/** Record a non-preferred issuing index so the next page can return to it. */
+function carrierCursorIndex(page: CarrierPage): Pick<Collection, 'cursorIndex'> {
+	return page.endpoint === arweaveGraphqlEndpoint() ? {} : { cursorIndex: page.endpoint };
+}
+
+async function loadCarrierPage(after?: string, signal?: AbortSignal, cursorIndex?: string): Promise<CarrierPage> {
+	const endpoints = graphqlEndpointList();
+	const {
+		response,
+		body: payload,
+		endpoint,
+	} = await retryTransientGraphql(
+		() =>
+			postGraphql<any>(
+				fetch,
+				// A cursor belongs to the index that issued it; only the first page may fall back.
+				after ? [cursorIndex ?? endpoints[0]] : endpoints,
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query CarrierAssets($after: String) {
 				transactions(
 					first: 100
 					after: $after
@@ -1215,13 +1501,16 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<Ca
 					}
 				}
 			}`,
-				variables: { after: after ?? null },
-			}),
-			signal,
-		},
-		{
-			timeoutError: 'carrier-index-timeout',
-		}
+						variables: { after: after ?? null },
+					}),
+					signal,
+				},
+				{
+					timeoutError: 'carrier-index-timeout',
+				}
+			),
+		GRAPHQL_RETRY_DELAYS_MS,
+		signal
 	);
 	if (!response.ok) throw new Error(`carrier-index-${response.status}`);
 	if (!payload) throw new Error('carrier-index-empty');
@@ -1251,6 +1540,7 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<Ca
 		edges,
 		cursor,
 		hasMore: Boolean(connection.pageInfo.hasNextPage),
+		endpoint,
 	};
 }
 
@@ -1417,22 +1707,7 @@ function imageCollection(
 }
 
 async function fetchJson<T>(path: string, signal?: AbortSignal, process = false): Promise<T> {
-	if (!process && /^[A-Za-z0-9_-]{43}$/.test(path)) {
-		const { response, body: responseBody } = await fetchTextWithDeadline(
-			fetch,
-			`${arweaveGatewayFromLocation()}/tx/${path}/data`,
-			{ signal },
-			{
-				timeoutError: 'collection-data-timeout',
-			}
-		);
-		if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
-		const body = (responseBody ?? '').trim();
-		if (!/^[A-Za-z0-9_-]+$/.test(body) || body === 'Accepted') {
-			throw new Error('collection-data-pending');
-		}
-		return JSON.parse(decodeBase64Url(body)) as T;
-	}
+	if (!process && ARWEAVE_ID.test(path)) return fetchArweaveItemJson<T>(path, signal);
 	const url = process && path.startsWith('http') ? path : `${arweaveGatewayFromLocation()}/${path}`;
 	const { response, body } = await fetchJsonWithDeadline<any>(
 		fetch,
@@ -1445,6 +1720,39 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 	if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
 	if (body === undefined) throw new Error('collection-fetch-empty');
 	return (process ? body : (body as any)?.data ?? body) as T;
+}
+
+/**
+ * Read an item's JSON bytes on the route its gateway kind serves them (`/raw/<id>` on arweave.net,
+ * `/<id>` on HyperBEAM), trying the same content candidates as artwork in order. `/tx/<id>/data`
+ * returned the body base64url-encoded (a third larger) from the L1 data route instead.
+ */
+async function fetchArweaveItemJson<T>(id: string, signal?: AbortSignal): Promise<T> {
+	let failure: unknown = new Error('collection-data-unavailable');
+	const candidates = arweaveDataFallbackUrls(arweaveDataUrl(id));
+	for (const [index, url] of candidates.entries()) {
+		throwIfAborted(signal);
+		try {
+			const { response, body } = await fetchTextWithDeadline(
+				fetch,
+				url,
+				{ signal },
+				{ timeoutError: 'collection-data-timeout' }
+			);
+			if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
+			// An arweave.net sandbox redirect can answer 200 with no body for an item still being seeded.
+			if (!body?.trim()) throw new Error('collection-data-pending');
+			return JSON.parse(body) as T;
+		} catch (cause) {
+			throwIfAborted(signal);
+			// A host can answer 200 with a page that is not the item (an SPA or ArNS index.html
+			// fallback, a captive or error page), so malformed JSON moves on like any other miss and
+			// is final only from the last candidate.
+			if (cause instanceof SyntaxError && index === candidates.length - 1) throw cause;
+			failure = cause;
+		}
+	}
+	throw failure;
 }
 
 function decodeBase64Url(value: string): string {

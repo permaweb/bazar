@@ -1,28 +1,50 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CollectionActivityEvent } from 'api/asset-discovery';
+import type { CollectionActivityEvent, ResolvedAsset } from 'api/asset-discovery';
+import { parseAssetState } from 'api/asset-marketplace';
 import {
 	type Collection,
+	compiledFungibleTokenCollection,
+	fungibleAssetFromState,
 	HIDDEN_COLLECTION_IDS,
 	hiddenCollectionAssetIndex,
 	replaceHiddenCollectionAssetIndex,
 } from 'api/collections';
 
+import { nextStableOrder, stableOrderDiffers } from 'helpers/stable-order';
+
 import {
+	ACTIVITY_CATALOGUE_QUIET_MS,
+	ACTIVITY_CATALOGUE_WAIT_CAP_MS,
+	ACTIVITY_ROWS_WAIT_CAP_MS,
+	activityCatalogueMembershipKey,
+	activityCatalogueRevealDelay,
+	activityLoadingPlacement,
+	activityRowsRevealDelay,
 	AssetCardArtwork,
 	assetDetailCanResolve,
+	assetDetailMembership,
 	assetDetailMembershipVerified,
+	COLLECTION_PRICE_DISPLAY_DEADLINE_MS,
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,
 	collectionActivityWindowDelta,
+	collectionAssetOrderKey,
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
+	collectionCardPriceLabel,
 	collectionDefaultsToListed,
 	CollectionDescription,
+	collectionListedFromSearch,
 	collectionListingScopeVersion,
+	collectionPriceRetryNotice,
 	collectionRecipientsWithoutListingCandidates,
+	CollectionTabs,
+	collectionViewFromSearch,
+	collectionViewSearch,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
 	compareCollectionAssetNames,
@@ -31,22 +53,44 @@ import {
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
 	createAnimationFrameBatch,
+	createCollectionPriceDeadlines,
 	cumulativeCollectionDepth,
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
 	globalActivityRecipientIds,
 	globalActivityRevealDescription,
+	globalCatalogueActivity,
+	heldPriceRetryNotice,
+	HOME_ASSET_PAGE_SIZE,
+	HOME_DISCOVER_LOADING_DEADLINE_MS,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
+	HOME_DISCOVER_UNIQUE_PREVIEW,
+	HOME_SUMMARY_AUTO_RETRY_LIMIT,
+	HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS,
+	HOME_TOKEN_CHANGE_MAX_AGE_MS,
+	HOME_TOKEN_CHANGE_REFRESH_MS,
+	HOME_TOKEN_CHANGE_RETRY_MS,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
 	homeCollectionAssetCountLabel,
+	homeCollectionFloorsPending,
+	homeDiscoverBusy,
+	homeDiscoverDisplay,
+	homeDiscoverFailureNotice,
+	homeDiscoverOrderId,
+	homeDiscoverOrderSettled,
+	homeDiscoverOverdueFailure,
+	homeDiscoverPagesFull,
+	homeDiscoverPartialFailureMessage,
+	homeDiscoverPending,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
 	homeListingComputeFailure,
+	homeListingCrawlDemand,
 	homeListingSupportVersion,
 	homeMarketHasPending,
 	homeMarketPriceValue,
@@ -54,33 +98,57 @@ import {
 	homeMarketShowsInitialLoader,
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
+	HomeMarketTabs,
+	homeRedirectPath,
 	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
+	homeSummaryAutoRetryDue,
+	homeSummaryFailuresPresent,
 	homeSummaryRequestKeys,
+	homeSummaryWindow,
 	homeTabFromPathname,
+	homeTabHeading,
 	homeTabPath,
+	homeTokenPlaceholderRows,
+	homeTokenPriceChangeCurrent,
+	homeTokenPriceChangeDisplay,
+	homeTokenPriceChangeDueAt,
+	homeTokenPriceChangeFailed,
 	homeTokenPriceChangeLabel,
+	homeTokenPriceChangeNextCheck,
+	homeTokenPriceChangePending,
 	homeTokenPriceChangePercent,
+	homeTokenPriceChangeRequests,
+	HomeTokenPriceChangeValue,
 	isFungiblePendingMint,
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
+	observeCollectionPriceDeadlines,
 	pendingCollectionPriceAssets,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
+	PRESERVE_ROUTE_FOCUS,
 	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
 	reconcileHomeListingAssets,
 	recordHomeListingComputeResult,
+	restartCollectionPriceDeadlines,
+	retainedCollectionAssetNames,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
+	routeFocusAction,
+	routeFocusPreserved,
 	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
+	tokenListingNoticeCopy,
+	tokenListingStatus,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
+	visibleActivityAssets,
 	withoutDuplicatedCreatedAssets,
 } from './App';
 import {
@@ -100,6 +168,17 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('re-ranks the collection grid at once only for viewer choices, not for streamed data', () => {
+		const recent = collectionAssetOrderKey('recent', 'all', '', false);
+		expect(collectionAssetOrderKey('recent', 'all', '  ', false)).toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'all', ' Dum ', false)).toBe(
+			collectionAssetOrderKey('recent', 'all', 'dum', false)
+		);
+		expect(collectionAssetOrderKey('price-low', 'all', '', false)).not.toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'D', '', false)).not.toBe(recent);
+		expect(collectionAssetOrderKey('recent', 'all', '', true)).not.toBe(recent);
+	});
+
 	it('calculates cumulative order-book depth from ascending offer quantities', () => {
 		expect(cumulativeCollectionDepth([1, 1, 3, 5])).toEqual([10, 20, 50, 100]);
 		const fallback = cumulativeCollectionDepth([0, Number.NaN, -1]);
@@ -161,6 +240,36 @@ describe('Home market summary retries', () => {
 		expect(homeTokenPriceChangeLabel(Number.POSITIVE_INFINITY)).toBe('—');
 	});
 
+	it('tells a token with too little 24h data apart from a 24h change that could not be read', () => {
+		expect(homeTokenPriceChangeDisplay(null)).toEqual({ text: '—', description: 'Not enough data in 24h' });
+		expect(homeTokenPriceChangeDisplay('unavailable')).toEqual({
+			text: 'Unavailable',
+			description: 'The 24h change could not be read. It is retried automatically.',
+		});
+		// Past the display deadline with no answer yet: neither "no data" nor a failure.
+		expect(homeTokenPriceChangeDisplay(undefined)).toEqual({
+			text: '—',
+			description: 'The 24h change is still loading.',
+		});
+		expect(homeTokenPriceChangeDisplay(2.5)).toEqual({ text: '+2.5%' });
+		// A stale value lapses to "Unavailable", never to the no-data dash.
+		const stale = { value: 4, readAt: 0, checkedAt: 0 };
+		expect(homeTokenPriceChangeLabel(homeTokenPriceChangeCurrent(stale, HOME_TOKEN_CHANGE_MAX_AGE_MS + 1))).toBe(
+			'Unavailable'
+		);
+
+		const render = (change: number | null | 'unavailable' | undefined) =>
+			renderToStaticMarkup(React.createElement(HomeTokenPriceChangeValue, { change }));
+		// The dash is hidden from assistive tech, which reads its meaning instead; both have a tooltip.
+		expect(render(null)).toBe(
+			'<span title="Not enough data in 24h"><span aria-hidden="true">—</span><span class="sr-only">Not enough data in 24h</span></span>'
+		);
+		expect(render('unavailable')).toBe(
+			'<span title="The 24h change could not be read. It is retried automatically.">Unavailable</span>'
+		);
+		expect(render(-3)).toBe('-3%');
+	});
+
 	it('renders collection descriptions as collapsed, wrappable header copy', () => {
 		const description =
 			'Dumdumz are a long-running collection of expressive characters permanently published on Arweave.';
@@ -191,7 +300,9 @@ describe('Home market summary retries', () => {
 		const discover = renderToStaticMarkup(
 			React.createElement(DiscoveryAssetArtwork, { asset, collection, priority: true })
 		);
-		const collectionCard = renderToStaticMarkup(React.createElement(AssetCardArtwork, { asset, collection }));
+		const collectionCard = renderToStaticMarkup(
+			React.createElement(AssetCardArtwork, { asset, collection, priority: true })
+		);
 
 		expect(discover).toContain(`src="${logo}"`);
 		expect(discover).toContain('home-asset-media');
@@ -227,6 +338,11 @@ describe('Home market summary retries', () => {
 		).toBe(true);
 		expect(isFungiblePendingMint({ contentType: 'audio/mpeg' }, 'created-assets')).toBe(false);
 	});
+	it('gives each Home tab its own page heading, so each tab route gets its own document title', () => {
+		expect(homeTabHeading('discover')).toBe('Discover');
+		expect(homeTabHeading('collections')).toBe('Collections');
+		expect(homeTabHeading('activity')).toBe('Activity');
+	});
 	it('maps every Home tab to a hash-router subroute without dropping other query parameters', () => {
 		expect(homeTabFromPathname('/discover')).toBe('discover');
 		expect(homeTabFromPathname('/collections/')).toBe('collections');
@@ -237,6 +353,15 @@ describe('Home market summary retries', () => {
 		expect(homeTabPath('activity')).toBe('/activity');
 		expect(homeRouteSearch('?q=art&tab=discover')).toBe('?q=art');
 		expect(homeRouteSearch('?q=art')).toBe('?q=art');
+	});
+	it('redirects a legacy #/?tab= Home link to the tab it names and keeps its other parameters', () => {
+		expect(homeRedirectPath('?tab=collections')).toBe('/collections');
+		expect(homeRedirectPath('?tab=activity&q=x')).toBe('/activity');
+		expect(homeRouteSearch('?tab=activity&q=x')).toBe('?q=x');
+		expect(homeRedirectPath('?tab=discover')).toBe('/discover');
+		expect(homeRedirectPath('?tab=bogus')).toBe('/discover');
+		expect(homeRedirectPath('?q=art')).toBe('/discover');
+		expect(homeRedirectPath('')).toBe('/discover');
 	});
 
 	it('sorts collections by indexed activity or carrier creation height without computing state', () => {
@@ -610,7 +735,7 @@ describe('Home market summary retries', () => {
 		expect(assetDetailMembershipVerified('large-collection', new Set(), false)).toBe(false);
 	});
 
-	it('restarts listing support as progressively loaded collections expand', () => {
+	it('changes listing support as progressively loaded collections expand', () => {
 		const first: Collection = {
 			id: 'fungible',
 			name: 'Tokens',
@@ -628,6 +753,155 @@ describe('Home market summary retries', () => {
 		};
 
 		expect(homeListingSupportVersion([first, second])).not.toBe(homeListingSupportVersion([first]));
+	});
+
+	it('bounds the home listing crawl to the visible page plus one page ahead', () => {
+		const view = { assetView: 'listed' as const, assetType: 'atomic' as const, query: '', tokenPage: 1 };
+		const listing = (kind: Collection['kind']) =>
+			({ collection: { id: kind, name: kind, description: '', kind, assets: [] } } as unknown as ResolvedAsset);
+
+		const firstPage = homeListingCrawlDemand({ ...view, assetPage: 1 })!;
+		expect(firstPage.map(({ count }) => count)).toEqual([2 * HOME_ASSET_PAGE_SIZE]);
+		expect(firstPage[0].matches?.(listing('images'))).toBe(true);
+		expect(firstPage[0].matches?.(listing('tokens'))).toBe(false);
+		expect(homeListingCrawlDemand({ ...view, assetPage: 3 })!.map(({ count }) => count)).toEqual([
+			4 * HOME_ASSET_PAGE_SIZE,
+		]);
+
+		const overview = homeListingCrawlDemand({ ...view, assetType: 'all', assetPage: 1, tokenPage: 2 })!;
+		expect(overview.map(({ count }) => count)).toEqual([
+			HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE,
+			3 * HOME_DISCOVER_TOKEN_PAGE_SIZE,
+		]);
+		expect(overview[1].matches?.(listing('tokens'))).toBe(true);
+
+		// Without a collection lookup every candidate stays admissible.
+		expect(overview[1].admits).toBeUndefined();
+		const tokens = listing('tokens').collection;
+		const images = listing('images').collection;
+		const known = new Map([
+			['T'.repeat(43), tokens],
+			['I'.repeat(43), images],
+		]);
+		const [uniques, tokenRows] = homeListingCrawlDemand(
+			{ ...view, assetType: 'all', assetPage: 1, tokenPage: 1 },
+			(processId) => known.get(processId)
+		)!;
+		const candidate = (processId: string) => ({ processId, height: 1, timestamp: 1, sources: [] });
+		expect(uniques.admits?.(candidate('T'.repeat(43)))).toBe(false);
+		expect(uniques.admits?.(candidate('I'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('T'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('I'.repeat(43)))).toBe(false);
+		// A process no loaded collection claims yet may be either kind.
+		expect(uniques.admits?.(candidate('U'.repeat(43)))).toBe(true);
+		expect(tokenRows.admits?.(candidate('U'.repeat(43)))).toBe(true);
+
+		// Price order and search rank every live listing, so they keep the full crawl.
+		expect(homeListingCrawlDemand({ ...view, assetView: 'price-low', assetPage: 1 })).toBeUndefined();
+		expect(homeListingCrawlDemand({ ...view, assetView: 'price-high', assetPage: 1 })).toBeUndefined();
+		expect(homeListingCrawlDemand({ ...view, query: 'rare', assetPage: 1 })).toBeUndefined();
+	});
+
+	it('reads card summaries only for the listings the visible pages plus one ahead need', () => {
+		const collection = (kind: Collection['kind']): Collection => ({
+			id: kind,
+			name: kind,
+			description: '',
+			kind,
+			assets: [],
+		});
+		const tokens = collection('tokens');
+		const images = collection('images');
+		const card = (id: string, owner: Collection) => ({ asset: { id: id.repeat(43) }, collection: owner });
+		const listed: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const unlisted: HomeMarketSummary = { status: 'resolved', value: null };
+		const view = { assetView: 'listed' as const, query: '', assetPage: 1, tokenPage: 1 };
+		const [uniqueDemand] = homeListingCrawlDemand({ ...view, assetType: 'atomic' })!;
+		const demand = [{ ...uniqueDemand, count: 3 }];
+		const ids = (cards: Array<{ asset: { id: string } }>) => cards.map(({ asset }) => asset.id[0]).join('');
+		const candidates = ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => card(id, images));
+
+		// Nothing known yet: only the first three unknown candidates are read.
+		expect(ids(homeSummaryWindow(candidates, demand, {}))).toBe('ABC');
+		// Known listings fill the demand without a read; an unlisted one frees its slot.
+		expect(
+			ids(
+				homeSummaryWindow(candidates, demand, {
+					['A'.repeat(43)]: listed,
+					['B'.repeat(43)]: unlisted,
+				})
+			)
+		).toBe('ABCD');
+		// Crawl listings lead the candidates with known prices, so they leave no
+		// speculative reads; later known summaries are kept but never re-read.
+		expect(
+			ids(
+				homeSummaryWindow(candidates, demand, {
+					['A'.repeat(43)]: listed,
+					['B'.repeat(43)]: listed,
+					['C'.repeat(43)]: listed,
+					['F'.repeat(43)]: unlisted,
+				})
+			)
+		).toBe('ABCF');
+
+		// Each demand counts only its own type, so token rows do not use up Unique slots.
+		const overview = homeListingCrawlDemand({ ...view, assetType: 'all' })!.map((entry, index) => ({
+			...entry,
+			count: index === 0 ? 1 : 2,
+		}));
+		const mixed = [card('T', tokens), card('A', images), card('U', tokens), card('B', images), card('V', tokens)];
+		expect(ids(homeSummaryWindow(mixed, overview, {}))).toBe('TAU');
+
+		// While the crawl works, only candidates with known summaries stay in the window.
+		expect(ids(homeSummaryWindow(candidates, demand, { ['B'.repeat(43)]: listed }, false))).toBe('B');
+
+		// Price order and search rank every candidate.
+		expect(ids(homeSummaryWindow(candidates, undefined, {}))).toBe('ABCDEF');
+	});
+
+	it('settles a bounded listed Discover once its summary window is known, not every candidate', () => {
+		const images: Collection = { id: 'images', name: 'images', description: '', kind: 'images', assets: [] };
+		const candidates = ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => ({
+			asset: { id: id.repeat(43) },
+			collection: images,
+		}));
+		const view = {
+			assetView: 'listed' as const,
+			assetType: 'atomic' as const,
+			query: '',
+			assetPage: 1,
+			tokenPage: 1,
+		};
+		const [uniqueDemand] = homeListingCrawlDemand(view)!;
+		const demand = [{ ...uniqueDemand, count: 3 }];
+		const listed: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const summaries: Record<string, HomeMarketSummary> = {
+			['A'.repeat(43)]: listed,
+			['B'.repeat(43)]: listed,
+			['C'.repeat(43)]: listed,
+		};
+		const windowIds = homeSummaryWindow(candidates, demand, summaries).map(({ asset }) => asset.id);
+		// D-F are never read for this view, so they must not hold the order (and token placeholders) open.
+		expect(homeDiscoverOrderSettled('listed', false, windowIds, summaries)).toBe(true);
+		expect(
+			homeDiscoverOrderSettled(
+				'listed',
+				false,
+				candidates.map(({ asset }) => asset.id),
+				summaries
+			)
+		).toBe(false);
+		// An unread candidate inside the window still holds it.
+		const partial = { ['A'.repeat(43)]: listed };
+		expect(
+			homeDiscoverOrderSettled(
+				'listed',
+				false,
+				homeSummaryWindow(candidates, demand, partial).map(({ asset }) => asset.id),
+				partial
+			)
+		).toBe(false);
 	});
 
 	it('keeps malformed or unverified asset shells outside the actionable asset boundary', () => {
@@ -668,6 +942,58 @@ describe('Home market summary retries', () => {
 		expect(fallbackIds).toEqual([]);
 		expect(assetDetailMembershipVerified(fallback.id, new Set(fallbackIds), false)).toBe(false);
 		expect(verifiedCollectionIdsFrom([{ ...fallback, indexSource: 'reference' }])).toEqual(['collection']);
+	});
+
+	it('shows a token from its live contract when only the token index is unavailable', () => {
+		const tokenId = 'T'.repeat(43);
+		const contract = {
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			name: 'Live token',
+			'total-supply': '1000',
+			denomination: 3,
+			balances: { ['W'.repeat(43)]: '1000' },
+			orders: {},
+		};
+		const fallback = compiledFungibleTokenCollection();
+		const live = Boolean(fungibleAssetFromState(tokenId, parseAssetState(contract)));
+		expect(fallback.indexSource).toBe('compiled-fallback');
+		expect(live).toBe(true);
+
+		// The index read failed: the page renders from live state with a listing notice.
+		expect(assetDetailMembership(fallback, new Set(), false, live)).toBe('live');
+		// The index answered: nothing to flag.
+		expect(assetDetailMembership(fallback, new Set([fallback.id]), false, live)).toBe('verified');
+		// A process that does not declare the swap contract stays on the loading shell.
+		const noSwap = { ...contract, 'swap-device': 'other-swap@1.0' };
+		expect(fungibleAssetFromState(tokenId, parseAssetState(noSwap))).toBeUndefined();
+		expect(assetDetailMembership(fallback, new Set(), false, false)).toBe('unverified');
+		// Image membership is defined by its index only, so a live state never stands in for it.
+		const images: Collection = { id: 'images', name: 'Images', description: '', kind: 'images', assets: [] };
+		expect(assetDetailMembership(images, new Set(), false, true)).toBe('unverified');
+		expect(assetDetailMembership(undefined, new Set(), true, false)).toBe('verified');
+	});
+
+	it('words the token listing notice as a pending check, then as an unverified or checked listing', () => {
+		expect(tokenListingNoticeCopy('checking').compact).toBe('Checking the Bazar listing…');
+		expect(tokenListingNoticeCopy('unverified').compact).toBe('Bazar listing could not be verified right now.');
+		expect(tokenListingNoticeCopy('unverified').message).toContain('read from live state');
+		expect(tokenListingNoticeCopy('checked').compact).toBe('Bazar listing checked.');
+		expect(tokenListingNoticeCopy('checked').message).toContain('read from live state');
+	});
+
+	it('keeps a painted token listing line as checked instead of removing it', () => {
+		expect(tokenListingStatus('live', true, false)).toBe('checking');
+		expect(tokenListingStatus('live', false, true)).toBe('unverified');
+		// The line was painted while the index was unread: it stays, so the panels below hold still.
+		expect(tokenListingStatus('verified', false, true)).toBe('checked');
+		// Verified from the first paint: no line at all.
+		expect(tokenListingStatus('verified', false, false)).toBeNull();
+		expect(tokenListingStatus('unverified', true, true)).toBeNull();
 	});
 
 	it('keeps collection members out of the standalone created-assets collection', () => {
@@ -1071,10 +1397,334 @@ describe('Home market summary retries', () => {
 		expect(homeMarketHasPending(false, ['ready'], summaries)).toBe(false);
 	});
 
+	it('settles Discover once the visible pages are full and their summaries are known', () => {
+		const ready: HomeMarketSummary = { status: 'resolved', value: '1 AR' };
+		const failed: HomeMarketSummary = { status: 'unavailable', source: 'compute', kind: 'rate-limited' };
+		const base = {
+			marketLoading: false,
+			retrying: false,
+			crawlLoading: false,
+			visiblePagesFull: true,
+			visibleCount: 3,
+			keys: ['a', 'b'],
+			summaries: { a: ready, b: ready },
+		};
+		expect(homeDiscoverPending(base)).toBe(false);
+		// A failed summary is a settled card, not a reason to stay busy.
+		expect(homeDiscoverPending({ ...base, summaries: { a: ready, b: failed } })).toBe(false);
+		expect(homeDiscoverPending({ ...base, summaries: { a: ready } })).toBe(true);
+		expect(homeDiscoverPending({ ...base, retrying: true })).toBe(true);
+		// Collections still streaming in do not hold a populated page busy.
+		expect(homeDiscoverPending({ ...base, marketLoading: true })).toBe(false);
+		expect(homeDiscoverPending({ ...base, marketLoading: true, visibleCount: 0 })).toBe(true);
+		// The crawl's look-ahead keeps the page busy only while a visible page is short.
+		expect(homeDiscoverPending({ ...base, crawlLoading: true })).toBe(false);
+		expect(homeDiscoverPending({ ...base, crawlLoading: true, visiblePagesFull: false })).toBe(true);
+
+		expect(homeDiscoverPagesFull([{ shown: 5, pageSize: 5, page: 1, pageCount: 3 }])).toBe(true);
+		expect(homeDiscoverPagesFull([{ shown: 3, pageSize: 5, page: 1, pageCount: 1 }])).toBe(false);
+		expect(
+			homeDiscoverPagesFull([
+				{ shown: 5, pageSize: 5, page: 1, pageCount: 2 },
+				{ shown: 11, pageSize: 12, page: 1, pageCount: 1 },
+			])
+		).toBe(false);
+	});
+
+	it('retries failed card summaries in the background only a bounded number of times', () => {
+		expect(homeSummaryFailuresPresent('|')).toBe(false);
+		expect(homeSummaryFailuresPresent('a|')).toBe(true);
+		expect(homeSummaryFailuresPresent('|c')).toBe(true);
+		const due = { failureKey: 'a|', rounds: 0, retrying: false, computeCircuitOpen: false };
+		expect(homeSummaryAutoRetryDue(due)).toBe(true);
+		expect(homeSummaryAutoRetryDue({ ...due, rounds: HOME_SUMMARY_AUTO_RETRY_LIMIT - 1 })).toBe(true);
+		expect(homeSummaryAutoRetryDue({ ...due, rounds: HOME_SUMMARY_AUTO_RETRY_LIMIT })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, failureKey: '|' })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, retrying: true })).toBe(false);
+		expect(homeSummaryAutoRetryDue({ ...due, computeCircuitOpen: true })).toBe(false);
+	});
+
+	it('refreshes token 24h changes within a bounded age and retries failures instead of caching them', () => {
+		const read = (value: number | null | 'unavailable', at = 0) => ({ value, readAt: at, checkedAt: at });
+		// A good value is read again after the refresh time and never shown past the max age.
+		expect(HOME_TOKEN_CHANGE_REFRESH_MS).toBeLessThan(HOME_TOKEN_CHANGE_MAX_AGE_MS);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS - 1)).toEqual([]);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS)).toEqual(['a']);
+		expect(homeTokenPriceChangeCurrent(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS)).toBe(4);
+		expect(homeTokenPriceChangeCurrent(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS + 1)).toBe('unavailable');
+		expect(homeTokenPriceChangeCurrent(undefined, 0)).toBeUndefined();
+		// "Unavailable" is not kept for the session: it is retried while the row stays visible.
+		expect(homeTokenPriceChangeRequests(['a'], { a: read('unavailable') }, HOME_TOKEN_CHANGE_RETRY_MS - 1)).toEqual(
+			[]
+		);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read('unavailable') }, HOME_TOKEN_CHANGE_RETRY_MS)).toEqual([
+			'a',
+		]);
+		// A failed refresh keeps a still-current value, retries it soon, and lets it lapse at the max age.
+		const refreshedFailure = homeTokenPriceChangeFailed(read(4), HOME_TOKEN_CHANGE_REFRESH_MS);
+		expect(refreshedFailure).toEqual({ value: 4, readAt: 0, checkedAt: HOME_TOKEN_CHANGE_REFRESH_MS });
+		expect(homeTokenPriceChangeDueAt(refreshedFailure)).toBe(
+			HOME_TOKEN_CHANGE_REFRESH_MS + HOME_TOKEN_CHANGE_RETRY_MS
+		);
+		expect(homeTokenPriceChangeFailed(read(4), HOME_TOKEN_CHANGE_MAX_AGE_MS + 1).value).toBe('unavailable');
+		expect(homeTokenPriceChangeFailed(undefined, 5).value).toBe('unavailable');
+		// The next check is the earliest refresh, retry or expiry among visible rows; unread rows are asked now.
+		expect(homeTokenPriceChangeNextCheck(['a', 'b', 'c'], { a: read(4), b: read('unavailable', 10) }, 100)).toBe(
+			10 + HOME_TOKEN_CHANGE_RETRY_MS
+		);
+		expect(homeTokenPriceChangeNextCheck(['a'], { a: read(4) }, HOME_TOKEN_CHANGE_REFRESH_MS + 5)).toBe(
+			HOME_TOKEN_CHANGE_MAX_AGE_MS + 1
+		);
+		expect(homeTokenPriceChangeNextCheck(['c'], {}, 0)).toBeNull();
+	});
+
+	it('reads each token row 24h change once while current and ends its spinner at the display deadline', () => {
+		expect(HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS).toBe(8_000);
+		const read = (value: number | null | 'unavailable', at = 0) => ({ value, readAt: at, checkedAt: at });
+		// Rows that reorder or page back in keep the value already read while it is current.
+		expect(
+			homeTokenPriceChangeRequests(['a', 'b', 'c', 'b'], { a: read(1.5), c: read('unavailable') }, 1_000)
+		).toEqual(['b']);
+		expect(homeTokenPriceChangeRequests(['a'], { a: read(null) }, 1_000)).toEqual([]);
+		expect(homeTokenPriceChangePending(undefined, false)).toBe(true);
+		expect(homeTokenPriceChangePending(undefined, true)).toBe(false);
+		expect(homeTokenPriceChangeLabel(null)).toBe('—');
+		expect(homeTokenPriceChangePending(2, true)).toBe(false);
+		// Per-row deadlines from the shared helper: a row revealed later gets its own start.
+		const deadlines = createCollectionPriceDeadlines();
+		expect(
+			observeCollectionPriceDeadlines(deadlines, 'scope', ['a'], 0, HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS)
+		).toEqual({ overdue: [], nextDeadline: 8_000 });
+		expect(
+			observeCollectionPriceDeadlines(
+				deadlines,
+				'scope',
+				['a', 'b'],
+				8_000,
+				HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
+			)
+		).toEqual({ overdue: ['a'], nextDeadline: 16_000 });
+	});
+
+	it('settles the Collections tab when floors arrive, fail or pass their display deadline', () => {
+		const ready: HomeMarketSummary = { status: 'resolved', value: null };
+		const failed: HomeMarketSummary = { status: 'unavailable', source: 'index', kind: 'rate-limited' };
+		const base = {
+			shellLoading: false,
+			retrying: false,
+			collectionIds: ['a', 'b', 'c'],
+			floors: { a: ready, b: failed } as Record<string, HomeMarketSummary>,
+			overdue: new Set<string>(),
+		};
+		expect(homeCollectionFloorsPending(base)).toBe(true);
+		expect(homeCollectionFloorsPending({ ...base, overdue: new Set(['c']) })).toBe(false);
+		expect(homeCollectionFloorsPending({ ...base, floors: { ...base.floors, c: ready } })).toBe(false);
+		expect(homeCollectionFloorsPending({ ...base, overdue: new Set(['c']), retrying: true })).toBe(true);
+		expect(homeCollectionFloorsPending({ ...base, collectionIds: [], floors: {}, shellLoading: true })).toBe(true);
+		// The overdue floor and the failed floor are offered for retry together.
+		expect(
+			collectionPriceRetryNotice({
+				activityError: false,
+				activityLoading: false,
+				cardPricesFailed: false,
+				cardPricesLoading: false,
+				listedOnly: false,
+				overdue: 1,
+				unavailable: 1,
+			})
+		).toEqual({ visible: true, unavailable: 2 });
+	});
+
 	it('shows the home loader only while results are pending and no assets are visible', () => {
 		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
 		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
 		expect(homeMarketShowsInitialLoader(false, 0)).toBe(false);
+	});
+
+	it('holds the Discover order until the shell, the listing crawl and ranked prices are settled', () => {
+		const summaries: Record<string, HomeMarketSummary> = {
+			listed: { status: 'resolved', value: '1 AR' },
+			failed: { status: 'unavailable', source: 'compute', kind: 'unavailable' },
+		};
+		expect(homeDiscoverOrderSettled('listed', true, ['listed'], summaries)).toBe(false);
+		expect(homeDiscoverOrderSettled('listed', false, ['listed', 'pending'], summaries)).toBe(false);
+		expect(homeDiscoverOrderSettled('price-low', false, ['listed', 'failed'], summaries)).toBe(true);
+		// The unranked "all" view does not wait on prices.
+		expect(homeDiscoverOrderSettled('all', false, ['pending'], summaries)).toBe(true);
+		expect(homeDiscoverOrderSettled('all', true, [], summaries)).toBe(false);
+	});
+
+	it('keys Discover rows by collection and asset', () => {
+		expect(homeDiscoverOrderId({ asset: { id: 'asset' }, collection: { id: 'collection' } })).toBe(
+			'collection:asset'
+		);
+	});
+
+	it('reserves the token overview page height only while rows may still arrive', () => {
+		expect(homeTokenPlaceholderRows(false, 0)).toBe(5);
+		expect(homeTokenPlaceholderRows(false, 3)).toBe(2);
+		expect(homeTokenPlaceholderRows(false, 5)).toBe(0);
+		expect(homeTokenPlaceholderRows(true, 2)).toBe(0);
+	});
+
+	it('turns a stuck card price into an explicit unavailable label after the display deadline', () => {
+		expect(COLLECTION_PRICE_DISPLAY_DEADLINE_MS).toBe(15_000);
+		expect(collectionCardPriceLabel(undefined, false, false)).toBe('Checking…');
+		expect(collectionCardPriceLabel(undefined, false, true)).toBe('Price unavailable');
+		expect(collectionCardPriceLabel(undefined, true, false)).toBe('Price unavailable');
+		expect(collectionCardPriceLabel(undefined, false, true, 'Unavailable')).toBe('Unavailable');
+		// Settled prices are never overridden by the deadline.
+		expect(collectionCardPriceLabel({ status: 'resolved', label: '0.1 AR' }, false, true)).toBe('0.1 AR');
+		expect(collectionCardPriceLabel({ status: 'resolved', label: null }, false, true)).toBe('Not listed');
+		expect(collectionCardPriceLabel({ status: 'unindexed' }, false, true)).toBe('Unlisted');
+		expect(collectionCardPriceLabel({ status: 'unavailable', kind: 'unavailable' }, false, false)).toBe(
+			'Price unavailable'
+		);
+	});
+
+	it('keeps each card price deadline from its own start instead of re-arming on reveal', () => {
+		const deadlines = createCollectionPriceDeadlines();
+		const deadline = COLLECTION_PRICE_DISPLAY_DEADLINE_MS;
+
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b'], 0)).toEqual({
+			overdue: [],
+			nextDeadline: deadline,
+		});
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b'], deadline).overdue).toEqual(['a', 'b']);
+		// Progressive reveal adds card c; a and b stay overdue and c gets its own deadline.
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], deadline + 1_000)).toEqual({
+			overdue: ['a', 'b'],
+			nextDeadline: 2 * deadline + 1_000,
+		});
+		// A Retry restarts only the cards it rechecks.
+		restartCollectionPriceDeadlines(deadlines, ['a']);
+		expect(observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], deadline + 2_000)).toEqual({
+			overdue: ['b'],
+			nextDeadline: 2 * deadline + 1_000,
+		});
+		// A new listing scope starts every card over.
+		expect(observeCollectionPriceDeadlines(deadlines, 'other', ['b'], deadline + 3_000)).toEqual({
+			overdue: [],
+			nextDeadline: 2 * deadline + 3_000,
+		});
+		restartCollectionPriceDeadlines(deadlines);
+		expect(deadlines.startedAt.size).toBe(0);
+	});
+
+	it('holds the card-price retry notice during the activity scan and keeps overdue cards overdue after it', () => {
+		const deadlines = createCollectionPriceDeadlines();
+		const deadline = COLLECTION_PRICE_DISPLAY_DEADLINE_MS;
+		const notice = (activityLoading: boolean, overdue: number, cardPricesLoading = false) =>
+			collectionPriceRetryNotice({
+				activityError: false,
+				activityLoading,
+				cardPricesFailed: false,
+				cardPricesLoading,
+				listedOnly: false,
+				overdue,
+				unavailable: 0,
+			});
+
+		observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], 0);
+		// The scan is still running past the deadline: the labels admit it, but no card-price
+		// Retry is offered because the scan, not the card-price reads, owns these prices.
+		const during = observeCollectionPriceDeadlines(deadlines, 'scope', ['a', 'b', 'c'], deadline + 500);
+		expect(during.overdue).toEqual(['a', 'b', 'c']);
+		expect(notice(true, during.overdue.length)).toEqual({ visible: false, unavailable: 0 });
+		// The scan finishes and card-price reads start for the remainder: the same cards stay
+		// overdue (no flip back to "Checking…") and the notice now offers a working Retry.
+		const after = observeCollectionPriceDeadlines(deadlines, 'scope', ['b', 'c'], deadline + 600);
+		expect(after).toEqual({ overdue: ['b', 'c'], nextDeadline: null });
+		expect(notice(false, after.overdue.length, true)).toEqual({ visible: true, unavailable: 2 });
+	});
+
+	it('shows the card-price retry notice only for card-price failures outside listed-only views', () => {
+		const base = {
+			activityError: false,
+			activityLoading: false,
+			cardPricesFailed: false,
+			cardPricesLoading: false,
+			listedOnly: false,
+			overdue: 0,
+			unavailable: 0,
+		};
+
+		expect(collectionPriceRetryNotice(base)).toEqual({ visible: false, unavailable: 0 });
+		expect(collectionPriceRetryNotice({ ...base, unavailable: 2 })).toEqual({ visible: true, unavailable: 2 });
+		expect(collectionPriceRetryNotice({ ...base, unavailable: 2, cardPricesLoading: true })).toEqual({
+			visible: false,
+			unavailable: 0,
+		});
+		expect(collectionPriceRetryNotice({ ...base, cardPricesFailed: true, overdue: 2 })).toEqual({
+			visible: true,
+			unavailable: 0,
+		});
+		// The activity-scan error notice already carries its own Retry.
+		expect(collectionPriceRetryNotice({ ...base, activityError: true, overdue: 2 })).toEqual({
+			visible: false,
+			unavailable: 0,
+		});
+		expect(collectionPriceRetryNotice({ ...base, listedOnly: true, unavailable: 2 }).visible).toBe(false);
+	});
+
+	it('holds a shown floor retry notice through the retry instead of blinking it off and on', () => {
+		const shown = { visible: true, unavailable: 2 };
+		// A retry starts: collectionPriceRetryNotice hides while prices load, the held notice stays.
+		expect(heldPriceRetryNotice(shown, { visible: false, unavailable: 0 }, true)).toBe(shown);
+		// The retry settled: whatever it found now shows (fewer floors, or none).
+		expect(heldPriceRetryNotice(shown, { visible: true, unavailable: 1 }, false)).toEqual({
+			visible: true,
+			unavailable: 1,
+		});
+		expect(heldPriceRetryNotice(shown, { visible: false, unavailable: 0 }, false).visible).toBe(false);
+		// Nothing was shown before the retry: nothing is held.
+		expect(heldPriceRetryNotice(undefined, { visible: false, unavailable: 0 }, true).visible).toBe(false);
+	});
+
+	it('renders exactly one Discover state so a failure replaces the loader but keeps visible cards', () => {
+		expect(homeDiscoverDisplay(true, false, 0)).toBe('loading');
+		// A tripped compute circuit or failed discovery is terminal even while summaries remain pending.
+		expect(homeDiscoverDisplay(true, true, 0)).toBe('failed');
+		expect(homeDiscoverDisplay(false, true, 0)).toBe('failed');
+		// Already rendered cards stay on screen; the failure becomes a banner above them.
+		expect(homeDiscoverDisplay(true, true, 3)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 3)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 0)).toBe('empty');
+	});
+
+	it('reports an index failure beside rendered cards as a compact notice, not the full error block', () => {
+		// Round 2: a GraphQL timeout showed "Unable to load" next to cards that had already rendered.
+		expect(homeDiscoverFailureNotice(homeDiscoverDisplay(false, true, 6))).toBe('inline');
+		expect(homeDiscoverFailureNotice(homeDiscoverDisplay(false, true, 0))).toBe('panel');
+		expect(homeDiscoverFailureNotice(homeDiscoverDisplay(true, false, 0))).toBe('none');
+		expect(homeDiscoverPartialFailureMessage('Arweave’s transaction index could not be read. Retry shortly.')).toBe(
+			'More listings could not be loaded. Arweave’s transaction index could not be read. Retry shortly.'
+		);
+	});
+
+	it('turns a loader that outlives its deadline with nothing to show into one failure with Retry', () => {
+		expect(HOME_DISCOVER_LOADING_DEADLINE_MS).toBe(15_000);
+		expect(homeDiscoverDisplay(true, false, 0, true)).toBe('failed');
+		expect(homeDiscoverBusy(homeDiscoverDisplay(true, false, 0, true), true)).toBe(false);
+		// Cards that arrive late replace the failure; a settled empty view stays empty.
+		expect(homeDiscoverDisplay(true, false, 2, true)).toBe('results');
+		expect(homeDiscoverDisplay(false, false, 0, true)).toBe('empty');
+
+		expect(homeDiscoverOverdueFailure(true, [])).toEqual({ source: 'compute', kind: 'unavailable' });
+		expect(homeDiscoverOverdueFailure(true, ['unavailable', 'rate-limited'])).toEqual({
+			source: 'compute',
+			kind: 'rate-limited',
+		});
+		// Without a market shell the collection index is what has not answered.
+		expect(homeDiscoverOverdueFailure(false, [])).toEqual({ source: 'index', kind: 'unavailable' });
+	});
+
+	it('stops the header refresh spinner and aria-busy once Discover shows a terminal failure', () => {
+		// Hidden failed or summary-less assets keep results pending after a compute-circuit failure.
+		expect(homeDiscoverBusy('failed', true)).toBe(false);
+		expect(homeDiscoverBusy('loading', true)).toBe(true);
+		expect(homeDiscoverBusy('results', true)).toBe(true);
+		expect(homeDiscoverBusy('results', false)).toBe(false);
 	});
 
 	it('keeps collection floor scans isolated to the collections view', () => {
@@ -1118,6 +1768,96 @@ describe('Home market summary retries', () => {
 		expect(globalActivityCollection(collections, nameId)?.id).toBe('names');
 		expect(globalActivityCollection(collections, hiddenId)).toBeUndefined();
 		expect(globalActivityCollection(collections, 'x'.repeat(43))).toBeUndefined();
+	});
+
+	it('keeps raw activity rows so collections that load later reveal theirs without a re-read', () => {
+		const tokenId = 't'.repeat(43);
+		const imageId = 'i'.repeat(43);
+		const foreignId = 'f'.repeat(43);
+		const event = (id: string, processId: string) => ({ id, processId } as CollectionActivityEvent);
+		const events = [event('1', imageId), event('2', foreignId), event('3', tokenId)];
+		const tokens: Collection = {
+			id: 'tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [{ id: tokenId, name: 'Token' }],
+		};
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [{ id: imageId, name: 'Image' }],
+		};
+
+		expect(globalCatalogueActivity(events, []).map((item) => item.id)).toEqual([]);
+		expect(globalCatalogueActivity(events, [tokens]).map((item) => item.id)).toEqual(['3']);
+		// The same loaded rows, filtered again once a streamed collection claims one; gateway order holds.
+		expect(globalCatalogueActivity(events, [tokens, images]).map((item) => item.id)).toEqual(['1', '3']);
+	});
+
+	it('appends rows a late collection claims instead of inserting them above painted rows', () => {
+		// Painted after the reveal: rows 3 and 5 (newest first).
+		const painted = nextStableOrder(undefined, ['3', '5'], 'all|0', false);
+		// A collection streaming in after the cap claims rows 1 (newest) and 4.
+		const ranked = ['1', '3', '4', '5'];
+		const held = nextStableOrder(painted, ranked, 'all|0', false);
+
+		expect(held.ids).toEqual(['3', '5', '1', '4']);
+		// The newest-first order is offered rather than applied, and applying it re-ranks.
+		expect(stableOrderDiffers(held.ids, ranked, 20)).toBe(true);
+		expect(nextStableOrder(held, ranked, 'all|1', false).ids).toEqual(ranked);
+	});
+
+	it('says Activity is loading without inserting a line above painted rows', () => {
+		expect(activityLoadingPlacement(false, 0, true)).toBeNull();
+		expect(activityLoadingPlacement(true, 0, true)).toBe('placeholder');
+		// Rows painted: the load-more button says "Loading activity…".
+		expect(activityLoadingPlacement(true, 20, true)).toBeNull();
+		expect(activityLoadingPlacement(true, 4, false)).toBe('after-list');
+	});
+
+	it('paints activity rows after a short catalogue quiet time, capped from market settle', () => {
+		expect(activityCatalogueRevealDelay(1_000, 1_000)).toBe(ACTIVITY_CATALOGUE_QUIET_MS);
+		// A collection streamed in 2.2 s after settle: only the time left to the cap remains.
+		expect(activityCatalogueRevealDelay(1_000, 3_200)).toBe(ACTIVITY_CATALOGUE_WAIT_CAP_MS - 2_200);
+		expect(activityCatalogueRevealDelay(1_000, 1_000 + ACTIVITY_CATALOGUE_WAIT_CAP_MS + 1)).toBe(0);
+	});
+
+	it('paints claimed activity rows by a bounded deadline while the catalogue is still streaming', () => {
+		// Round 3 under a 20 s index delay: rows were claimed but only a spinner showed until ~50 s.
+		expect(ACTIVITY_ROWS_WAIT_CAP_MS).toBe(8_000);
+		expect(activityRowsRevealDelay(1_000, 1_000)).toBe(ACTIVITY_ROWS_WAIT_CAP_MS);
+		// Collections streaming in meanwhile do not push the deadline back: it runs from the first claim.
+		expect(activityRowsRevealDelay(1_000, 6_000)).toBe(ACTIVITY_ROWS_WAIT_CAP_MS - 5_000);
+		expect(activityRowsRevealDelay(1_000, 1_000 + ACTIVITY_ROWS_WAIT_CAP_MS + 1)).toBe(0);
+		// A market that settles soon after the rows are claimed still paints them on its own quiet time.
+		expect(ACTIVITY_CATALOGUE_QUIET_MS).toBeLessThan(ACTIVITY_ROWS_WAIT_CAP_MS);
+	});
+
+	it('keys activity catalogue membership on collections and member counts, not names', () => {
+		const images: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [{ id: 'i'.repeat(43), name: 'iiiiii…iiiii' }],
+		};
+		const names: Collection = {
+			id: 'names',
+			name: 'Names',
+			description: '',
+			kind: 'names',
+			assets: [],
+			namespace: { manifestId: 'm'.repeat(43), namesById: { ['n'.repeat(43)]: 'name' } },
+		};
+		const key = activityCatalogueMembershipKey([images, names]);
+		expect(key).toBe('images:1,names:1');
+		expect(
+			activityCatalogueMembershipKey([{ ...images, assets: [{ ...images.assets[0], name: 'Named' }] }, names])
+		).toBe(key);
+		expect(activityCatalogueMembershipKey([images])).not.toBe(key);
 	});
 
 	it('filters global activity by submitted market action', () => {
@@ -1538,6 +2278,27 @@ describe('Collection activity scope', () => {
 		);
 	});
 
+	it('keeps listing scope stable when GraphQL titles update collection metadata only', () => {
+		// The card-price effect keys on listingScope and visible IDs, not on the collection object,
+		// so publishing titles page by page must not change the scope and abort in-flight price reads.
+		const collection: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [asset, { id: 'B'.repeat(43), name: 'B'.repeat(43) }],
+			manifestId: 'M'.repeat(43),
+		};
+		const titled: Collection = {
+			...collection,
+			name: 'Renamed images',
+			assets: collection.assets.map((item, index) => ({ ...item, name: `Title ${index}` })),
+		};
+
+		expect(collectionListingScopeVersion(titled)).toBe(collectionListingScopeVersion(collection));
+		expect(collectionActivityVersion(titled)).toBe(collectionActivityVersion(collection));
+	});
+
 	it('checks only the newly loaded token window and resets after removal', () => {
 		expect(collectionAssetWindowDelta(['a', 'b'], ['a', 'b', 'c', 'd'])).toEqual({
 			reset: false,
@@ -1651,6 +2412,23 @@ describe('Collection activity windows', () => {
 		);
 	});
 
+	it('keeps the mined row and its sort position when a later batch repeats it undated', () => {
+		const mined = {
+			id: 'offer',
+			processId: 'asset',
+			action: 'make-offer' as const,
+			actor: 'seller',
+			height: 1500,
+			timestamp: 1_700_000_000,
+		};
+		const older = { ...mined, id: 'older', height: 1400, timestamp: 1_699_000_000 };
+		const undated = { ...mined, actor: '', height: 0, timestamp: 0 };
+		expect(newestCollectionActivity([mined, older, undated])).toEqual([mined, older]);
+		const retained = new Map([[mined.id, mined]]);
+		retainNewestCollectionActivity(retained, [undated]);
+		expect(retained.get(mined.id)).toEqual(mined);
+	});
+
 	it('bounds the retained activity map while admitting newer late batches', () => {
 		const activity = new Map<string, CollectionActivityEvent>();
 		const events = Array.from({ length: 150 }, (_, index) => ({
@@ -1731,5 +2509,184 @@ describe('Collection live listing truth', () => {
 		expect(iterations).toBe(1);
 		expect(merged).toHaveLength(10_000);
 		expect(new Set(merged.map((result) => result.asset.id)).size).toBe(10_000);
+	});
+});
+
+describe('collection snapshots published from the index walk', () => {
+	const id = 'VFeEyvnoB-u249MgGQHN5Jcwvs7CAwycw826ztrXpT0';
+	const placeholder = { id, name: 'VFeEyvn…trXpT0' };
+	const dumdumz = (name: string, manifestId = 'M'.repeat(43)): Collection => ({
+		id: 'cNdMdSIuIlF3YM2j81y1k_HiaA60r4wp552w2JiWx4I',
+		name: 'Dumdumz',
+		description: '',
+		kind: 'images',
+		manifestId,
+		assets: [{ ...placeholder, name }],
+	});
+
+	it('keeps names that arrived after the snapshot was taken', () => {
+		const retained = retainedCollectionAssetNames([dumdumz('88')], dumdumz(placeholder.name));
+		expect(retained.assets[0].name).toBe('88');
+	});
+
+	it('adopts newer names and a changed manifest as published', () => {
+		expect(retainedCollectionAssetNames([dumdumz(placeholder.name)], dumdumz('88')).assets[0].name).toBe('88');
+		const moved = dumdumz(placeholder.name, 'N'.repeat(43));
+		expect(retainedCollectionAssetNames([dumdumz('88')], moved)).toBe(moved);
+		const fresh = dumdumz(placeholder.name);
+		expect(retainedCollectionAssetNames([], fresh)).toBe(fresh);
+	});
+});
+
+describe('activity rows that need indexed names', () => {
+	it('returns only image-collection assets behind the visible rows', () => {
+		const imageId = 'I'.repeat(43);
+		const nameId = 'N'.repeat(43);
+		const images: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Dumdumz',
+			description: '',
+			kind: 'images',
+			assets: [{ id: imageId, name: 'IIIIIII…IIIIII' }],
+		};
+		const names: Collection = {
+			id: 'arweave-names',
+			name: 'Arweave Names',
+			description: '',
+			kind: 'names',
+			assets: [{ id: nameId, name: 'example' }],
+			namespace: { manifestId: 'M'.repeat(43), namesById: { [nameId]: 'example' } },
+		};
+		const event = (processId: string) => ({ processId } as CollectionActivityEvent);
+		const byId = new Map([
+			[imageId, images],
+			[nameId, names],
+		]);
+
+		expect(
+			visibleActivityAssets([event(imageId), event(nameId), event('U'.repeat(43))], (item) =>
+				byId.get(item.processId)
+			)
+		).toEqual([images.assets[0]]);
+	});
+});
+
+describe('Route focus policy', () => {
+	it('keeps focus on first load and moves it to main on a new view', () => {
+		expect(routeFocusAction(null, '/discover')).toBe('initial');
+		expect(routeFocusAction('/discover', '/discover')).toBe('initial');
+		expect(routeFocusAction('/discover', '/asset/a/b', { navigationType: 'PUSH' })).toBe('new-view');
+		expect(routeFocusAction('/discover', '/discover?q=art', { navigationType: 'PUSH' })).toBe('new-view');
+	});
+	it('treats a preserveFocus push or replace as an in-view update', () => {
+		expect(routeFocusAction('/discover', '/collections', { preserveFocus: true, navigationType: 'PUSH' })).toBe(
+			'in-view'
+		);
+		expect(routeFocusAction('/collections', '/activity', { preserveFocus: true, navigationType: 'REPLACE' })).toBe(
+			'in-view'
+		);
+		expect(routeFocusAction(null, '/collections', { preserveFocus: true, navigationType: 'PUSH' })).toBe('initial');
+	});
+	it('still moves focus when Back lands on an entry that stored preserveFocus', () => {
+		expect(routeFocusAction('/asset/a/b', '/collections', { preserveFocus: true, navigationType: 'POP' })).toBe(
+			'new-view'
+		);
+	});
+	it('reads preserveFocus only from a strict true flag in location.state', () => {
+		expect(routeFocusPreserved(PRESERVE_ROUTE_FOCUS.state)).toBe(true);
+		expect(routeFocusPreserved(null)).toBe(false);
+		expect(routeFocusPreserved({ fungibleOperationActivityId: 'x' })).toBe(false);
+		expect(routeFocusPreserved({ preserveFocus: 'yes' })).toBe(false);
+	});
+});
+
+describe('Home market tabs', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	it('renders one tab stop with the selected tab and the panel wiring', () => {
+		const html = renderToStaticMarkup(
+			React.createElement(HomeMarketTabs, { active: 'collections', onSelect() {} })
+		);
+		expect(html.match(/tabindex="0"/g)).toHaveLength(1);
+		expect(html.match(/tabindex="-1"/g)).toHaveLength(2);
+		expect(html).toMatch(/aria-selected="true"[^>]*id="home-collections-tab"[^>]*tabindex="0"/);
+		expect(html).toContain('aria-controls="home-activity-panel"');
+		expect(html).toContain('role="tablist"');
+	});
+	it('moves selection and focus with Arrow, Home and End keys', () => {
+		const focused: string[] = [];
+		vi.stubGlobal('window', { requestAnimationFrame: (callback: () => void) => callback() });
+		vi.stubGlobal('document', { getElementById: (id: string) => ({ focus: () => focused.push(id) }) });
+		const selected: string[] = [];
+		const tablist = HomeMarketTabs({ active: 'discover', onSelect: (tab) => selected.push(tab) });
+		const tabs = React.Children.toArray(
+			(tablist.props as { children: React.ReactNode }).children
+		) as React.ReactElement<{ onKeyDown(event: unknown): void }>[];
+		const press = (index: number, key: string) => {
+			let prevented = false;
+			tabs[index].props.onKeyDown({ key, preventDefault: () => (prevented = true) });
+			return prevented;
+		};
+		expect(press(0, 'ArrowRight')).toBe(true);
+		expect(press(0, 'ArrowLeft')).toBe(true);
+		expect(press(1, 'End')).toBe(true);
+		expect(press(2, 'Home')).toBe(true);
+		expect(press(2, 'ArrowDown')).toBe(true);
+		expect(press(0, 'Enter')).toBe(false);
+		expect(selected).toEqual(['collections', 'activity', 'activity', 'discover', 'discover']);
+		expect(focused).toEqual([
+			'home-collections-tab',
+			'home-activity-tab',
+			'home-activity-tab',
+			'home-discover-tab',
+			'home-discover-tab',
+		]);
+	});
+});
+
+describe('Collection listing view in the URL', () => {
+	it('reads ?view as items, offers or the collection default', () => {
+		expect(collectionViewFromSearch('?view=items')).toBe('items');
+		expect(collectionViewFromSearch('?q=a&view=offers')).toBe('offers');
+		expect(collectionViewFromSearch('?view=grid')).toBeNull();
+		expect(collectionViewFromSearch('')).toBeNull();
+		expect(collectionListedFromSearch('?view=items', 'arweave-names')).toBe(false);
+		expect(collectionListedFromSearch('', 'arweave-names')).toBe(true);
+		expect(collectionListedFromSearch('?view=offers', 'x')).toBe(true);
+		expect(collectionListedFromSearch('', 'x')).toBe(false);
+		expect(collectionListedFromSearch('?view=unknown', 'arweave-names')).toBe(true);
+	});
+	it('writes the view and keeps the other params', () => {
+		expect(collectionViewSearch('', 'items')).toBe('?view=items');
+		expect(collectionViewSearch('?q=moon+cat&view=offers', 'items')).toBe('?q=moon+cat&view=items');
+		const next = collectionViewSearch('?q=moon%20cat&gateway=g', 'offers');
+		expect(new URLSearchParams(next).get('q')).toBe('moon cat');
+		expect(new URLSearchParams(next).get('gateway')).toBe('g');
+		expect(collectionListedFromSearch(next, 'x')).toBe(true);
+	});
+	it('maps the tab buttons and the Show select to the same view', () => {
+		// Items tab and Show "All assets" both write items; Offers tab and "Listed for sale" both write offers.
+		for (const collectionId of ['arweave-names', 'x']) {
+			expect(collectionListedFromSearch(collectionViewSearch('', 'items'), collectionId)).toBe(false);
+			expect(collectionListedFromSearch(collectionViewSearch('', 'offers'), collectionId)).toBe(true);
+		}
+	});
+	it('links the Activity page Items tab to an explicit items view', () => {
+		const collection: Collection = {
+			id: 'arweave-names',
+			name: 'Arweave Names',
+			description: '',
+			kind: 'names',
+			assets: [],
+		};
+		const html = renderToStaticMarkup(
+			React.createElement(
+				MemoryRouter,
+				null,
+				React.createElement(CollectionTabs, { collection, active: 'activity' })
+			)
+		);
+		expect(html).toContain('href="/collection/arweave-names?view=items"');
+		expect(html).toContain('href="/collection/arweave-names?view=offers"');
+		expect(html).toContain('href="/collection/arweave-names/activity"');
 	});
 });

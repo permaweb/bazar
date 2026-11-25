@@ -10,34 +10,43 @@ import {
 	type Collection,
 	COLLECTION_AO_READ_TIMEOUT_MS,
 	collectionAsset,
+	collectionCoverImage,
 	discoverBazarCollections,
 	enrichImageCollectionAssetMetadata,
 	HIDDEN_ASSET_IDS,
 	HIDDEN_COLLECTION_IDS,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
+	hiddenCollectionAssetIndexSettled,
+	isPlaceholderAssetName,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadBazarCollectionById,
 	loadCollections,
 	loadImageCollection,
+	loadIndexedAssetNames,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
 	parseNamesNamespace,
+	preferResolvedAssetName,
 	replaceHiddenCollectionAssetIndex,
 	testCatalogueItemsRequested,
+	withIndexedAssetNames,
 } from './collections';
+
+vi.hoisted(() => vi.stubEnv('VITE_GRAPHQL_ENDPOINTS', 'https://arweave.net/graphql,https://index.example/graphql'));
+
+// Catalogue reads retry transient index failures after GRAPHQL_RETRY_DELAYS_MS (1 s, 3 s). Most tests
+// answer unrelated requests with a 503, so retries stay off unless a test sets zero-delay retries.
+const graphqlRetry = vi.hoisted(() => ({ delays: [] as number[] }));
+vi.mock('./graphql', async (importOriginal) => ({
+	...(await importOriginal<typeof import('./graphql')>()),
+	GRAPHQL_RETRY_DELAYS_MS: graphqlRetry.delays,
+}));
 
 const emptyHiddenCollectionAssetIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
 
-const encodeJson = (value: unknown) =>
-	btoa(JSON.stringify(value)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-const encodeUtf8Json = (value: unknown) =>
-	btoa(Array.from(new TextEncoder().encode(JSON.stringify(value)), (byte) => String.fromCharCode(byte)).join(''))
-		.replaceAll('+', '-')
-		.replaceAll('/', '_')
-		.replaceAll('=', '');
 const encodeTag = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 
 beforeEach(() => {
@@ -47,7 +56,9 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 	replaceHiddenCollectionAssetIndex({});
+	graphqlRetry.delays.length = 0;
 });
 
 describe('direct collection links', () => {
@@ -95,8 +106,8 @@ describe('direct collection links', () => {
 					{ headers: { 'codec-device': 'json@1.0' } }
 				);
 			}
-			if (String(input).endsWith(`/tx/${currentManifest}/data`)) {
-				return new Response(encodeUtf8Json({ name: 'Shared collection', assets: [assetId] }));
+			if (String(input).endsWith(`/raw/${currentManifest}`)) {
+				return new Response(JSON.stringify({ name: 'Shared collection', assets: [assetId] }));
 			}
 			throw new Error(`unexpected-request: ${input}`);
 		});
@@ -115,6 +126,43 @@ describe('direct collection links', () => {
 			createdAt: 200_000,
 			assets: [{ id: assetId }],
 		});
+	});
+
+	it('takes a collection cover from its Thumbnail tag and falls back to the first asset artwork', async () => {
+		const thumbnailId = 'T'.repeat(43);
+		const tagged = candidate();
+		tagged.node.tags.push({ name: 'Thumbnail', value: thumbnailId }, { name: 'Banner', value: 'B'.repeat(43) });
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollectionById')) return indexResponse([tagged]);
+			if (String(input).includes(`${collectionId}~process@1.0/compute`)) {
+				return Response.json(
+					{
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						value: currentManifest,
+						balances: { ['O'.repeat(43)]: '1' },
+						orders: {},
+					},
+					{ headers: { 'codec-device': 'json@1.0' } }
+				);
+			}
+			if (String(input).endsWith(`/raw/${currentManifest}`)) {
+				return new Response(JSON.stringify({ name: 'Covered collection', assets: [assetId] }));
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+		vi.stubGlobal('window', { aoFetch: Object.assign(fetcher, { peers: ['https://peer.example'] }) });
+		connectPermawebOsTestWallet();
+
+		const collection = await loadBazarCollectionById(collectionId);
+		expect(collection?.thumbnail).toBe(`https://arweave.net/raw/${thumbnailId}`);
+		expect(collectionCoverImage(collection!)).toBe(`https://arweave.net/raw/${thumbnailId}`);
+		expect(collectionCoverImage({ ...collection!, thumbnail: undefined })).toBe(
+			`https://arweave.net/raw/${assetId}`
+		);
+		expect(collectionCoverImage({ assets: [{ id: assetId, name: 'Audio' }] })).toBeUndefined();
 	});
 
 	it('loads a carrier that still reports its initial manifest as a linked message', async () => {
@@ -137,8 +185,8 @@ describe('direct collection links', () => {
 			if (String(input).includes(`${valueLink}~message@1.0/serialize~json@1.0`)) {
 				return Response.json({ device: 'json@1.0', target: initialManifest });
 			}
-			if (String(input).endsWith(`/tx/${initialManifest}/data`)) {
-				return new Response(encodeUtf8Json({ name: 'First-slot collection', assets: [assetId] }));
+			if (String(input).endsWith(`/raw/${initialManifest}`)) {
+				return new Response(JSON.stringify({ name: 'First-slot collection', assets: [assetId] }));
 			}
 			throw new Error(`unexpected-request: ${input}`);
 		});
@@ -194,6 +242,61 @@ describe('direct collection links', () => {
 		);
 		await expect(loadBazarCollectionById(collectionId)).rejects.toThrow('collection-lookup-503');
 	});
+
+	it('retries a lookup that every index failed transiently before reporting it unavailable', async () => {
+		graphqlRetry.delays.push(0);
+		const lookups: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const query = init?.body ? JSON.parse(String(init.body)).query : '';
+			if (query.includes('BazarCollectionById')) {
+				lookups.push(String(input));
+				// Both indexes are busy on the first attempt; the retry is answered.
+				return lookups.length <= 2 ? new Response('busy', { status: 503 }) : indexResponse([]);
+			}
+			throw new Error(`unexpected-request: ${input}`);
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(loadBazarCollectionById(collectionId)).resolves.toBeNull();
+		expect(lookups).toEqual([
+			'https://arweave.net/graphql',
+			'https://index.example/graphql',
+			'https://arweave.net/graphql',
+		]);
+	});
+
+	it('retries a discovery page and keeps later pages on the index that answered', async () => {
+		graphqlRetry.delays.push(0);
+		const pages: Array<{ url: string; after: unknown }> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const body = init?.body ? JSON.parse(String(init.body)) : {};
+			if (!String(body.query).includes('BazarCollections')) throw new Error(`unexpected-request: ${input}`);
+			pages.push({ url: String(input), after: body.variables.after });
+			if (pages.length === 1) return new Response('busy', { status: 503 });
+			if (body.variables.after === null) {
+				return Response.json({
+					data: {
+						transactions: {
+							pageInfo: { hasNextPage: true },
+							edges: [{ cursor: 'page-1', node: { id: 'X'.repeat(43), tags: [] } }],
+						},
+					},
+				});
+			}
+			if (pages.length === 3) return new Response('busy', { status: 503 });
+			return indexResponse([]);
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(discoverBazarCollections()).resolves.toEqual([]);
+		expect(pages).toEqual([
+			{ url: 'https://arweave.net/graphql', after: null },
+			{ url: 'https://index.example/graphql', after: null },
+			// The cursor belongs to the fallback index, so its transient failure is retried there, not on arweave.net.
+			{ url: 'https://index.example/graphql', after: 'page-1' },
+			{ url: 'https://index.example/graphql', after: 'page-1' },
+		]);
+	});
 });
 
 describe('collection index loading', () => {
@@ -237,7 +340,7 @@ describe('collection index loading', () => {
 		expect(hiddenCollectionAssetIndexComplete()).toBe(true);
 	});
 
-	it('loads missing hidden-collection membership before marketplace sources', async () => {
+	it('loads missing hidden-collection membership before publishing marketplace sources', async () => {
 		replaceHiddenCollectionAssetIndex({});
 		const manifests = HIDDEN_COLLECTION_IDS.map((_, index) => `${index}`.repeat(43));
 		const assets = HIDDEN_COLLECTION_IDS.map((_, index) => `${index + 4}`.repeat(43));
@@ -253,8 +356,8 @@ describe('collection index loading', () => {
 						],
 					});
 				}
-				if (url.includes(`/tx/${manifests[index]}/data`)) {
-					return new Response(encodeUtf8Json({ name: `Hidden ${index}`, assets: [assets[index]] }));
+				if (url.includes(`/raw/${manifests[index]}`)) {
+					return new Response(JSON.stringify({ name: `Hidden ${index}`, assets: [assets[index]] }));
 				}
 			}
 			return new Response('unavailable', { status: 503 });
@@ -270,6 +373,148 @@ describe('collection index loading', () => {
 		expect(visibilityReady).toHaveBeenCalledOnce();
 		for (const assetId of assets) expect(isVisibleAssetId(assetId)).toBe(false);
 		expect(fetcher.mock.calls.some(([input]) => String(input).includes('/compute'))).toBe(false);
+	});
+
+	it('reads every hidden manifest at once so visibility waits for one gateway round, not two', async () => {
+		replaceHiddenCollectionAssetIndex({});
+		const manifests = HIDDEN_COLLECTION_IDS.map((_, index) => `${index}`.repeat(43));
+		const pendingTransactions = new Set<string>();
+		const releases: Array<() => void> = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			for (const [index, collectionId] of HIDDEN_COLLECTION_IDS.entries()) {
+				if (url.endsWith(`/tx/${collectionId}`)) {
+					pendingTransactions.add(collectionId);
+					// Hold every transaction read until all of them have been requested.
+					await new Promise<void>((resolve) => releases.push(resolve));
+					return Response.json({
+						tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifests[index]) }],
+					});
+				}
+				if (url.includes(`/raw/${manifests[index]}`)) {
+					return new Response(JSON.stringify({ name: `Hidden ${index}`, assets: [] }));
+				}
+			}
+			return new Response('unavailable', { status: 503 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const visibilityReady = vi.fn();
+
+		const loading = loadCollections(undefined, undefined, visibilityReady).catch(() => undefined);
+		await vi.waitFor(() => expect(pendingTransactions.size).toBe(HIDDEN_COLLECTION_IDS.length));
+		releases.forEach((release) => release());
+		await loading;
+
+		expect(visibilityReady).toHaveBeenCalledOnce();
+		expect(hiddenCollectionAssetIndexComplete()).toBe(true);
+	});
+
+	it('loads the catalogue while hidden manifests load and degrades one unavailable manifest to no hiding', async () => {
+		replaceHiddenCollectionAssetIndex({});
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		const nameId = 'N'.repeat(43);
+		const manifests = HIDDEN_COLLECTION_IDS.map((_, index) => `${index}`.repeat(43));
+		const assets = HIDDEN_COLLECTION_IDS.map((_, index) => `${index + 4}`.repeat(43));
+		let carrierRequested!: () => void;
+		const carrierRequest = new Promise<void>((resolve) => {
+			carrierRequested = resolve;
+		});
+		// The second load's retry of the unavailable manifest only answers once the test releases it.
+		let manifestRecovered = false;
+		let releaseRetry!: () => void;
+		const retryReleased = new Promise<void>((resolve) => {
+			releaseRetry = resolve;
+		});
+		// The carrier index also returns a member of an unavailable and of a readable hidden manifest.
+		const carrierIds = [nameId, assets[0], assets[1]];
+		const namesNamespace = JSON.stringify({
+			manifest: 'arweave/paths',
+			version: '0.2.0',
+			paths: { alice: { id: nameId }, unindexed: { id: assets[0] }, hidden: { id: assets[1] } },
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				const body = typeof init?.body === 'string' ? init.body : '';
+				if (body.includes('CarrierAssets')) {
+					carrierRequested();
+					return Response.json({
+						data: {
+							transactions: {
+								count: carrierIds.length,
+								pageInfo: { hasNextPage: false },
+								edges: carrierIds.map((id, index) => ({
+									cursor: `carrier-cursor-${index}`,
+									node: { id, tags: [{ name: 'name', value: id }] },
+								})),
+							},
+						},
+					});
+				}
+				if (url.includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namesNamespace);
+				for (const [index, collectionId] of HIDDEN_COLLECTION_IDS.entries()) {
+					if (url.endsWith(`/tx/${collectionId}`)) {
+						// Hidden membership only answers after the catalogue sources have started.
+						await carrierRequest;
+						if (index === 0 && manifestRecovered) await retryReleased;
+						return Response.json({
+							tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifests[index]) }],
+						});
+					}
+					if (url.includes(`/raw/${manifests[index]}`)) {
+						if (index === 0 && !manifestRecovered) return new Response('missing', { status: 404 });
+						return new Response(JSON.stringify({ name: `Hidden ${index}`, assets: [assets[index]] }));
+					}
+				}
+				return new Response('unavailable', { status: 503 });
+			})
+		);
+		const progress: string[][] = [];
+		const published: string[][] = [];
+		const onProgress = (collections: Collection[]) => {
+			progress.push(collections.map((collection) => collection.id));
+			published.push(collections.flatMap((collection) => collection.assets.map((asset) => asset.id)));
+		};
+		const visibilityReady = vi.fn(() => {
+			expect(progress).toEqual([]);
+		});
+		const namesAssetIds = (collections: Collection[]) =>
+			collections.find((collection) => collection.id === 'arweave-names')?.assets.map((asset) => asset.id);
+
+		const result = await loadCollections(undefined, onProgress, visibilityReady);
+
+		expect(result.collections.map((collection) => collection.id)).toContain('arweave-names');
+		// The readable manifest's member is never published, even though the carrier page arrived first.
+		expect(namesAssetIds(result.collections)).toEqual([nameId, assets[0]]);
+		expect(published.length).toBeGreaterThan(0);
+		for (const assetIds of published) expect(assetIds).not.toContain(assets[1]);
+		expect(progress.at(-1)).toContain('arweave-names');
+		expect(visibilityReady).toHaveBeenCalledOnce();
+		expect(warn).toHaveBeenCalledOnce();
+		expect(String(warn.mock.calls[0][0])).toContain(HIDDEN_COLLECTION_IDS[0]);
+		expect(hiddenCollectionAssetIndexComplete()).toBe(false);
+		expect(hiddenCollectionAssetIndexSettled()).toBe(true);
+		expect(hiddenCollectionAssetIndex()).not.toHaveProperty(HIDDEN_COLLECTION_IDS[0]);
+		expect(isVisibleAssetId(assets[0])).toBe(true);
+		for (const assetId of assets.slice(1)) expect(isVisibleAssetId(assetId)).toBe(false);
+		for (const assetId of HIDDEN_ASSET_IDS) expect(isVisibleAssetId(assetId)).toBe(false);
+
+		// A later load (for example Retry) re-reads the unavailable manifest without waiting for it.
+		manifestRecovered = true;
+		progress.length = 0;
+		published.length = 0;
+		const retryReady = vi.fn();
+		const retried = await loadCollections(undefined, onProgress, retryReady);
+		expect(retryReady).toHaveBeenCalledOnce();
+		expect(namesAssetIds(retried.collections)).toEqual([nameId, assets[0]]);
+
+		releaseRetry();
+		await vi.waitFor(() => expect(hiddenCollectionAssetIndexComplete()).toBe(true));
+		expect(isVisibleAssetId(assets[0])).toBe(false);
+		await vi.waitFor(() => expect(published.at(-1)).not.toContain(assets[0]));
+		expect(published.at(-1)).toContain(nameId);
+		expect(warn).toHaveBeenCalledOnce();
 	});
 
 	it('batch-enriches ID-only manifests with permanent Atomic Asset names', async () => {
@@ -319,17 +564,76 @@ describe('collection index loading', () => {
 			});
 		});
 
-		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
+		const progress: Collection[] = [];
+		const enriched = await enrichImageCollectionAssetMetadata(
+			collection,
+			undefined,
+			fetcher as typeof fetch,
+			undefined,
+			(partial) => progress.push(partial)
+		);
 
 		expect(enriched.assets[0].name).toBe('Color 1');
 		expect(enriched.assets[204].name).toBe('Color 205');
-		expect(enriched.assets[0].image).toBe(`https://arweave.net/${ids[0]}`);
+		// Each GraphQL page publishes its titles immediately instead of waiting for the full walk.
+		expect(
+			progress.map((partial) => partial.assets.filter((asset) => asset.name.startsWith('Color ')).length)
+		).toEqual([100, 200, 205]);
+		expect(progress.at(-1)).toBe(enriched);
+		expect(enriched.assets[0].image).toBe(`https://arweave.net/raw/${ids[0]}`);
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables)).toEqual([
 			{ collection: ['HTML Colors'], after: null },
 			{ collection: ['HTML Colors'], after: '99' },
 			{ collection: ['HTML Colors'], after: '199' },
 		]);
+	});
+
+	it('titles indexed assets from a title tag when no name tag exists', async () => {
+		const owner = 'O'.repeat(43);
+		const id = 'T'.repeat(43);
+		const collection: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Titled collection',
+			description: '',
+			kind: 'images',
+			assets: [{ id, name: `${id.slice(0, 7)}…${id.slice(-6)}` }],
+		};
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: '0',
+								node: {
+									id,
+									tags: [
+										{ name: 'device', value: 'process@1.0' },
+										{ name: 'execution-device', value: 'token@1.0' },
+										{ name: 'swap-device', value: 'arweave-swap@1.0' },
+										{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+										{ name: 'scheduler-mode', value: 'all' },
+										{ name: 'initial-holder', value: owner },
+										{ name: 'total-supply', value: '1' },
+										{ name: 'denomination', value: '0' },
+										{ name: 'ticker', value: 'ASSET' },
+										{ name: 'Title', value: 'Sunrise' },
+										{ name: 'hint-ui-style', value: 'non-fungible' },
+										{ name: 'content-type', value: 'image/png' },
+									],
+								},
+							},
+						],
+					},
+				},
+			})
+		);
+
+		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
+
+		expect(enriched.assets[0].name).toBe('Sunrise');
 	});
 
 	it('falls back to exact IDs when a collection name is not indexed on every asset', async () => {
@@ -401,7 +705,8 @@ describe('collection index loading', () => {
 		await expect(
 			enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch, [0, 0])
 		).resolves.toEqual(collection);
-		expect(fetcher).toHaveBeenCalledTimes(3);
+		// Three attempts, each asking both configured indexes.
+		expect(fetcher).toHaveBeenCalledTimes(6);
 		expect(
 			fetcher.mock.calls.every(([, init]) =>
 				JSON.parse(String(init?.body)).query.includes('BazarAtomicAssetsByCollection')
@@ -487,7 +792,7 @@ describe('collection index loading', () => {
 			},
 		});
 		const encodeManifest = (name: string, asset = assetId) =>
-			encodeUtf8Json({ name, description: `${name} description`, assets: [asset] });
+			JSON.stringify({ name, description: `${name} description`, assets: [asset] });
 		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
 			if (body?.query?.includes('BazarCollections')) {
@@ -525,7 +830,7 @@ describe('collection index loading', () => {
 					{ headers: { 'codec-device': 'json@1.0' } }
 				);
 			}
-			if (String(input).includes(`/tx/${currentManifest}/data`)) return new Response(encodeManifest('Current'));
+			if (String(input).includes(`/raw/${currentManifest}`)) return new Response(encodeManifest('Current'));
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -708,7 +1013,7 @@ describe('collection index loading', () => {
 			name: 'Unloaded Token',
 			ticker: 'NEW',
 			contentType: 'application/x.arweave-token',
-			image: `https://arweave.net/${logoId}`,
+			image: `https://arweave.net/raw/${logoId}`,
 		});
 		expect(
 			collectionAsset(
@@ -731,7 +1036,7 @@ describe('collection index loading', () => {
 			name: 'Indexed Token',
 			ticker: 'NEW',
 			contentType: 'application/x.arweave-token',
-			image: `https://arweave.net/${logoId}`,
+			image: `https://arweave.net/raw/${logoId}`,
 		});
 		expect(
 			collectionAsset(tokens, processId, {
@@ -808,7 +1113,7 @@ describe('collection index loading', () => {
 		const manifestId = 'M'.repeat(43);
 		const stringAssetId = 'A'.repeat(43);
 		const objectAssetId = 'B'.repeat(43);
-		const manifest = encodeUtf8Json({
+		const manifest = JSON.stringify({
 			name: 'Content-routed collection',
 			assets: [stringAssetId, { id: objectAssetId, name: 'Object asset' }],
 		});
@@ -821,7 +1126,8 @@ describe('collection index loading', () => {
 						tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifestId) }],
 					});
 				}
-				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				// The policy's permanent-content provider is a HyperBEAM-style host: `/<id>`, no `/raw`.
+				if (url === `https://content.example/${manifestId}`) return new Response(manifest);
 				return new Response('unexpected', { status: 500 });
 			})
 		);
@@ -1053,7 +1359,7 @@ describe('collection index loading', () => {
 
 	it('publishes successful sources progressively and reports partial failures', async () => {
 		const nameId = 'N'.repeat(43);
-		const namesNamespace = encodeJson({
+		const namesNamespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId } },
@@ -1078,18 +1384,26 @@ describe('collection index loading', () => {
 						},
 					});
 				}
-				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namesNamespace);
+				if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namesNamespace);
 				return new Response('unavailable', { status: 503 });
 			})
 		);
 		const progress: string[][] = [];
+		const backgroundUnavailable = vi.fn();
 
-		const result = await loadCollections(undefined, (collections) => {
-			progress.push(collections.map((collection) => collection.id));
-		});
+		const result = await loadCollections(
+			undefined,
+			(collections) => {
+				progress.push(collections.map((collection) => collection.id));
+			},
+			undefined,
+			backgroundUnavailable
+		);
 
 		expect(result.collections.map((collection) => collection.id)).toEqual(['arweave-names', 'fungible-tokens']);
-		expect(result.unavailable).toEqual(['Bazar Fungible Tokens', 'Bazar collection discovery']);
+		expect(result.unavailable[0]).toBe('Bazar Fungible Tokens');
+		// Discovery asks every configured index before it is reported unavailable.
+		await vi.waitFor(() => expect(backgroundUnavailable).toHaveBeenCalledWith('Bazar collection discovery'));
 		expect(progress.at(-1)).toEqual(['arweave-names', 'fungible-tokens']);
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});
@@ -1099,7 +1413,7 @@ describe('collection index loading', () => {
 		const collectionId = 'C'.repeat(43);
 		const manifestId = 'M'.repeat(43);
 		const assetId = 'A'.repeat(43);
-		const namespace = encodeJson({
+		const namespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId } },
@@ -1144,9 +1458,9 @@ describe('collection index loading', () => {
 					data: { transactions: empty, legacyHintStyle: empty, legacyAssetType: empty },
 				});
 			}
-			if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
-			if (String(input).includes(`/tx/${manifestId}/data`)) {
-				return new Response(encodeUtf8Json({ name: 'Phone collection', description: '', assets: [assetId] }));
+			if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namespace);
+			if (String(input).includes(`/raw/${manifestId}`)) {
+				return new Response(JSON.stringify({ name: 'Phone collection', description: '', assets: [assetId] }));
 			}
 			return new Response('unavailable', { status: 503 });
 		});
@@ -1207,7 +1521,7 @@ describe('collection index loading', () => {
 		const controller = new AbortController();
 		const reason = new Error('test-complete');
 		const nameId = 'N'.repeat(43);
-		const namespace = encodeJson({
+		const namespace = JSON.stringify({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
 			paths: { alice: { id: nameId } },
@@ -1226,7 +1540,7 @@ describe('collection index loading', () => {
 						data: { transactions: { count: 0, pageInfo: { hasNextPage: false }, edges: [] } },
 					});
 				}
-				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
+				if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) return new Response(namespace);
 				return new Response('unavailable', { status: 503 });
 			})
 		);
@@ -1260,7 +1574,7 @@ describe('collection index loading', () => {
 						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
 					});
 				}
-				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) {
+				if (String(input).includes(`/raw/${NAMES_NAMESPACE_ID}`)) {
 					requests.push('namespace');
 					return new Promise<Response>((_resolve, reject) => {
 						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
@@ -1325,6 +1639,67 @@ describe('collection index loading', () => {
 				([, init]) => typeof init?.body === 'string' && init.body.includes('FungibleTokens')
 			)
 		).toHaveLength(2);
+	});
+
+	it('retries a transiently failed token page on the counting index instead of falling back', async () => {
+		graphqlRetry.delays.push(0, 0);
+		const tokenId = 'T'.repeat(43);
+		const requests: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+				if (!body.query?.includes('FungibleTokens')) throw new Error(`unexpected-request: ${input}`);
+				requests.push(String(input));
+				if (requests.length === 1) return new Response('busy', { status: 503 });
+				if (requests.length === 2) return new Response('slow down', { status: 429 });
+				return Response.json({
+					data: {
+						transactions: {
+							count: 1,
+							pageInfo: { hasNextPage: false },
+							edges: [
+								{
+									cursor: 'token-0',
+									node: { id: tokenId, bundledIn: null, tags: [{ name: 'Name', value: 'Retried' }] },
+								},
+							],
+						},
+					},
+				});
+			})
+		);
+
+		const tokens = await loadMoreFungibleTokens({
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [],
+			hasMore: true,
+		});
+
+		expect(tokens.assets.map(({ name }) => name)).toEqual(['Retried']);
+		// `count` is answered only by arweave.net, so every attempt stays there.
+		expect(requests).toEqual(Array(3).fill('https://arweave.net/graphql'));
+	});
+
+	it('reports the token index unavailable once its retries are spent', async () => {
+		graphqlRetry.delays.push(0);
+		const fetcher = vi.fn(async () => new Response('busy', { status: 503 }));
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(
+			loadMoreFungibleTokens({
+				id: 'fungible-tokens',
+				name: 'Tokens',
+				description: '',
+				kind: 'tokens',
+				assets: [],
+				hasMore: true,
+			})
+		).rejects.toThrow('fungible-index-503');
+		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 
 	it.each([null, { id: '' }])(
@@ -1725,7 +2100,7 @@ describe('collection index loading', () => {
 		const manifestId = 'M'.repeat(43);
 		const fallbackId = 'F'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const manifest = encodeUtf8Json({
+		const manifest = JSON.stringify({
 			name: 'Referenced collection — café 🐈',
 			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
 		});
@@ -1739,7 +2114,7 @@ describe('collection index loading', () => {
 						tags: [{ name: encode('reference-value'), value: encode(manifestId) }],
 					});
 				}
-				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				if (url.endsWith(`/raw/${manifestId}`)) return new Response(manifest);
 				return new Response('unexpected', { status: 500 });
 			})
 		);
@@ -1755,7 +2130,7 @@ describe('collection index loading', () => {
 		vi.useFakeTimers();
 		const referenceId = 'R'.repeat(43);
 		const manifestId = 'M'.repeat(43);
-		const manifest = encodeJson({
+		const manifest = JSON.stringify({
 			name: 'Published collection',
 			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
 		});
@@ -1772,7 +2147,7 @@ describe('collection index loading', () => {
 						],
 					});
 				}
-				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				if (url.endsWith(`/raw/${manifestId}`)) return new Response(manifest);
 				return new Response('unexpected', { status: 500 });
 			})
 		);
@@ -1801,14 +2176,14 @@ describe('collection index loading', () => {
 	});
 
 	it.each([
-		['pending', 'Accepted'],
-		['malformed', encodeJson({ name: 'Broken collection', assets: [{ id: 'invalid', name: 'Broken' }] })],
+		['pending', ''],
+		['malformed', JSON.stringify({ name: 'Broken collection', assets: [{ id: 'invalid', name: 'Broken' }] })],
 	])('retains the published manifest when the live reference target is %s', async (_label, liveBody) => {
 		const referenceId = 'R'.repeat(43);
 		const manifestId = 'M'.repeat(43);
 		const fallbackId = 'F'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const fallback = encodeJson({
+		const fallback = JSON.stringify({
 			name: 'Published collection',
 			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
 		});
@@ -1819,8 +2194,8 @@ describe('collection index loading', () => {
 					tags: [{ name: encode('reference-value'), value: encode(manifestId) }],
 				});
 			}
-			if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(liveBody);
-			if (url.endsWith(`/tx/${fallbackId}/data`)) return new Response(fallback);
+			if (url.endsWith(`/raw/${manifestId}`)) return new Response(liveBody);
+			if (url.endsWith(`/raw/${fallbackId}`)) return new Response(fallback);
 			return new Response('unexpected', { status: 500 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -1833,12 +2208,81 @@ describe('collection index loading', () => {
 		expect(fetcher).toHaveBeenCalledTimes(3);
 	});
 
+	it('reads a manifest on the content route and moves to the next gateway after a 429', async () => {
+		const referenceId = 'R'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+		vi.stubGlobal('window', {
+			location: { protocol: 'https:', hostname: 'bazar.example', port: '', search: '', hash: '' },
+		});
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith(`/tx/${referenceId}`)) {
+				return Response.json({ tags: [{ name: encode('reference-value'), value: encode(manifestId) }] });
+			}
+			if (url === `https://bazar.example/${manifestId}`) return new Response('busy', { status: 429 });
+			if (url === `https://arweave.net/raw/${manifestId}`) {
+				return new Response(JSON.stringify({ name: 'Raw collection', assets: ['A'.repeat(43)] }));
+			}
+			return new Response('unexpected', { status: 500 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(loadImageCollection(referenceId, 'F'.repeat(43))).resolves.toMatchObject({
+			name: 'Raw collection',
+			manifestId,
+			indexSource: 'reference',
+		});
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			`https://bazar.example/tx/${referenceId}`,
+			`https://bazar.example/${manifestId}`,
+			`https://arweave.net/raw/${manifestId}`,
+		]);
+	});
+
+	it('moves past a gateway that answers a manifest read with a 200 HTML page', async () => {
+		const referenceId = 'R'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+		vi.stubGlobal('window', {
+			location: { protocol: 'https:', hostname: 'bazar.example', port: '', search: '', hash: '' },
+		});
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith(`/tx/${referenceId}`)) {
+				return Response.json({ tags: [{ name: encode('reference-value'), value: encode(manifestId) }] });
+			}
+			// An SPA index.html fallback served for an unknown path, with status 200.
+			if (url === `https://bazar.example/${manifestId}`) {
+				return new Response('<!doctype html><html><body>Bazar</body></html>', {
+					headers: { 'content-type': 'text/html' },
+				});
+			}
+			if (url === `https://arweave.net/raw/${manifestId}`) {
+				return new Response(JSON.stringify({ name: 'Raw collection', assets: ['A'.repeat(43)] }));
+			}
+			return new Response('unexpected', { status: 500 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+
+		await expect(loadImageCollection(referenceId, 'F'.repeat(43))).resolves.toMatchObject({
+			name: 'Raw collection',
+			manifestId,
+			indexSource: 'reference',
+		});
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			`https://bazar.example/tx/${referenceId}`,
+			`https://bazar.example/${manifestId}`,
+			`https://arweave.net/raw/${manifestId}`,
+		]);
+	});
+
 	it('waits for the live image reference before loading an index', async () => {
 		const referenceId = 'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g';
 		const publishedManifestId = '8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw';
 		const liveManifestId = 'L'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const live = encodeJson({
+		const live = JSON.stringify({
 			name: 'Live collection',
 			assets: [{ id: 'B'.repeat(43), name: 'Live asset' }],
 		});
@@ -1849,7 +2293,7 @@ describe('collection index loading', () => {
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
 			if (url.endsWith(`/tx/${referenceId}`)) return reference;
-			if (url.endsWith(`/tx/${liveManifestId}/data`)) return new Response(live);
+			if (url.endsWith(`/raw/${liveManifestId}`)) return new Response(live);
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -1876,7 +2320,7 @@ describe('collection index loading', () => {
 		expect(fetcher).toHaveBeenCalledTimes(2);
 		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
 			expect.stringContaining(`/tx/${referenceId}`),
-			expect.stringContaining(`/tx/${liveManifestId}/data`),
+			expect.stringContaining(`/raw/${liveManifestId}`),
 		]);
 	});
 
@@ -1927,5 +2371,190 @@ describe('collection index loading', () => {
 
 		await expect(loadCollections(undefined, progress)).rejects.toThrow('collection-indexes-unavailable');
 		expect(progress).not.toHaveBeenCalled();
+	});
+});
+
+describe('indexed asset names for visible pages', () => {
+	const owner = 'O'.repeat(43);
+	const pageIds = Array.from({ length: 30 }, (_, index) => index.toString(36).padStart(43, 'P'));
+	const atomicTags = (extra: Array<{ name: string; value: string }>) => [
+		{ name: 'device', value: 'process@1.0' },
+		{ name: 'execution-device', value: 'token@1.0' },
+		{ name: 'swap-device', value: 'arweave-swap@1.0' },
+		{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+		{ name: 'scheduler-mode', value: 'all' },
+		{ name: 'initial-holder', value: owner },
+		{ name: 'total-supply', value: '1' },
+		{ name: 'denomination', value: '0' },
+		{ name: 'ticker', value: 'ASSET' },
+		{ name: 'hint-ui-style', value: 'non-fungible' },
+		{ name: 'content-type', value: 'image/png' },
+		...extra,
+	];
+	const answer = (edges: Array<{ id: string; tags: Array<{ name: string; value: string }> }>, hasNextPage = false) =>
+		Response.json({
+			data: {
+				transactions: {
+					pageInfo: { hasNextPage },
+					edges: edges.map((node) => ({ cursor: `c-${node.id}`, node })),
+				},
+			},
+		});
+
+	it('resolves a whole visible page with one exact-ID request', async () => {
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const { variables } = JSON.parse(String(init?.body));
+			return answer(
+				variables.ids.map((id: string, index: number) => ({
+					id,
+					tags: atomicTags([{ name: 'Name', value: `${index + 1}` }]),
+				}))
+			);
+		});
+
+		const names = await loadIndexedAssetNames(pageIds, { fetch: fetcher as typeof fetch, retryDelaysMs: [] });
+
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+		expect(request.query).toContain('BazarAssetNamesByIds');
+		expect(request.variables).toEqual({ ids: pageIds, first: 30, after: null });
+		expect(names.size).toBe(30);
+		expect(names.get(pageIds[0])).toMatchObject({ id: pageIds[0], name: '1', contentType: 'image/png' });
+		expect(names.get(pageIds[29])?.name).toBe('30');
+	});
+
+	it('prefers the Atomic Asset name tag, then title, then a bare name or title tag', async () => {
+		const [named, titled, bareName, bareTitle, tickerOnly, unknown] = pageIds;
+		const fetcher = vi.fn(async () =>
+			answer([
+				{
+					id: named,
+					tags: atomicTags([
+						{ name: 'Name', value: '88' },
+						{ name: 'Title', value: 'ignored' },
+					]),
+				},
+				{ id: titled, tags: atomicTags([{ name: 'Title', value: 'Sunrise' }]) },
+				{
+					id: bareName,
+					tags: [
+						{ name: 'Name', value: 'Legacy name' },
+						{ name: 'Title', value: 'ignored' },
+					],
+				},
+				{ id: bareTitle, tags: [{ name: 'Title', value: ' Legacy title ' }] },
+				{ id: tickerOnly, tags: [{ name: 'Ticker', value: 'ASSET' }] },
+			])
+		);
+
+		const names = await loadIndexedAssetNames([named, titled, bareName, bareTitle, tickerOnly, unknown], {
+			fetch: fetcher as typeof fetch,
+			retryDelaysMs: [],
+		});
+
+		expect(names.get(named)?.name).toBe('88');
+		expect(names.get(titled)?.name).toBe('Sunrise');
+		expect(names.get(bareName)).toEqual({ id: bareName, name: 'Legacy name' });
+		expect(names.get(bareTitle)).toEqual({ id: bareTitle, name: 'Legacy title' });
+		expect(names.has(tickerOnly)).toBe(false);
+		expect(names.has(unknown)).toBe(false);
+	});
+
+	it('follows a truncated answer on the index that issued the cursor', async () => {
+		const ids = pageIds.slice(0, 12);
+		const endpoints: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			endpoints.push(String(input));
+			const { variables } = JSON.parse(String(init?.body));
+			const page = variables.after ? ids.slice(10) : ids.slice(0, 10);
+			return answer(
+				page.map((id) => ({ id, tags: [{ name: 'Name', value: id.slice(-1) }] })),
+				!variables.after
+			);
+		});
+
+		const names = await loadIndexedAssetNames(ids, { fetch: fetcher as typeof fetch, retryDelaysMs: [] });
+
+		expect(names.size).toBe(12);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).variables.after).toBe(`c-${ids[9]}`);
+		expect(endpoints[1]).toBe(endpoints[0]);
+	});
+
+	it('sends one request per hundred IDs and skips invalid, hidden and repeated IDs', async () => {
+		const ids = Array.from({ length: 150 }, (_, index) => index.toString(36).padStart(43, 'B'));
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => answer([]));
+
+		await loadIndexedAssetNames([...ids, ids[0], 'short', HIDDEN_ASSET_IDS[0]], {
+			fetch: fetcher as typeof fetch,
+			retryDelaysMs: [],
+		});
+
+		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables.ids.length)).toEqual([
+			100, 50,
+		]);
+		await expect(loadIndexedAssetNames(['short'], { fetch: fetcher as typeof fetch })).resolves.toEqual(new Map());
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it('throws when the index is unavailable so the caller can retry later', async () => {
+		const fetcher = vi.fn(async () => new Response('unavailable', { status: 503 }));
+
+		await expect(
+			loadIndexedAssetNames(pageIds.slice(0, 3), { fetch: fetcher as typeof fetch, retryDelaysMs: [] })
+		).rejects.toThrow('asset-name-index-503');
+	});
+});
+
+describe('indexed name precedence in loaded collections', () => {
+	const id = 'VFeEyvnoB-u249MgGQHN5Jcwvs7CAwycw826ztrXpT0';
+	const placeholder = { id, name: 'VFeEyvn…trXpT0', image: `https://arweave.net/raw/${id}` };
+	const images = (assets: Collection['assets']): Collection => ({
+		id: 'cNdMdSIuIlF3YM2j81y1k_HiaA60r4wp552w2JiWx4I',
+		name: 'Dumdumz',
+		description: '',
+		kind: 'images',
+		manifestId: 'M'.repeat(43),
+		assets,
+	});
+
+	it('recognises short-ID and blank placeholders only', () => {
+		expect(isPlaceholderAssetName(placeholder)).toBe(true);
+		expect(isPlaceholderAssetName({ id, name: ' ' })).toBe(true);
+		expect(isPlaceholderAssetName({ id, name: '88' })).toBe(false);
+	});
+
+	it('replaces a short-ID placeholder with an indexed name and keeps manifest names', () => {
+		const named = { id: 'N'.repeat(43), name: 'Manifest title' };
+		const collections = [images([placeholder, named])];
+
+		const merged = withIndexedAssetNames(
+			collections,
+			new Map([
+				[id, { id, name: '88' }],
+				[named.id, { id: named.id, name: 'Index title' }],
+			])
+		);
+
+		expect(merged[0].assets.map((asset) => asset.name)).toEqual(['88', 'Manifest title']);
+		expect(merged[0].assets[0].image).toBe(placeholder.image);
+	});
+
+	it('returns the same array when nothing changes', () => {
+		const collections = [images([{ id, name: '88' }]), { ...images([placeholder]), kind: 'names' as const }];
+
+		expect(withIndexedAssetNames(collections, new Map())).toBe(collections);
+		expect(withIndexedAssetNames(collections, new Map([[id, { id, name: 'Other' }]]))).toBe(collections);
+		expect(
+			withIndexedAssetNames([images([placeholder])], new Map([[id, { id, name: placeholder.name }]]))[0].assets[0]
+		).toBe(placeholder);
+	});
+
+	it('never downgrades a resolved name to a placeholder', () => {
+		expect(preferResolvedAssetName(placeholder, { id, name: '88' }).name).toBe('88');
+		expect(preferResolvedAssetName({ id, name: '88' }, placeholder).name).toBe('88');
+		expect(preferResolvedAssetName({ id, name: 'Kept' }, { id, name: '88' }).name).toBe('Kept');
+		expect(preferResolvedAssetName(placeholder, { id: 'X'.repeat(43), name: '88' })).toBe(placeholder);
+		expect(preferResolvedAssetName(placeholder, undefined)).toBe(placeholder);
 	});
 });

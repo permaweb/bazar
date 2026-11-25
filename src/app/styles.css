@@ -35,7 +35,8 @@
 .artwork-image {
 	transition: opacity 180ms ease;
 }
-.artwork-image.is-loading {
+.artwork-image.is-loading,
+.artwork-image.is-deferred {
 	opacity: 0 !important;
 }
 .artwork-fallback {
@@ -306,6 +307,7 @@ p {
 .brand {
 	display: inline-flex;
 	align-items: center;
+	justify-self: start;
 	gap: 9px;
 	font-family: 'DM Sans', sans-serif;
 	font-weight: 400;
@@ -1159,6 +1161,9 @@ p {
 	grid-template-columns: repeat(2, minmax(260px, 1fr));
 	gap: 12px;
 }
+.inline-error.home-collection-floor-notice {
+	margin: var(--space-5) 0 0;
+}
 .home-feature-card {
 	min-width: 0;
 	padding: 0;
@@ -1940,6 +1945,14 @@ p {
 	position: relative;
 	display: inline-flex;
 }
+.ui-button[aria-busy='true'] {
+	cursor: progress;
+}
+.wallet-menu-notice {
+	margin: 0;
+	font-size: var(--type-small);
+	line-height: 1.35;
+}
 .wallet-dropdown {
 	position: absolute;
 	z-index: 85;
@@ -2037,7 +2050,7 @@ p {
 	padding-bottom: 0;
 	border-top: 1px solid var(--line);
 }
-.wallet-dropdown button[role^='menuitem'] {
+.wallet-dropdown button.wallet-dropdown-item {
 	width: 100%;
 	min-height: 38px;
 	padding: 0 8px;
@@ -2049,11 +2062,11 @@ p {
 	background: var(--transparent);
 	text-align: left;
 }
-.wallet-dropdown button[role^='menuitem']:hover:not(:disabled) {
+.wallet-dropdown button.wallet-dropdown-item:hover:not(:disabled) {
 	border-color: var(--transparent);
 	background: var(--panel);
 }
-.wallet-dropdown button[role='menuitemradio'].is-active {
+.wallet-dropdown button.wallet-dropdown-item.is-active {
 	background: var(--panel);
 }
 .theme-option-check {
@@ -2077,6 +2090,21 @@ p {
 main {
 	min-height: calc(100vh - 122px);
 	min-height: calc(100dvh - 122px);
+}
+/* While the route is still reading (a region marked aria-busy, or a Loading status), main fills the
+   viewport below the 61px header so the footer waits below the fold instead of sitting inside it and
+   being pushed down by every card that arrives. A settled short page drops back to the rule above and
+   keeps its footer in view without extra scroll. */
+main:has([aria-busy='true'], .loading) {
+	min-height: calc(100vh - 61px);
+	min-height: calc(100dvh - 61px);
+}
+@media (min-width: 1051px) {
+	/* Desktop Home is a fixed frame that scrolls inside itself above the footer. */
+	main:has(> .home-shell) {
+		min-height: calc(100vh - 122px);
+		min-height: calc(100dvh - 122px);
+	}
 }
 .max-view-wrapper {
 	width: 100%;
@@ -2466,6 +2494,10 @@ main {
 	width: 1px;
 	height: 1px;
 	opacity: 0;
+}
+
+.collection-append-dialog .collection-selection-notice {
+	margin: 0 0 16px;
 }
 
 .collection-append-preview {
@@ -3766,6 +3798,17 @@ input:focus {
 	width: 100%;
 	height: 45px;
 }
+.asset-loading-kicker {
+	width: 112px;
+	height: 1.25em;
+}
+.asset-token-tags .asset-loading-tag {
+	width: 72px;
+	height: 26px;
+	padding: 0;
+	border-color: var(--surface);
+	background: var(--surface);
+}
 .asset-loading-balance {
 	width: 112px;
 	height: 18px;
@@ -4981,6 +5024,9 @@ input:focus {
 	padding: var(--space-3) var(--space-4);
 	border-radius: 10px;
 }
+.retry-notice .retry-notice-placeholder {
+	visibility: hidden;
+}
 .retry-notice .with-icon > .ui-icon,
 .retry-notice-action > .ui-icon {
 	color: var(--retry-icon);
@@ -5206,13 +5252,30 @@ input:focus {
 	font-size: var(--type-display);
 }
 .asset-group-heading > span {
-	display: grid;
-	place-items: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
 	min-width: 30px;
 	height: 30px;
+	padding: 0 8px;
 	border-radius: 5px;
 	background: var(--panel);
 	font-size: var(--type-small);
+}
+.asset-group-count-spinner {
+	width: 10px;
+	height: 10px;
+	flex: 0 0 auto;
+	border: 1.5px solid var(--line-dark);
+	border-top-color: var(--ink);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+.asset-group-heading > small {
+	color: var(--muted);
+	font-size: var(--type-small);
+	white-space: nowrap;
 }
 .asset-group-title > .market-select {
 	width: 190px;
@@ -5663,30 +5726,11 @@ input:focus {
 .operation-summary small {
 	grid-column: 1 / -1;
 }
-.matched-listings {
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	background: var(--panel);
-}
 .purchase-route {
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	background: var(--paper);
 	overflow: hidden;
-}
-.matched-listings-heading {
-	padding: 11px 14px;
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 16px;
-	color: var(--ink);
-	font-size: var(--type-body);
-	font-weight: 400;
-}
-.matched-listings-heading > span {
-	color: var(--muted);
-	font-size: var(--type-small);
 }
 .purchase-route summary {
 	padding: 12px 15px;
@@ -5713,27 +5757,6 @@ input:focus {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
 }
-.matched-listings ul {
-	max-height: min(300px, 40dvh);
-	margin: 0;
-	padding: 0 14px 12px;
-	overflow-y: auto;
-	list-style: none;
-}
-.matched-listings ul:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
-}
-.matched-listings li {
-	padding: 7px 0;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
-	align-items: center;
-	gap: 16px;
-	border-top: 1px solid var(--line);
-	color: var(--muted);
-	font-size: var(--type-body);
-}
 .purchase-route li {
 	padding: 11px 15px;
 	display: grid;
@@ -5743,22 +5766,6 @@ input:focus {
 	border-top: 1px solid var(--line);
 	color: var(--muted);
 	font-size: var(--type-body);
-}
-.matched-listings li > span:first-child {
-	min-width: 0;
-	display: grid;
-	gap: 2px;
-}
-.matched-listings li > span:first-child small {
-	overflow: hidden;
-	color: var(--muted);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.matched-listings a {
-	flex: 0 0 auto;
-	color: var(--ink);
-	text-underline-offset: 3px;
 }
 .purchase-route-index {
 	width: 22px;
@@ -5792,24 +5799,6 @@ input:focus {
 .purchase-route .wallet-address {
 	justify-self: end;
 	font-size: 0.68rem;
-}
-.matched-listings button {
-	min-height: 34px;
-	padding: 6px 10px;
-	color: var(--muted);
-	background: var(--paper);
-	font-size: var(--type-small);
-}
-.matched-listings button:hover {
-	color: var(--negative);
-	border-color: color-mix(in srgb, var(--negative) 45%, var(--line));
-}
-.matched-listings-empty {
-	margin: 0;
-	padding: 14px;
-	border-top: 1px solid var(--line);
-	color: var(--muted);
-	font-size: var(--type-body);
 }
 .field-help {
 	min-height: 1.1em;
@@ -7313,6 +7302,10 @@ body input:focus-visible {
 		width: 160px;
 		min-width: 160px;
 	}
+	.asset-group-heading {
+		flex-wrap: wrap;
+		row-gap: 2px;
+	}
 	.dialog-backdrop {
 		padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
 			max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -8074,9 +8067,14 @@ body input:focus-visible {
 	background: var(--panel);
 	cursor: pointer;
 }
-.mint-dropzone:hover {
+.mint-dropzone:hover:not([aria-disabled='true']) {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
+}
+/* A label dropzone hides its file input; show keyboard focus on the visible drop target. */
+.mint-dropzone:has(> input:focus-visible) {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
 }
 .mint-dropzone > span {
 	display: grid;
@@ -8832,6 +8830,9 @@ body input:focus-visible {
 	font-size: var(--type-body);
 	line-height: 1.5;
 }
+.collection-selection-notice {
+	margin: 12px 0 0;
+}
 .mint-cost-note {
 	padding: 11px 12px;
 	display: flex;
@@ -8991,7 +8992,9 @@ body input:focus-visible {
 	overflow-wrap: anywhere;
 }
 .mint-success-actions {
+	grid-column: 2 / -1;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
 	gap: 8px;
@@ -9140,6 +9143,9 @@ body input:focus-visible {
 .mint-live-notice span {
 	color: var(--muted);
 	font-size: var(--type-small);
+}
+.mint-live-notice-attention {
+	border-color: var(--warning-border);
 }
 
 .home-shell {
@@ -9764,6 +9770,10 @@ body input:focus-visible {
 		padding: 0;
 	}
 	.home-market-layout {
+		/* The document scrolls here, so 100vw would include its scrollbar and overflow by half of it;
+		   undo the wrapper gutter instead (the wrapper spans the viewport below --max-view-width). */
+		width: auto;
+		margin-inline: calc(-1 * var(--page-gutter));
 		display: block;
 		overflow-y: visible;
 		overscroll-behavior: auto;
@@ -9983,6 +9993,28 @@ body input:focus-visible {
 	min-height: 0;
 	padding: 0;
 }
+/* The settled line keeps the Loading line's box (see .loading) so the groups below hold still. */
+.my-assets-resolution-settled {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-height: 17px;
+	color: var(--muted-subtle);
+	font-size: var(--type-body);
+}
+.my-assets-resolution-settled > .ui-icon {
+	width: 17px;
+	height: 17px;
+	flex: none;
+}
+/* After the groups, so it never pushes painted cards down when the checks finish. */
+.my-assets-heading-status.my-assets-partial-notice {
+	max-width: none;
+	margin-top: var(--space-6);
+	justify-content: space-between;
+	text-align: left;
+}
 .my-assets-resolution-status p {
 	grid-column: 1 / -1;
 	margin: 0;
@@ -10017,7 +10049,6 @@ body input:focus-visible {
 .operation-side-panel .trade-quote,
 .operation-side-panel .cancel-summary,
 .operation-side-panel .batch-quote,
-.operation-side-panel .matched-listings,
 .operation-side-panel .purchase-route {
 	padding: 0;
 	border: 0;
@@ -10070,8 +10101,6 @@ body input:focus-visible {
 	border-color: var(--line-dark);
 	background: var(--surface-hover);
 }
-.operation-side-panel .matched-listings-heading,
-.operation-side-panel .matched-listings ul,
 .operation-side-panel .purchase-route summary,
 .operation-side-panel .purchase-route li {
 	padding-inline: 0;
@@ -10143,6 +10172,31 @@ body input:focus-visible {
 }
 .upload-activity-panel > .wide {
 	margin-top: var(--space-4);
+}
+.upload-observer-note {
+	margin: 0 0 var(--space-4);
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.55;
+}
+.upload-observer-note strong {
+	color: var(--ink);
+	font-weight: 500;
+}
+.upload-activity-actions {
+	display: grid;
+	gap: var(--space-2);
+	margin-bottom: var(--space-4);
+}
+.upload-activity-actions .ui-button {
+	width: 100%;
+}
+.upload-activity-actions p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-small);
+	line-height: 1.45;
+	text-align: center;
 }
 .fungible-mint-dialog .operation-working {
 	display: grid;
@@ -10682,7 +10736,7 @@ body input:focus-visible {
 	cursor: pointer;
 	text-align: left;
 }
-.fungible-logo-dropzone:hover:not(:disabled) {
+.fungible-logo-dropzone:hover:not(:disabled):not([aria-disabled='true']) {
 	border-color: var(--ink);
 	background: var(--surface-hover);
 }
@@ -10961,6 +11015,17 @@ body input:focus-visible {
 .token-market-arrow {
 	grid-column: 7;
 	color: var(--muted);
+}
+.token-market-row--placeholder,
+.token-market-row--placeholder:hover {
+	background: var(--paper);
+}
+.token-market-placeholder-line {
+	width: min(16ch, 100%);
+	height: 0.9em;
+}
+.token-market-placeholder-line.short {
+	width: 6ch;
 }
 .token-market-list.compact .token-market-row {
 	min-height: 66px;
@@ -11410,6 +11475,31 @@ body input:focus-visible {
 .collection-tabs button.active {
 	color: var(--ink);
 	box-shadow: inset 0 -2px 0 var(--ink);
+}
+.collection-order-notice {
+	height: 0;
+}
+.ui-button.collection-order-notice-button {
+	position: fixed;
+	bottom: 24px;
+	left: 50%;
+	z-index: 40;
+	transform: translateX(-50%);
+	min-height: 36px;
+	padding: 0 14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	border: 1px solid var(--line-dark);
+	border-radius: 999px;
+	color: var(--paper);
+	background: var(--ink);
+	box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 22%, var(--transparent));
+	font-size: var(--type-small);
+}
+.ui-button.collection-order-notice-button:hover:not(:disabled) {
+	color: var(--paper);
+	background: var(--ink);
 }
 .collection-market-tools {
 	grid-template-columns: auto minmax(180px, 1fr) auto;

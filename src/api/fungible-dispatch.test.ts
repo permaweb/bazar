@@ -1,18 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from './asset-transactions';
 import {
 	createDispatchPlan,
+	discardDispatchPlan,
+	dispatchDiscardConfirmation,
+	dispatchPlanProgress,
+	type DispatchRow,
+	dispatchRowInFlight,
+	dispatchRowPending,
 	estimateDispatchCost,
 	isDispatchPlan,
 	loadDispatchPlan,
 	parseHolderList,
 	planTotals,
 	requiresCostConfirmation,
+	runDispatch,
 	saveDispatchPlan,
 } from './fungible-dispatch';
 
 const addressA = 'A'.repeat(43);
-const addressB = 'B'.repeat(43);
+const addressB = 'E'.repeat(43);
 const processId = 'P'.repeat(43);
 const sender = 'S'.repeat(43);
 
@@ -69,6 +77,16 @@ describe('parseHolderList', () => {
 		expect(parseHolderList('   ', 3).errors).toHaveLength(1);
 		expect(parseHolderList('{broken', 3).errors).toHaveLength(1);
 		expect(parseHolderList(`${addressA},1.5`, 0).errors).toHaveLength(1);
+	});
+
+	it('rejects a 43-character row whose last character makes it no wallet address', () => {
+		const mistyped = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB';
+		const parsed = parseHolderList(`${addressA},1\n${mistyped},2`, 3);
+		expect(parsed.rows).toEqual([]);
+		expect(parsed.errors).toEqual([
+			`Line 2: "${mistyped}" — This is not a valid Arweave wallet address. Check the last characters.`,
+		]);
+		expect(parseHolderList('not-an-address,5', 3).errors[0]).toContain('is not a 43-character Arweave address');
 	});
 
 	it('rejects duplicate addresses and names them', () => {
@@ -128,6 +146,200 @@ describe('dispatch plan persistence', () => {
 		expect(isDispatchPlan({ ...plan, rows: [{ ...plan.rows[0], status: 'weird' }] })).toBe(false);
 		expect(isDispatchPlan({ ...plan, sender: 'short' })).toBe(false);
 	});
+
+	it('keeps a pre-fix plan with a mistyped row loadable and refuses to sign that row', async () => {
+		const mistyped = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB';
+		const postedTransaction = 'T'.repeat(43);
+		const signedKey = `${SIGNED_TRANSACTION_PREFIX}${postedTransaction}`;
+		const stored = {
+			...plan,
+			baseline: { [addressA]: '0', [mistyped]: '0' },
+			rows: [
+				{ address: addressA, quantity: '10', status: 'posted' as const, transactionId: postedTransaction },
+				{ address: mistyped, quantity: '5', status: 'unsent' as const },
+			],
+		};
+		const storage = memoryStorage();
+		saveDispatchPlan(stored, storage);
+		storage.setItem(signedKey, '{"signed":true}');
+
+		// Progress for the posted row survives the stricter recipient check.
+		expect(loadDispatchPlan(processId, storage)).toEqual(stored);
+
+		const sign = vi.fn();
+		const fetcher = vi.fn();
+		const subject = new AssetTransactionClient({
+			wallet: { getActiveAddress: async () => sender, sign },
+			fetch: fetcher as unknown as typeof fetch,
+			storage,
+		});
+		await expect(
+			runDispatch(stored, {
+				client: subject,
+				storage,
+				readCurrentState: async () => ({ state: { holderBalancesAvailable: true } }),
+			})
+		).rejects.toThrow('invalid-asset-transfer');
+		expect(sign).not.toHaveBeenCalled();
+		expect(fetcher).not.toHaveBeenCalled();
+		expect(loadDispatchPlan(processId, storage)).toEqual(stored);
+		expect(storage.getItem(signedKey)).toBe('{"signed":true}');
+
+		// Discarding still finds the plan and clears its signed transactions.
+		discardDispatchPlan(processId, storage);
+		expect(loadDispatchPlan(processId, storage)).toBeNull();
+		expect(storage.getItem(signedKey)).toBeNull();
+	});
+
+	it('accepts a rejected row only while it keeps the rejected transaction id', () => {
+		const txA = 'T'.repeat(43);
+		const rejected = { ...plan.rows[0], status: 'rejected' as const, transactionId: txA };
+		expect(isDispatchPlan({ ...plan, rows: [rejected] })).toBe(true);
+		expect(isDispatchPlan({ ...plan, rows: [{ ...plan.rows[0], status: 'rejected' }] })).toBe(false);
+		const storage = memoryStorage();
+		saveDispatchPlan({ ...plan, rows: [rejected] }, storage);
+		expect(loadDispatchPlan(processId, storage)?.rows[0]).toEqual(rejected);
+	});
+});
+
+describe('dispatch row lifecycle', () => {
+	const txA = 'T'.repeat(43);
+
+	it('treats settled and rejected rows as terminal for a run', () => {
+		expect(dispatchRowPending({ status: 'unsent' })).toBe(true);
+		expect(dispatchRowPending({ status: 'posted' })).toBe(true);
+		expect(dispatchRowPending({ status: 'settled' })).toBe(false);
+		expect(dispatchRowPending({ status: 'rejected' })).toBe(false);
+	});
+
+	it('counts rejected rows apart from settled ones and never calls a plan with rejected rows complete', () => {
+		const rows: DispatchRow[] = [
+			{ address: addressA, quantity: '1', status: 'settled', transactionId: txA },
+			{ address: addressB, quantity: '1', status: 'rejected', transactionId: txA },
+		];
+		expect(dispatchPlanProgress({ rows })).toEqual({
+			settled: 1,
+			posted: 0,
+			rejected: 1,
+			pending: 0,
+			complete: false,
+		});
+		expect(dispatchPlanProgress({ rows: [rows[0]] }).complete).toBe(true);
+	});
+
+	it('accepts an optional non-negative integer startingSlot and process rejections only on rejected rows', () => {
+		const plan = {
+			processId,
+			sender,
+			createdAt: 1,
+			baseline: { [addressA]: '0' },
+			rows: [{ address: addressA, quantity: '1', status: 'unsent' as const }],
+		};
+		expect(isDispatchPlan(plan)).toBe(true);
+		expect(isDispatchPlan({ ...plan, startingSlot: 0 })).toBe(true);
+		expect(isDispatchPlan({ ...plan, startingSlot: 41 })).toBe(true);
+		for (const startingSlot of [-1, 1.5, '41', null]) expect(isDispatchPlan({ ...plan, startingSlot })).toBe(false);
+		const notApplied = {
+			...plan.rows[0],
+			status: 'rejected' as const,
+			transactionId: txA,
+			rejectedBy: 'process' as const,
+		};
+		expect(isDispatchPlan({ ...plan, rows: [notApplied] })).toBe(true);
+		expect(isDispatchPlan({ ...plan, rows: [{ ...notApplied, status: 'posted' }] })).toBe(false);
+		expect(isDispatchPlan({ ...plan, rows: [{ ...notApplied, rejectedBy: 'gateway' }] })).toBe(false);
+	});
+
+	it('does not count a process-proven rejection as in flight: it can never apply', () => {
+		expect(dispatchRowInFlight({ status: 'rejected', transactionId: txA, rejectedBy: 'process' })).toBe(false);
+	});
+
+	it('keeps a rejected row in the discard confirmation: its signature may have been posted', () => {
+		expect(dispatchRowInFlight({ status: 'rejected', transactionId: txA })).toBe(true);
+	});
+});
+
+describe('dispatch discard confirmation', () => {
+	const txA = 'T'.repeat(43);
+	const txB = 'U'.repeat(43);
+	const addressC = 'C'.repeat(43);
+	const rowsPlan = (rows: DispatchRow[]) => ({
+		processId,
+		sender,
+		createdAt: 1,
+		baseline: Object.fromEntries(rows.map((row) => [row.address, '0'])),
+		rows,
+	});
+
+	it('marks a row in flight from signing until settlement', () => {
+		expect(dispatchRowInFlight({ status: 'unsent' })).toBe(false);
+		expect(dispatchRowInFlight({ status: 'unsent', transactionId: txA })).toBe(true);
+		expect(dispatchRowInFlight({ status: 'posted', transactionId: txA })).toBe(true);
+		expect(dispatchRowInFlight({ status: 'posted' })).toBe(true);
+		expect(dispatchRowInFlight({ status: 'settled', transactionId: txA })).toBe(false);
+		expect(dispatchRowInFlight({ status: 'settled' })).toBe(false);
+	});
+
+	it('needs no confirmation without a plan, for an untouched plan, or for a complete plan', () => {
+		expect(dispatchDiscardConfirmation(null)).toBeNull();
+		expect(
+			dispatchDiscardConfirmation(
+				rowsPlan([
+					{ address: addressA, quantity: '1', status: 'unsent' },
+					{ address: addressB, quantity: '1', status: 'unsent' },
+				])
+			)
+		).toBeNull();
+		expect(
+			dispatchDiscardConfirmation(
+				rowsPlan([
+					{ address: addressA, quantity: '1', status: 'settled', transactionId: txA },
+					{ address: addressB, quantity: '1', status: 'settled', transactionId: txB },
+				])
+			)
+		).toBeNull();
+	});
+
+	it('counts posted rows and warns that re-dispatching the list sends again', () => {
+		const message = dispatchDiscardConfirmation(
+			rowsPlan([
+				{ address: addressA, quantity: '1', status: 'posted', transactionId: txA },
+				{ address: addressB, quantity: '1', status: 'posted', transactionId: txB },
+				{ address: addressC, quantity: '1', status: 'unsent' },
+			])
+		);
+		expect(message).toMatch(/^2 transfers are posted or signed but not settled yet/);
+		expect(message).toContain('deletes the saved signed transactions needed for manual review');
+		expect(message).toContain('send to those recipients a second time');
+		expect(message).toContain('Resume');
+	});
+
+	it('counts a signed unsent row, which may have been posted before a crash', () => {
+		const message = dispatchDiscardConfirmation(
+			rowsPlan([
+				{ address: addressA, quantity: '1', status: 'settled', transactionId: txA },
+				{ address: addressB, quantity: '1', status: 'unsent', transactionId: txB },
+				{ address: addressC, quantity: '1', status: 'unsent' },
+			])
+		);
+		expect(message).toMatch(/^1 transfer is posted or signed but not settled yet/);
+	});
+
+	it('stays consistent with the rows discardDispatchPlan would delete signed records for', () => {
+		const storage = memoryStorage();
+		const plan = rowsPlan([
+			{ address: addressA, quantity: '1', status: 'unsent', transactionId: txA },
+			{ address: addressB, quantity: '1', status: 'posted', transactionId: txB },
+		]);
+		saveDispatchPlan(plan, storage);
+		storage.setItem(`${SIGNED_TRANSACTION_PREFIX}${txA}`, '{}');
+		storage.setItem(`${SIGNED_TRANSACTION_PREFIX}${txB}`, '{}');
+		expect(dispatchDiscardConfirmation(loadDispatchPlan(processId, storage))).toMatch(/^2 transfers are/);
+		discardDispatchPlan(processId, storage);
+		expect(loadDispatchPlan(processId, storage)).toBeNull();
+		expect(storage.getItem(`${SIGNED_TRANSACTION_PREFIX}${txA}`)).toBeNull();
+		expect(storage.getItem(`${SIGNED_TRANSACTION_PREFIX}${txB}`)).toBeNull();
+	});
 });
 
 describe('dispatch plan preflight', () => {
@@ -137,7 +349,9 @@ describe('dispatch plan preflight', () => {
 		const fetcher = async (input: RequestInfo | URL) => {
 			const url = String(input);
 			requests.push(url);
-			if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				return new Response(JSON.stringify({ device: 'trie@1.0' }));
+			}
 			return new Response(null, {
 				headers: {
 					balances: `ao:${balancesLink}`,
@@ -153,6 +367,6 @@ describe('dispatch plan preflight', () => {
 			})
 		).rejects.toThrow('asset-balance-state-unavailable');
 		expect(requests).toHaveLength(2);
-		expect(requests[1]).toContain('/balances/device');
+		expect(requests[1]).toBe(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 	});
 });

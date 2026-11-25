@@ -1,5 +1,17 @@
 import React from 'react';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import {
+	HashRouter,
+	Link,
+	Navigate,
+	type NavigationType,
+	Route,
+	Routes,
+	useLocation,
+	useNavigate,
+	useNavigationType,
+	useParams,
+} from 'react-router-dom';
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -59,12 +71,10 @@ import {
 	discoverWalletAssetCandidates,
 	isLiveListing,
 	loadBazarAtomicAssetById,
-	partitionAssetCandidateSupport,
 	type PendingAssetOffer,
 	resolveAssetCandidates,
 	type ResolvedAsset,
 	searchBazarAtomicAssetsByName,
-	verifyAssetCandidateSupport,
 	walletAssetGroups,
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
@@ -86,7 +96,7 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
-import type { CollectionMintEstimate, CollectionMintPhase, MintUploadTransaction } from 'api/asset-mint';
+import type { MintUploadTransaction } from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
@@ -95,18 +105,24 @@ import {
 	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
+	readAssetDetailState,
 	readAssetStateCached,
-	readAssetStateWithDeadline,
+	readCurrentAssetState,
 } from 'api/asset-state-store';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
 import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
+	collectionCoverImage,
+	compiledFungibleTokenCollection,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
+	FUNGIBLE_TOKEN_ID,
+	fungibleAssetFromState,
 	hiddenCollectionAssetIndex,
 	hiddenCollectionAssetIndexComplete,
+	type IndexedAssetName,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadBazarCollectionById,
@@ -114,15 +130,24 @@ import {
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	preferResolvedAssetName,
 	replaceHiddenCollectionAssetIndex,
+	withIndexedAssetNames,
 	withVisibleCollectionAssets,
 } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
+import { GRAPHQL_RETRY_DELAYS_MS, GRAPHQL_SLOW_RETRY_TIMEOUT_MS } from 'api/graphql';
 import {
 	advanceMintActivity,
 	loadMintActivities,
 	MINT_ACTIVITY_CHANGE_EVENT,
+	MINT_ACTIVITY_STALLED_STATUS,
 	type MintActivity,
 	mintActivityNeedsAttention,
+	mintActivityObservationDelay,
+	mintActivityTrackingState,
+	mintActivityWatchPlan,
+	nextMintActivityStalledAt,
 	removeMintActivities,
 	removeMintActivity,
 	upsertMintActivity,
@@ -134,9 +159,14 @@ import {
 	loadMintedAssets,
 	loadMintedCollections,
 	type MintedAsset,
+	type MintedByIndex,
 	type MintedCollection,
+	type MintProgress,
+	mintProgressKey,
+	pendingMintProgress,
+	reusableMintProgress,
 } from 'api/minted-assets';
-import { formatTokenAmount } from 'api/order-matching';
+import { formatTokenAmount, MAXIMUM_ASSET_OFFER_PRICE } from 'api/order-matching';
 import { ProfileClient } from 'api/profile';
 
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
@@ -145,11 +175,12 @@ import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
-import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
+import { type AssetDetailTab, assetDetailTabIndex, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
+import { CollectionSelectionNotice, mergeCollectionFiles } from 'components/CollectionSelectionNotice';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel, type ErrorPanelAction } from 'components/ErrorPanel';
 import { InteractiveHtmlArtwork } from 'components/InteractiveHtmlArtwork';
@@ -166,6 +197,7 @@ import {
 } from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
+import { ProfileSaveError, type ProfileSaveStage, profileUpdateError } from 'components/ProfileIdentity';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { TokenAvatar } from 'components/TokenAvatar';
@@ -176,6 +208,7 @@ import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
+	transactionActivityHeading,
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/TransactionDialogControl';
@@ -190,6 +223,7 @@ import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
 	AO_TRANSPORT_QUERY_PARAMETER,
+	aoPeerSelectionQuery,
 	aoRoutingScopeFromLocation,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -202,20 +236,38 @@ import {
 	prefersPermawebOsAo,
 	usesPermawebOsAo,
 } from 'helpers/config';
-import { sameAccount } from 'helpers/host-account';
+import { isWalletAddress, NONCANONICAL_WALLET_ADDRESS_MESSAGE, sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
-import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
+import { applyStableOrder, stableOrderDiffers } from 'helpers/stable-order';
+import {
+	formatArAmount,
+	formatTickerLabel,
+	formatTokenDescription,
+	formatTokenQuantity,
+	parseArAmount,
+} from 'helpers/token-display';
+import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
+import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
+import { Footer } from 'navigation/Footer';
 import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
 
-import { createGlobalActivityPager, type GlobalActivityFilter } from './global-activity';
+import {
+	collectionAppendCanSubmit,
+	collectionAppendEstimateReducer,
+	type CollectionAppendEstimateState,
+	idleCollectionAppendEstimate,
+} from './collection-append-estimate';
+import { createGlobalActivityPager, type GlobalActivityFilter, mergeIndexedActivityEvent } from './global-activity';
+import { createHomeListingCrawl, type HomeListingCrawl, type HomeListingDemand } from './home-listing-crawl';
 import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
+	ASSET_OFFER_PRICE_CAP_ERROR,
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
 	type MarketplaceFailureKind,
@@ -224,11 +276,17 @@ import {
 	marketplaceOperationFailure,
 	marketplaceRequestFailureMessage,
 	type MarketplaceRequestSource,
+	NOT_SENT_RECOVERY_NOTE,
+	notSentRecoveryCopy,
 	purchaseQuoteFailure,
+	type SignedOperationKind,
 } from './marketplace-error';
+import { collectionMintPhaseLabel } from './mint-phase-labels';
 import {
 	atomicOperationActivityId,
 	atomicPurchaseRecoveryCanBeDiscarded,
+	type BackgroundOperationOutcome,
+	backgroundOperationOutcome,
 	deriveFungibleOperationActivities,
 	deriveOperationActivities,
 	FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
@@ -237,10 +295,17 @@ import {
 	type FungibleOperationActivityChange,
 	type FungibleOperationActivitySummary,
 	fungiblePurchaseRecoveryCanBeDiscarded,
+	initialOperationPhase,
+	type Operation,
+	type OperationActivity as OperationActivityRecord,
+	type OperationActivityPhase,
+	operationAfterProvenRejection,
+	operationConfirmationTarget,
 	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
+	settledWhileHidden,
 } from './operation-activity';
 import {
 	acquireWalletOperationClaim,
@@ -262,6 +327,7 @@ import {
 	removeWalletRecordIf,
 	removeWalletRecoveryAndSignatures,
 	repairRejectedPurchase,
+	savedPurchaseContinuation,
 	shouldAutomaticallyResumePurchase,
 	storeWalletRecordIf,
 	storeWalletRecordOrThrow,
@@ -274,6 +340,7 @@ import {
 	PURCHASE_PAYMENT_TARGET,
 	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseFailureCode,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
 	purchaseSkipKind,
@@ -284,10 +351,13 @@ import {
 	purchaseObservationPendingState,
 	purchaseObservationResumeState,
 	purchaseObservationRetryDelay,
+	type PurchaseObservationRetryKind,
 	purchaseObservationRetryKind,
 	purchaseObservationRetryMessage,
+	shouldClearRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
+import { trackRouteDocumentTitle } from './route-title';
 import {
 	loadArweaveTransactionSync,
 	loadAssetObserverRuntime,
@@ -349,6 +419,8 @@ type MarketContextValue = {
 	collections: Collection[];
 	searchAssets: SearchAsset[];
 	rememberSearchAssets(assets: SearchAsset[]): void;
+	/** Merge indexed display names into loaded collections; only short-ID placeholders change. */
+	rememberIndexedAssets(indexed: ReadonlyMap<string, IndexedAssetName>): void;
 	verifiedCollectionIds: ReadonlySet<string>;
 	visibilityReady: boolean;
 	loading: boolean;
@@ -401,6 +473,16 @@ export function withoutDuplicatedCreatedAssets(collections: Collection[]): Colle
 	});
 }
 
+/**
+ * A collection published from an older snapshot (the collection-wide index walk) must not turn
+ * names that arrived meanwhile back into short IDs; same-manifest image snapshots keep them.
+ */
+export function retainedCollectionAssetNames(current: Collection[], collection: Collection): Collection {
+	const previous = current.find((item) => item.id === collection.id);
+	if (!previous || previous.kind !== 'images' || collection.kind !== 'images') return collection;
+	return mergeCollectionSnapshots([previous], [collection])[0] ?? collection;
+}
+
 export function verifiedCollectionIdsFrom(collections: Collection[]) {
 	return collections
 		.filter((collection) => collection.indexSource !== 'compiled-fallback')
@@ -411,6 +493,7 @@ export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
 	searchAssets: [],
 	rememberSearchAssets: () => undefined,
+	rememberIndexedAssets: () => undefined,
 	verifiedCollectionIds: new Set(),
 	visibilityReady: false,
 	loading: true,
@@ -428,12 +511,19 @@ export function App() {
 	const [marketRetry, setMarketRetry] = React.useState(0);
 	const [, setNetworkPolicyRevision] = React.useState(0);
 	const collectionTransport = usesPermawebOsAo() ? window.aoFetch : undefined;
-	React.useEffect(() => warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1)), []);
+	React.useEffect(
+		() =>
+			warmAoFetch(() => setNetworkPolicyRevision((revision) => revision + 1), {
+				probeProcessId: FUNGIBLE_TOKEN_ID,
+			}),
+		[]
+	);
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
 		searchAssets: [],
 		rememberSearchAssets: () => undefined,
+		rememberIndexedAssets: () => undefined,
 		verifiedCollectionIds: new Set(),
 		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
@@ -587,11 +677,18 @@ export function App() {
 		setMarket((current) => ({
 			...current,
 			collections: marketCatalogueCollections([
-				collection,
+				retainedCollectionAssetNames(current.collections, collection),
 				...current.collections.filter((item) => item.id !== collection.id),
 			]),
 			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
+	}, []);
+	const rememberIndexedAssets = React.useCallback((indexed: ReadonlyMap<string, IndexedAssetName>) => {
+		if (!indexed.size) return;
+		setMarket((current) => {
+			const collections = withIndexedAssetNames(current.collections, indexed);
+			return collections === current.collections ? current : { ...current, collections };
+		});
 	}, []);
 	const rememberSearchAssets = React.useCallback((assets: SearchAsset[]) => {
 		if (!assets.length) return;
@@ -606,10 +703,20 @@ export function App() {
 			addCreatedAsset,
 			addCollection,
 			rememberSearchAssets,
+			rememberIndexedAssets,
 			setPageRefreshing,
 			retry,
 		}),
-		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, rememberSearchAssets, retry]
+		[
+			addCollection,
+			addCreatedAsset,
+			loadMore,
+			market,
+			pageRefreshing,
+			rememberIndexedAssets,
+			rememberSearchAssets,
+			retry,
+		]
 	);
 
 	return (
@@ -664,28 +771,17 @@ export function App() {
 							<Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
 							<Route path="/asset/:collectionId/:assetId/pending" element={<PendingAssetView />} />
 							<Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
-							<Route path="*" element={<Navigate to="/" replace />} />
+							<Route path="*" element={<NotFoundRoute />} />
 						</Routes>
 					</main>
+					<Footer />
 				</OperationActivityProvider>
 			</HashRouter>
 		</MarketContext.Provider>
 	);
 }
 
-type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
-
-type OperationActivity = {
-	id: string;
-	asset: AssetSummary;
-	collectionId: string;
-	owner: string;
-	operation: Operation;
-	phase: OperationActivityPhase;
-	status: string;
-	confirmations: number;
-	confirmationTarget: number;
-	createdAt: number;
+type OperationActivity = OperationActivityRecord & {
 	origin: 'runtime' | 'restored';
 	restoreFallback(): HTMLElement | null;
 };
@@ -735,7 +831,42 @@ type OperationActivityContextValue = {
 
 const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
 
-async function observeMintActivity(
+/** A result shown after its own panel is gone: a live mint, or work that settled while hidden. */
+type BackgroundNotice = {
+	id: string;
+	tone: 'positive' | 'attention';
+	title: string;
+	detail: string;
+	action?:
+		| { kind: 'navigate'; label: string; path: string }
+		| { kind: 'show-operation' | 'show-upload'; label: string; id: string };
+};
+
+function backgroundOperationNotice(outcome: BackgroundOperationOutcome): BackgroundNotice {
+	if (outcome.phase === 'error') {
+		return {
+			id: outcome.id,
+			tone: 'attention',
+			title: `${outcome.asset.name} needs attention`,
+			detail: `${operationLabel(outcome.operation.kind)}: ${outcome.status}`,
+			action: { kind: 'show-operation', label: 'Review', id: outcome.id },
+		};
+	}
+	const value =
+		outcome.operation.kind === 'sell' || outcome.operation.kind === 'transfer'
+			? atomicOperationValue(outcome.operation.kind, outcome.operation.value ?? '')
+			: '';
+	const result = atomicOperationResult(outcome.operation.kind, outcome.asset.name, value, outcome.owner);
+	return {
+		id: outcome.id,
+		tone: 'positive',
+		title: `${result.title}: ${outcome.asset.name}`,
+		detail: result.detail,
+		action: { kind: 'navigate', label: 'View asset', path: `/asset/${outcome.collectionId}/${outcome.asset.id}` },
+	};
+}
+
+export async function observeMintActivity(
 	activity: MintActivity,
 	onPhase: (phase: MintActivity['phase']) => void,
 	signal: AbortSignal
@@ -757,7 +888,10 @@ async function observeMintActivity(
 			if (signal.aborted) throw cause;
 		}
 
-		let retryDelay = 4_000;
+		// Re-read each iteration: a watch that outlives the attention threshold slows down
+		// for the whole iteration instead of stopping.
+		const observationDelay = mintActivityObservationDelay(activity, Date.now());
+		let retryDelay = observationDelay;
 		if (!mined) {
 			try {
 				const response = await fetch(
@@ -771,7 +905,7 @@ async function observeMintActivity(
 						onPhase('mined');
 					}
 				} else if (response.status === 429) {
-					retryDelay = retryAfterDelay(response.headers.get('retry-after'), 4_000);
+					retryDelay = retryAfterDelay(response.headers.get('retry-after'), observationDelay);
 				}
 			} catch (cause) {
 				if (signal.aborted) throw cause;
@@ -806,6 +940,40 @@ function waitForBackgroundObservation(milliseconds: number, signal: AbortSignal)
 	});
 }
 
+/** Re-render once when the next tracked upload turns 'stalled', so every view flips on time. */
+function useMintActivityStalledRerender(activities: MintActivity[]) {
+	const [, rerender] = React.useReducer((count: number) => count + 1, 0);
+	const next = nextMintActivityStalledAt(activities, Date.now());
+	React.useEffect(() => {
+		if (next === null) return;
+		const timer = window.setTimeout(rerender, Math.max(0, next - Date.now()));
+		return () => window.clearTimeout(timer);
+	}, [next]);
+}
+
+/** The Activity panel view of a mint that has no runtime upload activity (for example after reload). */
+export function mintActivityUploadActivity(activity: MintActivity, now = Date.now()): UploadActivity {
+	const stalled = mintActivityTrackingState(activity, now) === 'stalled';
+	return {
+		id: activity.id,
+		owner: activity.owner,
+		kind: 'asset',
+		name: activity.asset.name,
+		// A stalled watch is still running, but the panel stops presenting it as live progress so it
+		// matches the Activity menu and can offer explicit actions.
+		phase: stalled ? 'error' : 'tracking',
+		status: stalled ? MINT_ACTIVITY_STALLED_STATUS : activity.status,
+		createdAt: activity.createdAt,
+		transactionIds: activity.transactionIds,
+		transactions: activity.transactionIds.map((id, index) => ({
+			id,
+			label: mintActivityReceiptLabel(activity, index),
+		})),
+		assetId: activity.asset.id,
+		collectionId: activity.collectionId,
+	};
+}
+
 function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const navigate = useNavigate();
 	const wallet = useWallet();
@@ -814,10 +982,23 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
 	const [mintActivities, setMintActivities] = React.useState<MintActivity[]>([]);
 	const [uploadActivities, setUploadActivities] = React.useState<UploadActivity[]>([]);
-	const [mintNotice, setMintNotice] = React.useState<MintActivity | null>(null);
+	const [notices, setNotices] = React.useState<BackgroundNotice[]>([]);
 	const [activeId, setActiveId] = React.useState<string | null>(null);
 	const [activeUploadId, setActiveUploadId] = React.useState<string | null>(null);
+	const activeIdRef = React.useRef(activeId);
+	activeIdRef.current = activeId;
+	const activeUploadIdRef = React.useRef(activeUploadId);
+	activeUploadIdRef.current = activeUploadId;
+	const uploadActivitiesRef = React.useRef(uploadActivities);
+	uploadActivitiesRef.current = uploadActivities;
+	const pushNotice = React.useCallback((notice: BackgroundNotice) => {
+		setNotices((current) => [...current.filter((candidate) => candidate.id !== notice.id), notice]);
+	}, []);
+	const dismissNotice = React.useCallback((id: string) => {
+		setNotices((current) => current.filter((candidate) => candidate.id !== id));
+	}, []);
 	const [activeMintId, setActiveMintId] = React.useState<string | null>(null);
+	const [mintWatchRevision, setMintWatchRevision] = React.useState(0);
 	const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
 	const [recoveryValidationRetry, setRecoveryValidationRetry] = React.useState(0);
 	const fungibleRuntimeActivitiesRef = React.useRef<FungibleOperationActivitySummary[]>([]);
@@ -903,13 +1084,12 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		return () => window.removeEventListener('bazar:mint-live', completeUpload);
 	}, []);
 	React.useEffect(() => {
-		for (const activity of mintActivities) {
-			if (
-				mintWatchersRef.current.has(activity.id) ||
-				activity.phase === 'complete' ||
-				mintActivityNeedsAttention(activity)
-			)
-				continue;
+		const plan = mintActivityWatchPlan(mintActivities, mintWatchersRef.current.keys());
+		for (const id of plan.stop) {
+			mintWatchersRef.current.get(id)?.abort();
+			mintWatchersRef.current.delete(id);
+		}
+		for (const activity of plan.start) {
 			const controller = new AbortController();
 			mintWatchersRef.current.set(activity.id, controller);
 			void observeMintActivity(
@@ -920,7 +1100,17 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					const updated = advanceMintActivity(current, phase);
 					upsertMintActivity(localStorage, updated);
 					if (phase !== 'complete') return;
-					setMintNotice(updated);
+					pushNotice({
+						id: `mint:${updated.id}`,
+						tone: 'positive',
+						title: `${updated.asset.name} is live on Bazar`,
+						detail: 'The original accepted upload is now applied to live process state.',
+						action: {
+							kind: 'navigate',
+							label: 'View asset',
+							path: `/asset/${updated.collectionId}/${updated.asset.id}`,
+						},
+					});
 					window.dispatchEvent(new CustomEvent('bazar:mint-live', { detail: updated }));
 					if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
 						try {
@@ -936,18 +1126,23 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				controller.signal
 			)
 				.catch(() => undefined)
-				.finally(() => mintWatchersRef.current.delete(activity.id));
+				.finally(() => {
+					// A restarted watch ("Check again") owns the slot now; leave it in place.
+					if (mintWatchersRef.current.get(activity.id) === controller)
+						mintWatchersRef.current.delete(activity.id);
+				});
 		}
-		const active = new Set(
-			mintActivities.filter((activity) => !mintActivityNeedsAttention(activity)).map((activity) => activity.id)
-		);
-		for (const [id, controller] of mintWatchersRef.current) {
-			if (!active.has(id)) {
-				controller.abort();
-				mintWatchersRef.current.delete(id);
-			}
-		}
-	}, [mintActivities]);
+	}, [mintActivities, mintWatchRevision, pushNotice]);
+	const checkMintActivityAgain = React.useCallback((id: string) => {
+		mintWatchersRef.current.get(id)?.abort();
+		mintWatchersRef.current.delete(id);
+		setMintWatchRevision((revision) => revision + 1);
+	}, []);
+	const stopTrackingMintActivity = React.useCallback((id: string) => {
+		setActiveMintId((current) => (current === id ? null : current));
+		removeMintActivity(localStorage, id);
+	}, []);
+	useMintActivityStalledRerender(mintActivities);
 	React.useEffect(
 		() => () => {
 			for (const controller of mintWatchersRef.current.values()) controller.abort();
@@ -1104,14 +1299,15 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				}
 				return;
 			}
-			const phase: OperationActivityPhase =
-				input.operation.kind === 'buy' && input.operation.resume
-					? purchaseRecoveryApprovalCount(input.operation.resume)
-						? 'approval'
-						: 'working'
-					: input.operation.kind !== 'buy' && input.operation.resumeId
-					? 'working'
-					: 'form';
+			const phase = initialOperationPhase({
+				kind: input.operation.kind,
+				hasResume: input.operation.kind === 'buy' && Boolean(input.operation.resume),
+				hasResumeId: input.operation.kind !== 'buy' && Boolean(input.operation.resumeId),
+				recoveryApprovalCount:
+					input.operation.kind === 'buy' && input.operation.resume
+						? purchaseRecoveryApprovalCount(input.operation.resume)
+						: 0,
+			});
 			setActivities((current) => {
 				if (
 					current.some(
@@ -1135,7 +1331,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 								? 'Starting transaction…'
 								: 'Waiting for details',
 						confirmations: 0,
-						confirmationTarget: 5,
+						confirmationTarget: operationConfirmationTarget(input.operation),
 						createdAt: Date.now(),
 						origin: 'runtime',
 					},
@@ -1156,16 +1352,24 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
 			assetId: string
 		) => {
+			// A hidden dialog cannot show or announce its result, and a hidden 'done' is pruned on the
+			// next render, so the settled-while-hidden transition raises the background notice here.
+			const outcome = backgroundOperationOutcome(
+				activitiesRef.current.find((activity) => activity.id === id),
+				patch,
+				activeIdRef.current
+			);
 			setActivities((current) =>
 				current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity))
 			);
+			if (outcome) pushNotice(backgroundOperationNotice(outcome));
 			if (patch.phase === 'done') {
 				queueMicrotask(() =>
 					window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId }))
 				);
 			}
 		},
-		[]
+		[pushNotice]
 	);
 	const updateOperation = React.useCallback((id: string, operation: Operation) => {
 		setActivities((current) =>
@@ -1208,6 +1412,25 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			result: Pick<UploadActivity, 'transactionIds'> &
 				Partial<Pick<UploadActivity, 'assetId' | 'assetIds' | 'collectionId' | 'extended'>>
 		) => {
+			// Asset uploads move to 'tracking' and are announced by the mint notice once live; only a
+			// collection upload settles here, so only it can owe a settled-while-hidden notice.
+			const previous = uploadActivitiesRef.current.find((activity) => activity.id === id);
+			if (
+				previous?.kind === 'collection' &&
+				settledWhileHidden(previous, result.assetId ? 'tracking' : 'done', activeUploadIdRef.current)
+			) {
+				pushNotice({
+					id: `upload:${id}`,
+					tone: 'positive',
+					title: `${previous.name}: ${result.extended ? 'Collection extended' : 'Collection submitted'}`,
+					detail: result.extended
+						? 'Collection manifest update submitted to Arweave.'
+						: 'Collection process submitted to Arweave.',
+					action: result.collectionId
+						? { kind: 'navigate', label: 'View collection', path: `/collection/${result.collectionId}` }
+						: undefined,
+				});
+			}
 			setUploadActivities((current) =>
 				current.map((activity) =>
 					activity.id === id
@@ -1225,13 +1448,26 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				)
 			);
 		},
-		[]
+		[pushNotice]
 	);
-	const failUpload = React.useCallback((id: string, status: string) => {
-		setUploadActivities((current) =>
-			current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
-		);
-	}, []);
+	const failUpload = React.useCallback(
+		(id: string, status: string) => {
+			const previous = uploadActivitiesRef.current.find((activity) => activity.id === id);
+			if (previous && settledWhileHidden(previous, 'error', activeUploadIdRef.current)) {
+				pushNotice({
+					id: `upload:${id}`,
+					tone: 'attention',
+					title: `${previous.name} needs attention`,
+					detail: status,
+					action: { kind: 'show-upload', label: 'Review', id },
+				});
+			}
+			setUploadActivities((current) =>
+				current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
+			);
+		},
+		[pushNotice]
+	);
 	const removeUpload = React.useCallback((id: string) => {
 		setUploadActivities((current) => current.filter((activity) => activity.id !== id));
 		setActiveUploadId((current) => (current === id ? null : current));
@@ -1249,6 +1485,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activeId,
 			start,
 			show: (id) => {
+				dismissNotice(id);
 				setActiveUploadId(null);
 				setActiveMintId(null);
 				setActiveId(id);
@@ -1269,6 +1506,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				setActiveMintId(id);
 			},
 			showUpload: (id) => {
+				dismissNotice(`upload:${id}`);
 				setActiveId(null);
 				setActiveMintId(null);
 				setActiveUploadId(id);
@@ -1289,6 +1527,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activeId,
 			activities,
 			beginUpload,
+			dismissNotice,
 			failUpload,
 			finishUpload,
 			fungibleActivities,
@@ -1301,30 +1540,46 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			uploadActivities,
 		]
 	);
+	const notice = notices[notices.length - 1];
 	return (
 		<OperationActivityContext.Provider value={value}>
 			{children}
-			{mintNotice ? (
-				<div className="mint-live-notice" role="status" aria-live="polite">
-					<div>
-						<strong>{mintNotice.asset.name} is live on Bazar</strong>
-						<span>The original accepted upload is now applied to live process state.</span>
-					</div>
-					<Button
-						type="button"
-						size="custom"
-						onClick={() => {
-							navigate(`/asset/${mintNotice.collectionId}/${mintNotice.asset.id}`);
-							setMintNotice(null);
-						}}
+			{/* The live region stays mounted so inserting a notice is announced; one notice shows at a time. */}
+			<div aria-live="polite" role="status">
+				{notice ? (
+					<div
+						className={`mint-live-notice${
+							notice.tone === 'attention' ? ' mint-live-notice-attention' : ''
+						}`}
+						key={notice.id}
 					>
-						View asset
-					</Button>
-					<Button type="button" size="custom" variant="ghost" onClick={() => setMintNotice(null)}>
-						Dismiss
-					</Button>
-				</div>
-			) : null}
+						<div>
+							<strong>{notice.title}</strong>
+							<span>
+								<ArCurrencyText>{notice.detail}</ArCurrencyText>
+							</span>
+						</div>
+						{notice.action ? (
+							<Button
+								type="button"
+								size="custom"
+								onClick={() => {
+									const action = notice.action!;
+									dismissNotice(notice.id);
+									if (action.kind === 'navigate') navigate(action.path);
+									else if (action.kind === 'show-operation') value.show(action.id);
+									else value.showUpload(action.id);
+								}}
+							>
+								{notice.action.label}
+							</Button>
+						) : null}
+						<Button type="button" size="custom" variant="ghost" onClick={() => dismissNotice(notice.id)}>
+							Dismiss
+						</Button>
+					</div>
+				) : null}
+			</div>
 			{activities.map((activity) => (
 				<OperationDialog
 					key={activity.id}
@@ -1386,30 +1641,14 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				)
 				.map((activity) => (
 					<UploadActivityPanel
-						activity={{
-							id: activity.id,
-							owner: activity.owner,
-							kind: 'asset',
-							name: activity.asset.name,
-							phase: 'tracking',
-							status: activity.status,
-							createdAt: activity.createdAt,
-							transactionIds: activity.transactionIds,
-							transactions: activity.transactionIds.map((id, index) => ({
-								id,
-								label:
-									index === activity.transactionIds.length - 1
-										? 'Asset transaction'
-										: 'Artwork transaction',
-							})),
-							assetId: activity.asset.id,
-							collectionId: activity.collectionId,
-						}}
+						activity={mintActivityUploadActivity(activity)}
 						key={activity.id}
 						relatedMintActivities={[activity]}
 						visible={activeMintId === activity.id}
 						onHide={() => setActiveMintId(null)}
 						onClose={() => setActiveMintId(null)}
+						onCheckAgain={() => checkMintActivityAgain(activity.id)}
+						onStopTracking={() => stopTrackingMintActivity(activity.id)}
 					/>
 				))}
 		</OperationActivityContext.Provider>
@@ -1423,6 +1662,31 @@ export function useOperationActivity() {
 }
 
 export type UploadObserverState = Record<string, { views: ObserverView[]; consensus?: Consensus }>;
+
+/** Receipt label for a mint activity's transaction: the last id is the process, earlier ids are its media. */
+export function mintActivityReceiptLabel(
+	activity: Pick<MintActivity, 'asset' | 'collectionId' | 'transactionIds'>,
+	index: number
+) {
+	const processTransaction = index === activity.transactionIds.length - 1;
+	if (isFungiblePendingMint(activity.asset, activity.collectionId))
+		return processTransaction ? 'Token process transaction' : 'Token logo transaction';
+	return processTransaction ? 'Asset transaction' : 'Artwork transaction';
+}
+
+/**
+ * Activity menu copy for a mint activity, so token mints are not described as uploads. A stalled
+ * mint's attention text is the shared MINT_ACTIVITY_STALLED_STATUS, which names neither.
+ */
+export function mintActivityMenuCopy(activity: Pick<MintActivity, 'asset' | 'collectionId'>) {
+	return isFungiblePendingMint(activity.asset, activity.collectionId) ? { kind: 'Token mint' } : { kind: 'Upload' };
+}
+
+/** The panel eyebrow for an upload activity. */
+export function uploadActivityEyebrow(activity: Pick<UploadActivity, 'kind' | 'collectionId'>) {
+	if (activity.kind === 'collection') return 'Collection upload';
+	return activity.collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ? 'Token mint' : 'Asset upload';
+}
 
 export function uploadActivitySyncSteps(
 	activity: UploadActivity,
@@ -1453,22 +1717,101 @@ export function uploadActivitySyncSteps(
 	});
 }
 
-function UploadActivityPanel({
+/**
+ * Identity of an upload panel's observer watch. Providers rebuild the
+ * transaction list on every render, so the watch is keyed on the ids it
+ * observes rather than on the array identity.
+ */
+export function uploadActivityObserverKey(transactions: UploadActivity['transactions']) {
+	return transactions.map((transaction) => transaction.id).join('|');
+}
+
+/** idle -> loading -> watching | unavailable; the panel shows a note only when unavailable. */
+export type UploadObserverAvailability = 'idle' | 'loading' | 'watching' | 'unavailable';
+
+/**
+ * Starts one observer watch per transaction on the shared observer network and
+ * returns the cleanup. A runtime, peer-configuration or discovery failure
+ * releases the lease and reports `unavailable` instead of leaving the panel
+ * waiting on lanes that will never arrive.
+ */
+export function observeUploadActivityTransactions(
+	transactionIds: string[],
+	loadRuntime: () => Promise<Pick<typeof import('api/asset-observers'), 'acquireAssetObserverNetwork'>>,
+	handlers: {
+		onObservation(transactionId: string, observation: UploadObserverState[string]): void;
+		onAvailability(availability: UploadObserverAvailability): void;
+	}
+): () => void {
+	let cancelled = false;
+	let lease: AssetObserverNetworkLease | undefined;
+	const watchers: Array<{ stop(): void }> = [];
+	const unsubscribe: Array<() => void> = [];
+	const observe = async () => {
+		handlers.onAvailability('loading');
+		const runtime = await loadRuntime();
+		if (cancelled) return;
+		lease = runtime.acquireAssetObserverNetwork();
+		await lease.ready;
+		if (cancelled) return;
+		for (const transactionId of transactionIds) {
+			const watcher = lease.network.watch(transactionId, {
+				target: 1,
+				minObservers: 3,
+				propagation: 'all',
+				notFoundTimeout: 180_000,
+			});
+			const publish = (consensus = watcher.consensus()) => {
+				if (cancelled) return;
+				handlers.onObservation(transactionId, { views: watcher.views(), consensus });
+			};
+			unsubscribe.push(
+				watcher.on('view', () => publish()),
+				watcher.on('consensus', publish)
+			);
+			watchers.push(watcher);
+			watcher.start();
+		}
+		if (!cancelled) handlers.onAvailability('watching');
+	};
+	void observe().catch(() => {
+		// After cleanup the lease is already released and the panel is gone.
+		if (cancelled) return;
+		lease?.release();
+		lease = undefined;
+		handlers.onAvailability('unavailable');
+	});
+	return () => {
+		cancelled = true;
+		for (const off of unsubscribe) off();
+		for (const watcher of watchers) watcher.stop();
+		lease?.release();
+	};
+}
+
+export function UploadActivityPanel({
 	activity,
 	relatedMintActivities,
 	visible,
 	onHide,
 	onClose,
+	onCheckAgain,
+	onStopTracking,
 }: {
 	activity: UploadActivity;
 	relatedMintActivities: MintActivity[];
 	visible: boolean;
 	onHide(): void;
 	onClose(): void;
+	/** Background mint tracking only: restart the watch now. */
+	onCheckAgain?(): void;
+	/** Background mint tracking only: drop the local activity (nothing on Arweave changes). */
+	onStopTracking?(): void;
 }) {
 	const navigate = useNavigate();
 	const [hiding, setHiding] = React.useState(false);
 	const [observerState, setObserverState] = React.useState<UploadObserverState>({});
+	const [observerAvailability, setObserverAvailability] = React.useState<UploadObserverAvailability>('idle');
 	const hideTimerRef = React.useRef<number | null>(null);
 	const titleId = React.useId();
 	const working = activity.phase === 'working' || activity.phase === 'tracking';
@@ -1511,51 +1854,22 @@ function UploadActivityPanel({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
+	const observerKey = uploadActivityObserverKey(activity.transactions);
+	const transactionsRef = React.useRef(activity.transactions);
+	transactionsRef.current = activity.transactions;
 	React.useEffect(() => {
-		if (!visible || !working || !activity.transactions.length) return;
-		let cancelled = false;
-		let lease: AssetObserverNetworkLease | undefined;
-		const watchers: Array<{ stop(): void }> = [];
-		const unsubscribe: Array<() => void> = [];
-		const observe = async () => {
-			const runtime = await loadAssetObserverRuntime();
-			if (cancelled) return;
-			lease = runtime.acquireAssetObserverNetwork();
-			await lease.ready;
-			if (cancelled) return;
-			for (const transaction of activity.transactions) {
-				const watcher = lease.network.watch(transaction.id, {
-					target: 1,
-					minObservers: 3,
-					propagation: 'all',
-					notFoundTimeout: 180_000,
-				});
-				const publish = (consensus = watcher.consensus()) => {
-					if (cancelled) return;
-					setObserverState((current) => ({
-						...current,
-						[transaction.id]: { views: watcher.views(), consensus },
-					}));
-				};
-				unsubscribe.push(
-					watcher.on('view', () => publish()),
-					watcher.on('consensus', publish)
-				);
-				watchers.push(watcher);
-				watcher.start();
+		setObserverAvailability('idle');
+		if (!visible || !working || !observerKey) return;
+		return observeUploadActivityTransactions(
+			transactionsRef.current.map((transaction) => transaction.id),
+			loadAssetObserverRuntime,
+			{
+				onObservation: (transactionId, observation) =>
+					setObserverState((current) => ({ ...current, [transactionId]: observation })),
+				onAvailability: setObserverAvailability,
 			}
-		};
-		void observe().catch(() => {
-			lease?.release();
-			lease = undefined;
-		});
-		return () => {
-			cancelled = true;
-			for (const off of unsubscribe) off();
-			for (const watcher of watchers) watcher.stop();
-			lease?.release();
-		};
-	}, [activity.transactions, visible, working]);
+		);
+	}, [observerKey, visible, working]);
 	React.useEffect(
 		() => () => {
 			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
@@ -1582,6 +1896,14 @@ function UploadActivityPanel({
 				transactionId,
 		  }));
 	const dialogPhase = activity.phase === 'error' ? 'error' : activity.phase === 'done' ? 'done' : 'working';
+	const resultTitle =
+		activity.phase === 'done'
+			? activity.kind === 'collection'
+				? activity.extended
+					? 'Collection extended'
+					: 'Collection submitted'
+				: 'Live on Bazar'
+			: 'Upload needs attention';
 	return (
 		<div
 			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
@@ -1608,14 +1930,18 @@ function UploadActivityPanel({
 							)}
 						</span>
 						<div className="dialog-asset-heading-copy">
-							<p className="eyebrow">
-								{activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
-							</p>
+							<p className="eyebrow">{uploadActivityEyebrow(activity)}</p>
 							<h2 id={titleId}>{activity.name}</h2>
 						</div>
 					</div>
 					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
 				</div>
+				{/* A failure is read once as an alert in the panel body; only a finished upload is announced here. */}
+				<OperationOutcomeAnnouncement
+					active={activity.phase === 'done'}
+					title={resultTitle}
+					detail={displayedStatus}
+				/>
 				{working && !syncSteps.length ? (
 					<div className="operation-preparing">
 						<Loading label={displayedStatus} />
@@ -1627,6 +1953,12 @@ function UploadActivityPanel({
 						<p className="sr-only" aria-live="polite" role="status">
 							{displayedStatus}
 						</p>
+						{observerAvailability === 'unavailable' ? (
+							<p aria-atomic="true" className="upload-observer-note" role="status">
+								<strong>Live observer view unavailable.</strong> Transaction tracking continues, and
+								this panel updates when Bazar confirms the upload.
+							</p>
+						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
@@ -1653,19 +1985,30 @@ function UploadActivityPanel({
 							{activity.phase === 'done' ? <Check /> : <CircleX />}
 						</span>
 						<div>
-							<strong>
-								{activity.phase === 'done'
-									? activity.kind === 'collection'
-										? activity.extended
-											? 'Collection extended'
-											: 'Collection submitted'
-										: 'Live on Bazar'
-									: 'Upload needs attention'}
-							</strong>
-							<p aria-live="polite" role="status">
-								{displayedStatus}
-							</p>
+							<strong>{resultTitle}</strong>
+							{activity.phase === 'error' ? (
+								<p role="alert">{displayedStatus}</p>
+							) : (
+								<p>{displayedStatus}</p>
+							)}
 						</div>
+					</div>
+				) : null}
+				{activity.phase === 'error' && onCheckAgain && onStopTracking ? (
+					<div className="upload-activity-actions">
+						<Button
+							data-dialog-initial
+							onClick={onCheckAgain}
+							size="custom"
+							type="button"
+							variant="primary"
+						>
+							Check again
+						</Button>
+						<Button onClick={onStopTracking} size="custom" type="button" variant="ghost">
+							Stop tracking
+						</Button>
+						<p>Stop tracking removes this item from Activity only. Nothing is deleted from Arweave.</p>
 					</div>
 				) : null}
 				{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
@@ -1692,36 +2035,73 @@ function UploadActivityPanel({
 	);
 }
 
+/**
+ * Route intent a navigate() call can attach as `location.state`. `preserveFocus` marks an in-view URL
+ * update (for example a Home tab switch): the view stays mounted, so focus and window scroll stay put.
+ */
+export type RouteFocusState = { preserveFocus?: boolean };
+export const PRESERVE_ROUTE_FOCUS: { state: RouteFocusState } = { state: { preserveFocus: true } };
+
+export function routeFocusPreserved(state: unknown): boolean {
+	return Boolean(state && typeof state === 'object' && (state as RouteFocusState).preserveFocus === true);
+}
+
+/**
+ * What RouteFocus does when the route key settles:
+ * - 'initial': first render (or an unchanged key): scroll to top and set the title, keep focus.
+ * - 'in-view': the caller asked to preserve focus on a forward navigation: set the title only.
+ * - 'new-view': a different view: scroll to top, set the title and move focus to <main>.
+ * History entries keep their state, so a POP onto a preserveFocus entry is still a new view.
+ */
+export type RouteFocusAction = 'initial' | 'in-view' | 'new-view';
+
+export function routeFocusAction(
+	previousKey: string | null,
+	nextKey: string,
+	{ preserveFocus = false, navigationType }: { preserveFocus?: boolean; navigationType?: `${NavigationType}` } = {}
+): RouteFocusAction {
+	if (previousKey === null || previousKey === nextKey) return 'initial';
+	if (preserveFocus && navigationType !== 'POP') return 'in-view';
+	return 'new-view';
+}
+
 function RouteFocus() {
-	const { pathname, search } = useLocation();
+	const { pathname, search, state } = useLocation();
+	const navigationType = useNavigationType();
 	const routeKey = `${pathname}${search}`;
 	const previousRoute = React.useRef<string | null>(null);
 	React.useEffect(() => {
-		window.scrollTo({ top: 0, left: 0 });
+		// Reads this render's state and navigation type; only a route key change re-runs the policy.
+		const action = routeFocusAction(previousRoute.current, routeKey, {
+			preserveFocus: routeFocusPreserved(state),
+			navigationType,
+		});
+		if (action !== 'in-view') window.scrollTo({ top: 0, left: 0 });
 		const main = document.getElementById('main-content');
 		if (!main) return;
-		const shouldMoveFocus = previousRoute.current !== null && previousRoute.current !== routeKey;
+		const shouldMoveFocus = action === 'new-view';
 		previousRoute.current = routeKey;
-		let title = 'Bazar — Arweave-native assets';
-		let observer: MutationObserver | null = null;
-		const updateRouteContext = () => {
-			const heading = main.querySelector('h1');
-			const headingText = heading?.textContent?.trim();
-			if (headingText) {
-				title = `${headingText} — Bazar`;
-				observer?.disconnect();
-			}
-			document.title = title;
-		};
+		const titleTracker = trackRouteDocumentTitle({
+			main,
+			getTitle: () => document.title,
+			setTitle: (title) => {
+				document.title = title;
+			},
+			observe: (target, options, onMutation) => {
+				const observer = new MutationObserver(onMutation);
+				observer.observe(target, options);
+				return () => observer.disconnect();
+			},
+			requestFrame: (callback) => window.requestAnimationFrame(callback),
+			cancelFrame: (frame) => window.cancelAnimationFrame(frame),
+		});
 		const focusFrame = window.requestAnimationFrame(() => {
-			updateRouteContext();
+			titleTracker.sync();
 			if (shouldMoveFocus) main.focus({ preventScroll: true });
 		});
-		observer = new MutationObserver(updateRouteContext);
-		observer.observe(main, { characterData: true, childList: true, subtree: true });
 		return () => {
 			window.cancelAnimationFrame(focusFrame);
-			observer?.disconnect();
+			titleTracker.stop();
 		};
 	}, [routeKey]);
 	return null;
@@ -2053,7 +2433,7 @@ function Header() {
 						<input
 							ref={inputRef}
 							aria-label="Search tokens, collections, and Uniques"
-							placeholder="Search tokens, collections, and assets"
+							placeholder="Search tokens, collections, and Uniques"
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							onClick={openSearch}
@@ -2235,7 +2615,7 @@ function Header() {
 										</div>
 										<div className="search-collection-grid">
 											{collectionResults.map((collection) => {
-												const preview = collection.assets.find((asset) => asset.image)?.image;
+												const preview = collectionCoverImage(collection);
 												const tokenPreview =
 													collection.assets.find((asset) => asset.image) ??
 													collection.assets[0];
@@ -2418,6 +2798,20 @@ function Header() {
 	);
 }
 
+/** Escape closes the Transaction activity popover and returns focus to its trigger, as WalletMenu does. */
+export function handleActivityPopoverKey(
+	event: Pick<KeyboardEvent, 'key' | 'defaultPrevented'>,
+	close: () => void,
+	trigger: { readonly current: Pick<HTMLElement, 'focus'> | null },
+	schedule: (callback: () => void) => unknown = (callback) => window.requestAnimationFrame(callback)
+) {
+	// A dialog above the popover claims Escape first (useDialogFocus calls preventDefault).
+	if (event.key !== 'Escape' || event.defaultPrevented) return false;
+	close();
+	schedule(() => trigger.current?.focus());
+	return true;
+}
+
 function OperationActivityControl() {
 	const wallet = useWallet();
 	const {
@@ -2432,6 +2826,8 @@ function OperationActivityControl() {
 	} = useOperationActivity();
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
+	const triggerRef = React.useRef<HTMLButtonElement>(null);
+	const menuId = React.useId();
 	const visibleActivities = activities.filter(
 		(activity) => activity.owner === wallet.address && isTransactionActivityVisible(activity.phase)
 	);
@@ -2445,6 +2841,7 @@ function OperationActivityControl() {
 	const visibleMintActivities = mintActivities.filter(
 		(activity) => activity.owner === wallet.address && !linkedUploadAssets.has(activity.asset.id)
 	);
+	useMintActivityStalledRerender(visibleMintActivities);
 	const attentionMintActivities = visibleMintActivities.filter((activity) => mintActivityNeedsAttention(activity));
 	const activityCount =
 		visibleActivities.length +
@@ -2458,6 +2855,9 @@ function OperationActivityControl() {
 		visibleMintActivities.filter(
 			(activity) => activity.phase !== 'complete' && !mintActivityNeedsAttention(activity)
 		).length;
+	const approvalCount =
+		visibleActivities.filter((activity) => activity.phase === 'approval').length +
+		visibleFungibleActivities.filter((activity) => activity.phase === 'approval').length;
 	const clearUploadIssues = () => {
 		if (!attentionMintActivities.length) return;
 		const count = attentionMintActivities.length;
@@ -2477,11 +2877,18 @@ function OperationActivityControl() {
 	};
 	React.useEffect(() => {
 		if (!open) return;
-		const close = (event: MouseEvent) => {
+		const closeFromOutside = (event: PointerEvent) => {
 			if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
 		};
-		window.addEventListener('mousedown', close);
-		return () => window.removeEventListener('mousedown', close);
+		const closeFromKeyboard = (event: KeyboardEvent) => {
+			handleActivityPopoverKey(event, () => setOpen(false), triggerRef);
+		};
+		document.addEventListener('pointerdown', closeFromOutside);
+		document.addEventListener('keydown', closeFromKeyboard);
+		return () => {
+			document.removeEventListener('pointerdown', closeFromOutside);
+			document.removeEventListener('keydown', closeFromKeyboard);
+		};
 	}, [open]);
 	if (!activityCount) return null;
 	return (
@@ -2489,11 +2896,13 @@ function OperationActivityControl() {
 			<Tooltip content="Transaction activity" disabled={open}>
 				{(tooltipId) => (
 					<Button
+						aria-controls={open ? menuId : undefined}
 						aria-describedby={tooltipId}
 						aria-expanded={open}
 						aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
 						className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
 						data-activity-owner="global"
+						ref={triggerRef}
 						size="custom"
 						onClick={() => setOpen((value) => !value)}
 						type="button"
@@ -2505,18 +2914,16 @@ function OperationActivityControl() {
 				)}
 			</Tooltip>
 			{open ? (
-				<section aria-label="Transaction activity" className="operation-activity-menu">
+				<section aria-label="Transaction activity" className="operation-activity-menu" id={menuId}>
 					<div className="operation-activity-heading">
 						<div>
 							<strong>Transaction activity</strong>
 							<span>
-								{attentionMintActivities.length
-									? `${attentionMintActivities.length.toLocaleString()} ${
-											attentionMintActivities.length === 1 ? 'upload needs' : 'uploads need'
-									  } attention`
-									: workingCount
-									? `${workingCount} running in the background`
-									: 'No transactions running'}
+								{transactionActivityHeading({
+									uploadAttention: attentionMintActivities.length,
+									approval: approvalCount,
+									working: workingCount,
+								})}
 							</span>
 						</div>
 						{attentionMintActivities.length ? (
@@ -2674,6 +3081,7 @@ function OperationActivityControl() {
 								activity.arweaveGateway !== arweaveGatewayFromLocation() ||
 								activity.computeGateway !== gatewayFromLocation();
 							const needsAttention = mintActivityNeedsAttention(activity);
+							const menuCopy = mintActivityMenuCopy(activity);
 							return (
 								<div
 									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
@@ -2695,15 +3103,13 @@ function OperationActivityControl() {
 										<span className="operation-activity-copy">
 											<strong>{activity.asset.name}</strong>
 											<small>
-												Upload ·{' '}
+												{menuCopy.kind} ·{' '}
 												{needsAttention
 													? 'Needs attention'
 													: mintActivityPhaseLabel(activity.phase)}
 											</small>
 											<span>
-												{needsAttention
-													? 'This upload has not reached live process state.'
-													: activity.status}
+												{needsAttention ? MINT_ACTIVITY_STALLED_STATUS : activity.status}
 												{pinnedGateway ? ' Tracking is pinned to the original gateways.' : ''}
 											</span>
 										</span>
@@ -2728,9 +3134,9 @@ function OperationActivityControl() {
 	);
 }
 
-function operationActivityPhaseLabel(phase: OperationActivityPhase) {
+export function operationActivityPhaseLabel(phase: OperationActivityPhase) {
 	return {
-		form: 'Awaiting signature',
+		form: 'Not submitted',
 		approval: 'Awaiting approval',
 		working: 'In progress',
 		done: 'Complete',
@@ -2974,11 +3380,34 @@ export function homeTabPath(tab: HomeTab) {
 	return `/${tab}`;
 }
 
+const HOME_TAB_HEADINGS: Record<HomeTab, string> = {
+	discover: 'Discover',
+	collections: 'Collections',
+	activity: 'Activity',
+};
+
+/** The Home route's page heading, which also names the document title for each tab. */
+export function homeTabHeading(tab: HomeTab) {
+	return HOME_TAB_HEADINGS[tab];
+}
+
+/** Where a collection page's back link goes: token pages return to Discover, the rest to the Collections tab. */
+export function collectionBackLink(kind: Collection['kind']) {
+	return kind === 'tokens'
+		? { to: homeTabPath('discover'), label: 'Discover' }
+		: { to: homeTabPath('collections'), label: 'All collections' };
+}
+
 export function homeRouteSearch(search: string) {
 	const params = new URLSearchParams(search);
 	params.delete('tab');
 	const value = params.toString();
 	return value ? `?${value}` : '';
+}
+
+/** Where the bare Home route `#/` sends the visitor: the tab a legacy `?tab=` link named, or Discover. */
+export function homeRedirectPath(search: string) {
+	return homeTabPath(homeTabFromPathname(new URLSearchParams(search).get('tab') ?? ''));
 }
 
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
@@ -3037,6 +3466,7 @@ export function compareHomeListingRecency(
 
 export const HOME_ASSET_PAGE_SIZE = 9;
 export const HOME_DISCOVER_TOKEN_PAGE_SIZE = 5;
+export const HOME_DISCOVER_UNIQUE_PREVIEW = 12;
 const HOME_LISTING_ASSET_LIMIT = HOME_ASSET_PAGE_SIZE * 4;
 const HOME_STATE_MAX_AGE = 30;
 const HOME_STATE_STALE_WHILE_REVALIDATE = 86_400;
@@ -3049,6 +3479,107 @@ export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = H
 	return { items: items.slice(start, start + pageSize), page, pageCount };
 }
 
+/**
+ * Live listings the home crawl must find for the visible page plus one page
+ * ahead. Price order and search need every listing, so they stay unbounded.
+ * `collectionOf` names the loaded collection of a discovered process, so a
+ * demand only reads candidates that can still be of its type; candidates no
+ * loaded collection claims are admitted by every demand.
+ */
+export function homeListingCrawlDemand(
+	view: {
+		assetView: HomeAssetView;
+		assetType: HomeAssetType;
+		query: string;
+		assetPage: number;
+		tokenPage: number;
+	},
+	collectionOf?: (processId: string) => Collection | undefined
+): HomeListingDemand[] | undefined {
+	if (view.query || view.assetView === 'price-low' || view.assetView === 'price-high') return undefined;
+	const demand = (count: number, assetType: HomeAssetType): HomeListingDemand => ({
+		count,
+		matches: (result) => homeAssetTypeMatches(result.collection, assetType),
+		...(collectionOf
+			? {
+					admits: (candidate: AssetCandidate) => {
+						const collection = collectionOf(candidate.processId);
+						return !collection || homeAssetTypeMatches(collection, assetType);
+					},
+			  }
+			: {}),
+	});
+	const page = (requested: number) => Math.max(1, Math.floor(requested) || 1);
+	if (view.assetType === 'all') {
+		return [
+			demand(HOME_DISCOVER_UNIQUE_PREVIEW + HOME_ASSET_PAGE_SIZE, 'atomic'),
+			demand((page(view.tokenPage) + 1) * HOME_DISCOVER_TOKEN_PAGE_SIZE, 'tokens'),
+		];
+	}
+	return [demand((page(view.assetPage) + 1) * HOME_ASSET_PAGE_SIZE, view.assetType)];
+}
+
+/**
+ * The candidates whose card summary home may read for a bounded view: every
+ * candidate whose summary is already known, plus unknown candidates in order
+ * while a demand they match is still short of known listings and earlier
+ * unknown reads. A candidate that turns out unlisted frees its slot, so the
+ * next one is read. An unbounded demand (price order, search) keeps them all.
+ * While the listing crawl is still working, `speculate` is false: the crawl's
+ * listings carry their price, so unknown candidates wait instead of competing
+ * with it for the same peers.
+ */
+export function homeSummaryWindow<T extends { asset: Pick<AssetSummary, 'id'>; collection: Collection }>(
+	candidates: readonly T[],
+	demands: readonly HomeListingDemand[] | undefined,
+	summaries: Readonly<Record<string, HomeMarketSummary>>,
+	speculate = true
+): T[] {
+	if (!demands || demands.some(({ count }) => !Number.isFinite(count))) return [...candidates];
+	const covered = demands.map(() => 0);
+	return candidates.filter((candidate) => {
+		const matching = demands.flatMap((demand, index) =>
+			!demand.matches || demand.matches(candidate) ? [index] : []
+		);
+		const summary = summaries[candidate.asset.id];
+		if (summary) {
+			if (homeMarketSummaryListed(summary)) for (const index of matching) covered[index] += 1;
+			return true;
+		}
+		if (!speculate || !matching.some((index) => covered[index] < demands[index].count)) return false;
+		for (const index of matching) covered[index] += 1;
+		return true;
+	});
+}
+
+export function homeDiscoverOrderId({ asset, collection }: { asset: { id: string }; collection: { id: string } }) {
+	return `${collection.id}:${asset.id}`;
+}
+
+/**
+ * The Discover lists hold their painted order until nothing that can add or move a card is loading: the
+ * market shell and listing crawl are idle and, for views that filter or rank by price, every candidate
+ * has a price summary (resolved or unavailable). The unfiltered "all" view is not ranked by price.
+ */
+export function homeDiscoverOrderSettled(
+	view: HomeAssetView,
+	loading: boolean,
+	candidateIds: readonly string[],
+	summaries: Record<string, HomeMarketSummary>
+) {
+	if (loading) return false;
+	return view === 'all' || candidateIds.every((id) => Boolean(summaries[id]));
+}
+
+/** Placeholder rows that keep the token overview at its page height while its rows are still arriving. */
+export function homeTokenPlaceholderRows(
+	settled: boolean,
+	shownRows: number,
+	pageSize = HOME_DISCOVER_TOKEN_PAGE_SIZE
+) {
+	return settled ? 0 : Math.max(0, pageSize - shownRows);
+}
+
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
 	return view === 'all' || homeMarketSummaryListed(summary);
 }
@@ -3059,6 +3590,18 @@ function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
 			<LoaderCircle aria-hidden="true" />
 			<span>{label}</span>
 		</span>
+	);
+}
+
+function HomeTokenPlaceholderRow() {
+	return (
+		<div aria-hidden="true" className="token-market-row token-market-row--placeholder">
+			<span className="token-market-logo layout-placeholder" />
+			<span className="token-market-identity">
+				<span className="layout-placeholder token-market-placeholder-line" />
+				<span className="layout-placeholder token-market-placeholder-line short" />
+			</span>
+		</div>
 	);
 }
 
@@ -3118,9 +3661,148 @@ export function homeTokenPriceChangePercent(
 	return Number(scaled) / 100;
 }
 
-export function homeTokenPriceChangeLabel(change: number | null | 'unavailable') {
-	if (change === null || change === 'unavailable' || !Number.isFinite(change)) return '—';
-	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+/**
+ * What a token row's 24h change cell says once it is no longer "Checking…". "—" alone cannot tell
+ * a quiet token from a failed read, so each non-number keeps its meaning: too few listings in the
+ * window, a read that failed (retried while the row stays visible), or one still on its way.
+ */
+export function homeTokenPriceChangeDisplay(change: HomeTokenPriceChange | undefined): {
+	text: string;
+	description?: string;
+} {
+	if (change === 'unavailable')
+		return { text: 'Unavailable', description: 'The 24h change could not be read. It is retried automatically.' };
+	if (change === undefined) return { text: '—', description: 'The 24h change is still loading.' };
+	if (change === null || !Number.isFinite(change)) return { text: '—', description: 'Not enough data in 24h' };
+	return { text: `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%` };
+}
+
+export function homeTokenPriceChangeLabel(change: HomeTokenPriceChange | undefined) {
+	return homeTokenPriceChangeDisplay(change).text;
+}
+
+/** The settled 24h change: "—" reads as its meaning to assistive tech, and every non-number has a tooltip. */
+export function HomeTokenPriceChangeValue({ change }: { change: HomeTokenPriceChange | undefined }) {
+	const { text, description } = homeTokenPriceChangeDisplay(change);
+	if (!description) return <>{text}</>;
+	if (text !== '—') return <span title={description}>{text}</span>;
+	return (
+		<span title={description}>
+			<span aria-hidden="true">{text}</span>
+			<span className="sr-only">{description}</span>
+		</span>
+	);
+}
+
+/** How long a token row may say "Checking…" for its 24h change before it shows "—". */
+export const HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS = 8_000;
+
+export type HomeTokenPriceChange = number | null | 'unavailable';
+
+/** One token row's 24h change: the value, when it was read, and when a read for it last settled. */
+export type HomeTokenPriceChangeEntry = { value: HomeTokenPriceChange; readAt: number; checkedAt: number };
+
+/** A visible row's 24h change is read again once it is this old. */
+export const HOME_TOKEN_CHANGE_REFRESH_MS = 3 * 60_000;
+/** A 24h change older than this is no longer shown as current. */
+export const HOME_TOKEN_CHANGE_MAX_AGE_MS = 6 * 60_000;
+/** A failed read (or failed refresh) is tried again after this while its row stays visible. */
+export const HOME_TOKEN_CHANGE_RETRY_MS = 60_000;
+
+const NO_TOKEN_PRICE_CHANGES: Readonly<Record<string, HomeTokenPriceChangeEntry>> = Object.freeze({});
+
+/** When a row's 24h change is due to be read: now if never read, else after its refresh or retry time. */
+export function homeTokenPriceChangeDueAt(entry: HomeTokenPriceChangeEntry | undefined) {
+	if (!entry) return Number.NEGATIVE_INFINITY;
+	if (entry.value === 'unavailable') return entry.checkedAt + HOME_TOKEN_CHANGE_RETRY_MS;
+	return Math.max(entry.readAt + HOME_TOKEN_CHANGE_REFRESH_MS, entry.checkedAt + HOME_TOKEN_CHANGE_RETRY_MS);
+}
+
+/** What a row may show now: a value read within the max age, otherwise "unavailable" ("—"). */
+export function homeTokenPriceChangeCurrent(
+	entry: HomeTokenPriceChangeEntry | undefined,
+	now: number
+): HomeTokenPriceChange | undefined {
+	if (!entry) return undefined;
+	if (entry.value === 'unavailable' || now - entry.readAt > HOME_TOKEN_CHANGE_MAX_AGE_MS) return 'unavailable';
+	return entry.value;
+}
+
+/** A failed read keeps a value that is still within its max age (and retries it); otherwise it is "unavailable". */
+export function homeTokenPriceChangeFailed(
+	previous: HomeTokenPriceChangeEntry | undefined,
+	now: number
+): HomeTokenPriceChangeEntry {
+	if (previous && homeTokenPriceChangeCurrent(previous, now) !== 'unavailable')
+		return { ...previous, checkedAt: now };
+	return { value: 'unavailable', readAt: now, checkedAt: now };
+}
+
+/** Visible token rows whose 24h change has never been read, or is due for a refresh or retry. */
+export function homeTokenPriceChangeRequests(
+	tokenIds: readonly string[],
+	known: Readonly<Record<string, HomeTokenPriceChangeEntry>>,
+	now = Date.now()
+) {
+	return [...new Set(tokenIds)].filter((tokenId) => tokenId && homeTokenPriceChangeDueAt(known[tokenId]) <= now);
+}
+
+/** The next time a visible row needs a read or stops being current, or null when nothing is pending. */
+export function homeTokenPriceChangeNextCheck(
+	tokenIds: readonly string[],
+	known: Readonly<Record<string, HomeTokenPriceChangeEntry>>,
+	now: number
+) {
+	let next: number | null = null;
+	for (const tokenId of new Set(tokenIds)) {
+		const entry = known[tokenId];
+		if (!entry) continue;
+		const expiresAt =
+			entry.value === 'unavailable' ? Number.POSITIVE_INFINITY : entry.readAt + HOME_TOKEN_CHANGE_MAX_AGE_MS + 1;
+		for (const at of [homeTokenPriceChangeDueAt(entry), expiresAt]) {
+			if (at > now && Number.isFinite(at)) next = next === null ? at : Math.min(next, at);
+		}
+	}
+	return next;
+}
+
+/** A late value still replaces "—"; the deadline only ends the spinner. */
+export function homeTokenPriceChangePending(change: number | null | 'unavailable' | undefined, overdue: boolean) {
+	return change === undefined && !overdue;
+}
+
+/**
+ * Display-only deadlines for home values that may never arrive, tracked per
+ * key with the collection page's deadline helper. They never cancel a read,
+ * and only a scope change re-arms them.
+ */
+function useHomeDisplayDeadlines(scope: string, pendingIds: readonly string[], deadlineMs: number) {
+	const deadlines = React.useRef(createCollectionPriceDeadlines());
+	const [overdue, setOverdue] = React.useState<ReadonlySet<string>>(() => new Set());
+	const pendingKey = pendingIds.join(',');
+	React.useEffect(() => {
+		let timer: number | undefined;
+		const update = () => {
+			const observed = observeCollectionPriceDeadlines(
+				deadlines.current,
+				scope,
+				pendingKey ? pendingKey.split(',') : [],
+				Date.now(),
+				deadlineMs
+			);
+			setOverdue((current) =>
+				current.size === observed.overdue.length && observed.overdue.every((id) => current.has(id))
+					? current
+					: new Set(observed.overdue)
+			);
+			if (observed.nextDeadline !== null) {
+				timer = window.setTimeout(update, Math.max(0, observed.nextDeadline - Date.now()));
+			}
+		};
+		update();
+		return () => window.clearTimeout(timer);
+	}, [deadlineMs, pendingKey, scope]);
+	return overdue;
 }
 
 export function homeMarketSummariesReady(
@@ -3135,8 +3817,144 @@ export function homeMarketHasPending(loading: boolean, keys: string[], summaries
 	return loading || keys.some((key) => !summaries[key]);
 }
 
+/**
+ * Discover is busy only while what its visible pages show can still change:
+ * the market shell is loading with nothing to show yet, a requested retry is
+ * running, the listing crawl is short of a full visible page, or a summary in
+ * the read window is still unknown. Failed summaries are settled (their cards
+ * say Unavailable), and once the visible pages are full the crawl's work for
+ * the page ahead no longer keeps the page busy.
+ */
+export function homeDiscoverPending(state: {
+	marketLoading: boolean;
+	retrying: boolean;
+	crawlLoading: boolean;
+	visiblePagesFull: boolean;
+	visibleCount: number;
+	keys: readonly string[];
+	summaries: Readonly<Record<string, HomeMarketSummary>>;
+}) {
+	if (state.retrying) return true;
+	if (state.marketLoading && state.visibleCount === 0) return true;
+	if (state.crawlLoading && !state.visiblePagesFull) return true;
+	return state.keys.some((key) => !state.summaries[key]);
+}
+
+/** Whether every section the Discover view shows has a full page of cards. */
+export function homeDiscoverPagesFull(
+	sections: ReadonlyArray<{ shown: number; pageSize: number; page: number; pageCount: number }>
+) {
+	// A short last page is full once there is nothing further to show.
+	return sections.every(({ shown, pageSize, page, pageCount }) => shown >= pageSize || page < pageCount);
+}
+
+/**
+ * The Collections tab is busy while the shell has no collections yet, a retry
+ * runs, or a floor is still inside its display deadline. Failed and overdue
+ * floors are settled cards ("Unavailable" / "Price unavailable").
+ */
+export function homeCollectionFloorsPending(state: {
+	shellLoading: boolean;
+	retrying: boolean;
+	collectionIds: readonly string[];
+	floors: Readonly<Record<string, HomeMarketSummary>>;
+	overdue: ReadonlySet<string>;
+}) {
+	return homeMarketHasPending(
+		state.shellLoading || state.retrying,
+		state.collectionIds.filter((collectionId) => !state.overdue.has(collectionId)),
+		state.floors
+	);
+}
+
 export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount: number) {
 	return pending && visibleAssetCount === 0;
+}
+
+export type HomeDiscoverDisplay = 'loading' | 'failed' | 'results' | 'empty';
+
+/**
+ * The Discover panel renders exactly one state. A terminal failure (market
+ * shell error, tripped compute circuit or failed listing discovery) replaces
+ * the initial loader instead of being stacked above it, while cards that are
+ * already visible stay on screen.
+ */
+export function homeDiscoverDisplay(
+	pending: boolean,
+	failed: boolean,
+	visibleAssetCount: number,
+	loadingOverdue = false
+): HomeDiscoverDisplay {
+	if (visibleAssetCount > 0) return 'results';
+	if (failed) return 'failed';
+	if (!homeMarketShowsInitialLoader(pending, visibleAssetCount)) return 'empty';
+	// A loader with nothing to show past its deadline becomes the failure state.
+	return loadingOverdue ? 'failed' : 'loading';
+}
+
+/** How long Discover may show only "Loading marketplace assets…" before it offers Retry. */
+export const HOME_DISCOVER_LOADING_DEADLINE_MS = 15_000;
+
+/**
+ * The failure Discover reports when its loader passes the deadline without a
+ * terminal error: reads that hang on a rate-limited or unreachable peer fail
+ * too slowly to trip the compute circuit, so the deadline names the likely
+ * cause from what has failed so far.
+ */
+export function homeDiscoverOverdueFailure(
+	shellReady: boolean,
+	failureKinds: Iterable<MarketplaceFailureKind>
+): { source: 'compute' | 'index'; kind: MarketplaceFailureKind } {
+	return {
+		source: shellReady ? 'compute' : 'index',
+		kind: [...failureKinds].includes('rate-limited') ? 'rate-limited' : 'unavailable',
+	};
+}
+
+/** A terminal Discover failure is not busy: no header spinner or aria-busy beside the error block. */
+export function homeDiscoverBusy(display: HomeDiscoverDisplay, pending: boolean) {
+	return display !== 'failed' && pending;
+}
+
+/**
+ * Where a Discover failure is reported: beside cards that already rendered it is a compact inline
+ * notice that keeps them in view; with nothing to show it is the full error block in their place.
+ */
+export function homeDiscoverFailureNotice(display: HomeDiscoverDisplay): 'inline' | 'panel' | 'none' {
+	return display === 'results' ? 'inline' : display === 'failed' ? 'panel' : 'none';
+}
+
+/** The inline notice says what is missing (more listings), not that the shown cards failed. */
+export function homeDiscoverPartialFailureMessage(message: string) {
+	return `More listings could not be loaded. ${message}`;
+}
+
+export const HOME_SUMMARY_AUTO_RETRY_DELAY_MS = 15_000;
+/** Background retries of failed card summaries before only a manual Retry restarts them. */
+export const HOME_SUMMARY_AUTO_RETRY_LIMIT = 2;
+
+/** Whether a `failedAssetIds|failedCollectionIds` key names any failed summary. */
+export function homeSummaryFailuresPresent(failureKey: string) {
+	return failureKey.replace('|', '').length > 0;
+}
+
+/**
+ * Failed card summaries are retried in the background a bounded number of
+ * times, so a peer that keeps failing settles on Unavailable instead of
+ * re-entering a busy retry every 15 s.
+ */
+export function homeSummaryAutoRetryDue(state: {
+	failureKey: string;
+	rounds: number;
+	retrying: boolean;
+	computeCircuitOpen: boolean;
+}) {
+	return (
+		homeSummaryFailuresPresent(state.failureKey) &&
+		!state.retrying &&
+		!state.computeCircuitOpen &&
+		state.rounds < HOME_SUMMARY_AUTO_RETRY_LIMIT
+	);
 }
 
 export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
@@ -3199,9 +4017,50 @@ export function homeScrollIndicatorMetrics(
 	return { visible: true, size, offset: offsetRange * progress };
 }
 
+const HOME_MARKET_TABS: { value: HomeTab; label: string; icon: React.ReactNode }[] = [
+	{ value: 'discover', label: 'Discover', icon: <Compass className="ui-icon" aria-hidden="true" /> },
+	{ value: 'collections', label: 'Collections', icon: <LayoutGrid className="ui-icon" aria-hidden="true" /> },
+	{ value: 'activity', label: 'Activity', icon: <History className="ui-icon" aria-hidden="true" /> },
+];
+
+/** Home view tablist: roving tabindex, with Arrow/Home/End selecting and focusing the next tab. */
+export function HomeMarketTabs({ active, onSelect }: { active: HomeTab; onSelect(tab: HomeTab): void }) {
+	return (
+		<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
+			{HOME_MARKET_TABS.map((tab, index) => {
+				const selected = active === tab.value;
+				return (
+					<Button
+						aria-controls={`home-${tab.value}-panel`}
+						aria-selected={selected}
+						className="home-market-tab"
+						id={`home-${tab.value}-tab`}
+						key={tab.value}
+						onClick={() => onSelect(tab.value)}
+						onKeyDown={(event) => {
+							const nextIndex = assetDetailTabIndex(event.key, index, HOME_MARKET_TABS.length);
+							if (nextIndex === null) return;
+							event.preventDefault();
+							const next = HOME_MARKET_TABS[nextIndex].value;
+							onSelect(next);
+							window.requestAnimationFrame(() => document.getElementById(`home-${next}-tab`)?.focus());
+						}}
+						role="tab"
+						size="small"
+						tabIndex={selected ? 0 : -1}
+					>
+						{tab.icon}
+						{tab.label}
+					</Button>
+				);
+			})}
+		</div>
+	);
+}
+
 function HomeRedirect() {
 	const { search } = useLocation();
-	return <Navigate to={{ pathname: homeTabPath('discover'), search: homeRouteSearch(search) }} replace />;
+	return <Navigate to={{ pathname: homeRedirectPath(search), search: homeRouteSearch(search) }} replace />;
 }
 
 function Home() {
@@ -3219,6 +4078,8 @@ function Home() {
 	const [discoverTokenPage, setDiscoverTokenPage] = React.useState(1);
 	const aoRoutingScope = aoRoutingScopeFromLocation();
 	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${aoRoutingScope}`;
+	// Listings found through a fallback index may be incomplete; keep them out of the preferred index's snapshot.
+	const homeListingsFromFallbackIndex = React.useRef(false);
 	const query = new URLSearchParams(search).get('q') ?? '';
 	const normalizedQuery = query.trim().toLowerCase();
 	const homeSearchMatches = React.useMemo(
@@ -3240,19 +4101,46 @@ function Home() {
 				: undefined,
 		[market.collections, normalizedQuery]
 	);
-	const collections = React.useMemo(() => {
-		const activity = new Map(Object.entries(collectionActivity));
-		return market.collections
-			.filter((collection) => {
+	const matchingCollections = React.useMemo(
+		() =>
+			market.collections.filter((collection) => {
 				if (collection.kind === 'tokens') return false;
 				if (!normalizedQuery) return true;
 				return (
 					`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
 					Boolean(homeSearchMatches?.get(collection)?.length)
 				);
-			})
-			.sort((left, right) => compareHomeCollections(left, right, collectionSort, activity));
-	}, [collectionActivity, collectionSort, homeSearchMatches, market.collections, normalizedQuery]);
+			}),
+		[homeSearchMatches, market.collections, normalizedQuery]
+	);
+	const collectionActivityKey = React.useMemo(
+		() =>
+			matchingCollections
+				.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
+				.sort()
+				.join('|'),
+		[matchingCollections]
+	);
+	const [collectionActivitySettledKey, setCollectionActivitySettledKey] = React.useState<string | null>(null);
+	const collectionOrderSettled =
+		!market.loading && (collectionSort !== 'recent' || collectionActivitySettledKey === collectionActivityKey);
+	const collectionGrid = React.useRef<HTMLDivElement>(null);
+	const rankedCollections = React.useMemo(() => {
+		const activity = new Map(Object.entries(collectionActivity));
+		return [...matchingCollections].sort((left, right) =>
+			compareHomeCollections(left, right, collectionSort, activity)
+		);
+	}, [collectionActivity, collectionSort, matchingCollections]);
+	const collectionOrder = useStableOrder(
+		rankedCollections.map((collection) => collection.id),
+		collectionSort,
+		collectionOrderSettled
+	);
+	const collections = React.useMemo(
+		() => applyStableOrder(rankedCollections, collectionOrder, (collection) => collection.id),
+		[collectionOrder, rankedCollections]
+	);
+	useGridReorderMotion(collectionGrid, collectionOrder);
 	const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
 	const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
 		Record<string, HomeListingActivity>
@@ -3282,8 +4170,9 @@ function Home() {
 				.map(({ asset, collection, activity }) => {
 					const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
 					const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+					const named = preferResolvedAssetName(asset, currentAsset);
 					return {
-						asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+						asset: currentAsset?.image && !named.image ? { ...named, image: currentAsset.image } : named,
 						collection: currentCollection ?? collection,
 						activity,
 					};
@@ -3310,6 +4199,25 @@ function Home() {
 	);
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
+	const homeListingCrawlRef = React.useRef<HomeListingCrawl>();
+	const homeListingDemand = React.useMemo(
+		() =>
+			homeListingCrawlDemand(
+				{
+					assetView,
+					assetType,
+					query: normalizedQuery,
+					assetPage,
+					tokenPage: discoverTokenPage,
+				},
+				// Read through the ref so streaming collections sharpen admission without
+				// changing the demand identity.
+				(processId) => globalActivityCollection(marketCollectionsRef.current, processId)
+			),
+		[assetPage, assetType, assetView, discoverTokenPage, normalizedQuery]
+	);
+	const homeListingDemandRef = React.useRef(homeListingDemand);
+	homeListingDemandRef.current = homeListingDemand;
 	const loadedAssetLimit = React.useMemo(
 		() =>
 			market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
@@ -3370,7 +4278,7 @@ function Home() {
 		}
 		return indexed;
 	}, [displayHomeListings, verifiedHomeListingActivity]);
-	const displayedAssets = React.useMemo(
+	const rankedDisplayedAssets = React.useMemo(
 		() =>
 			[...assetCandidates]
 				.filter(({ asset }) => homeAssetVisibleForView(displayAssetPrices[asset.id], assetView))
@@ -3395,11 +4303,51 @@ function Home() {
 				}),
 		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
+	// Listed views learn which candidates are listed from these summaries, so they
+	// read only as many unknown candidates as the visible pages plus one ahead need.
+	const summaryWindow = React.useMemo(
+		() => homeSummaryWindow(assetCandidates, homeListingDemand, displayAssetPrices, !portableHomeListingsLoading),
+		[assetCandidates, displayAssetPrices, homeListingDemand, portableHomeListingsLoading]
+	);
+	// Rows and cards already on screen keep their slots while listings and prices stream in; the lists
+	// re-rank when the viewer changes the view or once nothing that could move a card is still loading.
+	// Bounded listed views never read candidates outside the summary window, so only the window has to
+	// be known; unbounded views (price order, search) get every candidate in the window.
+	const displayedAssetOrderSettled = homeDiscoverOrderSettled(
+		assetView,
+		market.loading || portableHomeListingsLoading,
+		summaryWindow.map(({ asset }) => asset.id),
+		displayAssetPrices
+	);
+	const displayedAssetOrder = useStableOrder(
+		rankedDisplayedAssets.map(homeDiscoverOrderId),
+		`${assetView}|${assetType}|${normalizedQuery}`,
+		displayedAssetOrderSettled
+	);
+	const displayedAssets = React.useMemo(
+		() => applyStableOrder(rankedDisplayedAssets, displayedAssetOrder, homeDiscoverOrderId),
+		[displayedAssetOrder, rankedDisplayedAssets]
+	);
+	const discoverTokenList = React.useRef<HTMLDivElement>(null);
+	const discoverUniqueGrid = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(discoverTokenList, displayedAssetOrder);
+	useGridReorderMotion(discoverUniqueGrid, displayedAssetOrder);
 	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
 	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
 	const discoverTokenPagination = homeAssetPage(discoverTokens, discoverTokenPage, HOME_DISCOVER_TOKEN_PAGE_SIZE);
-	const discoverOverviewAssets = [...discoverTokenPagination.items, ...discoverCollectibles.slice(0, 12)];
+	const discoverOverviewAssets = [
+		...discoverTokenPagination.items,
+		...discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
+	];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
+	// Only the Uniques actually on screen: the overview preview, or the current page of the full grid.
+	useIndexedAssetNames(
+		(assetType === 'all'
+			? discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW)
+			: assetPagination.items
+		).flatMap(({ asset, collection }) => (collection.kind === 'images' ? [asset] : [])),
+		market.rememberIndexedAssets
+	);
 	const visibleDiscoverTokens =
 		assetType === 'all'
 			? discoverTokenPagination.items
@@ -3407,9 +4355,17 @@ function Home() {
 			? assetPagination.items.filter(({ collection }) => collection.kind === 'tokens')
 			: [];
 	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
-	const [tokenPriceChanges, setTokenPriceChanges] = React.useState<Record<string, number | null | 'unavailable'>>({});
+	const [tokenPriceChangeState, setTokenPriceChangeState] = React.useState<{
+		scope: string;
+		values: Record<string, HomeTokenPriceChangeEntry>;
+	}>({ scope: homeListingSnapshotScope, values: {} });
+	// Values read for another index or AO routing scope are dropped, not shown.
+	const tokenPriceChanges =
+		tokenPriceChangeState.scope === homeListingSnapshotScope
+			? tokenPriceChangeState.values
+			: NO_TOKEN_PRICE_CHANGES;
 	const assets =
-		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
+		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : summaryWindow;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
 	const summaryPriorityKey = [
 		...new Set(
@@ -3478,46 +4434,100 @@ function Home() {
 		},
 		[assetSummaryQueue]
 	);
+	// Reads in flight survive rows moving or paging; only a scope change or leaving Home cancels them.
+	const tokenPriceChangeReads = React.useRef({ ids: new Set<string>(), controllers: new Set<AbortController>() });
+	const [tokenPriceChangeClock, setTokenPriceChangeClock] = React.useState(0);
 	React.useEffect(() => {
-		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) {
-			setTokenPriceChanges({});
-			return;
-		}
-		const controller = new AbortController();
-		const tokenIds = visibleDiscoverTokenKey.split(',');
-		const eventLimit = 200;
-		setTokenPriceChanges({});
-		void discoverCollectionActivity({
-			actions: ['make-offer'],
-			limit: eventLimit,
-			recipients: tokenIds,
-			signal: controller.signal,
-		}).then(
-			(events) => {
-				if (controller.signal.aborted) return;
-				const now = Date.now();
-				const windowComplete = events.length < eventLimit;
-				setTokenPriceChanges(
-					Object.fromEntries(
-						tokenIds.map((tokenId) => [
-							tokenId,
-							homeTokenPriceChangePercent(
-								events.filter((event) => event.processId === tokenId),
-								now,
-								windowComplete
-							),
-						])
-					)
-				);
-			},
-			() => {
-				if (!controller.signal.aborted) {
-					setTokenPriceChanges(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable'])));
-				}
-			}
+		const reads = tokenPriceChangeReads.current;
+		return () => {
+			for (const controller of reads.controllers) controller.abort();
+			reads.controllers.clear();
+			reads.ids.clear();
+		};
+	}, [homeListingSnapshotScope]);
+	React.useEffect(() => {
+		// A tab coming back re-checks what its visible rows show.
+		const resume = () => {
+			if (document.visibilityState === 'visible') setTokenPriceChangeClock((clock) => clock + 1);
+		};
+		document.addEventListener('visibilitychange', resume);
+		return () => document.removeEventListener('visibilitychange', resume);
+	}, []);
+	React.useEffect(() => {
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey || document.visibilityState === 'hidden') return;
+		const visibleIds = visibleDiscoverTokenKey.split(',');
+		const now = Date.now();
+		const reads = tokenPriceChangeReads.current;
+		// Rows that move or page in and out keep a change while it is current; a due row is read again.
+		const tokenIds = homeTokenPriceChangeRequests(visibleIds, tokenPriceChanges, now).filter(
+			(tokenId) => !reads.ids.has(tokenId)
 		);
-		return () => controller.abort();
-	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
+		if (tokenIds.length) {
+			const scope = homeListingSnapshotScope;
+			const publish = (
+				next: (tokenId: string, previous: HomeTokenPriceChangeEntry | undefined) => HomeTokenPriceChangeEntry
+			) =>
+				setTokenPriceChangeState((current) => {
+					const values = { ...(current.scope === scope ? current.values : {}) };
+					for (const tokenId of tokenIds) values[tokenId] = next(tokenId, values[tokenId]);
+					return { scope, values };
+				});
+			const controller = new AbortController();
+			reads.controllers.add(controller);
+			for (const tokenId of tokenIds) reads.ids.add(tokenId);
+			const settle = () => {
+				reads.controllers.delete(controller);
+				for (const tokenId of tokenIds) reads.ids.delete(tokenId);
+			};
+			const eventLimit = 200;
+			void discoverCollectionActivity({
+				actions: ['make-offer'],
+				limit: eventLimit,
+				recipients: tokenIds,
+				signal: controller.signal,
+			}).then(
+				(events) => {
+					if (controller.signal.aborted) return;
+					settle();
+					const readAt = Date.now();
+					const windowComplete = events.length < eventLimit;
+					publish((tokenId) => ({
+						value: homeTokenPriceChangePercent(
+							events.filter((event) => event.processId === tokenId),
+							readAt,
+							windowComplete
+						),
+						readAt,
+						checkedAt: readAt,
+					}));
+				},
+				() => {
+					if (controller.signal.aborted) return;
+					settle();
+					const failedAt = Date.now();
+					publish((_tokenId, previous) => homeTokenPriceChangeFailed(previous, failedAt));
+				}
+			);
+		}
+		const next = homeTokenPriceChangeNextCheck(visibleIds, tokenPriceChanges, now);
+		if (next === null) return;
+		const timer = window.setTimeout(
+			() => setTokenPriceChangeClock((clock) => clock + 1),
+			Math.max(0, next - Date.now())
+		);
+		return () => window.clearTimeout(timer);
+	}, [
+		homeListingSnapshotScope,
+		shouldLoadAssetSummaries,
+		tokenPriceChangeClock,
+		tokenPriceChanges,
+		visibleDiscoverTokenKey,
+	]);
+	const overdueTokenPriceChanges = useHomeDisplayDeadlines(
+		homeListingSnapshotScope,
+		visibleDiscoverTokens.map(({ asset }) => asset.id).filter((id) => tokenPriceChanges[id] === undefined),
+		HOME_TOKEN_CHANGE_DISPLAY_DEADLINE_MS
+	);
 	React.useEffect(() => {
 		if (!marketShellReady || !shouldLoadAssetSummaries) {
 			setPortableHomeListingsLoading(false);
@@ -3544,6 +4554,7 @@ function Home() {
 		setPortableHomeListingsLoading(true);
 		setPortableHomeListingsComplete(false);
 		setPortableHomeListingsFailure(undefined);
+		homeListingsFromFallbackIndex.current = false;
 		const publications = createAnimationFrameBatch<ListingResolutionOutcome>((batch) => {
 			const settledIds = new Set(batch.map((publication) => publication.processId));
 			setCachedHomeListings((current) => current.filter((listing) => !settledIds.has(listing.asset.id)));
@@ -3556,10 +4567,23 @@ function Home() {
 			let computeFailures = 0;
 			let computeCircuitFailure: unknown;
 			let discoveryFailure: unknown;
-			const collections = marketCollectionsRef.current;
-			const resolver = createAssetCandidateResolver(collections, {
+			// Collections are read through the ref so streaming collections refine
+			// support in place instead of restarting the GraphQL crawl and resolver.
+			const crawl = createHomeListingCrawl({
 				signal: controller.signal,
+				collections: () => marketCollectionsRef.current,
 				concurrency: 8,
+				discover: (onPage, signal) =>
+					discoverMarketActivity({
+						listingsOnly: true,
+						signal,
+						// The crawl has no background retry of its own, so its pages retry transient index failures.
+						retryDelaysMs: GRAPHQL_RETRY_DELAYS_MS,
+						onPage: (candidates, graphql) => {
+							if (graphql !== arweaveGraphqlEndpoint()) homeListingsFromFallbackIndex.current = true;
+							return onPage(candidates);
+						},
+					}),
 				read: (processId, signal) =>
 					readAssetStateCached(processId, {
 						signal,
@@ -3570,6 +4594,10 @@ function Home() {
 					}),
 				onRevalidated: (result, candidate, cause) => {
 					if (controller.signal.aborted || cause) return;
+					publications.push({ processId: candidate.processId, result });
+				},
+				onReclassified: (result, candidate) => {
+					if (controller.signal.aborted) return;
 					publications.push({ processId: candidate.processId, result });
 				},
 				onSettled: (result, candidate, cause) => {
@@ -3589,38 +4617,26 @@ function Home() {
 					recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
 					publications.push({ processId: candidate.processId, result });
 				},
+				onDiscoveryFailure: (cause) => {
+					if (computeCircuitFailure === undefined) discoveryFailure = cause;
+				},
+				onIndexFailure: (cause) => {
+					indexFailure ??= cause;
+				},
+				// Page activity only as far as the visible pages need; pagination
+				// resumes the same crawl through demandChanged().
+				demand: () => homeListingDemandRef.current,
+				onIdle: (idle) => {
+					if (disposed) return;
+					// A paused crawl never reaches the final flush, and animation frames
+					// do not run in background tabs, so publish what is settled now.
+					if (idle) publications.flush();
+					setPortableHomeListingsLoading(!idle);
+				},
 			});
-			let supportTail = Promise.resolve();
-			const publishCandidates = (candidates: AssetCandidate[]) => {
-				const { supported, unverified } = partitionAssetCandidateSupport(candidates, collections);
-				resolver.enqueue(supported);
-				if (unverified.length) {
-					supportTail = supportTail.then(async () => {
-						try {
-							const verification = await verifyAssetCandidateSupport(unverified, collections, {
-								signal: controller.signal,
-								onVerified: (verified) => resolver.enqueue(verified),
-							});
-							indexFailure ??= verification.unavailable[0]?.error;
-						} catch (cause) {
-							if (controller.signal.aborted) throw cause;
-							indexFailure ??= cause;
-						}
-					});
-				}
-			};
+			homeListingCrawlRef.current = crawl;
 			try {
-				await discoverMarketActivity({
-					listingsOnly: true,
-					signal: controller.signal,
-					onPage: publishCandidates,
-				});
-			} catch (cause) {
-				if (computeCircuitFailure === undefined) discoveryFailure = cause;
-			}
-			try {
-				await supportTail;
-				await resolver.finish();
+				await crawl.finished;
 				controller.signal.throwIfAborted();
 				const failure =
 					discoveryFailure ??
@@ -3656,27 +4672,27 @@ function Home() {
 		})();
 		return () => {
 			disposed = true;
+			homeListingCrawlRef.current = undefined;
 			controller.abort();
 			publications.cancel();
 		};
-	}, [
-		aoRoutingScope,
-		listingSupportVersion,
-		market.error,
-		marketShellReady,
-		portableHomeRetry,
-		shouldLoadAssetSummaries,
-	]);
+	}, [aoRoutingScope, market.error, marketShellReady, portableHomeRetry, shouldLoadAssetSummaries]);
+	React.useEffect(() => {
+		homeListingCrawlRef.current?.supportChanged();
+	}, [listingSupportVersion]);
+	React.useEffect(() => {
+		homeListingCrawlRef.current?.demandChanged();
+	}, [homeListingDemand]);
 	React.useEffect(() => {
 		if (
 			!liveHomeListingShells.length ||
 			(!portableHomeListingsComplete && liveHomeListingShells.length < HOME_ASSET_PAGE_SIZE)
 		)
 			return;
-		return scheduleIdleTask(
-			() => storeHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, liveHomeListingShells),
-			250
-		);
+		return scheduleIdleTask(() => {
+			if (homeListingsFromFallbackIndex.current) return;
+			storeHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, liveHomeListingShells);
+		}, 250);
 	}, [homeListingSnapshotScope, liveHomeListingShells, portableHomeListingsComplete]);
 	React.useEffect(() => {
 		if (!shouldLoadAssetSummaries) {
@@ -4060,17 +5076,10 @@ function Home() {
 		);
 		void Promise.all(requests).then(finishRetry);
 	}, [aoRoutingScope, collectionKey, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
-	const collectionActivityKey = React.useMemo(
-		() =>
-			collections
-				.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
-				.sort()
-				.join('|'),
-		[collections]
-	);
 	React.useEffect(() => {
 		if (!shouldLoadCollectionSummaries || collectionSort !== 'recent') return;
 		const controller = new AbortController();
+		const activityKey = collectionActivityKey;
 		void mapConcurrent(collections, 2, async (collection) => {
 			try {
 				const events = await discoverCollectionActivityBatched({
@@ -4094,7 +5103,12 @@ function Home() {
 				controller.signal.throwIfAborted();
 				// Creation time remains a truthful fallback when activity indexing is unavailable.
 			}
-		});
+		}).then(
+			() => {
+				if (!controller.signal.aborted) setCollectionActivitySettledKey(activityKey);
+			},
+			() => undefined
+		);
 		return () => controller.abort();
 	}, [collectionActivityKey, collectionSort, shouldLoadCollectionSummaries]);
 	const summaryFailures = [...Object.values(assetPrices), ...Object.values(collectionFloors)].filter(
@@ -4107,16 +5121,17 @@ function Home() {
 		.map((collection) => collection.id)
 		.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable');
 	const summaryFailureKey = `${failedAssetIds.join(',')}|${failedCollectionIds.join(',')}`;
-	const retryMarketSummaries = () => {
+	const retryMarketSummaries = (overdueCollectionIds: Iterable<string> = []) => {
 		if (summaryRetrying) return;
 		retryAssetSummaries.current = new Set(
 			assets.map(({ asset }) => asset.id).filter((assetId) => assetPrices[assetId]?.status === 'unavailable')
 		);
-		retryCollectionSummaries.current = new Set(
-			collections
+		retryCollectionSummaries.current = new Set([
+			...collections
 				.map((collection) => collection.id)
-				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable')
-		);
+				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable'),
+			...overdueCollectionIds,
+		]);
 		const retryGroups = new Set<'assets' | 'collections'>();
 		if (retryAssetSummaries.current.size) retryGroups.add('assets');
 		if (retryCollectionSummaries.current.size) retryGroups.add('collections');
@@ -4128,15 +5143,22 @@ function Home() {
 		setSummaryRetrying(true);
 		setSummaryRetry((current) => current + 1);
 	};
+	const summaryAutoRetryRounds = React.useRef(0);
+	if (!homeSummaryFailuresPresent(summaryFailureKey)) summaryAutoRetryRounds.current = 0;
 	React.useEffect(() => {
 		if (
-			!summaryFailureKey ||
-			summaryFailureKey === '|' ||
-			summaryRetrying ||
-			portableHomeListingsFailure?.source === 'compute'
+			!homeSummaryAutoRetryDue({
+				failureKey: summaryFailureKey,
+				rounds: summaryAutoRetryRounds.current,
+				retrying: summaryRetrying,
+				computeCircuitOpen: portableHomeListingsFailure?.source === 'compute',
+			})
 		)
 			return;
-		const timer = window.setTimeout(retryMarketSummaries, 15_000);
+		const timer = window.setTimeout(() => {
+			summaryAutoRetryRounds.current += 1;
+			retryMarketSummaries();
+		}, HOME_SUMMARY_AUTO_RETRY_DELAY_MS);
 		return () => window.clearTimeout(timer);
 	}, [portableHomeListingsFailure, summaryFailureKey, summaryRetrying]);
 	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
@@ -4156,37 +5178,158 @@ function Home() {
 	);
 	const assetSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('assets');
 	const collectionSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('collections');
-	const collectionResultsPending = homeMarketHasPending(
-		market.loading || collectionSummariesRetrying || failedCollectionIds.length > 0,
-		collections.map((collection) => collection.id),
-		collectionFloors
+	// A floor that has not arrived by the display deadline says "Price unavailable";
+	// a retry re-arms the deadline for the floors it restarts.
+	const [collectionFloorDeadlineRun, setCollectionFloorDeadlineRun] = React.useState(0);
+	const overdueCollectionFloors = useHomeDisplayDeadlines(
+		`${aoRoutingScope}|${collectionFloorDeadlineRun}`,
+		shouldLoadCollectionSummaries
+			? collections.map((collection) => collection.id).filter((collectionId) => !collectionFloors[collectionId])
+			: [],
+		COLLECTION_PRICE_DISPLAY_DEADLINE_MS
 	);
-	const discoverResultsPending = homeMarketHasPending(
-		market.loading || assetSummariesRetrying || portableHomeListingsLoading || failedAssetIds.length > 0,
-		assets.map(({ asset }) => asset.id),
-		assetPrices
+	const overdueCollectionFloorIds = collections
+		.map((collection) => collection.id)
+		.filter((collectionId) => !collectionFloors[collectionId] && overdueCollectionFloors.has(collectionId));
+	const collectionResultsPending = homeCollectionFloorsPending({
+		shellLoading: marketShellLoading,
+		retrying: collectionSummariesRetrying,
+		collectionIds: collections.map((collection) => collection.id),
+		floors: collectionFloors,
+		overdue: overdueCollectionFloors,
+	});
+	const collectionFloorRetryNoticeNow = collectionPriceRetryNotice({
+		activityError: false,
+		activityLoading: false,
+		cardPricesFailed: false,
+		cardPricesLoading: collectionSummariesRetrying,
+		listedOnly: false,
+		overdue: collectionSummariesRetrying ? 0 : overdueCollectionFloorIds.length,
+		unavailable: failedCollectionIds.length,
+	});
+	// Held through the retry it offers, so it does not blink (a render-phase update, as useStableOrder).
+	const [shownCollectionFloorNotice, setShownCollectionFloorNotice] = React.useState<PriceRetryNotice>();
+	const collectionFloorRetryNotice = heldPriceRetryNotice(
+		shownCollectionFloorNotice,
+		collectionFloorRetryNoticeNow,
+		collectionSummariesRetrying
 	);
+	if (
+		collectionFloorRetryNotice.visible !== shownCollectionFloorNotice?.visible ||
+		collectionFloorRetryNotice.unavailable !== shownCollectionFloorNotice?.unavailable
+	)
+		setShownCollectionFloorNotice(collectionFloorRetryNotice);
+	const retryCollectionFloors = () => {
+		summaryAutoRetryRounds.current = 0;
+		setCollectionFloorDeadlineRun((run) => run + 1);
+		retryMarketSummaries(overdueCollectionFloorIds);
+	};
+	const discoverResultsPending = homeDiscoverPending({
+		marketLoading: market.loading,
+		retrying: assetSummariesRetrying,
+		crawlLoading: portableHomeListingsLoading,
+		visiblePagesFull: homeDiscoverPagesFull(
+			assetType === 'all'
+				? [
+						{
+							shown: discoverTokenPagination.items.length,
+							pageSize: HOME_DISCOVER_TOKEN_PAGE_SIZE,
+							page: discoverTokenPagination.page,
+							pageCount: discoverTokenPagination.pageCount,
+						},
+						{
+							shown: Math.min(discoverCollectibles.length, HOME_DISCOVER_UNIQUE_PREVIEW),
+							pageSize: HOME_DISCOVER_UNIQUE_PREVIEW,
+							page: 1,
+							pageCount: 1,
+						},
+				  ]
+				: [
+						{
+							shown: assetPagination.items.length,
+							pageSize: HOME_ASSET_PAGE_SIZE,
+							page: assetPagination.page,
+							pageCount: assetPagination.pageCount,
+						},
+				  ]
+		),
+		visibleCount: displayedAssets.length,
+		keys: assets.map(({ asset }) => asset.id),
+		summaries: displayAssetPrices,
+	});
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
-	const discoverInitialLoading = homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length);
+	const reportedDiscoverFailure = market.error
+		? { message: market.error, retry: market.retry }
+		: portableHomeListingsFailure
+		? {
+				message: marketplaceRequestFailureMessage(
+					portableHomeListingsFailure.source,
+					portableHomeListingsFailure.kind
+				),
+				retry: () => setPortableHomeRetry((current) => current + 1),
+		  }
+		: undefined;
+	const [discoverDeadlineRun, setDiscoverDeadlineRun] = React.useState(0);
+	const discoverLoadingOverdue = useHomeDisplayDeadlines(
+		[aoRoutingScope, portableHomeRetry, discoverDeadlineRun, assetType, assetView, normalizedQuery].join('|'),
+		homeTab === 'discover' &&
+			!reportedDiscoverFailure &&
+			homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length)
+			? ['discover']
+			: [],
+		HOME_DISCOVER_LOADING_DEADLINE_MS
+	).has('discover');
+	const overdueDiscoverFailure = discoverLoadingOverdue
+		? homeDiscoverOverdueFailure(
+				marketShellReady,
+				summaryFailures.map((failure) => failure.kind)
+		  )
+		: undefined;
+	const discoverFailure =
+		reportedDiscoverFailure ??
+		(overdueDiscoverFailure
+			? {
+					message: marketplaceRequestFailureMessage(
+						overdueDiscoverFailure.source,
+						overdueDiscoverFailure.kind
+					),
+					retry: () => {
+						setDiscoverDeadlineRun((run) => run + 1);
+						if (marketShellReady) setPortableHomeRetry((current) => current + 1);
+						else market.retry();
+					},
+			  }
+			: undefined);
+	const discoverDisplay = homeDiscoverDisplay(
+		discoverResultsPending,
+		Boolean(discoverFailure),
+		displayedAssets.length,
+		discoverLoadingOverdue
+	);
+	const discoverBusy = homeDiscoverBusy(discoverDisplay, discoverResultsPending);
 	const pageRefreshing =
-		homeTab === 'discover' ? discoverResultsPending : homeTab === 'collections' ? collectionResultsPending : false;
+		homeTab === 'discover' ? discoverBusy : homeTab === 'collections' ? collectionResultsPending : false;
 	React.useEffect(() => {
 		market.setPageRefreshing(pageRefreshing);
 		return () => market.setPageRefreshing(false);
 	}, [market.setPageRefreshing, pageRefreshing]);
 	const selectHomeTab = (tab: HomeTab) => {
-		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) });
+		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) }, PRESERVE_ROUTE_FOCUS);
 		if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
 	};
 	const selectAssetPage = (page: number) => {
 		setAssetPage(page);
 		marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	};
-	const renderTokenList = (items: typeof displayedAssets) => (
-		<div className="token-market-list" role="list">
+	const renderTokenList = (
+		items: typeof displayedAssets,
+		placeholderRows = 0,
+		listRef?: React.RefObject<HTMLDivElement>
+	) => (
+		<div className="token-market-list" ref={listRef} role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
-				const change = tokenPriceChanges[asset.id];
+				const change = homeTokenPriceChangeCurrent(tokenPriceChanges[asset.id], Date.now());
 				return (
 					<TokenMarketRow
 						asset={{ ...asset, image: assetImages[asset.id] ?? asset.image }}
@@ -4200,8 +5343,11 @@ function Home() {
 						}}
 						secondaryMetric={{
 							label: '24h change',
-							value:
-								change === undefined ? <HomePendingMarketValue /> : homeTokenPriceChangeLabel(change),
+							value: homeTokenPriceChangePending(change, overdueTokenPriceChanges.has(asset.id)) ? (
+								<HomePendingMarketValue />
+							) : (
+								<HomeTokenPriceChangeValue change={change} />
+							),
 							tone:
 								typeof change !== 'number'
 									? 'muted'
@@ -4212,19 +5358,25 @@ function Home() {
 									: 'muted',
 						}}
 						onWarm={() => prefetchAssetPage(asset.id, true)}
+						orderId={homeDiscoverOrderId({ asset, collection })}
 						priority={index < 2}
 					/>
 				);
 			})}
+			{Array.from({ length: placeholderRows }, (_, index) => (
+				// Keyed by slot, so the remaining placeholders stay put as rows fill the slots above them.
+				<HomeTokenPlaceholderRow key={`placeholder-${items.length + index}`} />
+			))}
 		</div>
 	);
-	const renderCollectibleGrid = (items: typeof displayedAssets) => (
-		<div className="home-asset-grid">
+	const renderCollectibleGrid = (items: typeof displayedAssets, gridRef?: React.RefObject<HTMLDivElement>) => (
+		<div className="home-asset-grid" ref={gridRef}>
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
 				const pricePending = !price;
 				return (
 					<Link
+						data-order-id={homeDiscoverOrderId({ asset, collection })}
 						key={`${collection.id}-${asset.id}`}
 						to={`/asset/${collection.id}/${asset.id}`}
 						onFocus={() => prefetchAssetPage(asset.id, false)}
@@ -4256,47 +5408,10 @@ function Home() {
 				<div className="home-content">
 					<div className="home-market-layout" ref={marketPaneRef}>
 						<section className="home-section home-assets" id="market">
-							<h1 className="sr-only">Marketplace</h1>
+							<h1 className="sr-only">{homeTabHeading(homeTab)}</h1>
 							<div className="home-section-heading">
 								<div>
-									<div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
-										<Button
-											aria-controls="home-discover-panel"
-											aria-selected={homeTab === 'discover'}
-											className="home-market-tab"
-											id="home-discover-tab"
-											onClick={() => selectHomeTab('discover')}
-											role="tab"
-											size="small"
-										>
-											<Compass className="ui-icon" aria-hidden="true" />
-											Discover
-										</Button>
-										<Button
-											aria-controls="home-collections-panel"
-											aria-selected={homeTab === 'collections'}
-											className="home-market-tab"
-											id="home-collections-tab"
-											onClick={() => selectHomeTab('collections')}
-											role="tab"
-											size="small"
-										>
-											<LayoutGrid className="ui-icon" aria-hidden="true" />
-											Collections
-										</Button>
-										<Button
-											aria-controls="home-activity-panel"
-											aria-selected={homeTab === 'activity'}
-											className="home-market-tab"
-											id="home-activity-tab"
-											onClick={() => selectHomeTab('activity')}
-											role="tab"
-											size="small"
-										>
-											<History className="ui-icon" aria-hidden="true" />
-											Activity
-										</Button>
-									</div>
+									<HomeMarketTabs active={homeTab} onSelect={selectHomeTab} />
 									<p>
 										{homeTab === 'discover'
 											? normalizedQuery
@@ -4308,7 +5423,7 @@ function Home() {
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
-									<div aria-busy={discoverResultsPending} className="home-asset-filters">
+									<div aria-busy={discoverBusy} className="home-asset-filters">
 										<MarketSelect<HomeAssetType>
 											label="Asset type"
 											onChange={setAssetType}
@@ -4346,15 +5461,19 @@ function Home() {
 									</div>
 								) : null}
 							</div>
-							{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
-							{homeTab === 'discover' && portableHomeListingsFailure ? (
-								<ErrorPanel
-									message={marketplaceRequestFailureMessage(
-										portableHomeListingsFailure.source,
-										portableHomeListingsFailure.kind
-									)}
-									onRetry={() => setPortableHomeRetry((current) => current + 1)}
-								/>
+							{homeTab === 'discover' ? (
+								discoverFailure && homeDiscoverFailureNotice(discoverDisplay) === 'inline' ? (
+									<div className="collection-source-notice home-discover-partial-notice retry-notice">
+										<span role="status">
+											{homeDiscoverPartialFailureMessage(discoverFailure.message)}
+										</span>
+										<Button onClick={discoverFailure.retry} size="small">
+											Retry
+										</Button>
+									</div>
+								) : null
+							) : market.error ? (
+								<ErrorPanel message={market.error} onRetry={market.retry} />
 							) : null}
 							{homeTab === 'discover' && partialTokenCollection ? (
 								<div className="collection-source-notice">
@@ -4384,19 +5503,22 @@ function Home() {
 									role="tabpanel"
 								>
 									{collections.length || collectionResultsPending ? (
-										<div className="home-feature-grid">
+										<div className="home-feature-grid" ref={collectionGrid}>
 											{collections.map((collection, index) => {
-												const image = collection.assets.find((asset) => asset.image)?.image;
+												const image = collectionCoverImage(collection);
 												const tokenPreview =
 													collection.assets.find((asset) => asset.image) ??
 													collection.assets[0];
 												const floor = collectionFloors[collection.id];
+												const floorOverdue =
+													!floor && overdueCollectionFloors.has(collection.id);
 												const floorPending =
-													!floor ||
-													(collectionSummariesRetrying && floor.status === 'unavailable');
+													(!floor && !floorOverdue) ||
+													(collectionSummariesRetrying && floor?.status === 'unavailable');
 												return (
 													<Link
 														className={`home-feature-card feature-${index}`}
+														data-order-id={collection.id}
 														key={collection.id}
 														to={`/collection/${collection.id}`}
 													>
@@ -4477,6 +5599,8 @@ function Home() {
 																				'N/A'
 																			)}
 																		</ArCurrencyText>
+																	) : floorOverdue ? (
+																		collectionCardPriceLabel(undefined, false, true)
 																	) : (
 																		<HomePendingMarketValue />
 																	)}
@@ -4495,9 +5619,33 @@ function Home() {
 													</Link>
 												);
 											})}
-											{collectionResultsPending ? (
+											{homeMarketShowsInitialLoader(
+												collectionResultsPending,
+												collections.length
+											) ? (
 												<HomeMarketGhostCard kind="collection" />
 											) : null}
+										</div>
+									) : null}
+									{/* After the grid, so its arrival never pushes painted cards down. */}
+									{collectionFloorRetryNotice.visible && !market.error ? (
+										<div className="inline-error retry-notice home-collection-floor-notice">
+											<span role="status">
+												{collectionFloorRetryNotice.unavailable.toLocaleString()} collection{' '}
+												{collectionFloorRetryNotice.unavailable === 1
+													? 'floor remains'
+													: 'floors remain'}{' '}
+												unavailable. The collections stay browsable.
+											</span>
+											<Button
+												className="with-icon"
+												disabled={summaryRetrying}
+												onClick={retryCollectionFloors}
+												size="custom"
+												type="button"
+											>
+												<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+											</Button>
 										</div>
 									) : null}
 									{collectionResultsReady && !market.error && collections.length === 0 ? (
@@ -4508,12 +5656,14 @@ function Home() {
 								<HomeActivityPanel collections={market.collections} marketLoading={market.loading} />
 							) : (
 								<div
-									aria-busy={discoverResultsPending}
+									aria-busy={discoverBusy}
 									aria-labelledby="home-discover-tab"
 									id="home-discover-panel"
 									role="tabpanel"
 								>
-									{discoverInitialLoading ? (
+									{homeDiscoverFailureNotice(discoverDisplay) === 'panel' && discoverFailure ? (
+										<ErrorPanel message={discoverFailure.message} onRetry={discoverFailure.retry} />
+									) : discoverDisplay === 'loading' ? (
 										<div className="home-market-loading">
 											<Loading label="Loading marketplace assets…" />
 										</div>
@@ -4534,16 +5684,32 @@ function Home() {
 															/>
 														</Button>
 													</div>
-													{discoverTokens.length ? (
+													{discoverTokens.length || !displayedAssetOrderSettled ? (
 														<>
-															{renderTokenList(discoverTokenPagination.items)}
-															<Pagination
-																ariaLabel="Token overview pages"
-																className="discover-token-pagination"
-																onPageChange={setDiscoverTokenPage}
-																page={discoverTokenPagination.page}
-																pageCount={discoverTokenPagination.pageCount}
-															/>
+															{renderTokenList(
+																discoverTokenPagination.items,
+																homeTokenPlaceholderRows(
+																	displayedAssetOrderSettled,
+																	discoverTokenPagination.items.length
+																),
+																discoverTokenList
+															)}
+															{discoverTokenPagination.pageCount > 1 ||
+															displayedAssetOrderSettled ? (
+																<Pagination
+																	ariaLabel="Token overview pages"
+																	className="discover-token-pagination"
+																	onPageChange={setDiscoverTokenPage}
+																	page={discoverTokenPagination.page}
+																	pageCount={discoverTokenPagination.pageCount}
+																/>
+															) : (
+																// Hold the pager's height while more tokens may still arrive.
+																<div
+																	aria-hidden="true"
+																	className="pagination discover-token-pagination"
+																/>
+															)}
 														</>
 													) : (
 														<p className="discover-section-empty">
@@ -4554,7 +5720,7 @@ function Home() {
 												<section className="discover-market-section collectible-section">
 													<div className="discover-market-heading">
 														<div>
-															<p className="eyebrow">1/1 assets</p>
+															<p className="eyebrow">One-of-one assets</p>
 															<h2>Uniques</h2>
 														</div>
 														<Button size="custom" onClick={() => setAssetType('atomic')}>
@@ -4566,7 +5732,10 @@ function Home() {
 														</Button>
 													</div>
 													{discoverCollectibles.length ? (
-														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
+														renderCollectibleGrid(
+															discoverCollectibles.slice(0, HOME_DISCOVER_UNIQUE_PREVIEW),
+															discoverUniqueGrid
+														)
 													) : (
 														<p className="discover-section-empty">
 															No Uniques match this view.
@@ -4626,6 +5795,14 @@ export function globalActivityCollection(collections: Collection[], processId: s
 	return indexed.get(processId);
 }
 
+/**
+ * The loaded activity rows the catalogue claims as it stands now. The global pager keeps every
+ * indexed row, so a collection that loads after a page landed reveals its rows on the next render.
+ */
+export function globalCatalogueActivity(events: CollectionActivityEvent[], collections: Collection[]) {
+	return events.filter((event) => Boolean(globalActivityCollection(collections, event.processId)));
+}
+
 export function globalActivityRecipientIds(collections: Collection[]) {
 	const ids = new Set<string>();
 	for (const collection of collections) {
@@ -4661,7 +5838,106 @@ export function globalActivityRevealDescription(
 	} events.`;
 }
 
+/** Image-collection assets behind the activity rows a list is showing, for batched name lookup. */
+export function visibleActivityAssets(
+	events: readonly CollectionActivityEvent[],
+	resolveCollection: (event: CollectionActivityEvent) => Collection | undefined
+): AssetSummary[] {
+	return events.flatMap((event) => {
+		const collection = resolveCollection(event);
+		return collection?.kind === 'images' ? collectionAsset(collection, event.processId) ?? [] : [];
+	});
+}
+
+/** Quiet time after the catalogue last changed before activity rows are painted. */
+export const ACTIVITY_CATALOGUE_QUIET_MS = 600;
+/** Longest the rows wait for that quiet time once the market shell has settled. */
+export const ACTIVITY_CATALOGUE_WAIT_CAP_MS = 2_500;
+
+/** Which collections, and how many members each, the catalogue holds; name or media updates do not count. */
+export function activityCatalogueMembershipKey(collections: readonly Collection[]) {
+	return collections
+		.map(
+			(collection) =>
+				`${collection.id}:${
+					collection.kind === 'names'
+						? Object.keys(collection.namespace?.namesById ?? {}).length
+						: collection.assets.length
+				}`
+		)
+		.join(',');
+}
+
+/**
+ * How long to wait before painting activity rows, measured from the latest catalogue change: a
+ * short quiet time, so collections that stream in just after the market settles are already
+ * counted, but never past the cap measured from when the market settled.
+ */
+export function activityCatalogueRevealDelay(
+	settledAt: number,
+	now: number,
+	quietMs = ACTIVITY_CATALOGUE_QUIET_MS,
+	capMs = ACTIVITY_CATALOGUE_WAIT_CAP_MS
+) {
+	return Math.max(0, Math.min(quietMs, settledAt + capMs - now));
+}
+
+/**
+ * Where the Activity panel says it is loading. With no rows painted it is the placeholder above the
+ * list. Once rows are painted, a line inserted above them (and removed when the page arrives) would
+ * move every row, so the load-more button carries "Loading activity…" instead, or a line after the
+ * list when there is no button.
+ */
+export function activityLoadingPlacement(busy: boolean, rowCount: number, hasMoreControl: boolean) {
+	if (!busy) return null;
+	if (!rowCount) return 'placeholder' as const;
+	return hasMoreControl ? null : ('after-list' as const);
+}
+
+/**
+ * Longest claimed rows wait for the market to settle before they paint anyway. A slow index can keep
+ * the catalogue streaming for most of a minute; past this the rows paint with the names they have
+ * and upgrade in place (the title is one ellipsised line), rather than leaving only a spinner.
+ */
+export const ACTIVITY_ROWS_WAIT_CAP_MS = 8_000;
+
+/** How long rows the catalogue already claims may still wait, measured from when they were first claimed. */
+export function activityRowsRevealDelay(claimedAt: number, now: number, capMs = ACTIVITY_ROWS_WAIT_CAP_MS) {
+	return Math.max(0, claimedAt + capMs - now);
+}
+
+/**
+ * True once the market has settled and its membership has been quiet briefly (or the cap passed), or
+ * once claimed rows have waited ACTIVITY_ROWS_WAIT_CAP_MS for that. Stays true.
+ */
+function useActivityCatalogueRevealed(
+	marketLoading: boolean,
+	collections: readonly Collection[],
+	rowsClaimed: boolean
+) {
+	const [revealed, setRevealed] = React.useState(false);
+	const settledAt = React.useRef<number | null>(null);
+	const claimedAt = React.useRef<number | null>(null);
+	const membershipKey = React.useMemo(() => activityCatalogueMembershipKey(collections), [collections]);
+	React.useEffect(() => {
+		if (revealed || marketLoading) return;
+		const now = Date.now();
+		settledAt.current ??= now;
+		const timer = window.setTimeout(() => setRevealed(true), activityCatalogueRevealDelay(settledAt.current, now));
+		return () => window.clearTimeout(timer);
+	}, [marketLoading, membershipKey, revealed]);
+	React.useEffect(() => {
+		if (revealed || !rowsClaimed) return;
+		const now = Date.now();
+		claimedAt.current ??= now;
+		const timer = window.setTimeout(() => setRevealed(true), activityRowsRevealDelay(claimedAt.current, now));
+		return () => window.clearTimeout(timer);
+	}, [revealed, rowsClaimed]);
+	return revealed;
+}
+
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
+	const { rememberIndexedAssets } = React.useContext(MarketContext);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
 	const [activityLimit, setActivityLimit] = React.useState(20);
 	const [request, setRequest] = React.useState({ kind: 'initial' as 'initial' | 'more', id: 0 });
@@ -4671,18 +5947,16 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const [error, setError] = React.useState<string | null>(null);
 	const [announcement, setAnnouncement] = React.useState('');
 	const activityListId = React.useId();
-	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
-	const activityScope = React.useMemo(() => JSON.stringify([...activityRecipients].sort()), [activityRecipients]);
-	const graphql = arweaveGraphqlEndpoint();
-	const pager = React.useMemo(() => {
-		const recipients = new Set<string>(JSON.parse(activityScope));
-		return createGlobalActivityPager({ graphql, acceptProcessId: (id) => recipients.has(id) });
-	}, [activityScope, graphql]);
+	// One pager for the panel's lifetime. It keeps every indexed row and the catalogue filter runs at
+	// render, so collections streaming in (or growing after the market settles) reveal their rows
+	// instead of discarding the loaded page and aborting the read in flight.
+	const [pager] = React.useState(() => createGlobalActivityPager({}));
+	const loadAnnouncementPending = React.useRef(false);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
 		setAnnouncement('');
-	}, [activityFilter, pager]);
+	}, [activityFilter]);
 
 	React.useEffect(() => {
 		const controller = new AbortController();
@@ -4691,12 +5965,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setHasNextPage(cached.hasNextPage);
 		setError(null);
 		setLoading(true);
-		if (marketLoading) return () => controller.abort();
-		if (!activityRecipients.length) {
-			setLoading(false);
-			setHasNextPage(false);
-			return () => controller.abort();
-		}
 		void (async () => {
 			let current = cached;
 			try {
@@ -4709,7 +5977,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				setEvents(current.events);
 				setHasNextPage(current.hasNextPage);
 				if (request.kind === 'more') setActivityLimit((limit) => limit + 20);
-				setAnnouncement(`${current.events.length.toLocaleString()} indexed events loaded.`);
+				loadAnnouncementPending.current = true;
 			} catch (cause) {
 				if (controller.signal.aborted) return;
 				setError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
@@ -4719,9 +5987,48 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			setLoading(false);
 		})();
 		return () => controller.abort();
-	}, [activityFilter, activityRecipients.length, marketLoading, pager, request]);
+	}, [activityFilter, pager, request]);
 
-	const filteredEvents = filterGlobalActivity(events, activityFilter);
+	const catalogueEvents = React.useMemo(() => globalCatalogueActivity(events, collections), [collections, events]);
+	const claimedEvents = filterGlobalActivity(catalogueEvents, activityFilter);
+	// The page is read in parallel with the catalogue, but rows wait for the catalogue to settle so
+	// collections streaming in do not insert rows between ones already painted. Names for the rows
+	// already claimed are asked for meanwhile, so they paint named. A catalogue that is still
+	// streaming ACTIVITY_ROWS_WAIT_CAP_MS after rows were first claimed no longer holds them back.
+	const catalogueRevealed = useActivityCatalogueRevealed(marketLoading, collections, claimedEvents.length > 0);
+	const revealedEvents = catalogueRevealed ? claimedEvents : [];
+	// Rows already painted keep their places: rows a collection streaming in after the reveal brings
+	// (the reveal waits at most ACTIVITY_CATALOGUE_WAIT_CAP_MS after the market settles, or
+	// ACTIVITY_ROWS_WAIT_CAP_MS once rows are claimed) are appended rather than inserted above them,
+	// and the newest-first order is offered instead of applied on its own. A filter change or the
+	// offer re-ranks.
+	const [activityOrderRevision, setActivityOrderRevision] = React.useState(0);
+	const rankedActivityIds = revealedEvents.map((event) => event.id);
+	const activityOrder = useStableOrder(rankedActivityIds, `${activityFilter}|${activityOrderRevision}`, false);
+	const filteredEvents = React.useMemo(
+		() => applyStableOrder(revealedEvents, activityOrder, (event) => event.id),
+		[activityOrder, revealedEvents]
+	);
+	const newerActivityOrder = stableOrderDiffers(activityOrder, rankedActivityIds, activityLimit);
+	const activityPanelRef = React.useRef<HTMLDivElement>(null);
+	const applyNewerActivityOrder = () => {
+		setActivityOrderRevision((current) => current + 1);
+		window.requestAnimationFrame(() =>
+			activityPanelRef.current?.querySelector<HTMLElement>('.activity-filter[aria-pressed="true"]')?.focus()
+		);
+	};
+	const busy = loading || (!catalogueRevealed && !error);
+	React.useEffect(() => {
+		if (!catalogueRevealed || loading || !loadAnnouncementPending.current) return;
+		loadAnnouncementPending.current = false;
+		setAnnouncement(`${catalogueEvents.length.toLocaleString()} indexed events loaded.`);
+	}, [catalogueEvents.length, catalogueRevealed, loading]);
+	useIndexedAssetNames(
+		visibleActivityAssets((catalogueRevealed ? filteredEvents : claimedEvents).slice(0, activityLimit), (event) =>
+			globalActivityCollection(collections, event.processId)
+		),
+		rememberIndexedAssets
+	);
 	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
 		{ value: 'all', label: 'All' },
 		{ value: 'make-offer', label: 'Listings' },
@@ -4735,12 +6042,18 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(collections, event.processId);
 	const canReveal = activityLimit < filteredEvents.length;
+	const loadingPlacement = activityLoadingPlacement(
+		busy,
+		Math.min(activityLimit, filteredEvents.length),
+		canReveal || hasNextPage
+	);
 	return (
 		<div
-			aria-busy={loading}
+			aria-busy={busy}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
+			ref={activityPanelRef}
 			role="tabpanel"
 		>
 			<div aria-label="Filter global activity" className="activity-filters" role="group">
@@ -4760,13 +6073,13 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</Button>
 				))}
 			</div>
-			{loading ? (
+			{loadingPlacement === 'placeholder' ? (
 				<div className="global-activity-loading">
-					<Loading label={events.length ? 'Loading activity…' : 'Loading recent activity…'} />
+					<Loading label="Loading recent activity…" />
 				</div>
 			) : null}
 			{error ? (
-				events.length ? (
+				filteredEvents.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
 							This page could not be loaded. Your loaded activity is still available. {error}
@@ -4788,17 +6101,43 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				}`}
 				events={filteredEvents.slice(0, activityLimit)}
 				id={activityListId}
-				loading={loading}
+				loading={busy}
 				resolveAsset={(event) => {
 					const collection = resolveCollection(event);
 					return collection ? collectionAsset(collection, event.processId) : undefined;
 				}}
 				resolveCollection={resolveCollection}
 			/>
+			{loadingPlacement === 'after-list' ? (
+				<div className="global-activity-loading">
+					<Loading label="Loading activity…" />
+				</div>
+			) : null}
+			{/* Zero-height, with the offer fixed to the bottom of the viewport, so it never moves the rows. The
+			    Home sections are size containers, which would anchor a fixed descendant to the section, so the
+			    offer is portalled to the body as Tooltip does for its floating layer. */}
+			{typeof document !== 'undefined'
+				? createPortal(
+						<div className="collection-order-notice" aria-live="polite">
+							{newerActivityOrder ? (
+								<Button
+									aria-controls={activityListId}
+									className="collection-order-notice-button with-icon"
+									onClick={applyNewerActivityOrder}
+									size="custom"
+									type="button"
+								>
+									<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Show newest first
+								</Button>
+							) : null}
+						</div>,
+						document.body
+				  )
+				: null}
 			<p className="sr-only" role="status" aria-live="polite">
 				{announcement}
 			</p>
-			{!loading && !error && !filteredEvents.length ? (
+			{!busy && !error && !filteredEvents.length ? (
 				<div className="empty-state">
 					<h3>No matching activity loaded</h3>
 					<p>
@@ -4808,11 +6147,13 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					</p>
 				</div>
 			) : null}
-			{canReveal || hasNextPage ? (
+			{/* While the first rows load the placeholder says so; a button under an empty list would be pushed
+			    down by the rows it is waiting for. */}
+			{(canReveal || hasNextPage) && (filteredEvents.length || !busy) ? (
 				<Button
 					aria-controls={activityListId}
 					className="load-more"
-					disabled={loading}
+					disabled={busy}
 					size="custom"
 					type="button"
 					onClick={() => {
@@ -4823,14 +6164,14 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 								globalActivityRevealDescription(
 									nextLimit,
 									filteredEvents.length,
-									events.length,
+									catalogueEvents.length,
 									activityFilter !== 'all'
 								)
 							);
 						} else requestPage('more');
 					}}
 				>
-					{loading
+					{busy
 						? 'Loading activity…'
 						: canReveal
 						? `Show ${Math.min(20, filteredEvents.length - activityLimit)} more events`
@@ -4838,7 +6179,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						? 'Load older activity'
 						: 'Check older activity'}
 				</Button>
-			) : !loading && !error ? (
+			) : !busy && !error ? (
 				<p className="collection-result-count">End of indexed activity for this filter.</p>
 			) : null}
 		</div>
@@ -4889,7 +6230,9 @@ function GatewayControl() {
 		}
 		setError('');
 		const url = new URL(window.location.href);
-		url.searchParams.set('node', computeOrigins.join(','));
+		const node = aoPeerSelectionQuery(computeOrigins, window.location);
+		if (node === null) url.searchParams.delete('node');
+		else url.searchParams.set('node', node);
 		if (permawebOsAvailable && usePermawebOs) {
 			url.searchParams.delete(AO_TRANSPORT_QUERY_PARAMETER);
 		} else {
@@ -5072,6 +6415,15 @@ type MarketSelectOption<Value extends string> = {
 	label: string;
 };
 
+/**
+ * While its listbox is open, a MarketSelect owns Escape: an enclosing dialog
+ * (useDialogFocus) must let the first Escape close only the list. Closed, the
+ * attribute is absent so the next Escape dismisses the dialog as usual.
+ */
+export function marketSelectEscapeOwnerAttr(open: boolean): '' | undefined {
+	return open ? '' : undefined;
+}
+
 export function MarketSelect<Value extends string>({
 	label,
 	value,
@@ -5143,6 +6495,7 @@ export function MarketSelect<Value extends string>({
 	return (
 		<div
 			className="market-select"
+			data-dialog-escape-owner={marketSelectEscapeOwnerAttr(open)}
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
 			}}
@@ -5214,12 +6567,124 @@ export function MarketSelect<Value extends string>({
 	);
 }
 
-type CollectionCardPrice =
+export type CollectionCardPrice =
 	| { status: 'resolved'; label: string | null }
 	| { status: 'unindexed' }
 	| { status: 'unavailable'; kind: MarketplaceFailureKind };
 
+/** How long a visible card may say "Checking…" before it admits the price did not arrive. */
+export const COLLECTION_PRICE_DISPLAY_DEADLINE_MS = 15_000;
+/** Recipients per collection listing-activity query (see the batch comment where it is used). */
+const COLLECTION_LISTING_BATCH_SIZE = 40;
+
+export function collectionCardPriceLabel(
+	price: CollectionCardPrice | undefined,
+	requestFailed: boolean,
+	deadlinePassed: boolean,
+	unavailableLabel = 'Price unavailable'
+) {
+	if (price?.status === 'unavailable') return unavailableLabel;
+	if (price?.status === 'unindexed') return 'Unlisted';
+	if (price?.status === 'resolved') return price.label ?? 'Not listed';
+	return requestFailed || deadlinePassed ? unavailableLabel : 'Checking…';
+}
+
+/**
+ * Per-card display deadlines. Each visible card without a price gets its own start
+ * time, so cards revealed on scroll and the end of the activity scan never re-arm
+ * cards that are already overdue. Only a scope change or an explicit retry of a
+ * card restarts its deadline.
+ */
+export type CollectionPriceDeadlines = { scope: string; startedAt: Map<string, number> };
+
+export function createCollectionPriceDeadlines(): CollectionPriceDeadlines {
+	return { scope: '', startedAt: new Map() };
+}
+
+export function observeCollectionPriceDeadlines(
+	deadlines: CollectionPriceDeadlines,
+	scope: string,
+	pendingIds: Iterable<string>,
+	now: number,
+	deadlineMs = COLLECTION_PRICE_DISPLAY_DEADLINE_MS
+) {
+	if (deadlines.scope !== scope) {
+		deadlines.scope = scope;
+		deadlines.startedAt.clear();
+	}
+	const overdue: string[] = [];
+	let nextDeadline: number | null = null;
+	for (const id of pendingIds) {
+		let startedAt = deadlines.startedAt.get(id);
+		if (startedAt === undefined) {
+			startedAt = now;
+			deadlines.startedAt.set(id, now);
+		}
+		const due = startedAt + deadlineMs;
+		if (due <= now) overdue.push(id);
+		else nextDeadline = nextDeadline === null ? due : Math.min(nextDeadline, due);
+	}
+	return { overdue, nextDeadline };
+}
+
+/** Restart the deadline for the given cards, or for every card when no IDs are given. */
+export function restartCollectionPriceDeadlines(deadlines: CollectionPriceDeadlines, ids?: Iterable<string>) {
+	if (!ids) {
+		deadlines.startedAt.clear();
+		return;
+	}
+	for (const id of ids) deadlines.startedAt.delete(id);
+}
+
+/**
+ * The card-price retry notice. Overdue cards only count once the activity scan has
+ * finished: while it runs, the scan owns those reads and the page already says it
+ * is checking live offers, so a card-price Retry would have nothing to restart.
+ */
+export function collectionPriceRetryNotice({
+	activityError,
+	activityLoading,
+	cardPricesFailed,
+	cardPricesLoading,
+	listedOnly,
+	overdue,
+	unavailable,
+}: {
+	activityError: boolean;
+	activityLoading: boolean;
+	cardPricesFailed: boolean;
+	cardPricesLoading: boolean;
+	listedOnly: boolean;
+	overdue: number;
+	unavailable: number;
+}) {
+	const countedOverdue = activityLoading || activityError ? 0 : overdue;
+	const visible =
+		!listedOnly && ((!cardPricesLoading && (cardPricesFailed || unavailable > 0)) || countedOverdue > 0);
+	return { visible, unavailable: visible && !cardPricesFailed ? unavailable + countedOverdue : 0 };
+}
+
+type PriceRetryNotice = ReturnType<typeof collectionPriceRetryNotice>;
+
+/**
+ * A price retry notice that stays up through the retry it offers. Without this it blinks off when
+ * a retry (manual or automatic) starts and back on when the retry fails again. The held copy keeps
+ * the last count, which stays true until the retry settles: those floors are still unavailable.
+ */
+export function heldPriceRetryNotice(
+	shown: PriceRetryNotice | undefined,
+	next: PriceRetryNotice,
+	retrying: boolean
+): PriceRetryNotice {
+	return retrying && shown?.visible ? shown : next;
+}
+
 type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
+
+/** The collection grid re-ranks at once when any of these viewer choices changes. */
+export function collectionAssetOrderKey(sort: CollectionSort, initial: string, query: string, listedOnly: boolean) {
+	return [sort, initial, query.trim().toLowerCase(), listedOnly ? 'listed' : 'all'].join('|');
+}
 type CollectionViewMode = 'comfortable' | 'compact' | 'list';
 type CollectionLiveListingRow = {
 	asset: AssetSummary;
@@ -5325,15 +6790,7 @@ export function collectionActivityVersion(collection: Collection) {
 
 export function newestCollectionActivity(events: CollectionActivityEvent[], limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
 	const byId = new Map<string, CollectionActivityEvent>();
-	for (const event of events) {
-		const previous = byId.get(event.id);
-		byId.set(
-			event.id,
-			previous?.purchaseProof && !event.purchaseProof
-				? { ...event, purchaseProof: previous.purchaseProof }
-				: event
-		);
-	}
+	for (const event of events) byId.set(event.id, mergeIndexedActivityEvent(byId.get(event.id), event));
 	return [...byId.values()]
 		.sort((a, b) => b.height - a.height || b.timestamp - a.timestamp || a.id.localeCompare(b.id))
 		.slice(0, limit);
@@ -5394,6 +6851,30 @@ export function collectionDefaultsToListed(collectionId: string) {
 	return collectionId === 'arweave-names';
 }
 
+/**
+ * The collection Items/Offers choice lives in the URL as `?view=items | offers`; with no (or an unknown)
+ * value the collection's default applies. The URL is the only source of truth, so Back, reload and shared
+ * links all show the same view.
+ */
+export type CollectionListingView = 'items' | 'offers';
+
+export function collectionViewFromSearch(search: string): CollectionListingView | null {
+	const view = new URLSearchParams(search).get('view');
+	return view === 'items' || view === 'offers' ? view : null;
+}
+
+export function collectionListedFromSearch(search: string, collectionId: string): boolean {
+	const view = collectionViewFromSearch(search);
+	return view ? view === 'offers' : collectionDefaultsToListed(collectionId);
+}
+
+/** Writes `view` into the current search, keeping every other param (such as `q`). */
+export function collectionViewSearch(search: string, view: CollectionListingView): string {
+	const params = new URLSearchParams(search);
+	params.set('view', view);
+	return `?${params.toString()}`;
+}
+
 export function compareCollectionAssetNames(a: AssetSummary, b: AssetSummary) {
 	return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 }
@@ -5444,6 +6925,30 @@ function CollectionRoute() {
 	return <CollectionView key={collectionId} />;
 }
 
+export type CollectionRouteState = 'loading' | 'unavailable' | 'not-found' | 'ready';
+
+/**
+ * Route state for a page addressed by collection id. A collection outside the
+ * loaded catalogue stays loading while useCollectionLookup fetches it, so a
+ * deep link never settles on "not found" before the lookup has answered.
+ */
+export function collectionRouteState({
+	hasCollection,
+	marketLoading,
+	marketError,
+	lookup,
+}: {
+	hasCollection: boolean;
+	marketLoading: boolean;
+	marketError: string | null;
+	lookup: { loading: boolean; error: string };
+}): CollectionRouteState {
+	if (hasCollection) return 'ready';
+	if (marketLoading || lookup.loading) return 'loading';
+	if (lookup.error || marketError) return 'unavailable';
+	return 'not-found';
+}
+
 function useCollectionLookup(collectionId: string) {
 	const market = React.useContext(MarketContext);
 	const needsLookup =
@@ -5486,6 +6991,9 @@ function useCollectionLookup(collectionId: string) {
 	};
 }
 
+// Same guard as Tooltip: static (server) rendering has no layout to measure.
+const useBrowserLayoutEffect = typeof document === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
 export function CollectionDescription({ description }: { description: string }) {
 	const text = formatTokenDescription(description);
 	const contentId = React.useId();
@@ -5493,7 +7001,9 @@ export function CollectionDescription({ description }: { description: string }) 
 	const [expanded, setExpanded] = React.useState(false);
 	const [overflowing, setOverflowing] = React.useState(false);
 
-	React.useEffect(() => {
+	// Measured before paint, so a "Show more" toggle is part of the first frame instead of pushing the
+	// collection header (and the grid below it) down a frame later.
+	useBrowserLayoutEffect(() => {
 		const paragraph = paragraphRef.current;
 		if (!paragraph) return;
 		let disposed = false;
@@ -5551,12 +7061,13 @@ function CollectionMarketHeader({
 	collection: Collection;
 	stats: CollectionMarketStat[];
 }) {
+	const avatar = collection.thumbnail ?? collection.assets[0]?.image;
 	return (
 		<div className="collection-title collection-market-header">
 			<div className="collection-identity">
 				<div className="collection-avatar" aria-hidden="true">
-					{collection.assets[0]?.image ? (
-						<ArtworkImage alt="" src={collection.assets[0].image} loading="eager" fetchPriority="high" />
+					{avatar ? (
+						<ArtworkImage alt="" src={avatar} loading="eager" fetchPriority="high" />
 					) : (
 						<span>{collectionDisplayName(collection).slice(0, 1)}</span>
 					)}
@@ -5582,7 +7093,8 @@ function CollectionMarketHeader({
 
 function CollectionView() {
 	const { collectionId = '' } = useParams();
-	const { search } = useLocation();
+	const { pathname, search } = useLocation();
+	const navigate = useNavigate();
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
 	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
@@ -5599,10 +7111,16 @@ function CollectionView() {
 		if (metadataEnrichmentScopes.current.has(metadataEnrichmentScope)) return;
 		metadataEnrichmentScopes.current.add(metadataEnrichmentScope);
 		const controller = new AbortController();
-		void enrichImageCollectionAssetMetadata(target, controller.signal).then(
-			(enriched) => {
-				if (!controller.signal.aborted && enriched !== target) market.addCollection(enriched);
-			},
+		// Publish each indexed page as it arrives so cards take their tag titles
+		// immediately rather than showing truncated process IDs until the walk ends.
+		let published = target;
+		const publish = (enriched: Collection) => {
+			if (controller.signal.aborted || enriched === published) return;
+			published = enriched;
+			market.addCollection(enriched);
+		};
+		void enrichImageCollectionAssetMetadata(target, controller.signal, undefined, undefined, publish).then(
+			publish,
 			() => undefined
 		);
 		return () => {
@@ -5616,23 +7134,47 @@ function CollectionView() {
 	);
 	const [appendOpen, setAppendOpen] = React.useState(false);
 	const [appendFiles, setAppendFiles] = React.useState<File[]>([]);
-	const [appendEstimate, setAppendEstimate] = React.useState<CollectionMintEstimate | null>(null);
-	const [appendEstimating, setAppendEstimating] = React.useState(false);
+	const [appendDropped, setAppendDropped] = React.useState(0);
+	const [appendEstimate, dispatchAppendEstimate] = React.useReducer(
+		collectionAppendEstimateReducer,
+		idleCollectionAppendEstimate
+	);
+	const [appendEstimateRetry, setAppendEstimateRetry] = React.useState(0);
 	const [appendWorking, setAppendWorking] = React.useState(false);
 	const [appendStatus, setAppendStatus] = React.useState('');
 	const [appendError, setAppendError] = React.useState<string | null>(null);
+	// Assets a failed append already paid for, reused on retry while the wallet,
+	// collection and chosen files are unchanged; dropped once the append succeeds.
+	const [appendProgress, setAppendProgress] = React.useState<MintProgress<MintedByIndex> | null>(null);
+	const appendProgressKey =
+		wallet.address && collection && appendFiles.length
+			? mintProgressKey(wallet.address, {
+					collection: collection.id,
+					name: collection.name,
+					description: collection.description,
+					base: collection.assets.length,
+					files: appendFiles,
+			  })
+			: '';
+	const reusedAppendAssets = reusableMintProgress(appendProgress, appendProgressKey);
+	const appendTriggerRef = React.useRef<HTMLButtonElement>(null);
 	const appendPreviews = React.useMemo(
 		() => appendFiles.map((file) => ({ file, url: URL.createObjectURL(file) })),
 		[appendFiles]
 	);
 	React.useEffect(() => () => appendPreviews.forEach(({ url }) => URL.revokeObjectURL(url)), [appendPreviews]);
 	const routedQuery = new URLSearchParams(search).get('q') ?? '';
-	const routedOffers = new URLSearchParams(search).get('view') === 'offers';
 	const [query, setQuery] = React.useState(routedQuery);
 	const deferredQuery = React.useDeferredValue(query);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
-	const [listedOnly, setListedOnly] = React.useState(() => routedOffers || collectionDefaultsToListed(collectionId));
+	const listedOnly = collectionListedFromSearch(search, collectionId);
+	const selectListingView = (view: CollectionListingView) => {
+		const nextSearch = collectionViewSearch(search, view);
+		// An in-view switch: replace the entry so Back from an asset returns here, and keep focus and scroll.
+		if (nextSearch !== search)
+			navigate({ pathname, search: nextSearch }, { replace: true, ...PRESERVE_ROUTE_FOCUS });
+	};
 	const [sort, setSort] = React.useState<CollectionSort>('recent');
 	const [viewMode, setViewMode] = React.useState<CollectionViewMode>('compact');
 	const [initial, setInitial] = React.useState<string>('all');
@@ -5714,30 +7256,39 @@ function CollectionView() {
 	const collectionStatusRef = React.useRef<HTMLSpanElement>(null);
 	React.useEffect(() => {
 		if (!appendOpen || !appendFiles.length || !ownedCollection) {
-			setAppendEstimate(null);
+			dispatchAppendEstimate({ type: 'reset' });
 			return;
 		}
 		const controller = new AbortController();
-		setAppendEstimating(true);
+		dispatchAppendEstimate({ type: 'start' });
 		void import('api/asset-mint')
 			.then(({ CollectionMintClient }) =>
-				new CollectionMintClient().estimateAppend(ownedCollection, appendFiles, controller.signal)
+				new CollectionMintClient().estimateAppend(
+					ownedCollection,
+					appendFiles,
+					controller.signal,
+					reusedAppendAssets
+				)
 			)
 			.then(
 				(estimate) => {
-					if (!controller.signal.aborted) setAppendEstimate(estimate);
+					if (!controller.signal.aborted) dispatchAppendEstimate({ type: 'resolve', estimate });
 				},
 				(cause) => {
-					if (!controller.signal.aborted) setAppendError(errorMessage(cause));
+					if (!controller.signal.aborted)
+						dispatchAppendEstimate({ type: 'reject', message: mintErrorMessage(cause) });
 				}
-			)
-			.finally(() => {
-				if (!controller.signal.aborted) setAppendEstimating(false);
-			});
+			);
 		return () => controller.abort();
-	}, [appendFiles, appendOpen, ownedCollection]);
+	}, [appendFiles, appendOpen, ownedCollection, reusedAppendAssets, appendEstimateRetry]);
 	const appendToCollection = async () => {
-		if (!collection || !ownedCollection || !wallet.address || !appendFiles.length || appendWorking) return;
+		if (
+			!collection ||
+			!ownedCollection ||
+			!wallet.address ||
+			!collectionAppendCanSubmit({ estimate: appendEstimate, files: appendFiles, working: appendWorking })
+		)
+			return;
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
 		setAppendError(null);
 		setAppendWorking(true);
@@ -5748,6 +7299,9 @@ function CollectionView() {
 			name: `${collection.name} additions`,
 			status: 'Preparing secure wallet approvals…',
 		});
+		// What this append pays for reaches state only if it fails, so the quote
+		// and its transaction count keep describing the append in flight.
+		let keepPaidProgress = () => {};
 		try {
 			const { CollectionMintClient } = await import('api/asset-mint');
 			const source: MintedCollection = {
@@ -5756,12 +7310,20 @@ function CollectionView() {
 				owner: ownedCollection.owner,
 				createdAt: ownedCollection.createdAt,
 				manifestId: collection.manifestId ?? ownedCollection.manifestId,
+				// License terms come from the local record only, matching the dialog's license copy.
+				udl: ownedCollection.udl,
+			};
+			const paidAssets = pendingMintProgress(appendProgressKey, reusedAppendAssets);
+			keepPaidProgress = () => {
+				if (paidAssets.progress) setAppendProgress(paidAssets.progress);
 			};
 			const result = await new CollectionMintClient().append(source, appendFiles, wallet.address, {
 				allowHighCost: true,
+				minted: reusedAppendAssets,
+				onAssetMinted: (index, asset) => paidAssets.record((value) => ({ ...value, [index]: asset })),
 				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (phase) => {
-					const status = collectionAppendPhaseLabel(phase);
+					const status = collectionMintPhaseLabel(phase, { extending: true });
 					setAppendStatus(status);
 					updateUpload(uploadId, status);
 				},
@@ -5769,6 +7331,7 @@ function CollectionView() {
 			const previousIds = new Set(collection.assets.map((asset) => asset.id));
 			const added = result.collection.assets.filter((asset) => !previousIds.has(asset.id));
 			market.addCollection(result.collection);
+			setAppendProgress(null);
 			finishUpload(uploadId, {
 				collectionId: collection.id,
 				assetIds: added.map((asset) => asset.id),
@@ -5776,10 +7339,12 @@ function CollectionView() {
 				extended: true,
 			});
 			setAppendFiles([]);
-			setAppendEstimate(null);
+			dispatchAppendEstimate({ type: 'reset' });
+			setAppendDropped(0);
 			setAppendOpen(false);
 		} catch (cause) {
-			const message = errorMessage(cause);
+			const message = mintErrorMessage(cause);
+			keepPaidProgress();
 			setAppendError(message);
 			failUpload(uploadId, message);
 		} finally {
@@ -5859,13 +7424,18 @@ function CollectionView() {
 	const visibleAssets = React.useMemo(
 		() =>
 			listedOnly
-				? listed.map((result) => result.asset)
+				? listed.map((result) =>
+						preferResolvedAssetName(
+							result.asset,
+							collection ? collectionAsset(collection, result.asset.id) : undefined
+						)
+				  )
 				: collection && deferredQuery.trim()
 				? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
 				: collection?.assets ?? [],
 		[collection, deferredQuery, listed, listedOnly]
 	);
-	const filtered = React.useMemo(
+	const rankedAssets = React.useMemo(
 		() =>
 			visibleAssets
 				.filter(
@@ -5902,6 +7472,27 @@ function CollectionView() {
 				}),
 		[activityByAsset, cardPrices, collection?.kind, defaultIndex, deferredQuery, initial, sort, visibleAssets]
 	);
+	// Cards already painted keep their slots while listing activity and prices stream in; the grid re-ranks
+	// when the viewer changes the sort or filters, asks for the newer order, or once the listing scan has
+	// settled. A large collection's scan can run for minutes, so the newer order is offered meanwhile.
+	const [assetOrderRevision, setAssetOrderRevision] = React.useState(0);
+	const rankedAssetIds = rankedAssets.map((asset) => asset.id);
+	const assetOrder = useStableOrder(
+		rankedAssetIds,
+		`${collectionAssetOrderKey(sort, initial, deferredQuery, listedOnly)}|${assetOrderRevision}`,
+		!activityState.loading && !cardPricesLoading
+	);
+	const newerAssetOrder = stableOrderDiffers(assetOrder, rankedAssetIds, limit);
+	const applyNewerAssetOrder = () => {
+		setAssetOrderRevision((current) => current + 1);
+		window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
+	};
+	const filtered = React.useMemo(
+		() => applyStableOrder(rankedAssets, assetOrder, (asset) => asset.id),
+		[assetOrder, rankedAssets]
+	);
+	const collectionGridRef = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(collectionGridRef, assetOrder);
 	const liveListingRows = React.useMemo(() => {
 		const rows = listed
 			.flatMap((result) =>
@@ -5936,6 +7527,7 @@ function CollectionView() {
 	);
 	const progressiveRevealRef = useProgressiveReveal(limit < filtered.length, revealNextAssetPage);
 	const visiblePriceAssets = filtered.slice(0, limit);
+	useIndexedAssetNames(collection?.kind === 'images' ? visiblePriceAssets : [], market.rememberIndexedAssets);
 	const visiblePriceKey = visiblePriceAssets.map((asset) => asset.id).join(',');
 	const visibleUnavailablePrices = visiblePriceAssets.filter(
 		(asset) => cardPrices[asset.id]?.status === 'unavailable'
@@ -5997,7 +7589,12 @@ function CollectionView() {
 			}
 		});
 	}, [filtered.length, limit, moreState.error, moreState.loading, moreState.scanned]);
+	// Metadata-only collection updates (titles arriving from GraphQL) keep the same
+	// listing scope and visible IDs, so they must not abort in-flight card price reads.
+	const priceCollection = React.useRef(collection);
+	priceCollection.current = collection;
 	React.useEffect(() => {
+		const collection = priceCollection.current;
 		if (!collection) return;
 		const nextScope = listingScope;
 		if (priceScope.current !== nextScope) {
@@ -6039,7 +7636,7 @@ function CollectionView() {
 						}));
 						await resolveAssetCandidates(
 							candidates.filter((candidate) => completedIds.has(candidate.processId)),
-							[collection],
+							[priceCollection.current ?? collection],
 							{
 								signal: controller.signal,
 								concurrency: 2,
@@ -6097,8 +7694,64 @@ function CollectionView() {
 			}
 		})();
 		return () => controller.abort();
-	}, [activityState.loading, collection, listedOnly, listingScope, priceRetry, visiblePriceKey]);
+	}, [activityState.loading, listedOnly, listingScope, priceRetry, visiblePriceKey]);
+	// Display-only deadlines, tracked per card: they never cancel a read, so a late
+	// price still replaces the label, and they do not re-arm when the activity scan
+	// finishes or more cards are revealed.
+	const priceDeadlines = React.useRef(createCollectionPriceDeadlines());
+	const [priceDeadlineRestart, setPriceDeadlineRestart] = React.useState(0);
+	const [overduePriceIds, setOverduePriceIds] = React.useState<ReadonlySet<string>>(() => new Set());
+	const unpricedVisibleKey = listedOnly
+		? ''
+		: visiblePriceAssets
+				.filter((asset) => !cardPrices[asset.id])
+				.map((asset) => asset.id)
+				.join(',');
+	React.useEffect(() => {
+		if (listedOnly || !listingScope) {
+			setOverduePriceIds((current) => (current.size ? new Set() : current));
+			return;
+		}
+		const pendingIds = unpricedVisibleKey ? unpricedVisibleKey.split(',') : [];
+		let timer: number | undefined;
+		const update = () => {
+			const { overdue, nextDeadline } = observeCollectionPriceDeadlines(
+				priceDeadlines.current,
+				listingScope,
+				pendingIds,
+				Date.now()
+			);
+			setOverduePriceIds((current) =>
+				current.size === overdue.length && overdue.every((id) => current.has(id)) ? current : new Set(overdue)
+			);
+			if (nextDeadline !== null) timer = window.setTimeout(update, Math.max(0, nextDeadline - Date.now()));
+		};
+		update();
+		return () => window.clearTimeout(timer);
+	}, [listedOnly, listingScope, priceDeadlineRestart, unpricedVisibleKey]);
+	const visibleOverduePrices = visiblePriceAssets.filter(
+		(asset) => !cardPrices[asset.id] && overduePriceIds.has(asset.id)
+	).length;
+	const priceRetryNotice = collectionPriceRetryNotice({
+		activityError: Boolean(activityState.error),
+		activityLoading: activityState.loading,
+		cardPricesFailed: Boolean(cardPricesFailure),
+		cardPricesLoading,
+		listedOnly,
+		overdue: visibleOverduePrices,
+		unavailable: visibleUnavailablePrices,
+	});
+	const restartVisiblePriceDeadlines = () => {
+		restartCollectionPriceDeadlines(
+			priceDeadlines.current,
+			visiblePriceAssets
+				.filter((asset) => !cardPrices[asset.id] || cardPrices[asset.id].status === 'unavailable')
+				.map((asset) => asset.id)
+		);
+		setPriceDeadlineRestart((current) => current + 1);
+	};
 	const retryCardPrices = () => {
+		restartVisiblePriceDeadlines();
 		setCardPrices((current) =>
 			Object.fromEntries(
 				Object.entries(current).filter(([processId, price]) => {
@@ -6142,7 +7795,8 @@ function CollectionView() {
 			listingLoadedAssetIds.current,
 			collectionAssetIds
 		);
-		const continuing = listingActivityScope.current === listingScope && !assetWindow.reset;
+		const sameScope = listingActivityScope.current === listingScope;
+		const continuing = sameScope && !assetWindow.reset;
 		const requestedAssetIds = continuing ? assetWindow.added : collectionAssetIds;
 		listingActivityScope.current = listingScope;
 		if (!continuing) {
@@ -6170,7 +7824,15 @@ function CollectionView() {
 			setCardPricesLoading(false);
 			return () => controller.abort();
 		}
-		if (!continuing) setCardPrices({});
+		if (!continuing) {
+			setCardPrices({});
+			// A window reset in the same scope rechecks every card, so every deadline restarts;
+			// a new scope is already handled by the deadline tracker itself.
+			if (sameScope) {
+				restartCollectionPriceDeadlines(priceDeadlines.current);
+				setPriceDeadlineRestart((current) => current + 1);
+			}
+		}
 		setCardPricesLoading(true);
 		setCardPricesFailure(null);
 		const publications = createListingPublications();
@@ -6286,13 +7948,22 @@ function CollectionView() {
 									signal: controller.signal,
 									listingsOnly: true,
 									acceptProcessId: includesCollectionAsset,
-									onPage: resolvePage,
+									onPage: (page) => resolvePage(page),
 							  })
 							: await discoverMarketActivityBatched({
 									recipients: requestedAssetIds,
 									signal: controller.signal,
 									listingsOnly: true,
 									concurrency: 1,
+									// arweave.net answers a cold 100-recipient filter in 18-24 s, past the 15 s
+									// deadline, and the same query in about 1 s once it has run: 40 recipients
+									// fit the deadline cold, and one patient retry finishes a slow batch.
+									batchSize: COLLECTION_LISTING_BATCH_SIZE,
+									retryDelaysMs: [GRAPHQL_RETRY_DELAYS_MS[0]],
+									retryTimeoutMs: GRAPHQL_SLOW_RETRY_TIMEOUT_MS,
+									// In an index outage, report after two failed batches (about a minute)
+									// instead of after every batch; Retry asks only for the rest.
+									stopAfterConsecutiveFailures: 2,
 									onBatch: (candidates, completedRecipients) => {
 										resolvePage(candidates, completedRecipients);
 										if (controller.signal.aborted || listingActivityScope.current !== listingScope)
@@ -6518,15 +8189,20 @@ function CollectionView() {
 		: `${resultSummary} in ${collection.name}.`;
 	return (
 		<section className={`collection-page collection-marketplace-page view-${viewMode}`}>
-			<Link className="back" to="/">
+			<Link className="back" to={collectionBackLink(collection.kind).to}>
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
+				{collectionBackLink(collection.kind).label}
 			</Link>
 			<div className="collection-market-navigation">
 				<CollectionMarketHeader
 					action={
 						collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
-							<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
+							<Button
+								onClick={() => setAppendOpen(true)}
+								ref={appendTriggerRef}
+								type="button"
+								variant="neutral"
+							>
 								<Images aria-hidden="true" /> Add assets
 							</Button>
 						) : undefined
@@ -6559,95 +8235,32 @@ function CollectionView() {
 				<CollectionTabs
 					collection={collection}
 					active={listedOnly ? 'offers' : 'assets'}
-					onSelectAssets={() => setListedOnly(false)}
-					onSelectOffers={() => setListedOnly(true)}
+					onSelectAssets={() => selectListingView('items')}
+					onSelectOffers={() => selectListingView('offers')}
 				/>
 			</div>
 			{appendOpen && ownedCollection ? (
-				<div className="dialog-backdrop" role="presentation">
-					<section
-						aria-labelledby="append-collection-title"
-						aria-modal="true"
-						className="dialog dialog-compact collection-append-dialog"
-						role="dialog"
-					>
-						<div className="dialog-heading">
-							<div>
-								<p className="eyebrow">Extend collection</p>
-								<h2 id="append-collection-title">Add assets to {collection.name}</h2>
-							</div>
-							<Button
-								aria-label="Close add assets"
-								disabled={appendWorking}
-								onClick={() => setAppendOpen(false)}
-								size="icon"
-								type="button"
-								variant="ghost"
-							>
-								<X aria-hidden="true" />
-							</Button>
-						</div>
-						<p className="append-collection-copy">
-							Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
-							collection carrier.
-						</p>
-						<label className={`mint-dropzone${appendFiles.length ? ' has-file' : ''}`}>
-							<input
-								accept="image/png,image/jpeg,image/webp,image/gif"
-								disabled={appendWorking}
-								multiple
-								onChange={(event) => {
-									setAppendFiles(Array.from(event.target.files ?? []).slice(0, 10));
-									setAppendError(null);
-								}}
-								type="file"
-							/>
-							<span>
-								<Upload aria-hidden="true" />
-								<strong>
-									{appendFiles.length ? `${appendFiles.length} images ready` : 'Choose images'}
-								</strong>
-								<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
-							</span>
-						</label>
-						{appendFiles.length ? (
-							<div className="collection-append-preview" aria-label="Selected images">
-								{appendPreviews.map(({ file, url }) => (
-									<figure key={`${file.name}:${file.size}`}>
-										<img alt="" src={url} />
-										<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
-									</figure>
-								))}
-							</div>
-						) : null}
-						<div className="collection-append-summary">
-							<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
-							<strong>
-								{appendEstimate ? (
-									<ArCurrencyText>{`${winstonToAr(appendEstimate.total.toString())} AR · ${
-										appendEstimate.transactionCount
-									} transactions`}</ArCurrencyText>
-								) : (
-									'—'
-								)}
-							</strong>
-						</div>
-						{appendError ? <ErrorPanel message={appendError} /> : null}
-						<Button
-							className="wide"
-							disabled={!appendFiles.length || !appendEstimate || appendWorking}
-							onClick={() => void appendToCollection()}
-							type="button"
-						>
-							{appendWorking ? (
-								<LoaderCircle className="spin" aria-hidden="true" />
-							) : (
-								<Upload aria-hidden="true" />
-							)}
-							{appendWorking ? 'Adding assets…' : `Add ${appendFiles.length || ''} assets`}
-						</Button>
-					</section>
-				</div>
+				<CollectionAppendDialog
+					collectionName={collection.name}
+					dropped={appendDropped}
+					error={appendError}
+					estimate={appendEstimate}
+					files={appendFiles}
+					licensed={Boolean(ownedCollection.udl)}
+					onClose={() => setAppendOpen(false)}
+					onRetryEstimate={() => setAppendEstimateRetry((count) => count + 1)}
+					onSelectFiles={(files) => {
+						const selection = mergeCollectionFiles([], files);
+						setAppendFiles(selection.files);
+						setAppendDropped(selection.dropped);
+						setAppendError(null);
+					}}
+					onSubmit={() => void appendToCollection()}
+					previews={appendPreviews}
+					restoreTargetRef={appendTriggerRef}
+					status={appendStatus}
+					working={appendWorking}
+				/>
 			) : null}
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{pagedTokenScope ? (
@@ -6794,7 +8407,7 @@ function CollectionView() {
 							/>
 							<MarketSelect<'all' | 'listed'>
 								label="Show"
-								onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
+								onChange={(nextValue) => selectListingView(nextValue === 'listed' ? 'offers' : 'items')}
 								options={[
 									{ value: 'all', label: 'All assets' },
 									{ value: 'listed', label: 'Listed for sale' },
@@ -6833,6 +8446,7 @@ function CollectionView() {
 						className="with-icon"
 						size="custom"
 						onClick={() => {
+							restartVisiblePriceDeadlines();
 							setRetry((value) => value + 1);
 							window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 						}}
@@ -6841,13 +8455,13 @@ function CollectionView() {
 					</Button>
 				</div>
 			) : null}
-			{!listedOnly && !cardPricesLoading && (cardPricesFailure || visibleUnavailablePrices > 0) ? (
+			{priceRetryNotice.visible ? (
 				<div className="inline-error retry-notice">
 					<span role="status">
 						Compute hasn’t completed yet. Please try again.
-						{!cardPricesFailure && visibleUnavailablePrices
-							? ` ${visibleUnavailablePrices.toLocaleString()} visible ${
-									visibleUnavailablePrices === 1 ? 'price remains' : 'prices remain'
+						{priceRetryNotice.unavailable
+							? ` ${priceRetryNotice.unavailable.toLocaleString()} visible ${
+									priceRetryNotice.unavailable === 1 ? 'price remains' : 'prices remain'
 							  } unavailable.`
 							: ''}
 					</span>
@@ -6887,20 +8501,17 @@ function CollectionView() {
 					aria-label={`${collection.name} tokens`}
 					className="token-market-list collection-token-list"
 					id={assetGridId}
+					ref={collectionGridRef}
 					role="list"
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
 						const price = cardPrices[asset.id];
-						const priceLabel =
-							price?.status === 'unavailable'
-								? 'Unavailable'
-								: price?.status === 'unindexed'
-								? 'Unlisted'
-								: price?.status === 'resolved'
-								? price.label ?? 'Not listed'
-								: cardPricesFailure
-								? 'Unavailable'
-								: 'Checking…';
+						const priceLabel = collectionCardPriceLabel(
+							price,
+							Boolean(cardPricesFailure),
+							overduePriceIds.has(asset.id),
+							'Unavailable'
+						);
 						return (
 							<TokenMarketRow
 								asset={asset}
@@ -6914,6 +8525,7 @@ function CollectionView() {
 									tone: price?.status === 'resolved' && price.label ? 'positive' : 'default',
 								}}
 								onWarm={() => prefetchAssetPage(asset.id, true)}
+								orderId={asset.id}
 								priority={index < 2}
 							/>
 						);
@@ -6927,6 +8539,7 @@ function CollectionView() {
 						collection.kind === 'names' ? ' names-collection-grid' : ''
 					}`}
 					id={assetGridId}
+					ref={collectionGridRef}
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
 						const price = cardPrices[asset.id];
@@ -6935,26 +8548,35 @@ function CollectionView() {
 								key={asset.id}
 								collection={collection}
 								asset={asset}
+								orderId={asset.id}
 								priority={index < 2}
 								collectionContext
 								badge={listedOnly ? 'For sale' : undefined}
-								price={
-									price?.status === 'unavailable'
-										? 'Unavailable'
-										: price?.status === 'unindexed'
-										? 'Unlisted'
-										: price?.status === 'resolved'
-										? price.label ?? 'Not listed'
-										: cardPricesFailure
-										? 'Unavailable'
-										: 'Checking…'
-								}
+								price={collectionCardPriceLabel(
+									price,
+									Boolean(cardPricesFailure),
+									overduePriceIds.has(asset.id)
+								)}
 								priceListed={price?.status === 'resolved' && Boolean(price.label)}
 							/>
 						);
 					})}
 				</div>
 			)}
+			{/* Zero-height, with the offer fixed to the bottom of the viewport, so it never moves the grid. */}
+			<div className="collection-order-notice" aria-live="polite">
+				{newerAssetOrder ? (
+					<Button
+						aria-controls={assetGridId}
+						className="collection-order-notice-button with-icon"
+						onClick={applyNewerAssetOrder}
+						size="custom"
+						type="button"
+					>
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Show newer order
+					</Button>
+				) : null}
+			</div>
 			<p
 				className={
 					filtered.length > pageSize && limit >= filtered.length
@@ -7215,14 +8837,160 @@ function CollectionAnalyticsPanel({
 	);
 }
 
-function collectionAppendPhaseLabel(phase: CollectionMintPhase) {
-	if (phase.kind === 'asset') {
-		const action = phase.phase.startsWith('signing') ? 'Approve in your wallet' : 'Uploading to Arweave';
-		return `Asset ${phase.index + 1} of ${phase.total} · ${action}`;
-	}
-	if (phase.kind === 'manifest')
-		return phase.phase === 'signing' ? 'Approve the new manifest' : 'Publishing manifest';
-	return phase.phase === 'signing' ? 'Approve the collection update' : 'Updating collection carrier';
+/**
+ * The owner's "Add assets" modal. It uses the shared dialog contract
+ * (useDialogFocus): focus moves in, Tab is trapped, the background is inert
+ * and scroll-locked, Escape and a backdrop click close it unless an append is
+ * in progress, and focus returns to the "Add assets" trigger on close.
+ */
+export function CollectionAppendDialog({
+	collectionName,
+	dropped = 0,
+	error,
+	estimate,
+	files,
+	licensed = false,
+	onClose,
+	onRetryEstimate,
+	onSelectFiles,
+	onSubmit,
+	previews,
+	restoreTargetRef,
+	status,
+	working,
+}: {
+	collectionName: string;
+	/** Picked images the 10-per-batch cap left out of the current selection. */
+	dropped?: number;
+	/** The last append (submit) failure; estimate failures live in `estimate`. */
+	error: string | null;
+	estimate: CollectionAppendEstimateState;
+	files: File[];
+	/** Whether the local collection record carries license terms; added assets inherit exactly those. */
+	licensed?: boolean;
+	onClose(): void;
+	onRetryEstimate(): void;
+	onSelectFiles(files: File[]): void;
+	onSubmit(): void;
+	previews: Array<{ file: File; url: string }>;
+	restoreTargetRef: React.RefObject<HTMLElement>;
+	status: string;
+	working: boolean;
+}) {
+	const close = () => {
+		if (!working) onClose();
+	};
+	const estimating = estimate.status === 'checking';
+	const restoreTarget = React.useCallback(() => restoreTargetRef.current, [restoreTargetRef]);
+	const dialogRef = useDialogFocus<HTMLElement>(true, close, restoreTarget);
+	return (
+		<div
+			className="dialog-backdrop"
+			onMouseDown={(event) => event.target === event.currentTarget && close()}
+			role="presentation"
+		>
+			<section
+				aria-labelledby="append-collection-title"
+				aria-modal="true"
+				className="dialog dialog-compact collection-append-dialog"
+				ref={dialogRef}
+				role="dialog"
+				tabIndex={-1}
+			>
+				<div className="dialog-heading">
+					<div>
+						<p className="eyebrow">Extend collection</p>
+						<h2 id="append-collection-title">Add assets to {collectionName}</h2>
+					</div>
+					<Button
+						aria-label="Close add assets"
+						disabled={working}
+						onClick={close}
+						size="icon"
+						type="button"
+						variant="ghost"
+					>
+						<X aria-hidden="true" />
+					</Button>
+				</div>
+				<p className="append-collection-copy">
+					Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
+					collection carrier.{' '}
+					{licensed
+						? 'Added assets carry the same license tags as this collection.'
+						: 'Added assets carry no license tags.'}
+				</p>
+				<label className={`mint-dropzone${files.length ? ' has-file' : ''}`}>
+					<input
+						accept="image/png,image/jpeg,image/webp,image/gif"
+						data-dialog-initial
+						disabled={working}
+						multiple
+						onChange={(event) => onSelectFiles(Array.from(event.target.files ?? []))}
+						type="file"
+					/>
+					<span>
+						<Upload aria-hidden="true" />
+						<strong>{files.length ? `${files.length} images ready` : 'Choose images'}</strong>
+						<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
+					</span>
+				</label>
+				<CollectionSelectionNotice dropped={dropped} />
+				{files.length ? (
+					<div className="collection-append-preview" aria-label="Selected images">
+						{previews.map(({ file, url }) => (
+							<figure key={`${file.name}:${file.size}`}>
+								<img alt="" src={url} />
+								<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
+							</figure>
+						))}
+					</div>
+				) : null}
+				<div className="collection-append-summary">
+					<span>
+						{/* Only append phases are announced; the cost-check and idle copy stay silent. */}
+						<span aria-atomic="true" role="status">
+							{estimating ? '' : status}
+						</span>
+						{estimating
+							? 'Checking Arweave storage cost…'
+							: status
+							? null
+							: estimate.status === 'failed'
+							? 'Storage cost unavailable'
+							: 'Ready'}
+					</span>
+					<strong>
+						{estimate.status === 'ready' ? (
+							<ArCurrencyText>{`${winstonToAr(estimate.estimate.total.toString())} AR · ${
+								estimate.estimate.transactionCount
+							} transactions`}</ArCurrencyText>
+						) : (
+							'—'
+						)}
+					</strong>
+				</div>
+				{estimate.status === 'failed' ? (
+					<>
+						<CollectionAppendFailureNotice failure={{ stage: 'estimate', message: estimate.message }} />
+						<Button className="with-icon" disabled={working} onClick={onRetryEstimate} type="button">
+							<RefreshCw aria-hidden="true" className="ui-icon ui-icon--sm" /> Retry cost check
+						</Button>
+					</>
+				) : null}
+				{error ? <CollectionAppendFailureNotice failure={{ stage: 'submit', message: error }} /> : null}
+				<Button
+					className="wide"
+					disabled={!collectionAppendCanSubmit({ estimate, files, working })}
+					onClick={onSubmit}
+					type="button"
+				>
+					{working ? <LoaderCircle className="spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+					{working ? 'Adding assets…' : `Add ${files.length || ''} assets`}
+				</Button>
+			</section>
+		</div>
+	);
 }
 
 function CollectionResultStatus({ message }: { message: string }) {
@@ -7230,6 +8998,75 @@ function CollectionResultStatus({ message }: { message: string }) {
 		<span aria-live="polite" className="sr-only" role="status">
 			{message}
 		</span>
+	);
+}
+
+export type TokenListingStatus = 'checking' | 'unverified' | 'checked';
+
+/**
+ * The token page's listing line. While membership is `live` (shown from live state, token index
+ * unread) it says the check is running or could not finish. Once that line has been painted, a later
+ * `verified` keeps it as "checked" instead of removing it, so the panels below do not jump up by its
+ * height (round 3: a 102 px shift at ~5.8 s). A page that was verified from its first paint never
+ * shows it.
+ */
+export function tokenListingStatus(
+	membership: AssetDetailMembership,
+	marketLoading: boolean,
+	shown: boolean
+): TokenListingStatus | null {
+	if (membership === 'live') return marketLoading ? 'checking' : 'unverified';
+	return membership === 'verified' && shown ? 'checked' : null;
+}
+
+/** Copy for a token page shown from live state while the Bazar token index is unread or unreadable. */
+export function tokenListingNoticeCopy(status: TokenListingStatus) {
+	return status === 'checking'
+		? {
+				message: 'Checking the Bazar listing. Balances and orders below are read from live state.',
+				compact: 'Checking the Bazar listing…',
+		  }
+		: status === 'checked'
+		? {
+				message: 'Bazar listing checked. Balances and orders below are read from live state.',
+				compact: 'Bazar listing checked.',
+		  }
+		: {
+				message:
+					'Bazar listing could not be verified right now. Balances and orders below are read from live state.',
+				compact: 'Bazar listing could not be verified right now.',
+		  };
+}
+
+function TokenListingNotice({ status, onRetry }: { status: TokenListingStatus; onRetry(): void }) {
+	const { message, compact } = tokenListingNoticeCopy(status);
+	const checking = status === 'checking';
+	return (
+		<div className="collection-source-notice collection-index-notice retry-notice">
+			<span role="status">
+				<span aria-hidden="true" className="collection-index-message-full">
+					{message}
+				</span>
+				<span aria-hidden="true" className="collection-index-message-compact">
+					{compact}
+				</span>
+				<span className="sr-only">{message}</span>
+			</span>
+			{/* Once checked there is nothing to retry; the button keeps its box so the line keeps its height. */}
+			<Button
+				aria-disabled={checking}
+				aria-label="Retry"
+				className={`with-icon${status === 'checked' ? ' retry-notice-placeholder' : ''}`}
+				size="custom"
+				type="button"
+				onClick={() => {
+					if (status === 'unverified') onRetry();
+				}}
+			>
+				<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+				<span aria-hidden="true">Retry</span>
+			</Button>
+		</div>
 	);
 }
 
@@ -7281,10 +9118,11 @@ function CollectionIndexNotice({
 	);
 }
 
-function CollectionActivityView() {
+export function CollectionActivityView() {
 	const { collectionId = '' } = useParams();
 	const market = React.useContext(MarketContext);
 	const collection = market.collections.find((item) => item.id === collectionId);
+	const collectionLookup = useCollectionLookup(collectionId);
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
@@ -7316,6 +9154,10 @@ function CollectionActivityView() {
 	const activityWindowVersion = React.useMemo(
 		() => collection?.assets.map((asset) => asset.id).join('.') ?? '',
 		[collection?.assets]
+	);
+	useIndexedAssetNames(
+		visibleActivityAssets(events.slice(0, activityLimit), () => collection),
+		market.rememberIndexedAssets
 	);
 
 	React.useEffect(() => {
@@ -7425,22 +9267,28 @@ function CollectionActivityView() {
 		return () => controller.abort();
 	}, [activityScope, activityWindowVersion, retry]);
 
-	if (!collection && market.loading)
+	const routeState = collectionRouteState({
+		hasCollection: Boolean(collection),
+		marketLoading: market.loading,
+		marketError: market.error,
+		lookup: collectionLookup,
+	});
+	if (routeState === 'loading')
 		return (
 			<RouteState title="Collection activity">
 				<Loading label="Reading collection index…" />
 			</RouteState>
 		);
-	if (!collection && market.error)
+	if (routeState === 'unavailable')
 		return (
 			<RouteState title="Activity unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} />
+				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection)
 		return (
 			<RouteState title="Collection not found">
-				<ErrorPanel message="This collection could not be found on Arweave." />
+				<ErrorPanel message="This collection could not be found on Arweave." onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	const activityScanAnnouncement = collectionActivityScanAnnouncement({
@@ -7452,7 +9300,7 @@ function CollectionActivityView() {
 	});
 	return (
 		<section className="collection-page collection-marketplace-page collection-activity-page view-compact">
-			<Link className="back" to="/">
+			<Link className="back" to={homeTabPath('collections')}>
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
 			<div className="collection-market-navigation">
@@ -7651,7 +9499,7 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({
+export function CollectionTabs({
 	collection,
 	active,
 	onSelectAssets,
@@ -7677,7 +9525,7 @@ function CollectionTabs({
 				<Link
 					aria-current={active === 'assets' ? 'page' : undefined}
 					className={active === 'assets' ? 'active' : ''}
-					to={`/collection/${collection.id}`}
+					to={`/collection/${collection.id}${collectionViewSearch('', 'items')}`}
 				>
 					{collection.kind === 'tokens' ? 'Tokens' : 'Items'}
 				</Link>
@@ -7695,7 +9543,7 @@ function CollectionTabs({
 				<Link
 					aria-current={active === 'offers' ? 'page' : undefined}
 					className={active === 'offers' ? 'active' : ''}
-					to={`/collection/${collection.id}?view=offers`}
+					to={`/collection/${collection.id}${collectionViewSearch('', 'offers')}`}
 				>
 					Offers
 				</Link>
@@ -7718,6 +9566,7 @@ export const AssetCard = React.memo(function AssetCard({
 	price,
 	priceListed = false,
 	collectionContext = false,
+	orderId,
 	priority = false,
 }: {
 	collection: Collection;
@@ -7726,6 +9575,8 @@ export const AssetCard = React.memo(function AssetCard({
 	price?: string;
 	priceListed?: boolean;
 	collectionContext?: boolean;
+	/** Identifies the card to useGridReorderMotion. */
+	orderId?: string;
 	priority?: boolean;
 }) {
 	return (
@@ -7733,6 +9584,7 @@ export const AssetCard = React.memo(function AssetCard({
 			className={`asset-card${collection.kind === 'tokens' ? ' token-asset-card' : ''}${
 				collectionContext ? ' collection-context' : ''
 			}`}
+			data-order-id={orderId}
 			onFocus={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			onMouseEnter={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
@@ -7873,6 +9725,21 @@ export function trackRateLimitFailure(rateLimits: Set<string>, processId: string
 	else rateLimits.delete(processId);
 }
 
+/**
+ * The one sentence every wallet live-state notice uses once checks finish with
+ * failures. `resolved` counts settled checks including failures, so the copy
+ * names only the candidates that could not be checked.
+ */
+export function walletUnavailableCandidatesCopy(
+	status: Pick<WalletResolutionStatus, 'failures' | 'total'>,
+	failureMessage: string
+) {
+	const candidates = status.total === 1 ? 'candidate' : 'candidates';
+	return `${
+		failureMessage ? `${failureMessage} ` : ''
+	}${status.failures.toLocaleString()} of ${status.total.toLocaleString()} ${candidates} could not be checked.`;
+}
+
 export function walletResolutionCopy(status: WalletResolutionStatus, failureMessage: string) {
 	const milestone = Math.floor(status.resolved / 10) * 10;
 	const heading =
@@ -7911,7 +9778,7 @@ export function walletResolutionCopy(status: WalletResolutionStatus, failureMess
 					status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0
 			  }% complete.`
 			: status.phase === 'done' && status.failures
-			? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Resolved assets remain visible.`
+			? walletUnavailableCandidatesCopy(status, failureMessage)
 			: status.phase === 'done'
 			? `Live state resolved for ${status.resolved.toLocaleString()} candidates.`
 			: 'Asset resolution was interrupted.';
@@ -7979,19 +9846,13 @@ export type WalletDiscoverySession = {
 	complete: boolean;
 };
 
-export function walletDiscoveryScope(address: string, gateway: string, collections: Collection[]) {
-	const supportedCollections = collections
-		.map((collection) =>
-			[
-				collection.id,
-				collection.kind,
-				collection.kind === 'names'
-					? collection.namespace?.manifestId ?? ''
-					: collection.manifestId ?? collection.id,
-			].join(':')
-		)
-		.sort();
-	return [address, gateway, ...supportedCollections].join('|');
+/**
+ * A wallet discovery session is scoped to the wallet and serving gateway only.
+ * Collections stream in after the first render; they refine support inside the
+ * running session instead of replacing it and restarting the GraphQL scan.
+ */
+export function walletDiscoveryScope(address: string, gateway: string) {
+	return [address, gateway].join('|');
 }
 
 export function walletDiscoverySession(
@@ -8107,6 +9968,30 @@ export function assetDetailMembershipVerified(
 	return directAtomicAsset || Boolean(collectionId && verifiedCollectionIds.has(collectionId));
 }
 
+/**
+ * How an asset page knows the asset belongs to the collection it is shown under.
+ *
+ * `verified`: the collection's current index was read (or the asset is a live/indexed Atomic Asset).
+ * `live`: the token index could not be read, but membership of the token collection is the live
+ * fungible contract itself (`fungibleAssetFromState`: process@1.0, token@1.0, a fungible UI style,
+ * arweave-swap@1.0, arweave-scheduler@1.0, scheduler-mode all), and this token's live state meets it.
+ * A token past the loaded index pages is shown and traded on exactly this check when the index is
+ * healthy, so trading stays enabled; only the Bazar listing itself is unconfirmed.
+ * `unverified`: anything else, such as an image collection still on its compiled fallback, whose
+ * membership only its index can confirm.
+ */
+export type AssetDetailMembership = 'verified' | 'live' | 'unverified';
+
+export function assetDetailMembership(
+	collection: Pick<Collection, 'id' | 'kind'> | undefined,
+	verifiedCollectionIds: ReadonlySet<string>,
+	directAtomicAsset: boolean,
+	liveFungibleAsset: boolean
+): AssetDetailMembership {
+	if (assetDetailMembershipVerified(collection?.id, verifiedCollectionIds, directAtomicAsset)) return 'verified';
+	return collection?.kind === 'tokens' && liveFungibleAsset ? 'live' : 'unverified';
+}
+
 export function uniquePriceHistory(events: CollectionActivityEvent[]): TokenPricePoint[] {
 	const ordered = [...events].sort(
 		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
@@ -8139,7 +10024,7 @@ export function mergeAssetActivityPages(
 	older: CollectionActivityEvent[]
 ): CollectionActivityEvent[] {
 	const events = new Map(current.map((event) => [event.id, event]));
-	for (const event of older) events.set(event.id, event);
+	for (const event of older) events.set(event.id, mergeIndexedActivityEvent(events.get(event.id), event));
 	return [...events.values()].sort(
 		(left, right) =>
 			right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id)
@@ -8160,15 +10045,25 @@ export function verifiedAssetForDetail(
 		: resolvedAsset;
 }
 
+export const ASSET_STATE_UNAVAILABLE_HEADING = 'Live state unavailable';
+
+/**
+ * Loading-shell identity for an asset page. Until the collection is known the
+ * kind and device stay undefined so the shell renders a neutral skeleton
+ * instead of guessing a collection such as Arweave names / carrier@1.0.
+ */
 export function assetDetailLoadingPresentation(collection: Collection | undefined, collectionId: string) {
-	const kind =
+	const kind: Collection['kind'] | undefined =
 		collection?.kind ??
 		(collectionId === FUNGIBLE_TOKEN_COLLECTION_ID
 			? 'tokens'
 			: collectionId === CREATED_COLLECTION_ID
 			? 'images'
-			: 'names');
-	return { kind, device: kind === 'names' ? 'carrier@1.0' : 'token@1.0' } as const;
+			: collectionId === 'arweave-names'
+			? 'names'
+			: undefined);
+	const device = kind === 'names' ? 'carrier@1.0' : kind ? 'token@1.0' : undefined;
+	return { kind, device } as const;
 }
 
 export function mergeAssetDetailMetadata(
@@ -8204,11 +10099,12 @@ export function assetStateRecoveryUrl(
 	return error && usesPermawebOsAo(location, scope) ? bazarAoTransportUrl(location.href) : null;
 }
 
-function AssetDetailLoadingShell({
+export function AssetDetailLoadingShell({
 	asset,
 	collection,
 	collectionId,
 	error,
+	errorHeading = ASSET_STATE_UNAVAILABLE_HEADING,
 	onRetry,
 	secondaryAction,
 }: {
@@ -8216,6 +10112,7 @@ function AssetDetailLoadingShell({
 	collection?: Collection;
 	collectionId: string;
 	error?: string | null;
+	errorHeading?: string;
 	onRetry?: () => void;
 	secondaryAction?: ErrorPanelAction;
 }) {
@@ -8224,7 +10121,13 @@ function AssetDetailLoadingShell({
 	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
 	const collectionName =
 		(collection ? (kind === 'tokens' ? collectionDisplayName(collection) : collection.name) : undefined) ??
-		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
+		(kind === 'tokens'
+			? 'Fungible tokens'
+			: kind === 'images'
+			? CREATED_COLLECTION_NAME
+			: kind === 'names'
+			? 'Arweave names'
+			: undefined);
 
 	if (kind === 'tokens') {
 		return (
@@ -8265,7 +10168,12 @@ function AssetDetailLoadingShell({
 					</div>
 				</header>
 				{error ? (
-					<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
+					<ErrorPanel
+						heading={errorHeading}
+						message={error}
+						onRetry={onRetry}
+						secondaryAction={secondaryAction}
+					/>
 				) : (
 					<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
 						<span aria-hidden="true" /> Computing current state…
@@ -8375,8 +10283,10 @@ function AssetDetailLoadingShell({
 								<Link className="asset-collection-link" to={`/collection/${collection.id}`}>
 									{collectionName}
 								</Link>
-							) : (
+							) : collectionName ? (
 								<span className="asset-collection-link">{collectionName}</span>
+							) : (
+								<span aria-hidden="true" className="layout-placeholder asset-loading-kicker" />
 							)}
 						</div>
 						{asset ? (
@@ -8385,15 +10295,32 @@ function AssetDetailLoadingShell({
 							<span className="layout-placeholder layout-placeholder-title" />
 						)}
 						<div className="asset-owner-line">
-							<span>Loading ownership and market state</span>
+							<span>
+								{error
+									? 'Ownership and market state unavailable'
+									: 'Loading ownership and market state'}
+							</span>
 						</div>
 						<div className="asset-token-tags" aria-hidden="true">
-							<span>{device}</span>
-							<span>Arweave</span>
-							<span>Supply 1</span>
+							{device ? (
+								<>
+									<span>{device}</span>
+									<span>Arweave</span>
+									<span>Supply 1</span>
+								</>
+							) : (
+								Array.from({ length: 3 }, (_, index) => (
+									<span className="layout-placeholder asset-loading-tag" key={index} />
+								))
+							)}
 						</div>
 						{error ? (
-							<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
+							<ErrorPanel
+								heading={errorHeading}
+								message={error}
+								onRetry={onRetry}
+								secondaryAction={secondaryAction}
+							/>
 						) : (
 							<div
 								aria-live="polite"
@@ -8461,6 +10388,7 @@ function PendingAssetView() {
 		loadMintActivities(localStorage).find((candidate) => candidate.asset.id === assetId);
 	const finalPath = `/asset/${activity?.collectionId ?? collectionId}/${assetId}`;
 	const asset = activity?.asset ?? loadMintedAssets().find((candidate) => candidate.id === assetId);
+	useMintActivityStalledRerender(activity ? [activity] : []);
 
 	React.useEffect(() => {
 		const showLiveAsset = (event: Event) => {
@@ -8488,6 +10416,7 @@ function PendingAssetView() {
 		['complete', 'Live on Bazar'],
 	];
 	const currentPhase = phases.findIndex(([phase]) => phase === activity.phase);
+	const stalled = mintActivityTrackingState(activity) === 'stalled';
 	const pinnedGateway =
 		activity.arweaveGateway !== arweaveGatewayFromLocation() || activity.computeGateway !== gatewayFromLocation();
 
@@ -8511,9 +10440,12 @@ function PendingAssetView() {
 					)}
 				</div>
 				<div className="mint-pending-copy">
-					<p className="eyebrow">Submitted · safe to leave</p>
+					<p className="eyebrow">
+						{stalled ? 'Taking longer than usual · still checking' : 'Submitted · safe to leave'}
+					</p>
 					<h1>{asset.name}</h1>
 					<p>{activity.status}</p>
+					{stalled ? <p role="status">{MINT_ACTIVITY_STALLED_STATUS}</p> : null}
 					<ol className="mint-pending-phases">
 						{phases.map(([phase, label], index) => (
 							<li className={index <= currentPhase ? 'reached' : undefined} key={phase}>
@@ -8539,13 +10471,10 @@ function PendingAssetView() {
 					</div>
 					<MintTransactionReceipt
 						entries={activity.transactionIds.map((transactionId, index) => ({
-							label: fungible
-								? index === activity.transactionIds.length - 1
-									? 'Token process transaction'
-									: 'Token logo transaction'
-								: index === activity.transactionIds.length - 1
-								? 'Asset transaction'
-								: 'Artwork transaction',
+							label: mintActivityReceiptLabel(
+								{ ...activity, asset, collectionId: activity.collectionId ?? collectionId },
+								index
+							),
 							transactionId,
 						}))}
 					/>
@@ -8553,6 +10482,52 @@ function PendingAssetView() {
 			</div>
 		</section>
 	);
+}
+
+export const PROFILE_PICTURE_NOT_OWNED = 'This wallet no longer owns this unique asset.';
+
+export type ProfilePictureOutcome = { ok: true } | { ok: false; error: string };
+
+export type ProfilePictureIo = {
+	readState: (assetId: string) => Promise<{ state: AssetState }>;
+	client: Pick<ProfileClient, 'setAvatar'>;
+};
+
+/**
+ * Check that `owner` still holds this unique asset, then publish it as their profile picture.
+ * A failed ownership read keeps the marketplace copy (nothing was prepared or sent); a failed
+ * profile write uses the profile copy, since nothing is saved in the browser to resume.
+ */
+export async function setProfilePictureFromAsset(
+	{ assetId, image, owner }: { assetId: string; image: string; owner: string },
+	onPhase: (phase: 'signing' | 'uploading') => void,
+	io: ProfilePictureIo = { readState: readCurrentAssetState, client: new ProfileClient() }
+): Promise<ProfilePictureOutcome> {
+	let current: { state: AssetState };
+	try {
+		current = await io.readState(assetId);
+	} catch (cause) {
+		return { ok: false, error: errorMessage(cause) || 'Profile picture could not be updated.' };
+	}
+	if (
+		current.state.totalSupply !== '1' ||
+		current.state.denomination > 0 ||
+		!sameAccount(ownerOfAsset(current.state), owner)
+	) {
+		return { ok: false, error: PROFILE_PICTURE_NOT_OWNED };
+	}
+	let stage: ProfileSaveStage = 'profile-preparing';
+	try {
+		await io.client.setAvatar(owner, image, {
+			onPhase: (phase) => {
+				stage = phase === 'signing' ? 'profile-signing' : 'profile-publishing';
+				onPhase(phase);
+			},
+		});
+	} catch (cause) {
+		return { ok: false, error: profileUpdateError(new ProfileSaveError(stage, false, cause)) };
+	}
+	return { ok: true };
 }
 
 function SetProfilePictureButton({
@@ -8571,23 +10546,9 @@ function SetProfilePictureButton({
 	const apply = async () => {
 		setError('');
 		setStatus('checking');
-		try {
-			const current = await readAssetStateWithDeadline(assetId, { maxAge: 0 });
-			if (
-				current.state.totalSupply !== '1' ||
-				current.state.denomination > 0 ||
-				!sameAccount(ownerOfAsset(current.state), owner)
-			) {
-				throw new Error('This wallet no longer owns this unique asset.');
-			}
-			await new ProfileClient().setAvatar(owner, image, {
-				onPhase: (phase) => setStatus(phase),
-			});
-			setStatus('done');
-		} catch (cause) {
-			setStatus('idle');
-			setError(errorMessage(cause) || 'Profile picture could not be updated.');
-		}
+		const outcome = await setProfilePictureFromAsset({ assetId, image, owner }, setStatus);
+		setStatus(outcome.ok ? 'done' : 'idle');
+		if (!outcome.ok) setError(outcome.error);
 	};
 	return (
 		<>
@@ -8643,6 +10604,8 @@ function AssetView() {
 		key: string;
 		state: AssetState | null;
 		loading: boolean;
+		refreshing: boolean;
+		current: boolean;
 		error: string | null;
 		provider: string;
 		verifiedAt: number | null;
@@ -8650,6 +10613,8 @@ function AssetView() {
 		key: liveResultKey,
 		state: prefetchedState?.state ?? null,
 		loading: true,
+		refreshing: true,
+		current: false,
 		error: null,
 		provider: prefetchedState?.provider ?? '',
 		verifiedAt: prefetchedState?.verifiedAt ?? null,
@@ -8659,6 +10624,8 @@ function AssetView() {
 	const state = liveResultIsCurrent ? liveResult.state : prefetchedState?.state ?? null;
 	const error = liveResultIsCurrent ? liveResult.error : null;
 	const loading = !liveResultIsCurrent || liveResult.loading;
+	const refreshing = !liveResultIsCurrent || liveResult.refreshing;
+	const stateCurrent = liveResultIsCurrent && liveResult.current;
 	const provider = liveResultIsCurrent ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResultIsCurrent ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute =
@@ -8686,6 +10653,8 @@ function AssetView() {
 	React.useEffect(() => {
 		if (indexedAtomic) market.rememberSearchAssets([indexedAtomic]);
 	}, [indexedAtomic, market.rememberSearchAssets]);
+	const directFungibleRoute =
+		collectionId === FUNGIBLE_TOKEN_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -8693,29 +10662,44 @@ function AssetView() {
 		indexedMetadata: indexedAtomic?.asset,
 		indexedCollection,
 		directAtomicRoute,
-		directFungibleRoute:
-			collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId),
+		directFungibleRoute,
 	});
-	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
+	const directAtomicAsset =
+		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, indexedAtomic?.asset.contentType) : null;
+	const liveFungibleAsset = directFungibleRoute && state ? fungibleAssetFromState(assetId, state) : undefined;
+	// A token route whose live state meets the fungible contract does not wait for the token index.
+	const liveFungibleRoute = Boolean(liveFungibleAsset);
+	const catalogueCollection = React.useMemo(
+		() => indexedCollection ?? (liveFungibleRoute ? compiledFungibleTokenCollection() : undefined),
+		[indexedCollection, liveFungibleRoute]
+	);
 	const indexedMetadata = indexedAtomic?.asset;
 	const shellAsset = mergeAssetDetailMetadata(indexedAsset ?? cachedAsset, indexedMetadata);
 	const collection =
-		indexedCollection ??
+		catalogueCollection ??
 		directAtomicAsset?.collection ??
 		(directAtomicRoute ? indexedAtomic?.collection : undefined);
 	const resolvedAsset =
 		directAtomicAsset?.asset ??
 		mergeAssetDetailMetadata(
-			indexedCollection && state
-				? collectionAsset(indexedCollection, assetId, state)
+			catalogueCollection && state
+				? collectionAsset(catalogueCollection, assetId, state)
 				: indexedAsset ?? cachedAsset,
 			indexedMetadata
 		);
-	const membershipVerified = assetDetailMembershipVerified(
-		indexedCollection?.id,
+	const membership = assetDetailMembership(
+		catalogueCollection,
 		market.verifiedCollectionIds,
-		Boolean(directAtomicAsset || (directAtomicRoute && indexedAtomic))
+		Boolean(directAtomicAsset || (directAtomicRoute && indexedAtomic)),
+		liveFungibleRoute
 	);
+	const membershipVerified = membership !== 'unverified';
+	// Once the listing line has been painted for this route it stays (as "checked") until the route changes.
+	const listingNoticeRoute = `${collectionId}/${assetId}`;
+	const [listingNoticeShownFor, setListingNoticeShownFor] = React.useState<string | null>(null);
+	if (membership === 'live' && listingNoticeShownFor !== listingNoticeRoute)
+		setListingNoticeShownFor(listingNoticeRoute);
+	const listingStatus = tokenListingStatus(membership, market.loading, listingNoticeShownFor === listingNoticeRoute);
 	const verifiedAsset = membershipVerified
 		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
 		: undefined;
@@ -8736,11 +10720,7 @@ function AssetView() {
 		remove: removeOperationActivity,
 	} = useOperationActivity();
 	const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
-	const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
-	const operationFocusFallback = React.useCallback(
-		() => resumeButtonRef.current ?? operationFocusFallbackRef.current,
-		[]
-	);
+	const operationFocusFallback = React.useCallback(() => operationFocusFallbackRef.current, []);
 	const operationActivityEntry = operationActivities.find(
 		(activity) => activity.asset.id === assetId && activity.owner === wallet.address && activity.phase !== 'done'
 	);
@@ -8763,7 +10743,6 @@ function AssetView() {
 		},
 		[collectionId, operationFocusFallback, startOperationActivity, verifiedAsset, wallet.address]
 	);
-	const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
 	const [recoveryNotice, setRecoveryNotice] = React.useState('');
 	const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
 	const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
@@ -8786,18 +10765,23 @@ function AssetView() {
 	const activityAssetRef = React.useRef('');
 	const askAssetRef = React.useRef('');
 	const activityLoadMoreRef = React.useRef<AbortController | null>(null);
+	// GraphQL cursors are index-specific: older pages return to the index that issued them.
+	const activityCursorIndexRef = React.useRef<string | undefined>(undefined);
+	const askCursorIndexRef = React.useRef<string | undefined>(undefined);
 	const askLoadMoreRef = React.useRef<AbortController | null>(null);
 	const [activeSection, setActiveSection] = React.useState<
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
 	const readLiveState = React.useCallback(
-		async (_force: boolean) => {
+		async (current: boolean) => {
 			requestRef.current?.abort();
 			if (!canResolveAsset) {
 				setLiveResult({
 					key: liveResultKey,
 					state: null,
 					loading: false,
+					refreshing: false,
+					current: false,
 					error: null,
 					provider: '',
 					verifiedAt: null,
@@ -8807,58 +10791,53 @@ function AssetView() {
 			const controller = new AbortController();
 			requestRef.current = controller;
 			const cached = cachedAssetState(assetId);
-			setLiveResult((current) => {
-				const isCurrent = current.key === liveResultKey;
+			setLiveResult((previous) => {
+				const isCurrent = previous.key === liveResultKey;
+				const state = isCurrent ? previous.state : cached?.state ?? null;
 				return {
 					key: liveResultKey,
-					state: isCurrent ? current.state : cached?.state ?? null,
-					loading: true,
+					state,
+					// Known state stays interactive while current state is requested;
+					// commerce actions read /now themselves before signing.
+					loading: !state || current,
+					refreshing: true,
+					current: false,
 					error: null,
-					provider: isCurrent ? current.provider : cached?.provider ?? '',
-					verifiedAt: isCurrent ? current.verifiedAt : cached?.verifiedAt ?? null,
+					provider: isCurrent ? previous.provider : cached?.provider ?? '',
+					verifiedAt: isCurrent ? previous.verifiedAt : cached?.verifiedAt ?? null,
 				};
 			});
 			try {
-				const result = await readAssetStateCached(assetId, {
-					maxAge: 0,
-					cacheTtlMs: 20_000,
-					force: true,
+				await readAssetDetailState(assetId, {
+					current,
 					signal: controller.signal,
-				});
-				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult({
-						key: liveResultKey,
-						state: result.state,
-						loading: Boolean(result.revalidation),
-						error: null,
-						provider: result.provider,
-						verifiedAt: result.verifiedAt ?? Date.now(),
-					});
-				}
-				if (result.revalidation) {
-					const fresh = await result.revalidation;
-					if (requestRef.current === controller && !controller.signal.aborted) {
+					onUpdate: (update) => {
+						if (requestRef.current !== controller || controller.signal.aborted) return;
 						setLiveResult({
 							key: liveResultKey,
-							state: fresh.state,
+							state: update.result.state,
 							loading: false,
+							refreshing: update.refreshing,
+							current: update.current,
 							error: null,
-							provider: fresh.provider,
-							verifiedAt: fresh.verifiedAt ?? Date.now(),
+							provider: update.result.provider,
+							verifiedAt: update.result.verifiedAt ?? Date.now(),
 						});
-					}
-				}
+					},
+				});
 			} catch (cause) {
 				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult((current) => {
-						const isCurrent = current.key === liveResultKey;
+					setLiveResult((previous) => {
+						const isCurrent = previous.key === liveResultKey;
 						return {
 							key: liveResultKey,
-							state: isCurrent ? current.state : null,
+							state: isCurrent ? previous.state : null,
 							loading: false,
+							refreshing: false,
+							current: false,
 							error: assetStateErrorMessage(cause),
-							provider: isCurrent ? current.provider : '',
-							verifiedAt: isCurrent ? current.verifiedAt : null,
+							provider: isCurrent ? previous.provider : '',
+							verifiedAt: isCurrent ? previous.verifiedAt : null,
 						};
 					});
 				}
@@ -8870,6 +10849,7 @@ function AssetView() {
 	const refreshAsset = React.useCallback(async () => {
 		invalidateAssetState(assetId);
 		setActivityRetry((value) => value + 1);
+		// After an action, only current state may replace what the page shows.
 		await readLiveState(true);
 	}, [assetId, readLiveState]);
 	React.useEffect(() => {
@@ -8891,7 +10871,6 @@ function AssetView() {
 			if (event.storageArea && event.storageArea !== localStorage) return;
 			const change = walletOperationStorageChange(event.key, event.newValue, claimKey, recoveryKeys);
 			if (change === 'ignore') return;
-			setRecoverySuppressed(false);
 			if (change === 'claim-acquired' || change === 'claim-released') {
 				if (change === 'claim-acquired' && operation && operationActivityEntry) {
 					const recovering =
@@ -8964,6 +10943,7 @@ function AssetView() {
 					if (!controller.signal.aborted) {
 						setAssetActivity(page.events);
 						setActivityCursor(page.cursor);
+						activityCursorIndexRef.current = page.graphql;
 						setActivityHasNextPage(page.hasNextPage);
 						setActivityTotalCount(page.totalCount);
 						try {
@@ -9011,6 +10991,7 @@ function AssetView() {
 					if (controller.signal.aborted) return;
 					setAssetAskActivity(page.events);
 					setAskCursor(page.cursor);
+					askCursorIndexRef.current = page.graphql;
 					setAskHasNextPage(page.hasNextPage);
 				},
 				(cause) => {
@@ -9034,6 +11015,7 @@ function AssetView() {
 		try {
 			const page = await discoverCollectionActivityPage({
 				cursor: activityCursor,
+				graphql: activityCursorIndexRef.current,
 				pageSize: 100,
 				recipients: [assetId],
 				signal: controller.signal,
@@ -9041,6 +11023,7 @@ function AssetView() {
 			if (controller.signal.aborted || activityAssetRef.current !== assetId) return;
 			setAssetActivity((current) => mergeAssetActivityPages(current, page.events));
 			setActivityCursor(page.cursor);
+			activityCursorIndexRef.current = page.graphql;
 			setActivityHasNextPage(page.hasNextPage);
 		} catch (cause) {
 			if (!controller.signal.aborted) {
@@ -9061,6 +11044,7 @@ function AssetView() {
 			const page = await discoverCollectionActivityPage({
 				actions: ['make-offer', 'register-interest'],
 				cursor: askCursor,
+				graphql: askCursorIndexRef.current,
 				pageSize: 100,
 				recipients: [assetId],
 				signal: controller.signal,
@@ -9068,6 +11052,7 @@ function AssetView() {
 			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
 			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
 			setAskCursor(page.cursor);
+			askCursorIndexRef.current = page.graphql;
 			setAskHasNextPage(page.hasNextPage);
 		} catch (cause) {
 			if (!controller.signal.aborted) {
@@ -9082,15 +11067,12 @@ function AssetView() {
 		setActivityRequested(false);
 	}, [assetId]);
 	React.useEffect(() => {
-		setRecoverySuppressed(false);
 		setRecoveryNotice('');
 		setUnavailableRecovery(null);
 	}, [assetId, wallet.address]);
-	React.useLayoutEffect(() => {
-		if (recoverySuppressed) resumeButtonRef.current?.focus();
-	}, [recoverySuppressed]);
 	React.useEffect(() => {
-		if (!wallet.address || operation || recoverySuppressed || !state) return;
+		// Recovery may discard signed local work, so it waits for current state.
+		if (!wallet.address || operation || !state || !stateCurrent) return;
 		if (state.totalSupply !== '1' || state.denomination > 0) return;
 		const walletAddress = wallet.address;
 		const activeClaimKey = operationClaimStorageKey(assetId, walletAddress);
@@ -9245,9 +11227,18 @@ function AssetView() {
 					{ show: false }
 				);
 			}
-		})().catch(() => undefined);
+		})().then(
+			() => {
+				if (!controller.signal.aborted)
+					setRecoveryNotice((current) => savedActionCheckNotice(current, 'checked'));
+			},
+			() => {
+				if (!controller.signal.aborted)
+					setRecoveryNotice((current) => savedActionCheckNotice(current, 'failed'));
+			}
+		);
 		return () => controller.abort();
-	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
+	}, [assetId, openOperation, operation, state, stateCurrent, storageVersion, wallet.address]);
 	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
 	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
 	const stateRecoveryAction = recoveryUrl
@@ -9268,16 +11259,28 @@ function AssetView() {
 		);
 	}
 	if (!collection && (collectionLookup.error || market.error))
-		return (
+		return shellAsset ? (
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={collectionLookup.error || market.error!}
+				errorHeading="Collection unavailable"
+				onRetry={collectionLookup.retry}
+			/>
+		) : (
 			<RouteState title="Asset unavailable">
 				<ErrorPanel message={collectionLookup.error || market.error!} onRetry={collectionLookup.retry} />
 			</RouteState>
 		);
 	if (!collection && directAtomicRoute && error)
 		return (
-			<RouteState title="Asset unavailable">
-				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
-			</RouteState>
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={detailError ?? error}
+				onRetry={load}
+				secondaryAction={stateRecoveryAction}
+			/>
 		);
 	if (!collection)
 		return (
@@ -9298,6 +11301,11 @@ function AssetView() {
 						  market.notice ||
 						  'Current collection membership could not be verified.'
 				}
+				errorHeading={
+					market.loading || collectionLookup.loading
+						? ASSET_STATE_UNAVAILABLE_HEADING
+						: 'Collection membership unavailable'
+				}
 				onRetry={market.loading || collectionLookup.loading ? load : collectionLookup.retry}
 				secondaryAction={
 					(market.loading || collectionLookup.loading) && detailError ? stateRecoveryAction : undefined
@@ -9307,9 +11315,14 @@ function AssetView() {
 	const asset = verifiedAsset;
 	if (!asset && error)
 		return (
-			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
-			</RouteState>
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collection={collection}
+				collectionId={collectionId}
+				error={detailError ?? error}
+				onRetry={load}
+				secondaryAction={stateRecoveryAction}
+			/>
 		);
 	if (!asset && !loading)
 		return (
@@ -9347,12 +11360,16 @@ function AssetView() {
 					asset={asset}
 					collection={collection}
 					collectionIndexNotice={
-						<CollectionIndexNotice
-							collection={collection}
-							checking={market.loading}
-							directlyVerified={!indexedAsset}
-							onRetry={market.retry}
-						/>
+						listingStatus ? (
+							<TokenListingNotice status={listingStatus} onRetry={market.retry} />
+						) : (
+							<CollectionIndexNotice
+								collection={collection}
+								checking={market.loading}
+								directlyVerified={!indexedAsset}
+								onRetry={market.retry}
+							/>
+						)
 					}
 					state={state}
 					activity={assetActivity}
@@ -9372,6 +11389,7 @@ function AssetView() {
 					onAskLoadMore={() => void loadOlderAssetAsks()}
 					onAskRetry={() => setAskRetry((value) => value + 1)}
 					loading={loading}
+					stateCurrent={stateCurrent}
 					error={error}
 					provider={provider}
 					verifiedAt={verifiedAt}
@@ -9386,7 +11404,7 @@ function AssetView() {
 	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const mine = Boolean(wallet.address && sameAccount(owner, wallet.address));
 	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
-	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+	const recoveryBlocksActions = Boolean(unavailableRecovery);
 	const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
 	const newOperationBlocksActions = operationBlocksActions || !balanceStateAvailable || loading || Boolean(error);
 	const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
@@ -9434,23 +11452,6 @@ function AssetView() {
 	];
 	return (
 		<section className="asset-page asset-detail-page atomic-asset-page">
-			{recoverySuppressed ? (
-				<div className="pending-operation-notice">
-					<span role="status">
-						Local tracking is paused. Resume here to continue observing signed work or review any wallet
-						approvals still required.
-					</span>
-					<Button
-						ref={resumeButtonRef}
-						className="with-icon"
-						size="custom"
-						type="button"
-						onClick={() => setRecoverySuppressed(false)}
-					>
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
-					</Button>
-				</div>
-			) : null}
 			{recoveryNotice ? (
 				<div className="pending-operation-notice">
 					<span role="status">{recoveryNotice}</span>
@@ -9499,7 +11500,7 @@ function AssetView() {
 							{asset.name}
 						</h1>
 						<div className="asset-owner-line">
-							<span>{loading || error ? 'Last known owner' : 'Owned by'}</span>
+							<span>{loading || refreshing || error ? 'Last known owner' : 'Owned by'}</span>
 							{owner ? (
 								<WalletAddress address={owner} label="owner" />
 							) : (
@@ -9514,7 +11515,12 @@ function AssetView() {
 						</div>
 						{loading ? <Loading label="Computing current state…" /> : null}
 						{error ? (
-							<ErrorPanel message={error} onRetry={load} secondaryAction={stateRecoveryAction} />
+							<ErrorPanel
+								heading={ASSET_STATE_UNAVAILABLE_HEADING}
+								message={error}
+								onRetry={load}
+								secondaryAction={stateRecoveryAction}
+							/>
 						) : null}
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
@@ -9933,7 +11939,7 @@ function AssetView() {
 							<StateVerification
 								provider={provider}
 								verifiedAt={verifiedAt}
-								refreshing={loading}
+								refreshing={loading || refreshing}
 								failed={Boolean(error)}
 							/>
 							<dl className="asset-blockchain-details">
@@ -10003,16 +12009,23 @@ function AssetView() {
 	);
 }
 
-type Operation =
-	| { kind: 'sell'; resumeId?: string; value?: string }
-	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
-	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
-	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
+export type PurchaseSequenceStepState = 'done' | 'active' | 'next';
+
+const PURCHASE_SEQUENCE_STEP_STATUS: Record<PurchaseSequenceStepState, string> = {
+	done: 'completed',
+	active: 'in progress',
+	next: 'not started',
+};
+
+/** Screen-reader text for a purchase step; the visible marker conveys the same state and is aria-hidden. */
+export function purchaseSequenceStepStatus(state: PurchaseSequenceStepState): string {
+	return PURCHASE_SEQUENCE_STEP_STATUS[state];
+}
 
 export type AtomicPurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
 	label: string;
-	state: 'done' | 'active' | 'next';
+	state: PurchaseSequenceStepState;
 };
 
 const ATOMIC_PAYMENT_STAGES = new Set([
@@ -10050,12 +12063,17 @@ export function AtomicPurchaseSequence({ state }: { state: PurchaseState | null 
 		<section aria-label="Asset purchase transaction sequence" className="purchase-sequence">
 			<ol>
 				{steps.map((step, index) => (
-					<li className={step.state} key={step.key}>
+					<li
+						aria-current={step.state === 'active' ? 'step' : undefined}
+						className={step.state}
+						key={step.key}
+					>
 						<span aria-hidden="true" className="purchase-sequence-marker">
 							{step.state === 'done' ? <Check /> : index + 1}
 						</span>
 						<span className="purchase-sequence-copy">
 							<strong>{step.label}</strong>
+							<span className="sr-only">{`, ${purchaseSequenceStepStatus(step.state)}`}</span>
 						</span>
 					</li>
 				))}
@@ -10104,14 +12122,13 @@ function OperationDialog({
 	const [value, setValue] = React.useState(
 		operation.kind === 'sell' || operation.kind === 'transfer' ? operation.value ?? '' : ''
 	);
-	const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
-		operation.kind === 'buy' && operation.resume
-			? recoveryApprovalCount
-				? 'approval'
-				: 'working'
-			: operation.kind !== 'buy' && operation.resumeId
-			? 'working'
-			: 'form'
+	const [phase, setPhase] = React.useState<OperationActivityPhase>(
+		initialOperationPhase({
+			kind: operation.kind,
+			hasResume: operation.kind === 'buy' && Boolean(operation.resume),
+			hasResumeId: operation.kind !== 'buy' && Boolean(operation.resumeId),
+			recoveryApprovalCount,
+		})
 	);
 	const [message, setMessage] = React.useState('');
 	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
@@ -10130,8 +12147,10 @@ function OperationDialog({
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
 	const submittedAtRef = React.useRef<number>();
+	// A listing saved without a baseline predates exact-slot listing checks and
+	// keeps the open-order wait, so 'sell' never falls back to slot 0.
 	const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
-		(operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
+		operation.kind !== 'buy' && Number.isSafeInteger(operation.startingSlot)
 			? { startingSlot: operation.startingSlot! }
 			: (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
 			? { startingSlot: 0 }
@@ -10224,7 +12243,7 @@ function OperationDialog({
 		void submit();
 	}, []);
 
-	async function submit() {
+	async function submit(savedPurchase?: PurchaseSnapshot | null) {
 		const validation = atomicOperationFormError(operation.kind, operationValue, owner);
 		if (validation) {
 			setMessage(validation);
@@ -10239,7 +12258,8 @@ function OperationDialog({
 		try {
 			let currentPurchaseSnapshot =
 				operation.kind === 'buy'
-					? latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
+					? savedPurchase ??
+					  latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
 					: null;
 			const freshOperation =
 				operation.kind === 'buy'
@@ -10276,7 +12296,7 @@ function OperationDialog({
 			);
 			claimRef.current = operationClaim;
 			if (freshOperation) {
-				const { state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 });
+				const { state: freshState } = await readCurrentAssetState(asset.id, { signal });
 				const stateError = atomicOperationStateError(
 					operation.kind,
 					freshState,
@@ -10303,11 +12323,13 @@ function OperationDialog({
 						);
 					}
 				}
-				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
-					const startingSlot = Number(freshState.raw['at-slot']);
-					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
-						throw new Error('asset-action-starting-slot-unavailable');
-					}
+				const startingSlot = Number(freshState.raw['at-slot']);
+				const hasStartingSlot = Number.isSafeInteger(startingSlot) && startingSlot >= 0;
+				if ((operation.kind === 'cancel' || operation.kind === 'transfer') && !hasStartingSlot) {
+					throw new Error('asset-action-starting-slot-unavailable');
+				}
+				// Listings without a slot keep the open-order wait rather than refusing to sign.
+				if (operation.kind !== 'buy' && hasStartingSlot) {
 					exactActionBaseline = { startingSlot };
 					exactActionBaselineRef.current = exactActionBaseline;
 				}
@@ -10321,6 +12343,8 @@ function OperationDialog({
 				const network = observerLease.network;
 				if (signal.aborted) throw signal.reason;
 				let observationRetryAttempt = 0;
+				// Set while the "checking again" copy is shown; the retried run clears it once it moves past that step.
+				let retryCheckingKind: PurchaseObservationRetryKind | null = null;
 				let completedSnapshot: PurchaseSnapshot | null = null;
 				const persistPurchaseSnapshot = (snapshot: PurchaseSnapshot) => {
 					onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
@@ -10405,6 +12429,10 @@ function OperationDialog({
 					const update = (state: PurchaseState) => {
 						if (signal.aborted || recoveryConflict) return;
 						setPurchaseState(state);
+						if (retryCheckingKind && shouldClearRetryMessage(retryCheckingKind, state)) {
+							retryCheckingKind = null;
+							setMessage('');
+						}
 						const snapshot = purchase.snapshot();
 						if (hasRecoverablePurchase(snapshot)) {
 							try {
@@ -10432,6 +12460,7 @@ function OperationDialog({
 						setMessage(purchaseObservationRetryMessage(finalState, delay));
 						await waitForPurchaseObservationRetry(delay, signal);
 						setMessage(purchaseObservationCheckingMessage(retryKind));
+						retryCheckingKind = retryKind;
 						continue;
 					}
 					if (finalState.stage !== 'complete' || !finalState.success) {
@@ -10501,7 +12530,7 @@ function OperationDialog({
 			} else if (operation.resumeId) {
 				prepared = client.restore(operation.resumeId, owner);
 			} else if (operation.kind === 'sell') {
-				const winston = arToWinston(value);
+				const winston = arToWinston(operationValue);
 				prepared = await client.makeOffer(
 					{ processId: asset.id, quantity: '1', asking: winston, seller: owner },
 					signal
@@ -10537,7 +12566,12 @@ function OperationDialog({
 							startingSlot: exactActionBaseline!.startingSlot,
 							value: operationValue,
 					  }
-					: { kind: 'sell', resumeId: prepared.id, value: operationValue }
+					: {
+							kind: 'sell',
+							resumeId: prepared.id,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+							value: operationValue,
+					  }
 			);
 			const operationRecord = {
 				txId: prepared.id,
@@ -10551,7 +12585,10 @@ function OperationDialog({
 					? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
 					: operation.kind === 'transfer'
 					? { value: operationValue, startingSlot: exactActionBaseline!.startingSlot }
-					: { value: operationValue }),
+					: {
+							value: operationValue,
+							...(exactActionBaseline ? { startingSlot: exactActionBaseline.startingSlot } : {}),
+					  }),
 				createdAt: Date.now(),
 			};
 			try {
@@ -10583,24 +12620,22 @@ function OperationDialog({
 			setConsensus(null);
 			await runtime.dispatchAndConfirm(prepared, {
 				signal,
-				target: 5,
+				target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 				onViews: setViews,
 				onConsensus: setConsensus,
 				onProgress: (progress) => setConfirmations(progress.confirmations),
 			});
-			setConfirmations(5);
-			setMessage('Five confirmations reached. Waiting for the scheduler safety depth and live asset state…');
+			setConfirmations(ASSET_TRANSACTION_CONFIRMATION_TARGET);
+			setMessage(
+				`${ASSET_TRANSACTION_CONFIRMATION_TARGET} confirmations reached. Waiting for the scheduler safety depth and live asset state…`
+			);
 			if (operation.kind === 'sell') {
-				await client.waitForOfferAcceptance(
-					asset.id,
-					{
-						orderId: prepared.id,
-						seller: owner,
-						quantity: '1',
-						asking: arToWinston(value),
-					},
-					signal
-				);
+				const expectedOffer = { seller: owner, quantity: '1', asking: arToWinston(operationValue) };
+				if (exactActionBaseline) {
+					await client.waitForExactOffer(asset.id, prepared.id, expectedOffer, exactActionBaseline, signal);
+				} else {
+					await client.waitForOfferAcceptance(asset.id, { orderId: prepared.id, ...expectedOffer }, signal);
+				}
 			} else if (operation.kind === 'cancel') {
 				await client.waitForExactCancellation(
 					asset.id,
@@ -10642,7 +12677,9 @@ function OperationDialog({
 			if (attemptRef.current.signal.aborted) return;
 			if (
 				cause instanceof Error &&
-				['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+				['asset-cancel-rejected', 'fungible-transfer-rejected', 'asset-offer-rejected'].includes(
+					cause.message
+				) &&
 				attemptedTransactionId
 			) {
 				removeWalletRecordIf<any>(
@@ -10652,12 +12689,35 @@ function OperationDialog({
 				);
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
+				// The discarded signature must never be resumed, so "Try again" starts a fresh attempt.
+				onOperation(operationAfterProvenRejection(operation));
+				exactActionBaselineRef.current = null;
 			}
 			setFailureKind(marketplaceOperationFailure(cause));
 			setMessage(errorMessage(cause));
 			setPhase('error');
 		}
 	}
+
+	// A gateway-rejected signature is discarded and the same dialog returns to its form, keeping the user's
+	// input, so the next submit signs a replacement.
+	const discardRejectedSignatureAndSignAgain = (rejected: PreparedTransaction) => {
+		removeWalletRecordIf<any>(
+			localStorage,
+			operationStorageKey(asset.id, owner),
+			(record) => record?.txId === rejected.id
+		);
+		localStorage.removeItem(`bazar-signed-transaction:${rejected.id}`);
+		setTransaction(null);
+		onOperation(operationAfterProvenRejection(operation));
+		exactActionBaselineRef.current = null;
+		setViews([]);
+		setConfirmations(0);
+		setConsensus(null);
+		setFailureKind(null);
+		setMessage('');
+		setPhase('form');
+	};
 
 	const purchaseSteps: ArweaveSyncStep[] =
 		purchaseState && hasRecoverablePurchase(purchaseState)
@@ -10682,7 +12742,7 @@ function OperationDialog({
 				{
 					key: operation.kind,
 					label: operationLabel(operation.kind),
-					target: 5,
+					target: ASSET_TRANSACTION_CONFIRMATION_TARGET,
 					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
@@ -10696,7 +12756,7 @@ function OperationDialog({
 			? 'register'
 			: operation.kind;
 	const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
-	const confirmationTarget = activeSyncStep?.target ?? 5;
+	const confirmationTarget = activeSyncStep?.target ?? operationConfirmationTarget(operation);
 	const activityConfirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
 	const visiblePhase =
 		operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;
@@ -10723,13 +12783,14 @@ function OperationDialog({
 		purchaseQuote && purchaseWalletBalance !== null ? purchaseWalletBalance >= BigInt(purchaseQuote.total) : null;
 	const actionLabel = atomicOperationActionLabel(operation, operationValue);
 	const resultCopy = atomicOperationResult(operation.kind, asset.name, operationValue, owner);
+	const resuming = Boolean(operation.kind === 'buy' ? operation.resume : operation.resumeId);
 	const reportedStatus =
 		visiblePhase === 'form'
 			? 'Waiting for details'
 			: visiblePhase === 'approval'
 			? 'Waiting for wallet approval'
 			: visiblePhase === 'working'
-			? workingStatus || 'Watching Arweave confirmations…'
+			? atomicOperationWorkingStatus({ workingStatus, hasSteps: steps.length > 0, resuming })
 			: visiblePhase === 'done'
 			? resultCopy.title
 			: visibleMessage || 'This transaction needs attention';
@@ -10746,42 +12807,47 @@ function OperationDialog({
 		);
 	}, [activityConfirmations, asset.id, confirmationTarget, onUpdate, reportedStatus, taskId, visiblePhase]);
 	const restartPurchase = () => {
-		if (operation.kind !== 'buy' || !recoverable) {
+		// The failed run has already ended and released its claim and network
+		// lease; submit() re-acquires both. Continue in this visible dialog so the
+		// activity stays listed, instead of closing (which removes it).
+		const continuation =
+			operation.kind === 'buy'
+				? savedPurchaseContinuation(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
+				: null;
+		if (operation.kind !== 'buy' || !continuation) {
 			setMessage('');
 			setFailureKind(null);
 			setPhase('form');
 			return;
 		}
-		if (purchaseState) {
-			const snapshot = purchaseSnapshot(purchaseState);
-			if (hasRecoverablePurchase(snapshot)) {
-				const record = {
-					asset: { id: asset.id, name: asset.name },
-					activityKind: 'atomic',
-					buyer: owner,
-					collectionId,
-					gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
-					order: operation.order,
-					snapshot,
-					createdAt: submittedAtRef.current ?? Date.now(),
-				};
-				storeWalletRecordIf<any>(
-					localStorage,
-					atomicPurchaseStorageKey(asset.id, owner),
-					record,
-					(current) =>
-						current?.buyer === owner &&
-						current?.order?.orderId === operation.order.orderId &&
-						current?.snapshot?.registration?.id === snapshot.registration?.id,
-					true
-				);
-			}
+		const { snapshot } = continuation;
+		storeWalletRecordIf<any>(
+			localStorage,
+			atomicPurchaseStorageKey(asset.id, owner),
+			{
+				asset: { id: asset.id, name: asset.name },
+				activityKind: 'atomic',
+				buyer: owner,
+				collectionId,
+				gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
+				order: operation.order,
+				snapshot,
+				createdAt: submittedAtRef.current ?? Date.now(),
+			},
+			(current) =>
+				current?.buyer === owner &&
+				current?.order?.orderId === operation.order.orderId &&
+				current?.snapshot?.registration?.id === snapshot.registration?.id,
+			true
+		);
+		onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
+		if (continuation.phase === 'approval') {
+			setMessage('');
+			setFailureKind(null);
+			setPhase('approval');
+			return;
 		}
-		attemptRef.current.abort();
-		purchaseRef.current?.abandon();
-		networkRef.current?.release();
-		networkRef.current = null;
-		onClose(false);
+		void submit(snapshot);
 	};
 	const startFreshPurchase = () => {
 		if (operation.kind !== 'buy') return;
@@ -10808,6 +12874,58 @@ function OperationDialog({
 		setMessage('');
 		setFailureKind(null);
 		setPhase('form');
+	};
+	const errorRecovery = atomicOperationRecovery({
+		kind: operation.kind,
+		failureKind,
+		hasTransaction: Boolean(transaction),
+		purchaseFailureCode: atomicPurchaseFailureCode(purchaseState),
+		recoverable,
+	});
+	const runRecoveryAction = (action: AtomicOperationRecoveryAction) => {
+		switch (action) {
+			case 'view-updated-asset':
+			case 'view-current-listing':
+				onClose(false);
+				return;
+			case 'start-fresh-purchase':
+				startFreshPurchase();
+				return;
+			case 'restart-purchase':
+				restartPurchase();
+				return;
+			case 'resign-seller-payment':
+			case 'retry-not-sent':
+			case 'resume-signed-transaction':
+				void submit();
+				return;
+			case 'discard-not-sent': {
+				if (!transaction || operation.kind === 'buy') return;
+				const conflict = discardUnsentAtomicSignature(
+					localStorage,
+					asset.id,
+					owner,
+					operation.kind,
+					transaction.id
+				);
+				if (conflict) {
+					setMessage(conflict);
+					return;
+				}
+				// Nothing reached the network, so there is no live state to refresh and nothing to resume later.
+				setTransaction(null);
+				onClose(false, false);
+				return;
+			}
+			case 'discard-rejected-signature':
+				if (transaction) discardRejectedSignatureAndSignAgain(transaction);
+				return;
+			case 'return-to-form':
+				setFailureKind(null);
+				setMessage('');
+				setPhase('form');
+				return;
+		}
 	};
 	const closeOrHide = () => {
 		const action = transactionDialogDismissAction(visiblePhase, recoverable && !terminalReservationFailure);
@@ -10924,7 +13042,7 @@ function OperationDialog({
 						<Button
 							className="wide"
 							data-dialog-initial
-							onClick={() => void submit()}
+							onClick={() => void submit(operation.kind === 'buy' ? operation.resume : undefined)}
 							type="button"
 							size="custom"
 							variant="primary"
@@ -11040,14 +13158,10 @@ function OperationDialog({
 									{quoteRetryable && (purchaseQuote || quoteError) ? (
 										<Button
 											aria-describedby={quoteStatusId}
-											aria-disabled={!purchaseQuote && !quoteError}
 											className="with-icon"
 											size="custom"
 											type="button"
-											onClick={() => {
-												if (purchaseQuote || quoteError)
-													setQuoteRetry((current) => current + 1);
-											}}
+											onClick={() => setQuoteRetry((current) => current + 1)}
 										>
 											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 											{purchaseQuote ? 'Refresh costs' : 'Retry cost check'}
@@ -11167,13 +13281,7 @@ function OperationDialog({
 				) : null}
 				{visiblePhase === 'working' && !steps.length ? (
 					<div className="operation-preparing">
-						<Loading
-							label={
-								(operation.kind === 'buy' ? operation.resume : operation.resumeId)
-									? 'Recovering the signed transaction…'
-									: 'Preparing secure wallet approvals…'
-							}
-						/>
+						<Loading label={atomicOperationPreparingLabel(resuming)} />
 						<p>
 							{operation.kind === 'buy'
 								? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
@@ -11237,7 +13345,11 @@ function OperationDialog({
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
 									title={asset.name}
-									detail={operation.kind === 'sell' ? `${value} AR` : 'One asset'}
+									detail={
+										operation.kind === 'sell'
+											? atomicListingPriceLabel(operationValue)
+											: 'One asset'
+									}
 									media={
 										asset.image ? (
 											<ArtworkImage
@@ -11344,109 +13456,64 @@ function OperationDialog({
 				{visiblePhase === 'error' ? (
 					<div className="result error">
 						<AtomicOperationErrorAlert message={visibleMessage} />
-						{failureKind === 'market-state-changed' ? (
-							<Button data-dialog-initial type="button" onClick={() => onClose(false)} size="custom">
-								View updated asset
-							</Button>
-						) : operation.kind === 'buy' ? (
-							<>
-								<div className="settlement-receipt">
-									<div>
-										<span>Failed stage</span>
-										<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
-									</div>
-									<div>
-										<span>Seller</span>
-										<WalletAddress address={operation.order.creator} full label="seller" />
-									</div>
-									<div>
-										<span>Order</span>
+						{operation.kind === 'buy' && errorRecovery.purchaseReceipt ? (
+							<div className="settlement-receipt">
+								<div>
+									<span>Failed stage</span>
+									<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
+								</div>
+								<div>
+									<span>Seller</span>
+									<WalletAddress address={operation.order.creator} full label="seller" />
+								</div>
+								<div>
+									<span>Order</span>
+									<a
+										href={transactionExplorerUrl(operation.order.orderId)}
+										rel="noreferrer"
+										target="_blank"
+									>
+										<OperationExternalLink>{short(operation.order.orderId)}</OperationExternalLink>
+									</a>
+								</div>
+								<div className="settlement-receipt-links">
+									{purchaseState?.registration?.id ? (
 										<a
-											href={transactionExplorerUrl(operation.order.orderId)}
+											href={transactionExplorerUrl(purchaseState.registration.id)}
 											rel="noreferrer"
 											target="_blank"
 										>
 											<OperationExternalLink>
-												{short(operation.order.orderId)}
+												Reservation {short(purchaseState.registration.id)}
 											</OperationExternalLink>
 										</a>
-									</div>
-									<div className="settlement-receipt-links">
-										{purchaseState?.registration?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.registration.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Reservation {short(purchaseState.registration.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-										{purchaseState?.payment?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.payment.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Payment {short(purchaseState.payment.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-									</div>
+									) : null}
+									{purchaseState?.payment?.id ? (
+										<a
+											href={transactionExplorerUrl(purchaseState.payment.id)}
+											rel="noreferrer"
+											target="_blank"
+										>
+											<OperationExternalLink>
+												Payment {short(purchaseState.payment.id)}
+											</OperationExternalLink>
+										</a>
+									) : null}
 								</div>
-								{atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => onClose(false)} size="custom">
-										View current listing
-									</Button>
-								) : terminalReservationFailure ? (
-									<Button data-dialog-initial onClick={startFreshPurchase} size="custom">
-										Start a new purchase
-									</Button>
-								) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => void submit()} size="custom">
-										Sign a replacement seller payment
-									</Button>
-								) : (
-									<Button data-dialog-initial onClick={restartPurchase} size="custom">
-										{recoverable ? 'Continue saved purchase' : 'Try again'}
-									</Button>
-								)}
-							</>
-						) : failureKind === 'transaction-rejected' && transaction ? (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									removeWalletRecordIf<any>(
-										localStorage,
-										operationStorageKey(asset.id, owner),
-										(record) => record?.txId === transaction.id
-									);
-									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-									onClose(false);
-								}}
-								variant="danger"
-							>
-								Discard rejected signature and sign again
-							</Button>
-						) : transaction ? (
-							<Button data-dialog-initial onClick={() => void submit()} size="custom">
-								Resume the signed transaction
-							</Button>
+							</div>
+						) : null}
+						{errorRecovery.note ? <p>{errorRecovery.note}</p> : null}
+						{errorRecovery.secondary ? (
+							<div className="dialog-actions">
+								<AtomicRecoveryButton
+									initial
+									option={errorRecovery.primary}
+									onAction={runRecoveryAction}
+								/>
+								<AtomicRecoveryButton option={errorRecovery.secondary} onAction={runRecoveryAction} />
+							</div>
 						) : (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									setFailureKind(null);
-									setMessage('');
-									setPhase('form');
-								}}
-							>
-								Try again
-							</Button>
+							<AtomicRecoveryButton initial option={errorRecovery.primary} onAction={runRecoveryAction} />
 						)}
 					</div>
 				) : null}
@@ -11455,8 +13522,44 @@ function OperationDialog({
 	);
 }
 
+/**
+ * Where a collection "Add assets" failure came from: the storage-cost check that
+ * runs while images are chosen, or the signed append itself.
+ */
+export type CollectionAppendFailure = { stage: 'estimate' | 'submit'; message: string };
+
+export function CollectionAppendFailureNotice({ failure }: { failure: CollectionAppendFailure }) {
+	return (
+		<OperationErrorAlert
+			title={failure.stage === 'submit' ? 'Could not add assets' : 'Could not check the storage cost'}
+			message={failure.message}
+		/>
+	);
+}
+
 export function AtomicOperationErrorAlert({ message }: { message: string }) {
 	return <OperationErrorAlert title="Could not complete this action" message={message} />;
+}
+
+function AtomicRecoveryButton({
+	initial = false,
+	onAction,
+	option,
+}: {
+	initial?: boolean;
+	onAction(action: AtomicOperationRecoveryAction): void;
+	option: AtomicOperationRecoveryOption;
+}) {
+	return (
+		<Button
+			data-dialog-initial={initial || undefined}
+			onClick={() => onAction(option.action)}
+			size="custom"
+			variant={option.danger ? 'danger' : undefined}
+		>
+			{option.label}
+		</Button>
+	);
 }
 
 function collectionKindLabel(collection: Collection) {
@@ -11701,7 +13804,7 @@ export function alphabetBrowseIndex(direction: 'previous' | 'next', visible: num
 export function RouteState({
 	children,
 	title,
-	backTo = '/',
+	backTo = homeTabPath('collections'),
 	backLabel = 'All collections',
 }: {
 	children: React.ReactNode;
@@ -11720,6 +13823,20 @@ export function RouteState({
 		</section>
 	);
 }
+
+// Catch-all route. It keeps the unmatched URL in the address bar and names it,
+// instead of silently replacing it with Discover.
+export function NotFoundRoute() {
+	const { pathname } = useLocation();
+	return (
+		<RouteState title="Page not found" backTo="/discover" backLabel="Discover">
+			<p>
+				This Bazar link does not match a page: <code>{pathname}</code>. Check the address or continue browsing.
+			</p>
+		</RouteState>
+	);
+}
+
 function assetDescription(state: AssetState | null, fallback: string) {
 	if (!state) return formatTokenDescription(fallback);
 	if (typeof state.raw.description === 'string' && state.raw.description.trim()) {
@@ -11766,29 +13883,60 @@ function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
 	};
 }
 export function tokenBalanceLabel(value: string, state: AssetState) {
-	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
-	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${formatTickerLabel(
-		state.ticker,
-		state.totalSupply === '1' ? 'asset' : 'tokens'
-	)}`;
+	return formatTokenQuantity(value, state, state.totalSupply === '1' ? 'asset' : 'tokens');
 }
 function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;
 }
 export function winstonToAr(value: string) {
-	const raw = BigInt(value);
-	const whole = raw / 1_000_000_000_000n;
-	const fraction = (raw % 1_000_000_000_000n).toString().padStart(12, '0').replace(/0+$/, '');
-	return fraction ? `${whole.toLocaleString()}.${fraction}` : whole.toLocaleString();
+	return formatArAmount(value);
 }
 export function formatBytes(value: number) {
 	if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
 	return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
-export function mintErrorMessage(error: unknown) {
+/**
+ * Shown for any code the mint mapper does not know, including programmer-error
+ * TypeErrors. It never claims that nothing was submitted: collection mints and
+ * appends sign file by file, so earlier transactions may already exist.
+ */
+export const MINT_ERROR_FALLBACK =
+	'Bazar could not finish this mint. Check Transaction activity for any submitted transactions, then try again.';
+/**
+ * Fallback for a token mint. Token mints never create a Transaction activity
+ * entry (no beginUpload/recordUploadTransaction, and mintFungible writes to
+ * the activity notifier only after success), so the copy must not point there.
+ */
+export const FUNGIBLE_MINT_ERROR_FALLBACK =
+	'Bazar could not finish this token mint. If the token logo already uploaded, Bazar reuses it when you try again.';
+const MINT_LICENSE_DATA_INVALID = 'This draft or license data is invalid. Start the mint again.';
+const MINT_EARLIER_TRANSACTIONS = 'any transactions you already approved are listed in Transaction activity.';
+const FUNGIBLE_LOGO_REUSED = 'a token logo that already uploaded is reused.';
+/**
+ * Which flow a mint error comes from. 'upload': asset, collection and append
+ * mints, which list every signed transaction in Transaction activity.
+ * 'fungible': token mints, which have no such record for a failed attempt.
+ */
+export type MintErrorContext = 'upload' | 'fungible';
+export function mintErrorMessage(error: unknown, context: MintErrorContext = 'upload') {
+	const fungible = context === 'fungible';
 	const value = error instanceof Error ? error.message : String(error);
 	const friendly: Record<string, string> = {
+		'mint-collection-name-invalid': 'Enter a collection name between 1 and 80 characters.',
+		'mint-collection-size-invalid': 'Choose between 1 and 10 images for the collection.',
+		'mint-artist-invalid': 'Keep the artist name under 160 characters.',
+		'mint-album-invalid': 'Keep the album name under 160 characters.',
+		'mint-duration-invalid': 'Bazar could not read a valid duration from this audio file. Choose another file.',
+		'collection-owner-mismatch':
+			'Only the wallet that created this collection can add assets to it. Connect that wallet and try again.',
+		'wallet-returned-unsigned-transaction':
+			'Your wallet did not return a signed transaction, so this upload was not sent. Reconnect your wallet and try again.',
+		'wallet-returned-invalid-signature':
+			'Your wallet returned an invalid signature, so this upload was not sent. Reconnect your wallet and try again.',
+		'mint-udl-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-grant-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-unknown-rights-invalid': MINT_LICENSE_DATA_INVALID,
+		'mint-udl-value-unexpected': MINT_LICENSE_DATA_INVALID,
 		'mint-name-invalid': 'Enter a name between 1 and 80 characters.',
 		'mint-description-invalid': 'Keep the description under 600 characters.',
 		'mint-file-required': 'Choose an image, MP3, or WAV file to continue.',
@@ -11818,13 +13966,28 @@ export function mintErrorMessage(error: unknown) {
 	if (value.startsWith('mint-media-unavailable-')) {
 		return 'The earlier media upload is not available through this gateway yet. Try finishing the mint later.';
 	}
-	return friendly[value] ?? value.replaceAll('-', ' ');
+	const earlier = fungible ? FUNGIBLE_LOGO_REUSED : MINT_EARLIER_TRANSACTIONS;
+	if (value === 'mint-upload-network') {
+		// Every retry lost its connection, so the POST may still have reached the gateway: no claim either way.
+		return fungible
+			? `The gateway did not accept the transaction. Check your connection and try again; ${FUNGIBLE_LOGO_REUSED}`
+			: 'The gateway did not accept the upload. Check your connection and try again; your earlier uploads are kept.';
+	}
+	if (/^mint-upload-\d+$/.test(value)) {
+		return fungible
+			? `Your wallet signed this transaction, but the Arweave gateway did not accept it, so as far as Bazar can tell it was not published or charged. Try again; ${FUNGIBLE_LOGO_REUSED}`
+			: 'Your wallet signed this upload, but the Arweave gateway did not accept it, so as far as Bazar can tell it was not published or charged. Its transaction ID is listed in Transaction activity. Check your connection and try again; your earlier uploads are kept.';
+	}
+	if (/^mint-price-(?:\d+|invalid)$/.test(value)) {
+		return `Arweave network fees could not be checked. Try again in a moment; ${earlier}`;
+	}
+	if (/^wallet-balance-(?:\d+|invalid)$/.test(value)) {
+		return `Your AR balance could not be checked. Try again in a moment; ${earlier}`;
+	}
+	return friendly[value] ?? (fungible ? FUNGIBLE_MINT_ERROR_FALLBACK : MINT_ERROR_FALLBACK);
 }
 function arToWinston(value: string) {
-	if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)
-		throw new Error('Enter a positive AR amount.');
-	const [whole, decimals = ''] = value.split('.');
-	return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
+	return parseArAmount(value);
 }
 
 function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
@@ -11848,25 +14011,40 @@ const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = '') {
 	if (kind === 'sell') {
-		if (!value.trim()) return 'Enter the AR price for this asset.';
-		if (/^0(?:\.0*)?$/.test(value)) return 'Enter a price of at least 0.000000000001 AR.';
+		const price = value.trim();
+		if (!price) return 'Enter the AR price for this asset.';
+		if (/^0(?:\.0*)?$/.test(price)) return 'Enter a price of at least 0.000000000001 AR.';
+		let winston: bigint;
 		try {
-			if (BigInt(arToWinston(value)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+			winston = BigInt(arToWinston(price));
 		} catch {
 			return 'Enter a valid AR amount with no more than 12 decimal places.';
 		}
+		if (winston < 1n) return 'Enter a price of at least 0.000000000001 AR.';
+		// The same winston value and cap makeOffer checks, before any network work.
+		if (winston > MAXIMUM_ASSET_OFFER_PRICE) return ASSET_OFFER_PRICE_CAP_ERROR;
 	}
 	if (kind === 'transfer') {
 		const recipient = value.trim();
 		if (!recipient) return 'Enter the recipient’s 43-character Arweave address.';
 		if (!ARWEAVE_ADDRESS.test(recipient)) return 'Enter a valid 43-character Arweave address.';
+		if (!isWalletAddress(recipient)) return NONCANONICAL_WALLET_ADDRESS_MESSAGE;
 		if (owner && recipient === owner)
 			return 'Choose a different wallet. An asset cannot be transferred to its current owner.';
 	}
 	return '';
 }
 export function atomicOperationValue(kind: Operation['kind'], value: string) {
-	return kind === 'transfer' ? value.trim() : value;
+	return kind === 'transfer' || kind === 'sell' ? value.trim() : value;
+}
+/** The listing price as it will be recorded on-chain ('0.50' -> '0.5 AR'),
+ * falling back to the typed value while it is not yet a valid price. */
+export function atomicListingPriceLabel(value: string) {
+	try {
+		return `${winstonToAr(arToWinston(value))} AR`;
+	} catch {
+		return `${value.trim()} AR`;
+	}
 }
 export function atomicOrderCanBeBought(order: SwapOrder | null): order is SwapOrder {
 	return order?.status === 'open';
@@ -11896,6 +14074,24 @@ export function externalReservationTransaction(
 				ARWEAVE_ADDRESS.test(event.id)
 		) ?? null
 	);
+}
+
+export const SAVED_ACTION_CHECK_FAILED_NOTICE =
+	'Could not check this browser for a saved action. It will be checked again when the asset refreshes.';
+
+// The saved-action check shares the asset's single recovery notice. A failure
+// is appended to whatever the check already reported, and the next completed
+// check removes it again without touching the other notice.
+export function savedActionCheckNotice(current: string, outcome: 'checked' | 'failed'): string {
+	const suffix = ` ${SAVED_ACTION_CHECK_FAILED_NOTICE}`;
+	const base =
+		current === SAVED_ACTION_CHECK_FAILED_NOTICE
+			? ''
+			: current.endsWith(suffix)
+			? current.slice(0, -suffix.length)
+			: current;
+	if (outcome === 'checked') return base;
+	return base ? `${base}${suffix}` : SAVED_ACTION_CHECK_FAILED_NOTICE;
 }
 
 export function atomicPurchaseRecoveryStatus(
@@ -11967,22 +14163,44 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
 }
 
-function atomicOperationActionLabel(operation: Operation, value: string) {
-	if (operation.kind === 'buy') return `Buy for ${winstonToAr(operation.order.asking)} AR`;
-	if (operation.kind === 'sell') return value ? `List for ${value} AR` : 'Enter a listing price';
+export function atomicOperationActionLabel(operation: Operation, value: string) {
+	if (operation.kind === 'buy') return operationLabel('buy');
+	if (operation.kind === 'sell')
+		return value.trim() ? `List for ${atomicListingPriceLabel(value)}` : 'Enter a listing price';
 	if (operation.kind === 'cancel') return 'Cancel listing and return asset';
-	return ARWEAVE_ADDRESS.test(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
+	return isWalletAddress(value.trim()) ? `Send to ${short(value.trim())}` : 'Enter a recipient';
 }
 
-function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
+export function atomicOperationResult(kind: Operation['kind'], assetName = '', value = '', owner = '') {
 	if (kind === 'buy') return { title: 'Purchase complete', detail: `${assetName} is now owned by ${short(owner)}.` };
-	if (kind === 'sell') return { title: 'Listing is live', detail: `${assetName} is offered for ${value} AR.` };
+	if (kind === 'sell')
+		return { title: 'Listing is live', detail: `${assetName} is offered for ${atomicListingPriceLabel(value)}.` };
 	if (kind === 'cancel')
 		return {
 			title: 'Listing cancelled',
 			detail: 'The asset is back in your liquid balance and is no longer for sale.',
 		};
 	return { title: 'Transfer complete', detail: `${assetName} now belongs to ${short(value)}.` };
+}
+/** Dialog loading copy while working before a transaction (and its sync steps) exists. */
+export function atomicOperationPreparingLabel(resuming: boolean) {
+	return resuming ? 'Recovering the signed transaction…' : 'Preparing secure wallet approvals…';
+}
+/**
+ * Activity status for the working phase. Explicit status (buy's lifecycle copy) wins; otherwise
+ * confirmations are only claimed once a transaction exists, and the pre-signature window mirrors
+ * the dialog's own loading label.
+ */
+export function atomicOperationWorkingStatus({
+	workingStatus,
+	hasSteps,
+	resuming,
+}: {
+	workingStatus: string;
+	hasSteps: boolean;
+	resuming: boolean;
+}) {
+	return workingStatus || (hasSteps ? 'Watching Arweave confirmations…' : atomicOperationPreparingLabel(resuming));
 }
 function operationLabel(kind: Operation['kind']) {
 	return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Cancel listing', transfer: 'Transfer asset' }[kind];
@@ -12024,14 +14242,118 @@ export function atomicPurchaseFailureStage(state: PurchaseState | null) {
 }
 export function atomicPurchaseFailureCode(state: PurchaseState | null) {
 	if (!state?.error?.code) return null;
-	return state.error.code === 'unexpected' ? state.error.message || state.error.code : state.error.code;
+	return purchaseFailureCode(state);
 }
+const TERMINAL_RESERVATION_FAILURE_CODES = [
+	'registration-dispatch-rejected',
+	'asset-order-reservation-rejected',
+	'asset-order-reservation-expired',
+];
 export function atomicPurchaseHasTerminalReservationFailure(state: PurchaseState | null) {
-	return [
-		'registration-dispatch-rejected',
-		'asset-order-reservation-rejected',
-		'asset-order-reservation-expired',
-	].includes(atomicPurchaseFailureCode(state) ?? '');
+	return TERMINAL_RESERVATION_FAILURE_CODES.includes(atomicPurchaseFailureCode(state) ?? '');
+}
+
+/** What each button in the NFT operation dialog's error footer does. */
+export type AtomicOperationRecoveryAction =
+	| 'view-updated-asset'
+	| 'view-current-listing'
+	| 'start-fresh-purchase'
+	| 'resign-seller-payment'
+	| 'restart-purchase'
+	| 'retry-not-sent'
+	| 'discard-not-sent'
+	| 'discard-rejected-signature'
+	| 'resume-signed-transaction'
+	| 'return-to-form';
+
+export type AtomicOperationRecoveryOption = {
+	action: AtomicOperationRecoveryAction;
+	label: string;
+	danger?: boolean;
+};
+
+export type AtomicOperationRecovery = {
+	primary: AtomicOperationRecoveryOption;
+	secondary?: AtomicOperationRecoveryOption;
+	note?: string;
+	/** Whether the failed purchase's stage, seller, order and receipts are shown above the actions. */
+	purchaseReceipt: boolean;
+};
+
+/**
+ * The NFT operation dialog's error state -> recovery actions. Precedence: a changed market wins; then
+ * purchases (whose dispatch rejections are also classified 'transaction-rejected') by purchase error
+ * code; then a saved signature that never left (retry or discard), a rejected signature (discard and
+ * sign again), any other saved signature (resume), and finally a return to the form.
+ */
+export function atomicOperationRecovery(input: {
+	kind: Operation['kind'];
+	failureKind: MarketplaceOperationFailure | null;
+	hasTransaction: boolean;
+	purchaseFailureCode: string | null;
+	recoverable: boolean;
+}): AtomicOperationRecovery {
+	const { kind, failureKind, hasTransaction, purchaseFailureCode, recoverable } = input;
+	const only = (primary: AtomicOperationRecoveryOption, purchaseReceipt = false): AtomicOperationRecovery => ({
+		primary,
+		purchaseReceipt,
+	});
+	if (failureKind === 'market-state-changed') {
+		return only({ action: 'view-updated-asset', label: 'View updated asset' });
+	}
+	if (kind === 'buy') {
+		if (purchaseFailureCode === 'registration-dispatch-rejected') {
+			return only({ action: 'view-current-listing', label: 'View current listing' }, true);
+		}
+		if (TERMINAL_RESERVATION_FAILURE_CODES.includes(purchaseFailureCode ?? '')) {
+			return only({ action: 'start-fresh-purchase', label: 'Start a new purchase' }, true);
+		}
+		if (purchaseFailureCode === 'payment-dispatch-rejected') {
+			return only({ action: 'resign-seller-payment', label: 'Sign a replacement seller payment' }, true);
+		}
+		return only({ action: 'restart-purchase', label: recoverable ? 'Continue saved purchase' : 'Try again' }, true);
+	}
+	if (failureKind === 'transaction-not-sent' && hasTransaction) {
+		const copy = notSentRecoveryCopy(kind);
+		return {
+			primary: { action: 'retry-not-sent', label: copy.retry },
+			secondary: { action: 'discard-not-sent', label: copy.discard, danger: true },
+			note: NOT_SENT_RECOVERY_NOTE,
+			purchaseReceipt: false,
+		};
+	}
+	if (failureKind === 'transaction-rejected' && hasTransaction) {
+		return only({
+			action: 'discard-rejected-signature',
+			label: 'Discard rejected signature and sign again',
+			danger: true,
+		});
+	}
+	if (hasTransaction) return only({ action: 'resume-signed-transaction', label: 'Resume the signed transaction' });
+	return only({ action: 'return-to-form', label: 'Try again' });
+}
+
+/**
+ * Discards a signed NFT listing, cancellation or transfer whose dispatch never left, so it is not
+ * resumed on the next visit. Returns the message to show when another tab already changed the saved
+ * record, or null once the record and its signature are gone.
+ */
+export function discardUnsentAtomicSignature(
+	storage: Pick<Storage, 'getItem' | 'removeItem'>,
+	assetId: string,
+	owner: string,
+	kind: SignedOperationKind,
+	transactionId: string
+) {
+	return removeWalletRecoveryAndSignatures<any>(
+		storage,
+		operationStorageKey(assetId, owner),
+		(record) => record?.txId === transactionId,
+		[transactionId],
+		owner
+	)
+		? null
+		: notSentRecoveryCopy(kind).changed;
 }
 export function assetStateErrorMessage(error: unknown) {
 	const value = error instanceof Error ? error.message : String(error);
@@ -12053,5 +14375,23 @@ export function assetStateErrorMessage(error: unknown) {
 		}
 		return `${host} could not be reached. Retry live state or review the AO Core settings in the header.`;
 	}
-	return errorMessage(error);
+	if (/^HTTP 4\d\d(?:\b|$)/i.test(value)) {
+		return `The configured AO peers do not serve live state for this asset (${value}). Retry, or review the AO Core settings in the header.`;
+	}
+	if (
+		error instanceof SyntaxError ||
+		[
+			'invalid-asset-state',
+			'invalid-asset-state-link',
+			'invalid-asset-state-trie',
+			'asset-state-link-limit',
+		].includes(value)
+	) {
+		return 'The configured AO peers answered, but not with this asset’s process state. Retry, or review the AO Core settings in the header.';
+	}
+	const friendly = errorMessage(error);
+	if (friendly !== value.replaceAll('-', ' ')) return friendly;
+	return `Live state for this asset could not be read through the configured AO peers${
+		value ? ` (${value})` : ''
+	}. Retry, or review the AO Core settings in the header.`;
 }

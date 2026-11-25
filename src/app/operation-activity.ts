@@ -8,6 +8,7 @@ import {
 	type SwapOrder,
 } from 'api/asset-marketplace';
 import type { AssetSummary, Collection } from 'api/collections';
+import { ASSET_TRANSACTION_CONFIRMATION_TARGET } from 'api/confirmation-target';
 import { filledOrder, parseTokenAmount } from 'api/order-matching';
 
 import { sameAccount } from 'helpers/host-account';
@@ -18,18 +19,74 @@ import {
 	hasRecoverablePurchase,
 	operationStorageKey,
 } from './operation-session';
+import { PURCHASE_REGISTRATION_TARGET } from './purchase-lifecycle';
 
 export const OPERATION_ACTIVITY_STORAGE_KEY = 'bazar-operation-activities:v1';
 export const FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY = 'bazar-fungible-operation-activities:v1';
 export const FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT = 'bazar:fungible-operation-activities-changed';
 
 export type Operation =
-	| { kind: 'sell'; resumeId?: string; value?: string }
+	| { kind: 'sell'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
 	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
 
+/** Fields that point an operation at one exact signed transaction and its process-slot baseline. */
+type SignedTransactionPointer = 'resumeId' | 'startingSlot';
+
+export type OperationWithoutSignedTransaction<T> = T extends unknown ? Omit<T, SignedTransactionPointer> : never;
+
+/**
+ * The fresh attempt that follows a proven rejection of a signed sell, cancel or transfer.
+ *
+ * A dialog treats an operation with `resumeId` as "resume that exact signature" and skips the live-state and
+ * slot-baseline checks. Once live state or the submission gateway proves the signature was not applied and the
+ * dialog has discarded it, keeping `resumeId` (or its `startingSlot`) would make the next submit restore the
+ * discarded id. This drops both pointers and keeps everything the user chose (order, value, quantity,
+ * recipient, price), so the next submit re-reads live state, takes a new baseline and signs a new transaction.
+ * Works for the atomic and the fungible operation shapes.
+ */
+type ResumableOperation = { kind: string; resumeId?: string; startingSlot?: number };
+
+export function operationAfterProvenRejection<T extends ResumableOperation>(
+	operation: T
+): OperationWithoutSignedTransaction<T> {
+	const fresh: Partial<T> = { ...operation };
+	delete fresh.resumeId;
+	delete fresh.startingSlot;
+	return fresh as OperationWithoutSignedTransaction<T>;
+}
+
 export type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
+
+/**
+ * Phase an operation dialog opens in. A saved buy resumes straight into
+ * 'working', or into 'approval' when recovery still needs new signatures; a
+ * sell, transfer or cancel with a saved signature resumes into 'working'.
+ * Anything else starts at the form. Inputs are primitives so the atomic and
+ * fungible dialogs, whose operation shapes differ, share one rule.
+ */
+export function initialOperationPhase(input: {
+	kind: FungibleOperationKind;
+	hasResume: boolean;
+	hasResumeId: boolean;
+	recoveryApprovalCount: number;
+}): OperationActivityPhase {
+	if (input.kind === 'buy') {
+		if (!input.hasResume) return 'form';
+		return input.recoveryApprovalCount > 0 ? 'approval' : 'working';
+	}
+	return input.hasResumeId ? 'working' : 'form';
+}
+
+/**
+ * Depth an activity row counts toward before its dialog reports a live sync step.
+ * A purchase starts on its registration step; listing, cancel and transfer watch
+ * the asset transaction depth.
+ */
+export function operationConfirmationTarget(operation: Pick<Operation, 'kind'>): number {
+	return operation.kind === 'buy' ? PURCHASE_REGISTRATION_TARGET : ASSET_TRANSACTION_CONFIRMATION_TARGET;
+}
 
 export type OperationActivity = {
 	id: string;
@@ -86,8 +143,16 @@ type StoredOperation = {
 	kind?: unknown;
 	order?: unknown;
 	value?: unknown;
+	startingSlot?: unknown;
 	createdAt?: unknown;
 };
+
+/** A listing's exact-slot baseline; records saved before it keep the open-order wait. */
+function sellStartingSlot(record: StoredOperation): { startingSlot?: number } {
+	return Number.isSafeInteger(record.startingSlot) && (record.startingSlot as number) >= 0
+		? { startingSlot: record.startingSlot as number }
+		: {};
+}
 
 export function operationRecoveryCanStillApply(
 	state: AssetState,
@@ -259,7 +324,7 @@ export function discoverOperationActivities(
 				phase: 'working',
 				status: 'Resume saved purchase',
 				confirmations: 0,
-				confirmationTarget: 5,
+				confirmationTarget: operationConfirmationTarget({ kind: 'buy' }),
 				createdAt: finiteNonNegative(record.createdAt),
 			});
 			continue;
@@ -276,6 +341,7 @@ export function discoverOperationActivities(
 			restoredOperation = {
 				kind,
 				resumeId: record.txId,
+				...sellStartingSlot(record),
 				...(typeof record.value === 'string' ? { value: record.value } : {}),
 			};
 		} else {
@@ -294,7 +360,7 @@ export function discoverOperationActivities(
 			phase: 'working',
 			status: 'Resume signed transaction',
 			confirmations: 0,
-			confirmationTarget: 5,
+			confirmationTarget: operationConfirmationTarget(restoredOperation),
 			createdAt: finiteNonNegative(record.createdAt),
 		});
 	}
@@ -303,6 +369,52 @@ export function discoverOperationActivities(
 
 export function atomicOperationActivityId(assetId: string, owner: string) {
 	return `atomic:${assetId}:${owner}`;
+}
+
+/** A terminal phase reached by an activity whose panel was hidden at that moment. */
+export type SettledWhileHiddenPhase = 'done' | 'error';
+
+/**
+ * The explicit "settled while hidden" transition of an activity panel.
+ *
+ * An activity that reaches `done` or `error` while it is not the active (visible) panel has no
+ * dialog left to show or announce the result, so the caller must raise a background notice.
+ * It returns null when the panel is visible (its own dialog reports the result), when the next
+ * phase is not terminal, and when the phase is unchanged, so a re-reported `error` status never
+ * notifies twice.
+ */
+export function settledWhileHidden(
+	previous: { id: string; phase: string } | undefined,
+	nextPhase: string,
+	activeId: string | null
+): SettledWhileHiddenPhase | null {
+	if (!previous || previous.id === activeId) return null;
+	if (nextPhase !== 'done' && nextPhase !== 'error') return null;
+	return previous.phase === nextPhase ? null : nextPhase;
+}
+
+export type BackgroundOperationOutcome = Pick<
+	OperationActivity,
+	'id' | 'asset' | 'collectionId' | 'owner' | 'operation' | 'status'
+> & { phase: SettledWhileHiddenPhase };
+
+/** The outcome a hidden marketplace operation settled with, or null when no notice is owed. */
+export function backgroundOperationOutcome(
+	previous: Pick<OperationActivity, 'id' | 'asset' | 'collectionId' | 'owner' | 'operation' | 'phase'> | undefined,
+	patch: Pick<OperationActivity, 'phase' | 'status'>,
+	activeId: string | null
+): BackgroundOperationOutcome | null {
+	const phase = settledWhileHidden(previous, patch.phase, activeId);
+	if (!previous || !phase) return null;
+	return {
+		id: previous.id,
+		asset: previous.asset,
+		collectionId: previous.collectionId,
+		owner: previous.owner,
+		operation: previous.operation,
+		status: patch.status,
+		phase,
+	};
 }
 
 export function saveOperationActivities(
@@ -362,6 +474,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
 				: ({
 						kind: saved.kind as 'sell' | 'transfer',
 						resumeId: saved.txId,
+						...(saved.kind === 'sell' ? sellStartingSlot(saved) : {}),
 						...(typeof saved.value === 'string' ? { value: saved.value } : {}),
 				  } as const);
 		return { ...activity, operation, phase: 'working', status: 'Resuming signed transaction…' };
@@ -392,7 +505,10 @@ function parseActivity(value: unknown): OperationActivity | null {
 		phase: value.phase,
 		status: value.status,
 		confirmations: finiteNonNegative(value.confirmations),
-		confirmationTarget: Math.max(1, finiteNonNegative(value.confirmationTarget) || 5),
+		confirmationTarget: Math.max(
+			1,
+			finiteNonNegative(value.confirmationTarget) || operationConfirmationTarget(value.operation)
+		),
 		createdAt: value.createdAt,
 	};
 }

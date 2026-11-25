@@ -7,12 +7,16 @@ import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 import { filledOrder } from 'api/order-matching';
 
+import { toHostAccount } from 'helpers/host-account';
+
 import {
 	appendFungibleOperationActivity,
 	batchHasNoDispatchedSellerPayment,
 	batchPaymentBarrierState,
+	batchPurchaseFailureReview,
 	batchPurchaseRecoveryApprovalCopy,
 	batchPurchaseRecoveryApprovalCount,
+	batchPurchaseRejectedAfterPaymentNotice,
 	batchPurchaseStartingBalance,
 	batchRecoveryFrameBuffer,
 	batchRecoveryIdentity,
@@ -21,12 +25,16 @@ import {
 	checkpointBatchPreparation,
 	fungibleActivityAmount,
 	fungibleBatchRecoveryStatus,
+	fungibleEmptyBalanceCopy,
 	FungibleHolderChart,
 	fungibleHolderChartSlices,
 	fungibleHolders,
 	fungibleHoldingPercentage,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
+	fungibleListingTotalError,
+	FungibleNotSentRecovery,
+	fungibleNotSentRecoveryCopy,
 	fungibleOfferedPercentage,
 	type FungibleOperationActivity,
 	fungibleOperationActivityProgress,
@@ -37,6 +45,7 @@ import {
 	fungiblePriceHistory,
 	fungiblePurchaseActivityAmount,
 	FungiblePurchaseComposer,
+	FungiblePurchaseQuoteFailureNotice,
 	FungiblePurchaseReceiptNavigator,
 	fungiblePurchaseReceiptOptions,
 	FungiblePurchaseSequence,
@@ -44,23 +53,29 @@ import {
 	FungibleSettlementRecoveryPanel,
 	fungibleTransferRecipientError,
 	fungibleTransferSubmitLabel,
+	fungibleUnitPriceLabel,
 	isRecoverableBatch,
 	latestRecoverableSnapshot,
-	MatchedListingsReview,
 	nextSettlementAnnouncement,
 	orderbookCumulativeDepths,
+	pendingFungibleOperationActivities,
+	purchasableOrdersFor,
 	purchaseAmountMatch,
-	purchaseFailureMessageNeedsManualReview,
 	purchaseQuoteIdentity,
 	PurchaseRoute,
 	purchaseSettlementNeedsManualReview,
 	purchaseStateFrameBuffer,
 	restartFungibleOperationActivity,
+	resumableFungibleOperationActivity,
+	safeLotQuote,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
+	unsafeExcludedQuantityFor,
 	visibleOrderbookRows,
 	waitForSettlementBatch,
 } from './FungibleAssetView';
+import { purchaseQuoteFailure } from './marketplace-error';
+import { PURCHASE_PAYMENT_TARGET } from './purchase-lifecycle';
 
 describe('fungible operation activity progress', () => {
 	it('reports the active Arweave confirmation depth for a purchase', () => {
@@ -99,7 +114,7 @@ describe('fungible operation working status', () => {
 	});
 });
 
-const BUYER = 'b'.repeat(43);
+const BUYER = 'g'.repeat(43);
 const ORDER_ID = 'o'.repeat(43);
 const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
@@ -360,6 +375,14 @@ describe('fungible operation error semantics', () => {
 		expect(sequence).not.toContain('0/2 accepted');
 		expect(sequence).not.toContain('0/2 confirmed');
 		expect(sequence).not.toContain('0/2 verified');
+		expect(sequence.match(/aria-current="step"/g)).toHaveLength(1);
+		expect(sequence.match(/<li[^>]*aria-current="step"[^>]*>.*?<\/li>/)?.[0]).toContain('<strong>Reserve</strong>');
+		expect(
+			Array.from(
+				sequence.matchAll(/<strong>([^<]+)<\/strong><span class="sr-only">, ([^<]+)<\/span>/g),
+				(match) => `${match[1]}: ${match[2]}`
+			)
+		).toEqual(['Sign: completed', 'Reserve: in progress', 'Pay: not started', 'Verify: not started']);
 	});
 
 	it('keeps payment and receipt verification as separate visible stages', () => {
@@ -396,6 +419,50 @@ describe('fungible operation error semantics', () => {
 		expect(activities.map((activity) => activity.visible)).toEqual([false, true]);
 	});
 
+	it('stops a finished hidden activity from blocking new actions while keeping it reviewable', () => {
+		const finished: FungibleOperationActivity = {
+			id: 'transfer',
+			operation: { kind: 'transfer' },
+			phase: 'done',
+			signer: BUYER,
+			visible: false,
+		};
+		const running: FungibleOperationActivity = {
+			id: 'purchase',
+			operation: { kind: 'buy', availableOrders: [] as SwapOrder[], startingBalance: '0' },
+			phase: 'working',
+			signer: BUYER,
+			visible: false,
+		};
+		const failed: FungibleOperationActivity = {
+			...finished,
+			id: 'listing',
+			operation: { kind: 'sell' },
+			phase: 'error',
+		};
+		const pending = pendingFungibleOperationActivities([finished, running, failed]);
+
+		expect(pending.map((activity) => activity.id)).toEqual(['purchase', 'listing']);
+		expect(pending.find((activity) => activity.operation.kind !== 'buy')?.phase).toBe('error');
+		expect(pendingFungibleOperationActivities([finished])).toEqual([]);
+	});
+
+	it('reopens a running activity but replaces a finished one with the same id', () => {
+		const running: FungibleOperationActivity = {
+			id: 'transfer',
+			operation: { kind: 'transfer' },
+			phase: 'working',
+			signer: BUYER,
+			visible: false,
+		};
+		const finished: FungibleOperationActivity = { ...running, phase: 'done' };
+
+		expect(resumableFungibleOperationActivity([running], 'transfer', BUYER)).toBe(running);
+		expect(resumableFungibleOperationActivity([{ ...running, phase: null }], 'transfer', BUYER)?.phase).toBeNull();
+		expect(resumableFungibleOperationActivity([running], 'transfer', 'other-signer')).toBeUndefined();
+		expect(resumableFungibleOperationActivity([finished], 'transfer', BUYER)).toBeUndefined();
+	});
+
 	it('restarts a recoverable settlement as a visible fresh dialog instance', () => {
 		const failed: FungibleOperationActivity = {
 			id: 'purchase',
@@ -421,16 +488,25 @@ describe('fungible operation error semantics', () => {
 	});
 
 	it('does not present a process-rejected payment as resumable observation', () => {
+		// The engine's real shape: verifyOwnership throws a plain
+		// Error('asset-purchase-rejected'), which weave-wrangler stores as
+		// { code: 'unexpected', message: 'asset-purchase-rejected' }.
 		expect(
 			purchaseSettlementNeedsManualReview({
 				stage: 'failed',
-				error: { code: 'asset-purchase-rejected', message: 'asset purchase rejected' },
+				error: { code: 'unexpected', message: 'asset-purchase-rejected' },
 			} as PurchaseState)
 		).toBe(true);
 		expect(
 			purchaseSettlementNeedsManualReview({
 				stage: 'failed',
-				error: { code: 'asset-payment-observer-timeout', message: 'asset purchase rejected' },
+				error: { code: 'unexpected', message: 'Asset purchase rejected' },
+			} as PurchaseState)
+		).toBe(true);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-purchase-rejected', message: 'asset purchase rejected' },
 			} as PurchaseState)
 		).toBe(true);
 		expect(
@@ -445,22 +521,58 @@ describe('fungible operation error semantics', () => {
 				error: { code: 'unexpected', message: 'asset-balance-proof-unavailable' },
 			} as PurchaseState)
 		).toBe(false);
+		// Incomplete scheduler proof keeps both IDs to continue, as its copy says.
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'unexpected', message: 'asset-purchase-proof-mismatch' },
+			} as PurchaseState)
+		).toBe(false);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'payment-confirming',
+				error: { code: 'unexpected', message: 'asset-purchase-rejected' },
+			} as PurchaseState)
+		).toBe(false);
 	});
 
-	it('recognizes a terminal failure reported only by the batch summary', () => {
-		expect(
-			purchaseFailureMessageNeedsManualReview('1 of 1 settlements need attention. asset purchase rejected')
-		).toBe(true);
-		expect(
-			purchaseFailureMessageNeedsManualReview(
-				'1 of 1 settlements need attention. observer timed out while checking transaction'
-			)
-		).toBe(false);
-		expect(
-			purchaseFailureMessageNeedsManualReview(
-				'1 of 1 settlements need attention. asset-balance-proof-unavailable'
-			)
-		).toBe(false);
+	it('unlocks a batch only when every incomplete lot was rejected after payment', () => {
+		const rejected = {
+			stage: 'failed',
+			error: { code: 'unexpected', message: 'asset-purchase-rejected' },
+		} as PurchaseState;
+		const balanceProofUnavailable = {
+			stage: 'failed',
+			error: { code: 'unexpected', message: 'asset-balance-proof-unavailable' },
+		} as PurchaseState;
+		const complete = { stage: 'complete', success: true } as PurchaseState;
+
+		expect(batchPurchaseFailureReview([rejected])).toEqual({ kind: 'manual-review', rejectedAfterPayment: 1 });
+		expect(batchPurchaseFailureReview([complete, rejected, rejected])).toEqual({
+			kind: 'manual-review',
+			rejectedAfterPayment: 2,
+		});
+		// A lot that can still resume keeps its saved work, whatever the order.
+		for (const states of [
+			[rejected, balanceProofUnavailable],
+			[balanceProofUnavailable, rejected],
+			[rejected, undefined],
+		]) {
+			expect(batchPurchaseFailureReview(states)).toEqual({ kind: 'resumable', rejectedAfterPayment: 1 });
+		}
+		expect(batchPurchaseFailureReview([complete, balanceProofUnavailable])).toEqual({ kind: 'none' });
+		expect(batchPurchaseFailureReview([complete, complete])).toEqual({ kind: 'none' });
+	});
+
+	it('explains a rejected lot when the rest of the batch can resume', () => {
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'resumable', rejectedAfterPayment: 1 })).toBe(
+			'The process rejected one listing after payment. Resuming only rechecks its saved receipts and never pays again. '
+		);
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'resumable', rejectedAfterPayment: 2 })).toContain(
+			'rejected 2 listings after payment. Resuming only rechecks their saved receipts'
+		);
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'manual-review', rejectedAfterPayment: 1 })).toBe('');
+		expect(batchPurchaseRejectedAfterPaymentNotice({ kind: 'none' })).toBe('');
 	});
 
 	it('quotes a requested token amount from automatic partial fills', () => {
@@ -503,6 +615,51 @@ describe('fungible operation error semantics', () => {
 		expect(quote.error).toBe('Only 2 $WEAVE is currently available.');
 	});
 
+	it('leaves out listings whose reservation fee is above the purchase limit', () => {
+		const buyer = 'z'.repeat(43);
+		const atLimit = { ...purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2'), minimumFee: '10000000000' };
+		const overLimit = { ...purchaseOrder('2'.repeat(43), 'b'.repeat(43), '3', '3'), minimumFee: '10000000001' };
+		const own = purchaseOrder('3'.repeat(43), buyer, '4', '4');
+
+		expect(purchasableOrdersFor([atLimit, overLimit, own], buyer).map((order) => order.orderId)).toEqual([
+			atLimit.orderId,
+		]);
+		expect(unsafeExcludedQuantityFor([atLimit, overLimit, own], buyer)).toBe('3');
+		expect(unsafeExcludedQuantityFor([atLimit, own], buyer)).toBe('0');
+	});
+
+	it('fills from safe listings when the cheapest listing has an unsafe reservation fee', () => {
+		const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
+		const unsafeCheapest = {
+			...purchaseOrder('1'.repeat(43), 'a'.repeat(43), '5', '5'),
+			minimumFee: '10000000001',
+		};
+		const safe = purchaseOrder('2'.repeat(43), 'b'.repeat(43), '5', '10');
+		const quote = purchaseAmountMatch(purchasableOrdersFor([unsafeCheapest, safe], 'z'.repeat(43)), '3', state);
+
+		expect(quote.error).toBe('');
+		expect(quote.match?.fills.map((fill) => fill.order.orderId)).toEqual([safe.orderId]);
+	});
+
+	it('explains listings excluded for an unsafe reservation fee apart from the buyer’s own', () => {
+		const composer = renderToStaticMarkup(
+			React.createElement(FungiblePurchaseComposer, {
+				availableQuantity: '5',
+				excludedQuantity: '2',
+				unsafeExcludedQuantity: '3',
+				error: '',
+				match: null,
+				onChange: () => undefined,
+				onMax: () => undefined,
+				quantity: '',
+				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+			})
+		);
+
+		expect(composer).toContain('2 $WEAVE from your listing excluded');
+		expect(composer).toContain('3 $WEAVE excluded: reservation fee above Bazar&#x27;s limit');
+	});
+
 	it('presents listing quantity and unit price as one connected composer', () => {
 		const composer = renderToStaticMarkup(
 			React.createElement(FungibleListingComposer, {
@@ -527,6 +684,45 @@ describe('fungible operation error semantics', () => {
 		expect(composer).toContain('$MINTA');
 		expect(composer).toContain('0.00024 <span class="ar-currency-label">');
 		expect(composer).toContain('$AR</span> total');
+	});
+
+	it('caps the listing total (quantity x unit price) at the amount makeOffer accepts', () => {
+		const state = { denomination: 0, ticker: 'MINTA' } as AssetState;
+		// Exactly 66,000,000 AR in total is listable.
+		expect(safeLotQuote('1000', '66000', state)).toBe('66,000,000');
+		expect(fungibleListingTotalError('1000', '66000', state)).toBe('');
+		// One winston over the cap: no quote, so listingReady and sellValid stay false.
+		expect(safeLotQuote('1000', '66000.000000000001', state)).toBeNull();
+		expect(fungibleListingTotalError('1000', '66000.000000000001', state)).toBe(
+			'The listing total is above the 66,000,000 AR maximum. Lower the quantity or the unit price.'
+		);
+		// A plausible extra-zeros typo in the quantity.
+		expect(safeLotQuote('10000000', '7', state)).toBeNull();
+		expect(fungibleListingTotalError('10000000', '7', state)).toContain('66,000,000 AR maximum');
+		// Invalid inputs keep their own validation messages.
+		expect(fungibleListingTotalError('', '7', state)).toBe('');
+		expect(fungibleListingTotalError('10', 'abc', state)).toBe('');
+	});
+
+	it('shows the listing-total cap in the listing composer', () => {
+		const composer = renderToStaticMarkup(
+			React.createElement(FungibleListingComposer, {
+				availableQuantity: '100000000',
+				onMax: () => undefined,
+				onQuantityChange: () => undefined,
+				onUnitPriceChange: () => undefined,
+				quantity: '10000000',
+				quantityError: '',
+				state: { denomination: 0, ticker: 'MINTA' } as AssetState,
+				total: safeLotQuote('10000000', '7', { denomination: 0 }),
+				unitPrice: '7',
+				unitPriceError: fungibleListingTotalError('10000000', '7', { denomination: 0 }),
+			})
+		);
+		expect(composer).toContain('Listing total');
+		expect(composer).toContain('aria-invalid="true"');
+		expect(composer).toContain('role="alert"');
+		expect(composer).toContain('66,000,000');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {
@@ -646,7 +842,7 @@ describe('fungible operation error semantics', () => {
 		expect(receiptOptions).toHaveLength(512);
 		expect(receiptOptions[511]).toEqual({
 			value: orders[511].orderId,
-			label: `Listing 512 · 1 $WEAVE · ${orders[511].creator.slice(0, 6)}…${orders[511].creator.slice(-5)}`,
+			label: `Listing 512 · 1 $WEAVE · ${orders[511].creator.slice(0, 7)}…${orders[511].creator.slice(-5)}`,
 		});
 		const receipt = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseReceiptNavigator, {
@@ -665,6 +861,10 @@ describe('fungible operation error semantics', () => {
 		expect(receipt).toContain(purchaseStates[orders[511].orderId].registration?.id);
 		expect(receipt).toContain(purchaseStates[orders[511].orderId].payment?.id);
 		expect(receipt).not.toContain(orders[0].creator);
+		const orderAnchor =
+			receipt.match(/<dt>Order<\/dt><dd>(?:(?!<\/dd>).)*?<span[^>]*aria-describedby="[^"]+"[^>]*>/)?.[0] ?? '';
+		expect(orderAnchor).toContain('tabindex="0"');
+		expect(receipt).toContain(orders[511].orderId);
 		const nextButton = receipt.match(/<button[^>]*>Next receipt<\/button>/)?.[0] ?? '';
 		expect(nextButton).toContain('aria-disabled="true"');
 		expect(nextButton).not.toMatch(/\sdisabled(?:=|\s|>)/);
@@ -717,25 +917,6 @@ describe('fungible operation error semantics', () => {
 		expect(review).toContain(orders[511].creator);
 	});
 
-	it('renders checkout listings without tabs and exposes a remove action for each lot', () => {
-		const orders = [
-			{ orderId: '1'.repeat(43), creator: 'a'.repeat(43), quantity: '1', asking: '1000' },
-			{ orderId: '2'.repeat(43), creator: 'b'.repeat(43), quantity: '2', asking: '2000' },
-		] as SwapOrder[];
-		const overview = renderToStaticMarkup(
-			React.createElement(MatchedListingsReview, {
-				onRemove: () => undefined,
-				orders,
-				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
-			})
-		);
-
-		expect(overview).toContain('aria-label="Purchase overview"');
-		expect(overview).not.toContain('role="tablist"');
-		expect(overview).not.toContain('<details');
-		expect(overview.match(/>Remove<\/button>/g)).toHaveLength(2);
-	});
-
 	it('keeps interactive settlement recovery outside the assertive alert summary', () => {
 		const alert = renderToStaticMarkup(
 			React.createElement(FungibleOperationErrorAlert, {
@@ -746,6 +927,43 @@ describe('fungible operation error semantics', () => {
 		expect(alert).not.toContain('role="tablist"');
 		expect(alert).not.toContain('<button');
 		expect(alert).toContain('One settlement needs attention.');
+	});
+
+	it('names the signed operation in not-sent recovery copy', () => {
+		expect(fungibleNotSentRecoveryCopy('sell')).toEqual({
+			retry: 'Retry listing',
+			discard: 'Discard listing',
+			changed: 'This saved listing changed in another tab. Close this panel and review the active action.',
+		});
+		expect(fungibleNotSentRecoveryCopy('cancel')).toEqual({
+			retry: 'Retry cancellation',
+			discard: 'Discard cancellation',
+			changed: 'This saved cancellation changed in another tab. Close this panel and review the active action.',
+		});
+		expect(fungibleNotSentRecoveryCopy('transfer')).toEqual({
+			retry: 'Retry transfer',
+			discard: 'Discard transfer',
+			changed: 'This saved transfer changed in another tab. Close this panel and review the active action.',
+		});
+	});
+
+	it('does not call a not-sent listing or cancellation a transfer', () => {
+		const render = (kind: 'sell' | 'cancel' | 'transfer') =>
+			renderToStaticMarkup(
+				React.createElement(FungibleNotSentRecovery, { kind, onDiscard: () => {}, onRetry: () => {} })
+			);
+		const listing = render('sell');
+		expect(listing).toContain('No transaction was submitted. Retry this signature or discard it to start over.');
+		expect(listing).toContain('>Retry listing</button>');
+		expect(listing).toContain('>Discard listing</button>');
+		expect(listing).not.toContain('transfer');
+		const cancellation = render('cancel');
+		expect(cancellation).toContain('>Retry cancellation</button>');
+		expect(cancellation).toContain('>Discard cancellation</button>');
+		expect(cancellation).not.toContain('transfer');
+		const transfer = render('transfer');
+		expect(transfer).toContain('>Retry transfer</button>');
+		expect(transfer).toContain('>Discard transfer</button>');
 	});
 
 	it('puts explanatory settlement recovery content in sequential focus order', () => {
@@ -955,6 +1173,23 @@ describe('fungible batch payment coordination', () => {
 		resolveSibling({ stage: 'complete', success: true } as PurchaseState);
 		await expect(result).rejects.toThrow('1 of 2 settlements need attention. reservation failed');
 		expect(reported).toBe(true);
+	});
+
+	it('points a failed batch to each listing instead of joining raw failure codes', async () => {
+		const failed = (message: string) =>
+			Promise.resolve({
+				stage: 'failed',
+				success: false,
+				error: { code: 'unexpected', message },
+			} as PurchaseState);
+		const result = waitForSettlementBatch([
+			failed('asset-purchase-rejected'),
+			failed('asset-balance-proof-unavailable'),
+		]);
+
+		await expect(result).rejects.toThrow(
+			/^2 of 2 settlements need attention\. Each listing below shows its own status and saved receipts\.$/
+		);
 	});
 
 	it('releases a mixed resumed batch after only its remaining reservation becomes ready', () => {
@@ -1222,6 +1457,24 @@ describe('parallel settlement progress summary', () => {
 			} as PurchaseState)
 		).toBe('Reserve 5/5');
 	});
+
+	it('counts seller payment progress against the payment target, not the reservation depth', () => {
+		expect(PURCHASE_PAYMENT_TARGET).toBe(1);
+		expect(
+			batchStageLabel({
+				stage: 'payment-confirming',
+				payment: { consensus: { confirmations: 0 } },
+			} as PurchaseState)
+		).toBe('Pay 0/1');
+		expect(batchStageLabel({ stage: 'signing-payment' } as PurchaseState)).toBe('Pay 0/1');
+		expect(batchStageLabel({ stage: 'dispatching-payment' } as PurchaseState)).toBe('Pay 0/1');
+		expect(
+			batchStageLabel({
+				stage: 'payment-confirming',
+				payment: { consensus: { confirmations: 7 } },
+			} as PurchaseState)
+		).toBe('Pay 1/1');
+	});
 });
 
 describe('blocked purchase recovery cleanup', () => {
@@ -1274,6 +1527,43 @@ describe('fungible order action names', () => {
 		expect(fungibleListingAccessibleLabel(first, state)).toContain(first.creator);
 		expect(fungibleListingAccessibleLabel(second, state)).toContain(second.creator);
 		expect(fungibleListingAccessibleLabel(first, state)).not.toBe(fungibleListingAccessibleLabel(second, state));
+	});
+
+	it('names a host-form seller by the raw address people see', () => {
+		const state = { ticker: 'WEAVE', denomination: 12 } as AssetState;
+		const raw = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
+		const order = {
+			asking: '3000000',
+			creator: toHostAccount(raw)!,
+			orderId: ORDER_ID,
+			quantity: '3000000000000',
+		} as SwapOrder;
+
+		expect(fungiblePurchaseReceiptOptions([order], state)).toEqual([
+			{ value: ORDER_ID, label: 'Listing 1 · 3 $WEAVE · 1uTLV5G…82YZw' },
+		]);
+		expect(fungibleListingAccessibleLabel(order, state)).toContain(`seller ${raw}`);
+		expect(fungibleListingAccessibleLabel(order, state)).not.toContain('uri-did');
+		expect(fungibleOrderActionLabel('buy', order, state)).toBe(`Buy 3 $WEAVE for 0.000003 $AR from ${raw}`);
+	});
+});
+
+describe('fungible price and quantity labels', () => {
+	it('gives the price chart and the order book one $AR / $ticker label', () => {
+		const state = { ticker: 'PIXL', denomination: 0 } as AssetState;
+		const order = { creator: 'A'.repeat(43), quantity: '2', asking: '1000000000000' } as SwapOrder;
+
+		expect(fungibleUnitPriceLabel('500000000000', state)).toBe('0.5 $AR / $PIXL');
+		expect(fungibleListingAccessibleLabel(order, state)).toBe(
+			`2 $PIXL, 0.5 $AR / $PIXL, 1 $AR total, seller ${'A'.repeat(43)}`
+		);
+		expect(fungibleUnitPriceLabel('500000000000', { ticker: '' })).toBe('0.5 $AR / $token');
+	});
+
+	it('uses a plain tokens noun for quantities when the ticker is missing', () => {
+		const state = { ticker: '', denomination: 0 } as AssetState;
+
+		expect(fungibleTransferSubmitLabel('2000', state, 'c'.repeat(43))).toBe('Send 2,000 tokens to ccccccc…ccccc');
 	});
 });
 
@@ -1422,12 +1712,86 @@ describe('fungible transfer recipient validation', () => {
 		expect(fungibleTransferRecipientError(`  ${'c'.repeat(43)}\n`, BUYER)).toBe('');
 	});
 
+	it('rejects a 43-character recipient whose last character makes it no wallet address', () => {
+		const message = 'This is not a valid Arweave wallet address. Check the last characters.';
+		expect(fungibleTransferRecipientError('BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwB', BUYER)).toBe(message);
+		expect(fungibleTransferRecipientError('b'.repeat(43), BUYER)).toBe(message);
+		expect(fungibleTransferRecipientError('BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc', BUYER)).toBe('');
+	});
+
 	it('names the exact recipient before an irreversible transfer', () => {
 		const recipient = 'c'.repeat(43);
 		const state = { denomination: 12, ticker: 'WEAVE' } as AssetState;
-		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 $WEAVE to cccccc…ccccc');
+		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 $WEAVE to ccccccc…ccccc');
 		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(
 			`Send 2 $WEAVE to ${recipient}`
 		);
 	});
+});
+
+describe('fungibleEmptyBalanceCopy', () => {
+	const state = { denomination: 3, ticker: 'WEAVE' } as AssetState;
+
+	it('does not mention listings when the wallet holds none of the token', () => {
+		for (const mode of ['sell', 'transfer'] as const) {
+			const copy = fungibleEmptyBalanceCopy(mode, '0', state);
+			expect(copy.title).toBe('No $WEAVE in this wallet');
+			expect(`${copy.title} ${copy.detail}`).not.toMatch(/listed|listing/i);
+		}
+		expect(fungibleEmptyBalanceCopy('sell', '0', state).detail).toBe('This wallet holds no $WEAVE to list.');
+		expect(fungibleEmptyBalanceCopy('transfer', '0', state).detail).toBe(
+			'This wallet holds no $WEAVE to transfer.'
+		);
+	});
+
+	it('names the denominated listed amount and that only open listings can be cancelled', () => {
+		for (const mode of ['sell', 'transfer'] as const) {
+			const copy = fungibleEmptyBalanceCopy(mode, '1234500', state);
+			expect(copy.title).toBe('No liquid $WEAVE');
+			expect(copy.detail).toBe(
+				'1,234.5 $WEAVE is in open or reserved listings; cancel an open listing to free it.'
+			);
+		}
+	});
+});
+
+describe('fungible purchase quote failure notice', () => {
+	const renderNotice = (cause: unknown) => {
+		const markup = renderToStaticMarkup(
+			React.createElement(FungiblePurchaseQuoteFailureNotice, {
+				...purchaseQuoteFailure(cause),
+				describedBy: 'quote-status',
+				onRetry: () => undefined,
+			})
+		);
+		return { markup, text: markup.replace(/<[^>]+>/g, '') };
+	};
+
+	it('names a wallet balance failure and offers a retry that can help', () => {
+		const { markup, text } = renderNotice(new Error('wallet-balance-503'));
+		expect(text).toContain('Your $AR balance could not be checked. Retry the cost check before buying.');
+		expect(text).not.toContain('Compute hasn’t completed');
+		expect(markup).toContain('role="status"');
+		expect(markup.match(/<button/g)).toHaveLength(1);
+		expect(markup).toContain('aria-describedby="quote-status"');
+		expect(text).toContain('Retry cost check');
+	});
+
+	it('names an unavailable network fee quote and offers a retry', () => {
+		const { markup, text } = renderNotice(new Error('transaction-price-429'));
+		expect(text).toContain('Arweave network fees are unavailable.');
+		expect(text).not.toContain('Compute hasn’t completed');
+		expect(markup).toContain('<button');
+	});
+
+	it.each(['asset-purchase-registration-fee-too-high', 'asset-purchase-invalid-registration-fee'])(
+		'explains a terminal %s listing without a retry that cannot succeed',
+		(code) => {
+			const { markup, text } = renderNotice(new Error(code));
+			expect(text).toContain('The seller needs to');
+			expect(text).not.toContain('Compute hasn’t completed');
+			expect(text).not.toContain('Retry');
+			expect(markup).not.toContain('<button');
+		}
+	);
 });

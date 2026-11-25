@@ -7,8 +7,15 @@ const control = vi.hoisted(() => ({
 	networkOptions: undefined as Record<string, unknown> | undefined,
 	networkStopped: false,
 	watcherStopped: false,
-	outcome: 'timeout' as 'timeout' | 'settled',
-	listeners: new Map<string, (...args: any[]) => void>(),
+	// 'pending' fires nothing from start(), so a test drives the watcher itself.
+	outcome: 'timeout' as 'timeout' | 'settled' | 'pending',
+	seen: 0,
+	// A Set per event: dispatchAndConfirm's settlement and waitUntilSeen both
+	// subscribe to 'consensus', and one must not replace or remove the other.
+	listeners: new Map<string, Set<(...args: any[]) => void>>(),
+	emit(event: string, ...args: any[]) {
+		for (const listener of [...(this.listeners.get(event) ?? [])]) listener(...args);
+	},
 }));
 
 vi.mock('./arweave-observers', () => ({
@@ -17,15 +24,22 @@ vi.mock('./arweave-observers', () => ({
 			control.networkOptions = options;
 		}
 		async ready() {}
+		// A healthy network: enough reachable observers for a quorum.
+		active() {
+			return [{}, {}, {}];
+		}
 		watch() {
 			return {
 				on(event: string, listener: (...args: any[]) => void) {
-					control.listeners.set(event, listener);
-					return () => control.listeners.delete(event);
+					let listeners = control.listeners.get(event);
+					if (!listeners) control.listeners.set(event, (listeners = new Set()));
+					listeners.add(listener);
+					return () => listeners.delete(listener);
 				},
 				start() {
 					queueMicrotask(() => {
-						if (control.outcome === 'timeout') control.listeners.get('timeout')?.();
+						if (control.outcome === 'pending') return;
+						if (control.outcome === 'timeout') control.emit('timeout');
 						else {
 							const consensus = {
 								state: 'confirmed',
@@ -41,8 +55,8 @@ vi.mock('./arweave-observers', () => ({
 								blockHeight: 12,
 								settled: true,
 							};
-							control.listeners.get('consensus')?.(consensus);
-							control.listeners.get('settled')?.(consensus);
+							control.emit('consensus', consensus);
+							control.emit('settled', consensus);
 						}
 					});
 				},
@@ -50,7 +64,7 @@ vi.mock('./arweave-observers', () => ({
 					control.watcherStopped = true;
 				},
 				views: () => [],
-				consensus: () => ({ seen: 0 }),
+				consensus: () => ({ seen: control.seen }),
 			};
 		}
 		stop() {
@@ -59,10 +73,32 @@ vi.mock('./arweave-observers', () => ({
 	},
 }));
 
+import { TransactionDispatchNotSentError, TransactionDispatchRejectedError } from 'weave-wrangler';
+
 import { dispatchAndConfirm } from './asset-transactions';
 
+const TX_ID = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
+
+/** Track a promise's settlement without awaiting it, so fake time can advance. */
+function track<T>(promise: Promise<T>) {
+	const state = { status: 'pending' as 'pending' | 'resolved' | 'rejected', error: undefined as unknown };
+	promise.then(
+		() => {
+			state.status = 'resolved';
+		},
+		(error) => {
+			state.status = 'rejected';
+			state.error = error;
+		}
+	);
+	return state;
+}
+
 describe('transaction dispatch observation', () => {
-	afterEach(() => vi.unstubAllGlobals());
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
 
 	beforeEach(() => {
 		control.dispatchAborted = false;
@@ -70,6 +106,7 @@ describe('transaction dispatch observation', () => {
 		control.networkStopped = false;
 		control.watcherStopped = false;
 		control.outcome = 'timeout';
+		control.seen = 0;
 		control.listeners.clear();
 		const aoFetch = vi.fn(async () => new Response()) as unknown as PermawebOsAoFetch;
 		Object.defineProperty(aoFetch, 'peers', { value: ['https://permawebos-peer.example'] });
@@ -150,5 +187,124 @@ describe('transaction dispatch observation', () => {
 			settled: true,
 		});
 		expect(progress).toEqual([{ confirmations: 5, propagated: true, seen: 3, eligible: 3 }]);
+	});
+
+	describe('dispatch retry rules', () => {
+		// Aborting after each case releases the shared observer lease even when a
+		// regression leaves a dispatch loop running, so one failure stays local.
+		let controller: AbortController;
+		const confirm = (dispatch: (signal: AbortSignal) => Promise<void>) =>
+			track(dispatchAndConfirm({ id: TX_ID, dispatch } as any, { signal: controller.signal }));
+
+		beforeEach(() => {
+			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+			control.outcome = 'pending';
+			controller = new AbortController();
+		});
+
+		afterEach(async () => {
+			controller.abort();
+			await vi.advanceTimersByTimeAsync(0);
+		});
+
+		it('re-posts an ambiguous failure once after 15 s unseen, then throws after the second 15 s wait', async () => {
+			const dispatch = vi.fn(async () => {
+				throw new Error('transaction-dispatch-503');
+			});
+			const result = confirm(dispatch);
+
+			await vi.advanceTimersByTimeAsync(14_999);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(result.status).toBe('pending');
+
+			await vi.advanceTimersByTimeAsync(1);
+			expect(dispatch).toHaveBeenCalledTimes(2);
+			expect(result.status).toBe('pending');
+
+			await vi.advanceTimersByTimeAsync(14_999);
+			expect(result.status).toBe('pending');
+
+			await vi.advanceTimersByTimeAsync(1);
+			expect(result.status).toBe('rejected');
+			expect((result.error as Error).message).toBe('transaction-dispatch-503');
+
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(dispatch).toHaveBeenCalledTimes(2);
+			expect(control.watcherStopped).toBe(true);
+			expect(control.networkStopped).toBe(true);
+		});
+
+		it('never re-posts a transaction the endpoint reports as not sent', async () => {
+			const dispatch = vi.fn(async () => {
+				throw new TransactionDispatchNotSentError('offline');
+			});
+			const result = confirm(dispatch);
+
+			await vi.advanceTimersByTimeAsync(0);
+			expect(result.status).toBe('rejected');
+			expect(result.error).toMatchObject({ code: 'transaction-dispatch-not-sent' });
+
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(control.watcherStopped).toBe(true);
+			expect(control.networkStopped).toBe(true);
+		});
+
+		it('never re-posts a transaction the endpoint rejected, and keeps the rejected code', async () => {
+			const dispatch = vi.fn(async () => {
+				throw new TransactionDispatchRejectedError(400, 'invalid signature');
+			});
+			const result = confirm(dispatch);
+
+			await vi.advanceTimersByTimeAsync(0);
+			expect(result.status).toBe('rejected');
+			expect(result.error).toMatchObject({ code: 'transaction-dispatch-rejected', httpStatus: 400 });
+
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(control.watcherStopped).toBe(true);
+			expect(control.networkStopped).toBe(true);
+		});
+
+		it('does not re-post an ambiguous failure once observers see the transaction, and waits for settlement', async () => {
+			const dispatch = vi.fn(async () => {
+				throw new Error('transaction-dispatch-503');
+			});
+			const result = confirm(dispatch);
+
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+
+			control.seen = 1;
+			control.emit('consensus', { seen: 1, confirmations: 0, propagated: false, eligible: 3 });
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(result.status).toBe('pending');
+			expect(control.watcherStopped).toBe(false);
+
+			control.emit('settled');
+			await vi.advanceTimersByTimeAsync(0);
+			expect(result.status).toBe('resolved');
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(control.watcherStopped).toBe(true);
+			expect(control.networkStopped).toBe(true);
+		});
+
+		it('does not wait or re-post when the transaction was already seen before the ambiguous failure', async () => {
+			control.seen = 1;
+			const dispatch = vi.fn(async () => {
+				throw new Error('transaction-dispatch-timeout');
+			});
+			const result = confirm(dispatch);
+
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(result.status).toBe('pending');
+
+			control.emit('settled');
+			await vi.advanceTimersByTimeAsync(0);
+			expect(result.status).toBe('resolved');
+			expect(dispatch).toHaveBeenCalledTimes(1);
+		});
 	});
 });

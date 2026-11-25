@@ -53,11 +53,14 @@ starts with an immutable JSON manifest and lets its holder publish a signed
 `set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
 GraphQL and paged in the browser.
 
-All GraphQL searches use `POST https://arweave.net/graphql`, including
-collection discovery, asset search, wallet candidates, profiles, and activity.
-This endpoint is fixed in local development and deployed builds, independent of
-the serving gateway, `VITE_ARWEAVE_GATEWAY`, `arweave-node`, and AO compute peers.
-There is no Goldsky fallback.
+All GraphQL searches use `POST https://arweave.net/graphql` by default, including
+collection discovery, asset search, wallet candidates, profiles, and activity,
+independent of the serving gateway, `VITE_ARWEAVE_GATEWAY`, `arweave-node`, and
+AO compute peers. A deployment that runs or trusts another index sets
+`VITE_GRAPHQL_ENDPOINTS` to an ordered, comma-separated list; reads that fail on
+one index then try the next. No third-party index is used by default, so when
+arweave.net's index is unavailable those reads are retried and then reported as
+unavailable.
 
 ## Wallet inventory
 
@@ -100,8 +103,9 @@ by default, sharing AO.js peer and rate-limit state with other applications.
 The AO Core control in the header can disable that transport and use Bazar's own
 AO.js client instead. Bazar routes AO requests to root-relative paths on the
 origin serving the app by default. In local development, Vite proxies those
-same-origin AO requests to `https://arweave.net` by default. To use another
-AO-Core node, set its origin when starting Vite:
+same-origin AO requests to `https://mystical.computer`, a stock HyperBEAM v0.11.1
+node, by default. To use another AO-Core node, such as `https://arweave.net`, set
+its origin when starting Vite:
 
 ```sh
 AO_CORE_PROXY_TARGET=http://127.0.0.1:3101 npm run start
@@ -115,6 +119,16 @@ directly to one or more AO-Core nodes:
 ```text
 http://127.0.0.1:3000/?node=https://alpha.example,https://charlie.example#/asset/…
 ```
+
+Bazar tries the listed nodes in order, and the first node answers every read. A
+read moves to the next node on an error, a not-found, or no headers within 1.5
+seconds. Process-state reads also move on an HTML answer or an answer without
+state. List the fastest correct node first.
+
+The published site is built with `VITE_COMPUTE_GATEWAY=https://arweave.net` (see the deploy
+workflow). `bazar.arweave.net` serves the app through an Arweave name and does not compute
+AO process state itself, so reads go straight to arweave.net rather than trying the serving
+origin first.
 
 Applying the header control persists the peer list and transport selection in the
 page URL. Bazar does not silently switch to its local fallback after a request has
@@ -133,6 +147,29 @@ http://127.0.0.1:3000/?arweave-node=http://127.0.0.1:1984#/asset/…
 
 The AO peer pool and Arweave gateway selection are independent. Transactions
 are signed by the connected wallet and submitted through the selected Arweave gateway.
+
+After a listing, cancellation, transfer or fungible-token transaction is submitted, Bazar
+confirms it with several Arweave observers: the selected gateway, plus Arweave's own nodes
+(`tip-1`–`tip-4` and `chain-1`–`chain-3` at `arweave.xyz`, port 1984). Those nodes serve plain
+HTTP only, so an HTTPS page reaches them through an AO-Core node that runs `~relay@1.0`: the first
+AO peer, or the node named in `VITE_ARWEAVE_OBSERVER_RELAY`. The deploy workflow
+sets it to `https://mystical.computer` until arweave.net serves `~relay@1.0`; remove it then. Set `VITE_ARWEAVE_OBSERVER_NODES` to a
+comma-separated list of origins to observe other nodes. A confirmation needs at least two
+reachable observers; when fewer stay reachable for 15 seconds (for example, no relay-capable
+peer), Bazar says it cannot verify the transaction from here instead of waiting, and the signed
+transaction stays saved for a later resume. Purchases and the upload activity panel use the same
+observers but do not yet report a shortfall.
+
+### Analytics
+
+Builds and the dev server load no analytics script by default. To include one,
+set `VITE_ANALYTICS_SRC` to its HTTPS URL when building, or in `.env.local`:
+
+```sh
+VITE_ANALYTICS_SRC='https://stats.forward.computer/~analytics@1.0/script?key=0IQ2BPbwAoLoHaNyABbfLClzA4siDxLEOkOpcol_Jg4' npm run build
+```
+
+Vite then adds it to `index.html` as an `async` script at the end of `<body>`.
 
 ### HyperBEAM device configuration
 

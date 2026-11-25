@@ -1,4 +1,22 @@
+/** Inline copy for an NFT listing price above MAXIMUM_ASSET_OFFER_PRICE (order-matching). */
+export const ASSET_OFFER_PRICE_CAP_ERROR = 'Enter a price no higher than 66,000,000 AR.';
+/** Inline copy for a fungible lot whose total (quantity x unit price) is above the cap. */
+export const ASSET_OFFER_TOTAL_CAP_ERROR =
+	'The listing total is above the 66,000,000 AR maximum. Lower the quantity or the unit price.';
+
 const FRIENDLY_ERRORS: Record<string, string> = {
+	'asset-offer-asking-too-high':
+		'The listing price is above the 66,000,000 AR maximum. No transaction was submitted. Enter a lower price.',
+	'invalid-asset-offer-asking': 'Enter a listing price of at least 0.000000000001 AR. No transaction was submitted.',
+	'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions. No transaction was submitted.',
+	'wallet-returned-unsigned-transaction':
+		'Your wallet did not return a signed transaction. No transaction was submitted. Approve the request in your wallet, then try again.',
+	'wallet-returned-invalid-signature':
+		'Your wallet returned a signature that does not verify for this transaction. No transaction was submitted. Reconnect your wallet, then try again.',
+	'wallet-modified-transaction-fields':
+		'The signed transaction’s recipient, amount, fee or tags differ from what Bazar asked your wallet to sign, so Bazar did not submit it. Try again, or use a different wallet if this repeats.',
+	'wallet-modified-transaction-data':
+		'The signed transaction carries data Bazar did not ask your wallet to sign, so Bazar did not submit it. Try again, or use a different wallet if this repeats.',
 	'asset-purchase-registration-fee-too-high':
 		'This listing requires a reservation fee above Bazar’s purchase limit. The seller needs to relist the asset with a lower fee.',
 	'asset-purchase-invalid-registration-fee':
@@ -13,6 +31,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'This wallet does not have enough AR for the network reward. No transaction was submitted.',
 	'transaction-propagation-timeout':
 		'The sampled observers did not reach the required propagation quorum in time. The signed transaction remains saved in this browser; return with the same wallet and retained browser data to continue checking it.',
+	'transaction-observers-unavailable':
+		'Bazar cannot verify this transaction from here: it reaches fewer Arweave observers than a confirmation needs (the selected gateway, plus Arweave’s own nodes through a relay-capable AO peer). The signed transaction remains saved in this browser; open Bazar with a relay-capable AO peer, or return later with the same wallet and retained browser data to continue checking it.',
 	'asset-state-timeout':
 		'The sampled observers report the transaction as confirmed, but the configured AO peers have not applied it yet. Continue to keep checking live state.',
 	'asset-state-read-timeout':
@@ -51,6 +71,10 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'This cancellation reached its exact schedule slot, but live state proves it was not applied. The listing changed first. Review the current order book before trying again.',
 	'asset-cancel-proof-mismatch':
 		'The configured AO peers returned incomplete scheduler proof for this cancellation. The signed transaction is saved in this browser; continue it here, or review the AO Core settings in the header.',
+	'asset-offer-rejected':
+		'This listing reached its exact schedule slot, but live state proves the token process did not apply it. The listing was not created and nothing is locked. Its signed transaction was discarded; review your current balance before listing again.',
+	'asset-offer-proof-mismatch':
+		'The configured AO peers returned incomplete scheduler proof for this listing. The signed transaction is saved in this browser; continue it here, or review the AO Core settings in the header.',
 	'asset-purchase-rejected':
 		'The exact seller payment reached this asset’s schedule, but the token transfer was not applied. The permanent payment evidence remains saved for review.',
 	'asset-purchase-proof-mismatch':
@@ -69,7 +93,9 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'The submission gateway rejected the signed seller payment. The reservation may still be active; continue to recheck it and sign only a replacement payment if needed.',
 };
 
-export function purchaseQuoteFailure(error: unknown): { message: string; retryable: boolean } {
+export type PurchaseQuoteFailure = { message: string; retryable: boolean };
+
+export function purchaseQuoteFailure(error: unknown): PurchaseQuoteFailure {
 	const value = error instanceof Error ? error.message : String(error);
 	if (/^asset-purchase-(?:registration-fee-too-high|invalid-registration-fee)$/.test(value)) {
 		return { message: marketplaceErrorMessage(error), retryable: false };
@@ -116,6 +142,7 @@ export function marketplaceOperationFailure(error: unknown): MarketplaceOperatio
 	return [
 		'fungible-transfer-rejected',
 		'asset-cancel-rejected',
+		'asset-offer-rejected',
 		'asset-purchase-rejected',
 		'asset-order-reservation-rejected',
 		'asset-order-reservation-expired',
@@ -123,6 +150,41 @@ export function marketplaceOperationFailure(error: unknown): MarketplaceOperatio
 		['transaction-dispatch-rejected', 'registration-dispatch-rejected', 'payment-dispatch-rejected'].includes(code)
 		? 'transaction-rejected'
 		: 'other';
+}
+
+/**
+ * Purchase failure codes that prove the scheduled seller payment can never
+ * apply, so rechecking its saved receipts cannot complete the purchase.
+ * 'asset-purchase-proof-mismatch' is deliberately absent: it means the peers
+ * returned incomplete scheduler proof, and its copy (like the cancel and
+ * transfer proof mismatches) keeps both transaction IDs to continue later.
+ */
+const TERMINAL_PURCHASE_FAILURE_CODES: ReadonlySet<string> = new Set(['asset-purchase-rejected']);
+
+export function isTerminalPurchaseFailureCode(code: string | null | undefined): boolean {
+	return TERMINAL_PURCHASE_FAILURE_CODES.has(code ?? '');
+}
+
+/** Operations that sign one prepared transaction; purchases recover through their own flow. */
+export type SignedOperationKind = 'sell' | 'cancel' | 'transfer';
+
+const SIGNED_OPERATION_NOUN: Record<SignedOperationKind, string> = {
+	sell: 'listing',
+	cancel: 'cancellation',
+	transfer: 'transfer',
+};
+
+/** Shown when a signature was saved but its dispatch never left ('transaction-not-sent'). */
+export const NOT_SENT_RECOVERY_NOTE = 'No transaction was submitted. Retry this signature or discard it to start over.';
+
+/** Not-sent recovery copy named for the operation that was signed, shared by the NFT and token dialogs. */
+export function notSentRecoveryCopy(kind: SignedOperationKind) {
+	const noun = SIGNED_OPERATION_NOUN[kind];
+	return {
+		retry: `Retry ${noun}`,
+		discard: `Discard ${noun}`,
+		changed: `This saved ${noun} changed in another tab. Close this panel and review the active action.`,
+	};
 }
 
 export type MarketplaceRequestSource = 'compute' | 'index';

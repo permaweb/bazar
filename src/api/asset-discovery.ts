@@ -12,16 +12,31 @@ import {
 	readAssetState,
 } from './asset-marketplace';
 import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
-import { fetchJsonWithDeadline } from './fetch-with-deadline';
+import {
+	GRAPHQL_RETRY_DELAYS_MS,
+	graphqlEndpointList,
+	graphqlIdBatchSize,
+	graphqlSupportsCount,
+	postGraphql,
+	retryTransientGraphql,
+	usableGraphqlPayload,
+} from './graphql';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
 const GRAPHQL_ID_BATCH_SIZE = 100;
-const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
-const WALLET_SCAN_CACHE_VERSION = 1;
+/**
+ * A fresh wallet scan whose preferred index is still silent after this long also asks the next index
+ * for the same first page, as a preview only (see discoverWalletAssetCandidates).
+ */
+export const WALLET_SCAN_PREVIEW_AFTER_MS = 3_000;
+// 2: candidates carry `mintContentType` from their own mint record. A version 1 scan restored its
+// candidates without it, leaving a wallet's standalone mints dependent on a second index query, so a
+// version 1 scan only seeds a full rescan (see loadCompletedWalletCandidateScan).
+const WALLET_SCAN_CACHE_VERSION = 2;
 const ASSET_SUPPORT_CONCURRENCY = 2;
 export const ASSET_RESOLUTION_CONCURRENCY = 8;
 
@@ -38,6 +53,13 @@ export type AssetCandidate = {
 	swapDevice?: string;
 	schedulerDevice?: string;
 	schedulerMode?: string;
+	/**
+	 * The media type from the candidate's own mint record, set only when the wallet scan returned that
+	 * record (an initial-holder match) and it passed the standalone Bazar mint check. Such a candidate
+	 * needs no second index query, and its live state, served as a multipart message for a process that
+	 * keeps its media as data, gets its real media type back from here.
+	 */
+	mintContentType?: string;
 };
 
 export type ResolvedAsset = {
@@ -97,11 +119,31 @@ type CandidateOptions = {
 	onPage?: (candidates: AssetCandidate[]) => void | Promise<void>;
 };
 
+type IndexRetryOptions = {
+	/**
+	 * Delays before retrying a request whose every index failed transiently. A cold query can take
+	 * arweave.net longer than the deadline once; it then answers from cache. Each read states its
+	 * default: callers that already retry a failed read themselves keep it single-shot.
+	 */
+	retryDelaysMs?: readonly number[];
+	/** Deadline for those retries; the first attempt keeps `requestTimeoutMs`. */
+	retryTimeoutMs?: number;
+};
+
 export type WalletCandidateAlias = 'initiallyHeld' | 'marketActions' | 'receivedTransfers';
 
 export type WalletCandidateScan = {
 	address: string;
+	/** The preferred index; it scopes the scan and its stored copy. */
 	graphql: string;
+	/**
+	 * The index that answered the scan's first page: `graphql`, or a fallback when the preferred index
+	 * failed. Cursors and head watermarks only mean something on the index that issued them, so once set
+	 * every later page and catch-up pass goes to it alone. Only a scan the preferred index answered is
+	 * resumed or stored; a fallback may lack transactions the preferred index has, so the next session
+	 * scans the preferred index again. Unset until the first page answers.
+	 */
+	answeringIndex?: string;
 	active: Set<WalletCandidateAlias>;
 	cursors: Record<WalletCandidateAlias, string | null>;
 	visited: Record<WalletCandidateAlias, Set<string>>;
@@ -127,22 +169,34 @@ type StoredWalletCandidateScan = {
 	c: StoredWalletCandidate[];
 };
 
-type WalletCandidateOptions = CandidateOptions & {
-	scan?: WalletCandidateScan;
-	catchUp?: boolean;
-};
+type WalletCandidateOptions = CandidateOptions &
+	IndexRetryOptions & {
+		scan?: WalletCandidateScan;
+		catchUp?: boolean;
+		/** When a fresh scan's first page asks the next index for a preview; WALLET_SCAN_PREVIEW_AFTER_MS by default. */
+		previewAfterMs?: number;
+	};
 
-type MarketActivityOptions = CandidateOptions & {
-	recipients?: string[];
-	listingsOnly?: boolean;
-	acceptProcessId?: (processId: string) => boolean;
-	maxPages?: number;
-};
+type MarketActivityOptions = Omit<CandidateOptions, 'onPage'> &
+	IndexRetryOptions & {
+		/** `graphql` is the index that answered the page. */
+		onPage?: (candidates: AssetCandidate[], graphql: string) => void | Promise<void>;
+		recipients?: string[];
+		listingsOnly?: boolean;
+		acceptProcessId?: (processId: string) => boolean;
+		maxPages?: number;
+	};
 
 type BatchedMarketActivityOptions = Omit<MarketActivityOptions, 'onPage' | 'recipients'> & {
 	recipients: string[];
 	batchSize?: number;
 	concurrency?: number;
+	/**
+	 * Stop starting batches after this many fail in a row and report the failure, so an index
+	 * outage surfaces after a few batches instead of after every one has used its deadline and
+	 * retry. Completed batches were already reported through `onBatch`.
+	 */
+	stopAfterConsecutiveFailures?: number;
 	onBatch?: (candidates: AssetCandidate[], recipients: string[]) => void | Promise<void>;
 };
 
@@ -160,6 +214,8 @@ export type CollectionActivityPage = {
 	cursor: string | null;
 	hasNextPage: boolean;
 	totalCount: number | null;
+	/** The index that served this page; its cursor is only valid there, so pass it back with `cursor`. */
+	graphql: string;
 };
 
 export type CollectionActivityPageOptions = Omit<CollectionActivityOptions, 'limit' | 'onPage'> & {
@@ -433,25 +489,29 @@ type AtomicAssetSearchOptions = Pick<CandidateOptions, 'fetch' | 'graphql' | 're
 
 export async function loadBazarAtomicAssetById(
 	processId: string,
-	options: AtomicAssetSearchOptions = {}
+	options: AtomicAssetSearchOptions & IndexRetryOptions = {}
 ): Promise<{ asset: AssetSummary; collection: Collection } | null> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
 	if (!isVisibleAssetId(processId)) return null;
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
-		fetcher,
-		graphql,
-		{
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ query: BAZAR_ATOMIC_ASSET_BY_ID_QUERY, variables: { id: processId } }),
-			signal: options.signal,
-		},
-		{
-			timeoutMs: options.requestTimeoutMs,
-			timeoutError: 'asset-index-graphql-timeout',
-		}
+	const { response, body: payload } = await retryTransientGraphql(
+		() =>
+			postGraphql<any>(
+				fetcher,
+				graphqlEndpointList(options.graphql),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ query: BAZAR_ATOMIC_ASSET_BY_ID_QUERY, variables: { id: processId } }),
+					signal: options.signal,
+				},
+				{
+					timeoutMs: options.requestTimeoutMs,
+					timeoutError: 'asset-index-graphql-timeout',
+				}
+			),
+		options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS,
+		options.signal
 	);
 	if (!response.ok) throw new Error(`asset-index-graphql-${response.status}`);
 	if (!payload) throw new Error('asset-index-graphql-empty');
@@ -479,10 +539,9 @@ export async function searchBazarAtomicAssetsByName(
 	const titleCaseName = name.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
 	const names = [...new Set([name, name.toLowerCase(), titleCaseName, name.toUpperCase()])];
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+	const { response, body: payload } = await postGraphql<any>(
 		fetcher,
-		graphql,
+		graphqlEndpointList(options.graphql),
 		{
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -533,7 +592,8 @@ export function resumeCompletedWalletCandidateScan(
 		scan.graphql !== graphql ||
 		scan.active.size ||
 		scan.catchUp ||
-		!scan.caughtUp
+		!scan.caughtUp ||
+		scan.answeringIndex !== graphql
 	)
 		return undefined;
 	return restoredWalletCandidateScan(address, graphql, scan.heads, scan.found);
@@ -545,12 +605,29 @@ export function loadCompletedWalletCandidateScan(
 	graphql = arweaveGraphqlEndpoint()
 ): WalletCandidateScan | undefined {
 	if (!ADDRESS.test(address)) return undefined;
+	const current = readStoredWalletCandidateScan(storage, address, graphql, WALLET_SCAN_CACHE_VERSION);
+	if (current) return restoredWalletCandidateScan(address, graphql, current.heads, current.found);
+	// A version 1 scan's candidates lack `mintContentType`. They seed a fresh full scan instead of being
+	// resumed: shown at once while the rescan fills the field in, and kept if the index fails.
+	const legacy = readStoredWalletCandidateScan(storage, address, graphql, 1);
+	if (!legacy) return undefined;
+	const scan = createWalletCandidateScan(address, graphql);
+	scan.found = legacy.found;
+	return scan;
+}
+
+function readStoredWalletCandidateScan(
+	storage: Pick<Storage, 'getItem'>,
+	address: string,
+	graphql: string,
+	version: number
+): { heads: WalletCandidateScan['heads']; found: Map<string, AssetCandidate> } | undefined {
 	try {
-		const value = storage.getItem(walletCandidateScanKey(address, graphql));
+		const value = storage.getItem(walletCandidateScanKey(address, graphql, version));
 		if (!value) return undefined;
 		const stored = JSON.parse(value) as StoredWalletCandidateScan;
 		if (
-			stored?.v !== WALLET_SCAN_CACHE_VERSION ||
+			stored?.v !== version ||
 			stored.a !== address ||
 			stored.g !== graphql ||
 			!Array.isArray(stored.h) ||
@@ -565,26 +642,32 @@ export function loadCompletedWalletCandidateScan(
 			if (!candidate || found.has(candidate.processId)) return undefined;
 			found.set(candidate.processId, candidate);
 		}
-		return restoredWalletCandidateScan(
-			address,
-			graphql,
-			{
+		return {
+			heads: {
 				initiallyHeld: stored.h[0]!,
 				marketActions: stored.h[1]!,
 				receivedTransfers: stored.h[2]!,
 			},
-			found
-		);
+			found,
+		};
 	} catch {
 		return undefined;
 	}
 }
 
 export function storeCompletedWalletCandidateScan(
-	storage: Pick<Storage, 'setItem'>,
+	storage: Pick<Storage, 'setItem' | 'removeItem'>,
 	scan: WalletCandidateScan
 ): boolean {
 	if (scan.active.size || scan.catchUp || !scan.caughtUp) return false;
+	if (scan.answeringIndex !== scan.graphql) {
+		// A fallback index answered: its heads cannot bound a catch-up on the preferred index, and it may
+		// lack transactions the preferred one has. Drop the older stored copy too, so the next visit scans
+		// the preferred index again instead of keeping the omission (Home keeps fallback-index listings out
+		// of its snapshot the same way).
+		clearCompletedWalletCandidateScan(storage, scan.address, scan.graphql);
+		return false;
+	}
 	const stored: StoredWalletCandidateScan = {
 		v: WALLET_SCAN_CACHE_VERSION,
 		a: scan.address,
@@ -612,10 +695,8 @@ export function clearCompletedWalletCandidateScan(
 	}
 }
 
-function walletCandidateScanKey(address: string, graphql: string) {
-	return `${WALLET_CANDIDATE_SCAN_STORAGE_PREFIX}:v${WALLET_SCAN_CACHE_VERSION}:${address}:${encodeURIComponent(
-		graphql
-	)}`;
+function walletCandidateScanKey(address: string, graphql: string, version = WALLET_SCAN_CACHE_VERSION) {
+	return `${WALLET_CANDIDATE_SCAN_STORAGE_PREFIX}:v${version}:${address}:${encodeURIComponent(graphql)}`;
 }
 
 function restoredWalletCandidateScan(
@@ -626,9 +707,18 @@ function restoredWalletCandidateScan(
 ): WalletCandidateScan {
 	const scan = createWalletCandidateScan(address, graphql);
 	scan.active.clear();
+	scan.answeringIndex = graphql;
 	scan.found = new Map(found);
 	scan.heads = { ...heads };
 	return scan;
+}
+
+/** Start the scan over in place (the session keeps the same scan object) for a full rescan. */
+function resetWalletCandidateScan(scan: WalletCandidateScan) {
+	Object.assign(scan, createWalletCandidateScan(scan.address, scan.graphql), {
+		answeringIndex: undefined,
+		catchUp: undefined,
+	});
 }
 
 function encodeStoredWalletCandidate(candidate: AssetCandidate): StoredWalletCandidate {
@@ -649,13 +739,14 @@ function encodeStoredWalletCandidate(candidate: AssetCandidate): StoredWalletCan
 		candidate.swapDevice ?? null,
 		candidate.schedulerDevice ?? null,
 		candidate.schedulerMode ?? null,
+		candidate.mintContentType ?? null,
 	];
 	while (stored.at(-1) === null) stored.pop();
 	return stored;
 }
 
 function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandidate | undefined {
-	if (!Array.isArray(value) || value.length < 4 || value.length > 12) return undefined;
+	if (!Array.isArray(value) || value.length < 4 || value.length > 13) return undefined;
 	const [
 		processId,
 		height,
@@ -669,6 +760,7 @@ function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandida
 		swapDevice,
 		schedulerDevice,
 		schedulerMode,
+		mintContentType,
 	] = value;
 	if (
 		typeof processId !== 'string' ||
@@ -687,9 +779,16 @@ function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandida
 			activity !== null &&
 			activity !== 0 &&
 			(!Array.isArray(activity) || activity.some((id) => typeof id !== 'string' || !ADDRESS.test(id)))) ||
-		[device, collection, processDevice, assetType, swapDevice, schedulerDevice, schedulerMode].some(
-			(item) => item !== undefined && item !== null && typeof item !== 'string'
-		)
+		[
+			device,
+			collection,
+			processDevice,
+			assetType,
+			swapDevice,
+			schedulerDevice,
+			schedulerMode,
+			mintContentType,
+		].some((item) => item !== undefined && item !== null && typeof item !== 'string')
 	)
 		return undefined;
 	return {
@@ -709,6 +808,7 @@ function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandida
 		...(typeof swapDevice === 'string' ? { swapDevice } : {}),
 		...(typeof schedulerDevice === 'string' ? { schedulerDevice } : {}),
 		...(typeof schedulerMode === 'string' ? { schedulerMode } : {}),
+		...(typeof mintContentType === 'string' ? { mintContentType } : {}),
 	};
 }
 
@@ -718,59 +818,127 @@ export async function discoverWalletAssetCandidates(
 ): Promise<AssetCandidate[]> {
 	if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	// The preferred index scopes the scan; an explicit `graphql` pins every page to it.
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const scan = options.scan ?? createWalletCandidateScan(address, graphql);
 	if (scan.address !== address || scan.graphql !== graphql) {
 		throw new TypeError('wallet-candidate-scan-scope-mismatch');
 	}
+	const fallbackEndpoints = options.graphql ? [] : graphqlEndpointList();
 	const requestPage = async (
 		active: Set<WalletCandidateAlias>,
 		cursors: Record<WalletCandidateAlias, string | null>
 	) => {
 		const requestedAliases = [...active];
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
-			fetcher,
-			graphql,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: WALLET_CANDIDATES_QUERY,
-					variables: {
-						initialCursor: cursors.initiallyHeld,
-						marketCursor: cursors.marketActions,
-						transferCursor: cursors.receivedTransfers,
-						includeInitial: active.has('initiallyHeld'),
-						includeMarket: active.has('marketActions'),
-						includeTransfers: active.has('receivedTransfers'),
-						owners: [address],
-						initialTags: [{ name: 'initial-holder', values: [address] }],
-						marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
-						transferTags: [
-							{ name: 'action', values: ['transfer'] },
-							{ name: 'recipient', values: [address] },
-						],
-					},
-				}),
-				signal: options.signal,
+		// Only a scan's first page may fall back; its cursors and heads belong to the index that answered
+		// it, so every later page and catch-up pass goes there alone. The query has no `count`, so any
+		// configured index can answer it.
+		const endpoints = scan.answeringIndex ? [scan.answeringIndex] : [graphql, ...fallbackEndpoints];
+		const body = JSON.stringify({
+			query: WALLET_CANDIDATES_QUERY,
+			variables: {
+				initialCursor: cursors.initiallyHeld,
+				marketCursor: cursors.marketActions,
+				transferCursor: cursors.receivedTransfers,
+				includeInitial: active.has('initiallyHeld'),
+				includeMarket: active.has('marketActions'),
+				includeTransfers: active.has('receivedTransfers'),
+				owners: [address],
+				initialTags: [{ name: 'initial-holder', values: [address] }],
+				marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
+				transferTags: [
+					{ name: 'action', values: ['transfer'] },
+					{ name: 'recipient', values: [address] },
+				],
 			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-discovery-graphql-timeout',
-			}
-		);
-		if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
-		if (!payload) throw new Error('asset-discovery-graphql-empty');
-		if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
-		return {
-			requestedAliases,
-			connections: new Map(
+		});
+		const connectionsOf = (payload: any) =>
+			new Map(
 				requestedAliases.map((alias) => [
 					alias,
 					decodeGraphqlConnection(payload, alias, 'asset-discovery-graphql-schema'),
 				])
-			),
+			);
+		const stopPreview = scan.answeringIndex ? undefined : previewFirstPage(body, requestedAliases, connectionsOf);
+		try {
+			const {
+				response,
+				body: payload,
+				endpoint,
+			} = await retryTransientGraphql(
+				() =>
+					postGraphql<any>(
+						fetcher,
+						endpoints,
+						{
+							method: 'POST',
+							headers: { 'content-type': 'application/json' },
+							body,
+							signal: options.signal,
+						},
+						{
+							timeoutMs: options.requestTimeoutMs,
+							timeoutError: 'asset-discovery-graphql-timeout',
+						}
+					),
+				options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS,
+				options.signal
+			);
+			if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
+			if (!payload) throw new Error('asset-discovery-graphql-empty');
+			if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
+			return { requestedAliases, endpoint, connections: connectionsOf(payload) };
+		} finally {
+			stopPreview?.();
+		}
+	};
+	/**
+	 * While a fresh scan's first page waits on a slow preferred index (arweave.net took 9-15 s and more
+	 * for a profile's first page in round 3 and in the 2026-11-23 A/B), ask the next configured index
+	 * for the same page once and hand its candidates to `onPage` as a preview. It
+	 * changes nothing in the scan: the preferred request keeps its deadline, retry and fallback, and
+	 * its answer alone sets the cursors, heads, `found` and answeringIndex, so a scan stays resumable
+	 * and storable exactly as before. Preview candidates are only checked and shown this session, the
+	 * way a fallback-answered scan is; a candidate seen twice is screened once by the caller.
+	 */
+	const previewFirstPage = (
+		body: string,
+		aliases: WalletCandidateAlias[],
+		connectionsOf: (payload: any) => Map<WalletCandidateAlias, GraphqlConnection>
+	) => {
+		const previewIndex = fallbackEndpoints.find((endpoint) => endpoint !== graphql);
+		if (!previewIndex || !options.onPage) return undefined;
+		const controller = new AbortController();
+		const stop = () => {
+			clearTimeout(timer);
+			controller.abort();
+			options.signal?.removeEventListener('abort', stop);
 		};
+		options.signal?.addEventListener('abort', stop, { once: true });
+		const timer = setTimeout(async () => {
+			try {
+				const result = await postGraphql<any>(
+					fetcher,
+					[previewIndex],
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body,
+						signal: controller.signal,
+					},
+					{ timeoutMs: options.requestTimeoutMs, timeoutError: 'asset-discovery-graphql-timeout' }
+				);
+				if (controller.signal.aborted || !usableGraphqlPayload(result)) return;
+				const page = pageUpdates(aliases, connectionsOf(result.body));
+				if (controller.signal.aborted || !page.processIds.size) return;
+				await options.onPage?.(
+					sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
+				);
+			} catch {
+				// Best effort: the preferred page still decides the scan.
+			}
+		}, options.previewAfterMs ?? WALLET_SCAN_PREVIEW_AFTER_MS);
+		return stop;
 	};
 	const pageUpdates = (
 		requestedAliases: WalletCandidateAlias[],
@@ -798,44 +966,51 @@ export async function discoverWalletAssetCandidates(
 		return { processIds, updates };
 	};
 
-	while (scan.active.size) {
-		options.signal?.throwIfAborted();
-		const { requestedAliases, connections } = await requestPage(scan.active, scan.cursors);
-		const nextActive = new Set(scan.active);
-		const nextCursors = { ...scan.cursors };
-		const nextVisited = {
-			initiallyHeld: new Set(scan.visited.initiallyHeld),
-			marketActions: new Set(scan.visited.marketActions),
-			receivedTransfers: new Set(scan.visited.receivedTransfers),
-		};
-		for (const alias of requestedAliases) {
-			const connection = connections.get(alias)!;
-			if (!connection.pageInfo.hasNextPage) {
-				nextActive.delete(alias);
-			} else {
-				nextCursors[alias] = advanceGraphqlCursor(
-					connection,
-					nextVisited[alias],
-					'asset-discovery-pagination-stalled'
-				);
+	const scanToEnd = async () => {
+		while (scan.active.size) {
+			options.signal?.throwIfAborted();
+			const { requestedAliases, connections, endpoint } = await requestPage(scan.active, scan.cursors);
+			const nextActive = new Set(scan.active);
+			const nextCursors = { ...scan.cursors };
+			const nextVisited = {
+				initiallyHeld: new Set(scan.visited.initiallyHeld),
+				marketActions: new Set(scan.visited.marketActions),
+				receivedTransfers: new Set(scan.visited.receivedTransfers),
+			};
+			for (const alias of requestedAliases) {
+				const connection = connections.get(alias)!;
+				if (!connection.pageInfo.hasNextPage) {
+					nextActive.delete(alias);
+				} else {
+					nextCursors[alias] = advanceGraphqlCursor(
+						connection,
+						nextVisited[alias],
+						'asset-discovery-pagination-stalled'
+					);
+				}
 			}
-		}
 
-		const page = pageUpdates(requestedAliases, connections);
-		await options.onPage?.(sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!)));
-		options.signal?.throwIfAborted();
-		for (const [processId, candidate] of page.updates) scan.found.set(processId, candidate);
-		for (const alias of requestedAliases) {
-			if (scan.heads[alias] === undefined) {
-				scan.heads[alias] = connections.get(alias)!.edges[0]?.node.id ?? null;
+			const page = pageUpdates(requestedAliases, connections);
+			await options.onPage?.(
+				sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
+			);
+			options.signal?.throwIfAborted();
+			for (const [processId, candidate] of page.updates) scan.found.set(processId, candidate);
+			for (const alias of requestedAliases) {
+				if (scan.heads[alias] === undefined) {
+					scan.heads[alias] = connections.get(alias)!.edges[0]?.node.id ?? null;
+				}
 			}
+			scan.active = nextActive;
+			scan.cursors = nextCursors;
+			scan.answeringIndex ??= endpoint;
+			scan.visited = nextVisited;
 		}
-		scan.active = nextActive;
-		scan.cursors = nextCursors;
-		scan.visited = nextVisited;
-	}
+	};
 
-	if (options.catchUp && !scan.caughtUp) {
+	const catchUpHeads = async () => {
+		// A scan with heads always has its answering index; a hand-built one is read on the preferred index.
+		scan.answeringIndex ??= graphql;
 		let pagesThisPass = 0;
 		while (!scan.caughtUp) {
 			if (!scan.catchUp) {
@@ -906,6 +1081,21 @@ export async function discoverWalletAssetCandidates(
 			scan.catchUp = undefined;
 			scan.caughtUp = stable;
 		}
+	};
+
+	await scanToEnd();
+	if (options.catchUp && !scan.caughtUp) {
+		try {
+			await catchUpHeads();
+		} catch (error) {
+			if (!(error instanceof Error && error.message === 'asset-discovery-head-watermark-missing')) throw error;
+			// The index that recorded a head no longer returns it (a dropped or re-indexed transaction),
+			// so the heads cannot bound a catch-up: scan the wallet again from the start, once.
+			options.signal?.throwIfAborted();
+			resetWalletCandidateScan(scan);
+			await scanToEnd();
+			await catchUpHeads();
+		}
 	}
 
 	return sortCandidates([...scan.found.values()]);
@@ -913,43 +1103,59 @@ export async function discoverWalletAssetCandidates(
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	let endpoints = graphqlEndpointList(options.graphql);
 	const found = new Map<string, AssetCandidate>();
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	let cursor: string | null = null;
 	let pages = 0;
 	const visited = new Set<string>();
 	const maxPages = Math.max(1, Math.floor(options.maxPages ?? MAX_GRAPHQL_PAGES));
+	// Single-shot unless the caller opts in. Home card summaries already retry a failed collection
+	// read in the background (HOME_SUMMARY_AUTO_RETRY_LIMIT rounds, 15 s apart), and collection pages
+	// offer Retry, so a default retry here would stack with theirs: 3 x 3 attempts per batch in an
+	// index outage, and cards left on "Checking…" about three times longer before they say so.
+	const retryDelaysMs = options.retryDelaysMs ?? [];
 
 	while (true) {
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
-			fetcher,
-			graphql,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: MARKET_ACTIVITY_QUERY,
-					variables: {
-						cursor,
-						recipients: recipients.length ? recipients : null,
-						tags: [
-							{
-								name: 'action',
-								values: options.listingsOnly
-									? ['make-offer']
-									: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+		const pageEndpoints = endpoints;
+		const {
+			response,
+			body: payload,
+			endpoint,
+		} = await retryTransientGraphql(
+			(attempt) =>
+				postGraphql<any>(
+					fetcher,
+					pageEndpoints,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							query: MARKET_ACTIVITY_QUERY,
+							variables: {
+								cursor,
+								recipients: recipients.length ? recipients : null,
+								tags: [
+									{
+										name: 'action',
+										values: options.listingsOnly
+											? ['make-offer']
+											: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+									},
+								],
 							},
-						],
+						}),
+						signal: options.signal,
 					},
-				}),
-				signal: options.signal,
-			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-activity-graphql-timeout',
-			}
+					{
+						timeoutMs:
+							attempt > 0 ? options.retryTimeoutMs ?? options.requestTimeoutMs : options.requestTimeoutMs,
+						timeoutError: 'asset-activity-graphql-timeout',
+					}
+				),
+			retryDelaysMs,
+			options.signal
 		);
 		if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-activity-graphql-empty');
@@ -963,10 +1169,11 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 			mergeCandidate(found, candidate);
 			return firstOccurrence ? [candidate] : [];
 		});
-		await options.onPage?.(sortCandidates(pageCandidates));
+		await options.onPage?.(sortCandidates(pageCandidates), endpoint);
 		pages += 1;
 		if (pages >= maxPages || !connection.pageInfo.hasNextPage) return sortCandidates([...found.values()]);
 		cursor = advanceGraphqlCursor(connection, visited, 'asset-activity-pagination-stalled');
+		endpoints = [endpoint];
 	}
 }
 
@@ -980,11 +1187,15 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 	const found = new Map<string, AssetCandidate>();
 	let nextBatch = 0;
 	const failures: unknown[] = [];
+	let consecutiveFailures = 0;
+	const stopAfter = options.stopAfterConsecutiveFailures;
+	const stopped = () => stopAfter !== undefined && consecutiveFailures >= stopAfter;
 
 	await Promise.all(
 		Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
 			while (true) {
 				options.signal?.throwIfAborted();
+				if (stopped()) return;
 				const batch = batches[nextBatch++];
 				if (!batch) return;
 				try {
@@ -995,8 +1206,11 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 					});
 					options.signal?.throwIfAborted();
 					for (const candidate of candidates) mergeCandidate(found, candidate);
+					consecutiveFailures = 0;
 					await options.onBatch?.(candidates, batch);
 				} catch (cause) {
+					options.signal?.throwIfAborted();
+					consecutiveFailures += 1;
 					failures.push(cause);
 				}
 			}
@@ -1016,7 +1230,7 @@ export async function discoverCollectionActivityPage(
 	options: CollectionActivityPageOptions = {}
 ): Promise<CollectionActivityPage> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const allEndpoints = graphqlEndpointList(options.graphql);
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	const actions = [
 		...new Set(
@@ -1029,21 +1243,31 @@ export async function discoverCollectionActivityPage(
 	const pageSize = Math.max(1, Math.min(GRAPHQL_PAGE_SIZE, Math.floor(options.pageSize ?? GRAPHQL_PAGE_SIZE)));
 
 	if (options.recipients !== undefined && !recipients.length) {
-		return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
+		return { events: [], cursor: null, hasNextPage: false, totalCount: 0, graphql: allEndpoints[0] };
 	}
-	if (!actions.length) return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
+	if (!actions.length)
+		return { events: [], cursor: null, hasNextPage: false, totalCount: 0, graphql: allEndpoints[0] };
 
 	options.signal?.throwIfAborted();
-	const includeCount = !cursor && options.includeCount !== false;
-	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+	// A cursor belongs to the index that issued it; only a first page may fall back.
+	const endpoints = cursor ? allEndpoints.slice(0, 1) : allEndpoints;
+	const wantsCount = !cursor && options.includeCount !== false;
+	const {
+		response,
+		body: payload,
+		endpoint,
+	} = await postGraphql<any>(
 		fetcher,
-		graphql,
-		{
+		endpoints,
+		(target) => ({
 			method: 'POST',
 			priority: options.priority,
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
-				query: includeCount ? COLLECTION_ACTIVITY_PAGE_QUERY : COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
+				query:
+					wantsCount && graphqlSupportsCount(target)
+						? COLLECTION_ACTIVITY_PAGE_QUERY
+						: COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
 				variables: {
 					...(cursor ? { cursor } : {}),
 					first: pageSize,
@@ -1052,12 +1276,13 @@ export async function discoverCollectionActivityPage(
 				},
 			}),
 			signal: options.signal,
-		},
+		}),
 		{
 			timeoutMs: options.requestTimeoutMs,
 			timeoutError: 'collection-activity-graphql-timeout',
 		}
 	);
+	const includeCount = wantsCount && graphqlSupportsCount(endpoint);
 	if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
 	if (!payload) throw new Error('collection-activity-graphql-empty');
 	if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
@@ -1080,7 +1305,7 @@ export async function discoverCollectionActivityPage(
 			processIds,
 			options.requiredExecutionDevice,
 			fetcher,
-			graphql,
+			allEndpoints,
 			options
 		);
 		events = events.filter((event) => verified.has(event.processId));
@@ -1098,6 +1323,7 @@ export async function discoverCollectionActivityPage(
 		cursor: nextCursor,
 		hasNextPage: connection.pageInfo.hasNextPage,
 		totalCount,
+		graphql: endpoint,
 	};
 }
 
@@ -1105,7 +1331,8 @@ export async function discoverCollectionActivity(
 	options: CollectionActivityOptions
 ): Promise<CollectionActivityEvent[]> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const allEndpoints = graphqlEndpointList(options.graphql);
+	let endpoints = allEndpoints;
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
 	const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 100)));
 	const actions = [
@@ -1125,9 +1352,13 @@ export async function discoverCollectionActivity(
 	if (!actions.length) return [];
 	while (events.length < limit) {
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		const {
+			response,
+			body: payload,
+			endpoint,
+		} = await postGraphql<any>(
 			fetcher,
-			graphql,
+			endpoints,
 			{
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -1172,7 +1403,7 @@ export async function discoverCollectionActivity(
 					unchecked,
 					options.requiredExecutionDevice,
 					fetcher,
-					graphql,
+					allEndpoints,
 					options
 				);
 				for (const id of unchecked) deviceMatches.set(id, verified.has(id));
@@ -1187,6 +1418,7 @@ export async function discoverCollectionActivity(
 			return events;
 		}
 		cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-pagination-stalled');
+		endpoints = [endpoint];
 	}
 	return events;
 }
@@ -1310,14 +1542,17 @@ export async function discoverAllCollectionActivityBatched(
 				const batch = batches[batchIndex];
 				if (!batch) return;
 				let cursor: string | null = null;
+				let graphql = options.graphql;
 				const visited = new Set<string>();
 				try {
 					for (let pageIndex = 0; pageIndex < MAX_GRAPHQL_PAGES; pageIndex += 1) {
 						const page = await discoverCollectionActivityPage({
 							...options,
+							graphql,
 							recipients: batch,
 							cursor,
 						});
+						graphql = page.graphql;
 						options.signal?.throwIfAborted();
 						for (const event of page.events) found.set(event.id, event);
 						await options.onPage?.(page.events, batch, {
@@ -1360,30 +1595,31 @@ async function verifyProcessDevices(
 	ids: string[],
 	device: string,
 	fetcher: typeof fetch,
-	graphql: string,
+	graphql: readonly string[],
 	options: Pick<CollectionActivityOptions, 'requestTimeoutMs' | 'signal'>
 ): Promise<Set<string>> {
 	if (!device.trim() || ids.some((id) => !ADDRESS.test(id))) {
 		throw new TypeError('invalid-collection-activity-device-filter');
 	}
 	const verified = new Set<string>();
-	const graphqlHost = new URL(graphql).hostname;
-	const batchSize =
-		graphqlHost === 'arweave.net' || graphqlHost.endsWith('.arweave.net')
-			? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
-			: GRAPHQL_ID_BATCH_SIZE;
+	const batchSize = graphqlIdBatchSize(graphql, GRAPHQL_ID_BATCH_SIZE);
 	const batches = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
 		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	for (const batch of batches) {
 		const requested = new Set(batch);
 		let cursor: string | null = null;
+		let endpoints = graphql;
 		const visited = new Set<string>();
 		while (true) {
 			options.signal?.throwIfAborted();
-			const { response, body: payload } = await fetchJsonWithDeadline<any>(
+			const {
+				response,
+				body: payload,
+				endpoint,
+			} = await postGraphql<any>(
 				fetcher,
-				graphql,
+				endpoints,
 				{
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
@@ -1412,6 +1648,7 @@ async function verifyProcessDevices(
 			}
 			if (!connection.pageInfo.hasNextPage) break;
 			cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-device-pagination-stalled');
+			endpoints = [endpoint];
 		}
 	}
 	return verified;
@@ -1456,7 +1693,13 @@ export async function resolveAssetCandidates(
 	return resolver.finish();
 }
 
-export function createAssetCandidateResolver(collections: Collection[], options: ResolutionOptions = {}) {
+export function createAssetCandidateResolver(
+	collections: Collection[] | (() => Collection[]),
+	options: ResolutionOptions = {}
+) {
+	// A getter lets a long-running crawl classify late reads against collections
+	// that finished loading after the resolver was created.
+	const currentCollections = typeof collections === 'function' ? collections : () => collections;
 	const pending: AssetCandidate[] = [];
 	const resolved: ResolvedAsset[] = [];
 	const concurrency = Math.max(1, Math.min(16, Math.floor(options.concurrency ?? ASSET_RESOLUTION_CONCURRENCY)));
@@ -1465,7 +1708,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		if (options.requireHolderBalances && !assetBalanceStateAvailable(computed.state)) {
 			throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
 		}
-		return supportedAsset(candidate, computed, collections);
+		return supportedAsset(candidate, computed, currentCollections());
 	};
 	let active = 0;
 	let sealed = false;
@@ -1616,12 +1859,19 @@ export function restrictAssetCandidates(candidates: AssetCandidate[], collection
 	return restrictAssetCandidatesWithIndex(candidates, candidateCollectionIndex(collections));
 }
 
+// An ANS-110 asset that keeps its media as process data is served as a multipart HTTP message, so a
+// live state read reports the multipart framing as `content-type` and the media type only travels in
+// the body. The signed mint record the support check validated carries it, and a process's tags never
+// change, so it is kept by process ID for the live read to fall back on.
+const verifiedMintContentTypes = new Map<string, string>();
+
 export async function verifyAssetCandidateSupport(
 	candidates: AssetCandidate[],
 	collections: Collection[],
-	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & {
-		onVerified?: (candidates: AssetCandidate[]) => void | Promise<void>;
-	} = {}
+	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> &
+		IndexRetryOptions & {
+			onVerified?: (candidates: AssetCandidate[]) => void | Promise<void>;
+		} = {}
 ): Promise<AssetCandidateSupportResult> {
 	const { supported, unverified: unindexed } = partitionAssetCandidateSupport(candidates, collections);
 	if (!unindexed.length) return { supported, unavailable: [] };
@@ -1629,34 +1879,44 @@ export async function verifyAssetCandidateSupport(
 	const unavailable = new Map<string, unknown>();
 	const ids = [...new Set(unindexed.map((candidate) => candidate.processId))];
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const graphqlHost = new URL(graphql).hostname;
-	const batchSize =
-		graphqlHost === 'arweave.net' || graphqlHost.endsWith('.arweave.net')
-			? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
-			: GRAPHQL_ID_BATCH_SIZE;
+	const endpoints = graphqlEndpointList(options.graphql);
+	const batchSize = graphqlIdBatchSize(endpoints, GRAPHQL_ID_BATCH_SIZE);
 	const chunks = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
 		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	let nextChunk = 0;
+	const retryDelaysMs = options.retryDelaysMs ?? GRAPHQL_RETRY_DELAYS_MS;
+	// One retry budget per call: once a chunk has spent its retries on transient failures, later chunks
+	// are tried once each until an index answers again. A full outage is then reported after about one
+	// retry cycle plus one attempt per chunk, not a full retry cycle (~94 s) for every 9-ID chunk.
+	let indexDown = false;
 	const verifyChunk = async (chunk: string[]) => {
 		const requested = new Set(chunk);
 		const verifiedChunk = new Set<string>();
 		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
-			fetcher,
-			graphql,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ query: VERIFY_ASSET_PROCESSES_QUERY, variables: { ids: chunk } }),
-				signal: options.signal,
-			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-support-graphql-timeout',
-			}
-		);
+		const { response, body: payload } = await retryTransientGraphql(
+			() =>
+				postGraphql<any>(
+					fetcher,
+					endpoints,
+					{
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ query: VERIFY_ASSET_PROCESSES_QUERY, variables: { ids: chunk } }),
+						signal: options.signal,
+					},
+					{
+						timeoutMs: options.requestTimeoutMs,
+						timeoutError: 'asset-support-graphql-timeout',
+					}
+				),
+			indexDown ? [] : retryDelaysMs,
+			options.signal
+		).catch((error: unknown) => {
+			if (!options.signal?.aborted) indexDown = true;
+			throw error;
+		});
+		indexDown = response.status === 429 || response.status >= 500;
 		if (!response.ok) throw new Error(`asset-support-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-support-graphql-empty');
 		if (payload.errors?.length) throw new Error('asset-support-graphql-error');
@@ -1694,7 +1954,13 @@ export async function verifyAssetCandidateSupport(
 			}
 			// A well-formed indexed process can still use unsupported media or
 			// metadata. Exclude it without retrying the batch as an index failure.
-			if (atomicProcessNode(edge.node)) verifiedChunk.add(edge.node.id);
+			if (atomicProcessNode(edge.node)) {
+				verifiedChunk.add(edge.node.id);
+				const contentType = Object.fromEntries(
+					edge.node.tags.map(({ name, value }) => [name.toLowerCase(), value])
+				)['content-type'];
+				if (contentType) verifiedMintContentTypes.set(edge.node.id, contentType);
+			}
 		}
 		for (const processId of verifiedChunk) verified.add(processId);
 		return restrictAssetCandidates(
@@ -1753,7 +2019,13 @@ export function partitionAssetCandidateSupport(
 	const unverified: AssetCandidate[] = [];
 	const index = candidateCollectionIndex(collections);
 	for (const candidate of restrictAssetCandidatesWithIndex(candidates, index)) {
-		if (index.byAssetId.has(candidate.processId) || candidateMatchesFungibleContract(candidate)) {
+		if (
+			index.byAssetId.has(candidate.processId) ||
+			candidateMatchesFungibleContract(candidate) ||
+			// The wallet scan returned this candidate's own mint record and it passed the standalone mint
+			// check, which is what the second index query would verify.
+			Boolean(candidate.mintContentType)
+		) {
 			supported.push(candidate);
 		} else {
 			unverified.push(candidate);
@@ -1855,7 +2127,11 @@ function supportedAsset(
 	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
 		const indexed = collectionAsset(indexedCollection, activity.processId, computed.state);
-		const liveAtomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state)?.asset;
+		const liveAtomicAsset = bazarAtomicAssetFromState(
+			activity.processId,
+			computed.state,
+			activity.mintContentType
+		)?.asset;
 		// The name does not depend on the media type, which a multipart HTTP response can hide,
 		// so an ID-only manifest entry still gets its title when the full live record is rejected.
 		const liveName = liveAtomicAsset?.name || computed.state.name.trim();
@@ -1893,7 +2169,7 @@ function supportedAsset(
 		};
 	}
 
-	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state);
+	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state, activity.mintContentType);
 	if (atomicAsset) {
 		return { ...atomicAsset, state: computed.state, provider: computed.provider, activity };
 	}
@@ -1908,7 +2184,9 @@ function supportedAsset(
 
 export function bazarAtomicAssetFromState(
 	processId: string,
-	state: AssetState
+	state: AssetState,
+	/** The media type from a verified mint record, used when the live state is multipart framing. */
+	mintContentType?: string
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
 		!isVisibleAssetId(processId) ||
@@ -1925,7 +2203,13 @@ export function bazarAtomicAssetFromState(
 	) {
 		return null;
 	}
-	const asset = assetFromMintState(processId, state.raw);
+	const multipartContentType = /^multipart\//i.test(String(state.raw['content-type'] ?? ''))
+		? mintContentType ?? verifiedMintContentTypes.get(processId)
+		: undefined;
+	const asset = assetFromMintState(
+		processId,
+		multipartContentType ? { ...state.raw, 'content-type': multipartContentType } : state.raw
+	);
 	if (!asset) return null;
 	const name = String(state.raw['base-collection'] ?? '').trim() || CREATED_COLLECTION_NAME;
 	return {
@@ -1971,6 +2255,9 @@ function candidateFromNode(
 					swapDevice: tags['swap-device'],
 					schedulerDevice: tags['scheduler-device'],
 					schedulerMode: tags['scheduler-mode'],
+					...(tags['content-type'] && atomicProcessNode(node)
+						? { mintContentType: tags['content-type'] }
+						: {}),
 			  }
 			: {}),
 	};
@@ -2042,6 +2329,9 @@ function mergeCandidate(found: Map<string, AssetCandidate>, next: AssetCandidate
 		swapDevice: current.swapDevice ?? next.swapDevice,
 		schedulerDevice: current.schedulerDevice ?? next.schedulerDevice,
 		schedulerMode: current.schedulerMode ?? next.schedulerMode,
+		...(current.mintContentType ?? next.mintContentType
+			? { mintContentType: current.mintContentType ?? next.mintContentType }
+			: {}),
 	});
 }
 

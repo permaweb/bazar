@@ -21,7 +21,12 @@ import {
 	timelineLayout,
 	transitionKey,
 } from './raceTimeline';
-import { confirmationLifecycleState, sequencePhaseBounds } from './sequence';
+import {
+	confirmationLifecycleState,
+	confirmationProgressValue,
+	confirmationProgressWidth,
+	sequencePhaseBounds,
+} from './sequence';
 import * as S from './styles';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
 import { TransactionRendererFallback, TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
@@ -137,6 +142,20 @@ export function ArweaveTransactionSync({
 	);
 	const displayedConfirmationDepth = active?.terminal ? confirmationDepth : lifecycle.depth;
 	const terminalDepthBeyondTarget = Boolean(active?.terminal && target > 0 && confirmationDepth > target);
+	const progressValue = confirmationProgressValue({
+		label: active?.label ?? '',
+		confirmations: confirmationDepth,
+		target,
+		terminal: Boolean(active?.terminal),
+		pendingLabel: lifecycle.pending ? pendingAfterConfirmation : undefined,
+		delayedLabel: language.transactionSyncVerificationDelayed,
+		verificationDelayed,
+		copy: {
+			progress: language.transactionSyncConfirmationProgress,
+			complete: language.transactionSyncConfirmationProgressComplete,
+			beyondTarget: language.transactionSyncConfirmationProgressBeyondTarget,
+		},
+	});
 	const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
 	const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
 	const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
@@ -146,7 +165,7 @@ export function ArweaveTransactionSync({
 		estimatedProgress.key === progressKey
 			? Math.max(confirmedProgress, estimatedProgress.value)
 			: confirmedProgress;
-	const displayedProgress = Math.min(progressActive ? 99 : 100, Math.max(progressActive ? 2 : 0, continuousProgress));
+	const displayedProgress = confirmationProgressWidth(continuousProgress, progressActive, Boolean(active?.hasError));
 	const observedSteps = useLiveObserverResponses(steps);
 	const telemetrySessionKey = transactionSyncSessionKey(observedSteps);
 	const telemetrySessionRef = React.useRef({ key: telemetrySessionKey, startedAt: startedAt ?? Date.now() });
@@ -254,7 +273,10 @@ export function ArweaveTransactionSync({
 					label: language.transactionSyncMiningDiskTotal,
 					value: formatBytes(miningTelemetry.bytesReadSinceStart, language),
 				},
-				{ label: language.transactionSyncMiningAccepted, value: String(acceptedProofs.length) },
+				{
+					label: language.transactionSyncMiningAccepted,
+					value: String(miningTelemetry.acceptedBlocksSinceStart),
+				},
 			],
 		},
 	};
@@ -268,24 +290,11 @@ export function ArweaveTransactionSync({
 							<span>{language.transaction}</span>
 							<TxAddress address={transaction.id} wrap={false} tooltipPosition={'right'} />
 						</div>
-						<S.Depth
-							aria-label={
-								terminalDepthBeyondTarget
-									? `${displayedConfirmationDepth} confirmation${
-											displayedConfirmationDepth === 1 ? '' : 's'
-									  }`
-									: lifecycle.pending && !active.terminal
-									? pendingAfterConfirmation
-									: verificationDelayed
-									? language.transactionSyncVerificationDelayed
-									: `${displayedConfirmationDepth} of ${target}`
-							}
-							$success={lifecycle.complete}
-						>
+						<S.Depth $success={lifecycle.complete}>
 							{terminalDepthBeyondTarget ? (
 								<>
 									<strong>{displayedConfirmationDepth}</strong>
-									<span> confirmations</span>
+									<span>{` ${language.transactionSyncConfirmations}`}</span>
 								</>
 							) : lifecycle.pending && !active.terminal ? (
 								<strong>{pendingAfterConfirmation}</strong>
@@ -300,6 +309,12 @@ export function ArweaveTransactionSync({
 						</S.Depth>
 					</S.TransactionHeader>
 					<S.ProgressTrack
+						role="progressbar"
+						aria-label={active.label}
+						aria-valuemin={progressValue.min}
+						aria-valuemax={progressValue.max}
+						aria-valuenow={progressValue.now}
+						aria-valuetext={progressValue.text}
 						$active={progressActive}
 						$state={transactionState}
 						$confirmations={confirmationDepth}
@@ -362,7 +377,9 @@ export function ArweaveTransactionSync({
 				>
 					<>
 						<S.RaceShell $height={420} $embedded={false}>
-							<React.Suspense fallback={<TransactionRendererFallback lanes={cableLanes} />}>
+							<React.Suspense
+								fallback={<TransactionRendererFallback lanes={cableLanes} variant="loading" />}
+							>
 								<TransactionSequenceCable3D
 									lanes={cableLanes}
 									ariaLabel={`${language.transactionSyncRacePrototypeInfinityCable}: ${subject}`}
@@ -872,10 +889,25 @@ function recallContentLabel(content: ArweaveAcceptedProof['recallSamples'][numbe
 	return content?.contentLength === undefined ? type : `${type} · ${formatBytes(content.contentLength, language)}`;
 }
 
-function miningStatus(telemetry: ArweaveMiningTelemetry, language: any): string {
-	if (!telemetry.checked) return language.transactionSyncMiningChecking;
-	if (!telemetry.available) return language.transactionSyncMiningUnavailable;
-	return language.transactionSyncMiningSource.replace('{source}', telemetry.sourceLabel);
+export function miningStatus(
+	telemetry: Pick<ArweaveMiningTelemetry, 'status' | 'sourceLabel' | 'acceptedProofs'>,
+	language: any,
+	now = Date.now()
+): string {
+	switch (telemetry.status) {
+		case 'checking':
+			return language.transactionSyncMiningChecking;
+		case 'unavailable':
+			return language.transactionSyncMiningUnavailable;
+		case 'stale': {
+			if (!telemetry.acceptedProofs.length) return language.transactionSyncMiningUnavailable;
+			const lastBlockAt = Math.max(...telemetry.acceptedProofs.map((proof) => proof.observedAt));
+			const seconds = Math.max(0, Math.round((now - lastBlockAt) / 1_000));
+			return language.transactionSyncMiningStale.replace('{seconds}', seconds.toLocaleString());
+		}
+		case 'live':
+			return language.transactionSyncMiningSource.replace('{source}', telemetry.sourceLabel);
+	}
 }
 
 function miningProofDetail(proof: ArweaveAcceptedProof, language: any): string {
@@ -1081,18 +1113,10 @@ function infinity3DLane(
 		state: phase.event?.state ?? 'unknown',
 		hasError: Boolean(phase.event?.error),
 	}));
-	const phaseDetail = phases
-		.map((phase) => `${phase.step.label} ${phase.confirmations}/${phase.step.target}`)
-		.join(' · ');
-	const detail = `${lane.observer.label} · ${phaseDetail} · ${statusLabel} · ${observerProtocolDetail(
-		lane.observer,
-		language
-	)}`;
 
 	return {
 		observerUrl: lane.observer.url,
 		label: lane.observer.label,
-		detail,
 		statusLabel,
 		stages,
 		progress: activePhase?.progress ?? 0,
@@ -1231,26 +1255,6 @@ function protocolEventContext(event: LaneEvent, language: any): string {
 	return parts.join(' · ');
 }
 
-function observerProtocolDetail(observer: Observer, language: any): string {
-	const unknown = language.transactionSyncProtocolUnknown;
-	const sourceKey =
-		observer.source === 'seed'
-			? 'transactionSyncObserverSourceSeed'
-			: observer.source === 'local'
-			? 'transactionSyncObserverSourceLocal'
-			: observer.source === 'hyperbeam'
-			? 'transactionSyncObserverSourceHyperbeam'
-			: 'transactionSyncObserverSourcePeer';
-	const summary = language.transactionSyncProtocolObserver
-		.replace('{source}', language[sourceKey])
-		.replace('{height}', observer.height === undefined ? unknown : observer.height.toLocaleString())
-		.replace('{release}', observer.release === undefined ? unknown : String(observer.release))
-		.replace('{failures}', String(observer.failures));
-	return observer.discoveredBy
-		? `${summary} · ${language.transactionSyncProtocolDiscoveredBy.replace('{observer}', observer.discoveredBy)}`
-		: summary;
-}
-
 function useObserverTimelines(steps: ArweaveSyncStep[]): Map<string, Timeline> {
 	const [timelines, setTimelines] = React.useState<Map<string, Timeline>>(() => new Map());
 
@@ -1344,18 +1348,6 @@ export function updateObserverTimeline(current: Timeline, views: ObserverView[])
 	}
 
 	return changed ? { ...current, lanes } : current;
-}
-
-function eventKey(event: LaneEvent): string {
-	return [
-		event.updatedAt,
-		event.state,
-		event.confirmations,
-		event.blockId,
-		event.blockHeight,
-		event.httpStatus,
-		event.error,
-	].join(':');
 }
 
 function laneEventLabel(event: LaneEvent, language: any): string {

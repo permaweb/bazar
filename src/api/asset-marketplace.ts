@@ -1,3 +1,4 @@
+import { createConcurrencyLimit } from 'helpers/concurrency';
 import { arweaveGatewayFromLocation, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
 import {
 	accountAddress,
@@ -100,6 +101,8 @@ const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
 const PASSIVE_STATE_MAX_AGES = [30, 60, 120] as const;
 const LINKED_STATE_TABLES = ['balances', 'orders'] as const;
+/** Linked-table messages one state read may have in flight at once, across all of its tables. */
+const LINKED_STATE_READ_CONCURRENCY = 4;
 const DIRECT_JSON_BALANCE_METADATA = new Set([
 	'ao-body-key',
 	'ao-types',
@@ -626,7 +629,6 @@ async function readState(
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
 					const state = await parseStateResponse(
 						response,
-						path,
 						base,
 						requestInit,
 						fetcher,
@@ -684,7 +686,6 @@ function statePaths(base: string, processId: string, endpoint: string): string[]
 
 async function parseStateResponse(
 	response: Response,
-	statePath: string,
 	base: string,
 	requestInit: RequestInit,
 	fetcher: typeof fetch,
@@ -692,6 +693,7 @@ async function parseStateResponse(
 	includeBalances = true
 ): Promise<AssetState> {
 	const raw = await responseMessage(response);
+	const limit = createConcurrencyLimit(LINKED_STATE_READ_CONCURRENCY);
 	const linked = await Promise.all(
 		LINKED_STATE_TABLES.flatMap((key) => {
 			if (key === 'balances' && !includeBalances) return [];
@@ -699,7 +701,7 @@ async function parseStateResponse(
 			if (raw[key] === undefined) return [];
 			const id = linkedMessageId(raw[key]);
 			if (!id) throw new TypeError('invalid-asset-state-link');
-			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher)];
+			return [readLinkedStateTable(key, id, base, requestInit, fetcher, limit)];
 		})
 	);
 	const linkedValue = await readLinkedValue(raw.value, base, requestInit, fetcher);
@@ -737,10 +739,10 @@ async function readLinkedValue(
 async function readLinkedStateTable(
 	key: (typeof LINKED_STATE_TABLES)[number],
 	id: string,
-	statePath: string,
 	base: string,
 	requestInit: RequestInit,
-	fetcher: typeof fetch
+	fetcher: typeof fetch,
+	limit: ReturnType<typeof createConcurrencyLimit>
 ): Promise<[string, Record<string, unknown>, boolean?]> {
 	const throwIfAborted = () => requestInit.signal?.throwIfAborted();
 	const messages = new Map<string, Promise<Record<string, unknown>>>();
@@ -752,10 +754,17 @@ async function readLinkedStateTable(
 		const existing = messages.get(messageId);
 		if (existing) return existing;
 		const serialized = key === 'balances';
-		const pending = fetcher(`${base}${messageId}~message@1.0${serialized ? '/serialize~json@1.0' : ''}`, {
-			...(serialized ? {} : { method: 'HEAD' as const }),
-			signal: requestInit.signal,
-		}).then(async (response) => {
+		// Order tables are read as HEAD so only HTTPSig headers move; balance
+		// tables use the JSON serialization of just the linked message.
+		const pending = limit(async () => {
+			throwIfAborted();
+			const response = await fetcher(
+				`${base}${messageId}~message@1.0${serialized ? '/serialize~json@1.0' : ''}`,
+				{
+					...(serialized ? {} : { method: 'HEAD' as const }),
+					signal: requestInit.signal,
+				}
+			);
 			throwIfAborted();
 			if (!response.ok) throw new Error(`HTTP ${response.status}`);
 			if (serialized) {
@@ -770,56 +779,38 @@ async function readLinkedStateTable(
 		messages.set(messageId, pending);
 		return pending;
 	};
-	const readScalar = async (messageId: string, field: string): Promise<string> => {
-		const response = await fetcher(`${base}${messageId}~message@1.0/${field}`, {
-			signal: requestInit.signal,
-		});
-		throwIfAborted();
-		if (!response.ok) throw new Error(`HTTP ${response.status}`);
-		const value = await response.text();
-		throwIfAborted();
-		return value;
-	};
-	let requireDirectJsonBalance = false;
-	if (key === 'balances') {
-		const allowNotFound = (
-			fetcher as typeof fetch & {
-				allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-			}
-		).allowNotFound;
-		try {
-			const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
+	const readScalar = (messageId: string, field: string): Promise<string> =>
+		limit(async () => {
+			throwIfAborted();
+			const response = await fetcher(`${base}${messageId}~message@1.0/${field}`, {
 				signal: requestInit.signal,
 			});
 			throwIfAborted();
-			if (deviceResponse.status === 404 || !deviceResponse.ok) {
-				// A legacy routed fetch can reject or hide the optional 404 probe.
-				// Inspect only the linked root in that case; it is safe to use when
-				// it identifies itself as a direct immutable JSON value.
-				requireDirectJsonBalance = true;
-			} else {
-				const device = await deviceResponse.text();
-				throwIfAborted();
-				if (device.trim() !== 'message@1.0') return [key, {}, false];
-			}
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const value = await response.text();
+			throwIfAborted();
+			return value;
+		});
+	if (key === 'balances') {
+		// Holder tables are read only as a direct immutable JSON root. No device
+		// probe is made: public peers 404 `<state>/balances/device` and answer
+		// `<link>~message@1.0/device` with "message@1.0" whatever the stored
+		// device, so neither path says anything about the table. An unreadable
+		// or non-JSON root marks holders unavailable and keeps the core state and
+		// order book instead of following child links.
+		let root: Record<string, unknown>;
+		try {
+			root = await read(id);
+			throwIfAborted();
 		} catch {
 			throwIfAborted();
-			requireDirectJsonBalance = true;
+			return [key, {}, false];
 		}
-	}
-	let root: Record<string, unknown>;
-	try {
-		root = await read(id);
-		throwIfAborted();
-	} catch (error) {
-		throwIfAborted();
-		if (requireDirectJsonBalance) return [key, {}, false];
-		throw error;
-	}
-	if (requireDirectJsonBalance) {
 		const balances = strictDirectJsonBalances(root);
 		return balances ? [key, balances, true] : [key, {}, false];
 	}
+	const root = await read(id);
+	throwIfAborted();
 	const value =
 		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar);
 	throwIfAborted();
@@ -995,7 +986,6 @@ async function parseRevalidatedState(
 		return {
 			state: await parseStateResponse(
 				response,
-				path,
 				'/',
 				requestInit,
 				fetcher,

@@ -1,11 +1,11 @@
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
-import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
+import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 function aoCoreProxy(mode: string): Record<string, ProxyOptions> {
 	const { AO_CORE_PROXY_TARGET } = loadEnv(mode, process.cwd(), 'AO_CORE_PROXY_TARGET');
-	const target = AO_CORE_PROXY_TARGET?.trim() || 'https://arweave.net';
+	const target = AO_CORE_PROXY_TARGET?.trim() || 'https://mystical.computer';
 
 	const url = URL.canParse(target) ? new URL(target) : undefined;
 	if (
@@ -24,6 +24,27 @@ function aoCoreProxy(mode: string): Record<string, ProxyOptions> {
 	};
 }
 
+// Inject the analytics script only when a build or dev server opts in.
+function analyticsScript(mode: string): Plugin {
+	const { VITE_ANALYTICS_SRC } = loadEnv(mode, process.cwd(), 'VITE_ANALYTICS_SRC');
+	const src = VITE_ANALYTICS_SRC?.trim();
+
+	if (src) {
+		const url = URL.canParse(src) ? new URL(src) : undefined;
+		if (!url || url.protocol !== 'https:' || url.username || url.password) {
+			throw new TypeError('VITE_ANALYTICS_SRC must be an HTTPS URL.');
+		}
+	}
+
+	return {
+		name: 'bazar-analytics-script',
+		transformIndexHtml() {
+			if (!src) return;
+			return [{ tag: 'script', attrs: { async: true, src }, injectTo: 'body' }];
+		},
+	};
+}
+
 export default defineConfig(({ command, isPreview, mode }) => ({
 	base: './',
 	plugins: [
@@ -32,6 +53,7 @@ export default defineConfig(({ command, isPreview, mode }) => ({
 			protocolImports: true,
 		}),
 		react(),
+		analyticsScript(mode),
 	],
 	resolve: {
 		dedupe: ['react', 'react-dom'],

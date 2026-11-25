@@ -1,8 +1,10 @@
 import React from 'react';
 
+import { arweaveDataUrl } from 'helpers/config';
+
 import arweaveNamesCubeStill from '../assets/arweave-names-cube.png';
 
-const arweaveNamesCube = 'https://arweave.net/V2oaZC7f9ZtAlEISMyLjLzWaVR5ky-Nl1tWdmxePSC4';
+const ARWEAVE_NAMES_CUBE_ID = 'V2oaZC7f9ZtAlEISMyLjLzWaVR5ky-Nl1tWdmxePSC4';
 
 export function NamesCubePreview() {
 	const [hovered, setHovered] = React.useState(false);
@@ -13,7 +15,12 @@ export function NamesCubePreview() {
 			onMouseEnter={() => setHovered(true)}
 			onMouseLeave={() => setHovered(false)}
 		>
-			<img src={hovered ? arweaveNamesCube : arweaveNamesCubeStill} alt="" decoding="async" loading="lazy" />
+			<img
+				src={hovered ? arweaveDataUrl(ARWEAVE_NAMES_CUBE_ID, 'https://arweave.net') : arweaveNamesCubeStill}
+				alt=""
+				decoding="async"
+				loading="lazy"
+			/>
 		</span>
 	);
 }

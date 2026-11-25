@@ -11,14 +11,20 @@ import { parseAssetState, type SwapOrder } from './asset-marketplace';
 import {
 	assertExactCancelAssignment,
 	assertExactFungibleTransferAssignment,
+	assertExactOfferAssignment,
 	assertExactPurchaseAssignment,
 	ASSET_BALANCE_PROOF_UNAVAILABLE,
 	AssetTransactionClient,
 	cancelAppliedAtSlot,
 	fungibleTransferAppliedAtSlot,
+	MAXIMUM_ASSET_OFFER_PRICE,
+	MAXIMUM_REGISTRATION_FEE,
+	offerAppliedAtSlot,
 	purchaseAppliedAtSlot,
+	purchaseOrderSafetyError,
 	waitUntilSeen,
 } from './asset-transactions';
+import { MAXIMUM_ASSET_OFFER_PRICE as MAXIMUM_ASSET_OFFER_PRICE_SOURCE } from './order-matching';
 
 const processId = 'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM';
 const seller = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
@@ -88,6 +94,80 @@ function scheduledCancelAssignment(slot: number, signedId: string, blockHeight =
 		process: processId,
 		slot,
 	};
+}
+
+function scheduledOfferAssignment(slot: number, signedId: string, blockHeight = 51) {
+	return {
+		'block-height': blockHeight,
+		body: {
+			action: 'make-offer',
+			asking: '1000',
+			commitments: {
+				[signedId]: {
+					'commitment-device': 'tx@1.0',
+					committer: seller,
+					committed: [
+						'action',
+						'asking',
+						'deadline',
+						'deposit',
+						'minimum-fee',
+						'offer-quantity',
+						'quantity',
+						'target',
+					],
+					'field-target': processId,
+				},
+			},
+			deadline: '20',
+			deposit: '0',
+			'minimum-fee': '0',
+			'offer-quantity': '1',
+			quantity: '1',
+			target: processId,
+		},
+		process: processId,
+		slot,
+	};
+}
+
+/** The order a make-offer signed as `transactionId` opens. */
+function offerOrderRaw(overrides: Record<string, unknown> = {}) {
+	return { ...cancelOrderRaw('1'), 'order-id': transactionId, 'minimum-fee': '0', ...overrides };
+}
+
+const expectedOffer = { seller, quantity: '1', asking: '1000' };
+
+function exactOfferClient(current: ReturnType<typeof transferState>, atSlot: ReturnType<typeof transferState>) {
+	const requests: string[] = [];
+	const subject = new AssetTransactionClient({
+		fetch: async (input: RequestInfo | URL) => {
+			const url = String(input);
+			requests.push(url);
+			if (url.includes(`/tx/${transactionId}/status`)) {
+				return new Response(JSON.stringify({ block_height: 51 }));
+			}
+			if (url.endsWith('/now')) return stateResponse(current.raw);
+			const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
+			if (schedule) {
+				const assignments: Record<number, unknown> = {};
+				for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
+					assignments[slot] =
+						slot === 12
+							? scheduledOfferAssignment(slot, transactionId, 51)
+							: scheduledCancelAssignment(
+									slot,
+									`m${String(slot).padStart(42, '0')}`,
+									slot < 12 ? 50 : 52
+							  );
+				}
+				return new Response(JSON.stringify(assignments));
+			}
+			if (url.includes('compute&slot=12')) return stateResponse(atSlot.raw);
+			throw new Error(`unexpected-request:${url}`);
+		},
+	});
+	return { subject, requests };
 }
 
 function scheduledPurchaseAssignment(
@@ -383,6 +463,16 @@ describe('fungible asset transactions', () => {
 			name: 'quantity',
 			value: '12500000000000',
 		});
+	});
+
+	it('refuses to sign a transfer to a 43-character recipient that is not a canonical address', async () => {
+		const subject = client();
+		const mistyped = `${recipient.slice(0, 42)}B`;
+		await expect(subject.client.transfer(processId, mistyped, '12500000000000', seller)).rejects.toThrow(
+			'invalid-asset-transfer'
+		);
+		expect(subject.requests).toEqual([]);
+		expect(subject.storage.length).toBe(0);
 	});
 
 	it('verifies the base64url tag representation emitted by Arweave transaction JSON', async () => {
@@ -832,7 +922,9 @@ describe('fungible asset transactions', () => {
 						}
 						return new Response(JSON.stringify(assignments));
 					}
-					if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+					if (url.endsWith('~message@1.0/serialize~json@1.0')) {
+						return new Response(JSON.stringify({ device: 'trie@1.0' }));
+					}
 					if (url.includes('compute&slot=10')) {
 						return stateResponse(
 							unavailableAt === 'before' ? withoutMountedBalances(before.raw) : before.raw
@@ -986,7 +1078,9 @@ describe('fungible asset transactions', () => {
 						}
 						return new Response(JSON.stringify(assignments));
 					}
-					if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+					if (url.endsWith('~message@1.0/serialize~json@1.0')) {
+						return new Response(JSON.stringify({ device: 'trie@1.0' }));
+					}
 					if (url.includes('compute&slot=11')) {
 						return stateResponse(
 							unavailableAt === 'before' ? withoutMountedBalances(before.raw) : before.raw
@@ -1040,6 +1134,117 @@ describe('fungible asset transactions', () => {
 		await expect(
 			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 })
 		).resolves.toMatchObject({ raw: { 'at-slot': 12 } });
+	});
+
+	it('proves a listing from the order its exact make-offer slot opened, signed fee included', () => {
+		const assignment = {
+			slot: 11,
+			blockHeight: 51,
+			transactionIds: [transactionId],
+			raw: scheduledOfferAssignment(11, transactionId),
+		};
+		const opened = transferState(11, '0', '0', { [transactionId]: offerOrderRaw() });
+		const notOpened = transferState(11, '0', '0');
+		const wrongFee = transferState(11, '0', '0', { [transactionId]: offerOrderRaw({ 'minimum-fee': '5' }) });
+		const wrongAsking = transferState(11, '0', '0', { [transactionId]: offerOrderRaw({ asking: '999' }) });
+		const wrongSlot = transferState(12, '0', '0', { [transactionId]: offerOrderRaw() });
+
+		expect(offerAppliedAtSlot(opened, assignment, processId, transactionId, expectedOffer)).toBe(true);
+		for (const state of [notOpened, wrongFee, wrongAsking, wrongSlot]) {
+			expect(offerAppliedAtSlot(state, assignment, processId, transactionId, expectedOffer)).toBe(false);
+		}
+	});
+
+	it('rejects incomplete exact make-offer evidence before reading it as an outcome', () => {
+		const validRaw = scheduledOfferAssignment(11, transactionId);
+		const mutations: Array<(raw: any) => void> = [
+			(raw) => {
+				raw.process = recipient;
+			},
+			(raw) => {
+				raw.body.commitments[transactionId].committer = recipient;
+			},
+			(raw) => {
+				raw.body.action = 'transfer';
+			},
+			(raw) => {
+				raw.body['offer-quantity'] = '2';
+			},
+			(raw) => {
+				raw.body.asking = '999';
+			},
+			(raw) => {
+				delete raw.body['minimum-fee'];
+			},
+			(raw) => {
+				raw.body.target = recipient;
+			},
+			(raw) => {
+				raw.body.commitments[transactionId].committed = ['action', 'asking', 'target'];
+			},
+			(raw) => {
+				delete raw.body.commitments[transactionId]['field-target'];
+			},
+		];
+
+		expect(() =>
+			assertExactOfferAssignment(
+				{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw: validRaw },
+				processId,
+				transactionId,
+				expectedOffer
+			)
+		).not.toThrow();
+		for (const mutate of mutations) {
+			const raw = structuredClone(validRaw);
+			mutate(raw);
+			expect(() =>
+				assertExactOfferAssignment(
+					{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw },
+					processId,
+					transactionId,
+					expectedOffer
+				)
+			).toThrow('asset-offer-proof-mismatch');
+		}
+	});
+
+	it('waits for the exact make-offer slot and reports a listing the token process did not open as rejected', async () => {
+		// The seller's lot left first (another listing, transfer or sale), so the
+		// make-offer slot opened no order; live state may look identical for hours.
+		const current = transferState(13, '0', '1');
+		const notOpened = transferState(12, '0', '1');
+		const { subject, requests } = exactOfferClient(current, notOpened);
+
+		await expect(
+			subject.waitForExactOffer(processId, transactionId, expectedOffer, { startingSlot: 10 })
+		).rejects.toThrow('asset-offer-rejected');
+		expect(requests.some((url) => url.includes('compute&slot=12'))).toBe(true);
+	});
+
+	it('accepts the exact make-offer slot even after the listing later sold', async () => {
+		const sold = transferState(13, '0', '1');
+		const opened = transferState(12, '0', '0', { [transactionId]: offerOrderRaw() });
+		const { subject } = exactOfferClient(sold, opened);
+
+		await expect(
+			subject.waitForExactOffer(processId, transactionId, expectedOffer, { startingSlot: 10 })
+		).resolves.toMatchObject({ raw: { 'at-slot': 12 }, orders: { [transactionId]: { status: 'open' } } });
+	});
+
+	it('keeps a listing resumable when the make-offer slot proof is incomplete', async () => {
+		const current = transferState(13, '0', '1');
+		const opened = transferState(12, '0', '0', { [transactionId]: offerOrderRaw() });
+		const { subject } = exactOfferClient(current, opened);
+
+		await expect(
+			subject.waitForExactOffer(
+				processId,
+				transactionId,
+				{ ...expectedOffer, asking: '999' },
+				{ startingSlot: 10 }
+			)
+		).rejects.toThrow('asset-offer-proof-mismatch');
 	});
 
 	it('proves an exact-slot transfer from its paired notices rather than noisy balances', () => {
@@ -1230,7 +1435,9 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+				if (url.endsWith('~message@1.0/serialize~json@1.0')) {
+					return new Response(JSON.stringify({ device: 'trie@1.0' }));
+				}
 				if (url.includes('compute&slot=12')) return stateResponse(withoutMountedBalances(applied.raw));
 				throw new Error(`unexpected-request:${url}`);
 			},
@@ -1423,6 +1630,29 @@ describe('fungible asset transactions', () => {
 		);
 	});
 
+	it.each([
+		[{ asking: '0' }, 'invalid-asset-offer-asking'],
+		[{ asking: '01' }, 'invalid-asset-offer-asking'],
+		[{ asking: (MAXIMUM_ASSET_OFFER_PRICE + 1n).toString() }, 'asset-offer-asking-too-high'],
+		[{ seller: 'not-an-address' }, 'invalid-asset-offer-seller'],
+		[{ deadline: 0 }, 'invalid-offer-deadline'],
+	] as const)('rejects listing terms %o before asking the wallet to sign', async (override, code) => {
+		const sign = vi.fn(async (transaction: any) => transaction);
+		await expect(
+			client(sign).client.makeOffer({ processId, quantity: '1', asking: '1', seller, ...override })
+		).rejects.toThrow(code);
+		expect(sign).not.toHaveBeenCalled();
+	});
+
+	it('accepts a listing priced exactly at the 66,000,000 AR cap', async () => {
+		expect(MAXIMUM_ASSET_OFFER_PRICE).toBe(MAXIMUM_ASSET_OFFER_PRICE_SOURCE);
+		const asking = MAXIMUM_ASSET_OFFER_PRICE.toString();
+		const subject = client();
+		const prepared = await subject.client.makeOffer({ processId, quantity: '1', asking, seller });
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'asking', value: asking });
+	});
+
 	it('includes the one-winston scheduler quantity in purchase estimates', async () => {
 		const subject = new AssetTransactionClient({ fetch: async () => new Response('1000') });
 		await expect(
@@ -1466,6 +1696,57 @@ describe('fungible asset transactions', () => {
 			expect(stored.transaction.quantity).toBe('1');
 			expect(decodedTags(stored.transaction)).toContainEqual({ name: 'action', value: 'register-interest' });
 			expect(decodedTags(stored.transaction)).toContainEqual({ name: 'fill-quantity', value: fillQuantity });
+		}
+	);
+
+	function rewardSigningAdapter(reward: string, quantity: string, fillQuantity: string) {
+		const subject = client(async (transaction) => ({
+			id: transaction.id,
+			owner: transaction.owner,
+			reward,
+			tags: transaction.tags,
+			signature: 'wallet-signature',
+		}));
+		const order = { ...swapOrder(transactionId, quantity, '1000000'), minimumFee: '100000000' };
+		const adapter = subject.client.purchaseAdapter({
+			processId,
+			order,
+			fillQuantity,
+			buyer: seller,
+			startingBalance: '0',
+			network: { tip: () => 1000 } as any,
+		});
+		return { subject, adapter };
+	}
+
+	it.each([
+		['2000', '1', '1'],
+		['99999999', '1', '1'],
+		['33333333', '3000000000000', '1000000000000'],
+	])(
+		'refuses a registration whose wallet lowered the reward to %s below the legacy floor (lot %s, fill %s)',
+		async (reward, quantity, fillQuantity) => {
+			const { subject, adapter } = rewardSigningAdapter(reward, quantity, fillQuantity);
+			await expect(adapter.prepareRegistration(new AbortController().signal)).rejects.toThrow(
+				'wallet-modified-transaction-fields'
+			);
+			const keys = Array.from({ length: subject.storage.length }, (_, index) => subject.storage.key(index));
+			expect(keys.filter((key) => key?.startsWith('bazar-signed-transaction:'))).toEqual([]);
+		}
+	);
+
+	it.each([
+		['100000000', '1', '1'],
+		['100000001', '1', '1'],
+		['33333334', '3000000000000', '1000000000000'],
+	])(
+		'accepts a registration signed at or above the legacy floor with reward %s (lot %s, fill %s)',
+		async (reward, quantity, fillQuantity) => {
+			const { subject, adapter } = rewardSigningAdapter(reward, quantity, fillQuantity);
+			const prepared = await adapter.prepareRegistration(new AbortController().signal);
+			const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+			expect(stored.transaction.reward).toBe(reward);
+			expect(stored.intent.reward).toBe(reward);
 		}
 	);
 
@@ -2323,3 +2604,112 @@ function approvalSubject(
 		storedTransaction: (id: string) => JSON.parse(values.get(`bazar-signed-transaction:${id}`)!).transaction,
 	};
 }
+
+describe('buy-side registration fee cap', () => {
+	const cap = '10000000000';
+	const overCap = '10000000001';
+
+	function countingClient() {
+		let signatures = 0;
+		const subject = client(async (transaction) => {
+			signatures += 1;
+			return transaction;
+		});
+		return { ...subject, signatures: () => signatures };
+	}
+
+	function purchaseInput(order: ReturnType<typeof swapOrder>, fillQuantity?: string) {
+		return {
+			processId,
+			order,
+			...(fillQuantity ? { fillQuantity } : {}),
+			buyer: seller,
+			startingBalance: '0',
+			network: { tip: () => 1000 } as any,
+		};
+	}
+
+	it('caps the reservation fee at 0.01 AR and rejects malformed fees', () => {
+		expect(MAXIMUM_REGISTRATION_FEE).toBe(BigInt(cap));
+		const order = swapOrder(transactionId, '1', '1000');
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: '0' })).toBeNull();
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: cap })).toBeNull();
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: overCap })).toBe(
+			'asset-purchase-registration-fee-too-high'
+		);
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: 'abc' })).toBe(
+			'asset-purchase-invalid-registration-fee'
+		);
+		expect(purchaseOrderSafetyError({ ...order, minimumFee: '1.5' })).toBe(
+			'asset-purchase-invalid-registration-fee'
+		);
+	});
+
+	it('refuses an over-cap fee synchronously, before any signature prompt or network request', () => {
+		const subject = countingClient();
+		const order = { ...swapOrder(transactionId, '1', '1000'), minimumFee: overCap };
+		expect(() => subject.client.purchaseAdapter(purchaseInput(order))).toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		expect(subject.signatures()).toBe(0);
+		expect(subject.requests).toEqual([]);
+	});
+
+	it('signs a reservation whose fee is exactly the cap, burning that fee as its reward', async () => {
+		const subject = countingClient();
+		const order = { ...swapOrder(transactionId, '1', '1000'), minimumFee: cap };
+		const adapter = subject.client.purchaseAdapter(purchaseInput(order));
+		const prepared = await adapter.prepareRegistration(new AbortController().signal);
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(stored.transaction.reward).toBe(cap);
+		expect(subject.signatures()).toBe(1);
+	});
+
+	it('applies the cap to the filled share of a partially bought lot, not to the whole lot', async () => {
+		const allowed = countingClient();
+		const lot = { ...swapOrder(transactionId, '2', '1000'), minimumFee: '20000000000' };
+		expect(() => allowed.client.purchaseAdapter(purchaseInput(lot))).toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		const adapter = allowed.client.purchaseAdapter(purchaseInput(lot, '1'));
+		const prepared = await adapter.prepareRegistration(new AbortController().signal);
+		const stored = JSON.parse(allowed.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(stored.transaction.reward).toBe(cap);
+
+		const rejected = countingClient();
+		const overLot = { ...lot, minimumFee: '20000000002' };
+		expect(() => rejected.client.purchaseAdapter(purchaseInput(overLot, '1'))).toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		expect(rejected.signatures()).toBe(0);
+		expect(rejected.requests).toEqual([]);
+	});
+
+	it('rejects a quote containing an over-cap or malformed fee before any price request', async () => {
+		const subject = countingClient();
+		const valid = swapOrder(transactionId, '1', '1000');
+		const overCapOrder = { ...swapOrder('A'.repeat(43), '1', '1000'), minimumFee: overCap };
+		await expect(subject.client.estimatePurchaseBatchCosts([valid, overCapOrder], processId)).rejects.toThrow(
+			'asset-purchase-registration-fee-too-high'
+		);
+		await expect(subject.client.estimatePurchaseCosts({ ...valid, minimumFee: 'abc' }, processId)).rejects.toThrow(
+			'asset-purchase-invalid-registration-fee'
+		);
+		expect(subject.requests).toEqual([]);
+
+		await expect(
+			subject.client.estimatePurchaseCosts({ ...valid, minimumFee: cap }, processId)
+		).resolves.toMatchObject({ registrationFee: cap });
+	});
+
+	it('rejects a batch with one over-cap order before any signature prompt or price request', async () => {
+		const subject = countingClient();
+		const valid = swapOrder(transactionId, '1', '1000');
+		const overCapOrder = { ...swapOrder('A'.repeat(43), '1', '1000'), minimumFee: overCap };
+		await expect(
+			subject.client.preparePurchaseBatch([purchaseInput(valid), purchaseInput(overCapOrder)])
+		).rejects.toThrow('asset-purchase-registration-fee-too-high');
+		expect(subject.signatures()).toBe(0);
+		expect(subject.requests.filter((url) => url.includes('/price/'))).toEqual([]);
+	});
+});

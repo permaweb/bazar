@@ -1,13 +1,11 @@
 import React from 'react';
-import { RefreshCw, Server } from 'lucide-react';
+import { CircleAlert, CircleCheck, RefreshCw } from 'lucide-react';
 
 import {
 	type AssetCandidate,
-	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverWalletAssetCandidates,
 	loadCompletedWalletCandidateScan,
-	partitionAssetCandidateSupport,
 	resolveAssetCandidates,
 	type ResolvedAsset,
 	resumeCompletedWalletCandidateScan,
@@ -19,10 +17,8 @@ import { liquidBalanceOf, listedBalanceOf, liveOrdersOfAsset, servingNodeOrigin 
 import { DISPLAY_STATE_CACHE, readAssetStateCached } from 'api/asset-state-store';
 
 import { Button } from 'components/Button';
-import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
-import { Tooltip } from 'components/Tooltip';
 import { sameAccount } from 'helpers/host-account';
 import { scheduleIdleTask } from 'helpers/idle';
 import {
@@ -30,20 +26,20 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from 'helpers/progressive-assets';
+import { applyStableOrder } from 'helpers/stable-order';
+import { useIndexedAssetNames } from 'hooks/useIndexedAssetNames';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
-import { useWallet } from 'providers/WalletProvider';
+import { useGridReorderMotion, useStableOrder } from 'hooks/useStableOrder';
 
 import {
 	AssetCard,
 	type CandidateSupportFailure,
+	homeListingSupportVersion,
 	initialWalletResolutionStatus,
 	MarketContext,
 	MarketSelect,
 	nextWalletAnnouncementProgress,
 	orderPriceLabel,
-	refreshCandidateRetryMetadata,
-	reopenWalletCandidate,
-	RouteState,
 	tokenBalanceLabel,
 	trackRateLimitFailure,
 	updateWalletResolvedAsset,
@@ -55,24 +51,29 @@ import {
 	walletDiscoverySessionIsCurrent,
 	walletResolutionCopy,
 	type WalletResolutionStatus,
+	walletUnavailableCandidatesCopy,
 } from '../app/App';
 import {
 	marketplaceErrorMessage as errorMessage,
 	marketplaceFailureKind,
 	marketplaceRequestFailureMessage,
 } from '../app/marketplace-error';
+import {
+	runWalletDiscovery,
+	walletAssetGroupCount,
+	type WalletCandidatePreview,
+	walletCandidatePreviews,
+	type WalletDiscovery,
+	walletEntryWithCurrentName,
+} from '../app/wallet-discovery';
 
-export default function MyAssetsRoute({
-	address,
-	embedded = false,
-}: {
-	address?: string;
-	embedded?: boolean;
-} = {}) {
+/**
+ * The asset inventory of one profile. The owner is always the explicit `address` the profile
+ * route resolved, never the connected wallet, so a profile can only list its own assets.
+ */
+export default function MyAssetsRoute({ address: walletAddress }: { address: string }) {
 	const market = React.useContext(MarketContext);
-	const wallet = useWallet();
-	const walletAddress = address ?? wallet.address ?? '';
-	const pageClassName = `my-assets-page${embedded ? ' profile-assets' : ''}`;
+	const pageClassName = 'my-assets-page profile-assets';
 	const gateway = servingNodeOrigin(window.location);
 	const [retry, setRetry] = React.useState(0);
 	const [discoveryRetry, setDiscoveryRetry] = React.useState(0);
@@ -90,11 +91,23 @@ export default function MyAssetsRoute({
 		revalidated: 0,
 	});
 	const [results, setResults] = React.useState<ResolvedAsset[]>([]);
+	const [previews, setPreviews] = React.useState<WalletCandidatePreview[]>([]);
 	const [storedStatus, setStatus] = React.useState<WalletResolutionStatus>(initialWalletResolutionStatus);
-	const discoveryScope = walletAddress ? walletDiscoveryScope(walletAddress, gateway, market.collections) : '';
+	const collectionsReady = market.collections.length > 0;
+	const marketCollectionsRef = React.useRef(market.collections);
+	marketCollectionsRef.current = market.collections;
+	const marketLoadingRef = React.useRef(market.loading);
+	marketLoadingRef.current = market.loading;
+	const walletSupportVersion = React.useMemo(
+		() => homeListingSupportVersion(market.collections),
+		[market.collections]
+	);
+	const walletDiscovery = React.useRef<WalletDiscovery>();
+	const discoveryScope = walletAddress ? walletDiscoveryScope(walletAddress, gateway) : '';
 	const requestedSessionScope = discoveryScope ? `${discoveryScope}|refresh:${retry}` : '';
 	const sessionIsCurrent = walletDiscoverySessionIsCurrent(discoverySession.current, requestedSessionScope);
 	const visibleResults = sessionIsCurrent ? results : [];
+	const visiblePreviews = sessionIsCurrent ? previews : [];
 	const status = sessionIsCurrent ? storedStatus : initialWalletResolutionStatus();
 	const retryDiscovery = () => {
 		setDiscoveryRetry((value) => value + 1);
@@ -106,7 +119,10 @@ export default function MyAssetsRoute({
 		setRetry((value) => value + 1);
 	};
 	React.useEffect(() => {
-		if (!walletAddress || !market.collections.length || market.error) return;
+		// The GraphQL scan starts at once, in parallel with the collection reads: candidates no loaded
+		// collection can classify yet are held, and supportChanged() releases them as collections stream
+		// in, so nothing is read or shown before hidden-collection visibility has settled.
+		if (!walletAddress || market.error) return;
 		const controller = new AbortController();
 		const scope = requestedSessionScope;
 		const previousSession = discoverySession.current;
@@ -119,7 +135,6 @@ export default function MyAssetsRoute({
 		const reset = session !== previousSession;
 		discoverySession.current = session;
 		const active = () => !controller.signal.aborted && discoverySession.current === session;
-		const revalidations: Promise<unknown>[] = [];
 		let renderFrame: number | undefined;
 		let cancelScanStore: (() => void) | undefined;
 		const flushResults = () => {
@@ -130,6 +145,7 @@ export default function MyAssetsRoute({
 					(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp
 				)
 			);
+			setPreviews(walletCandidatePreviews(session, marketCollectionsRef.current, failedCandidates.current));
 		};
 		const scheduleResults = () => {
 			if (renderFrame === undefined) renderFrame = window.requestAnimationFrame(flushResults);
@@ -140,266 +156,66 @@ export default function MyAssetsRoute({
 			computeRateLimits.current.clear();
 			indexRateLimits.current.clear();
 			setResults([]);
+			setPreviews([]);
 			setStatus(initialWalletResolutionStatus());
 		} else {
 			setStatus((current) => ({ ...current, phase: 'discovering', error: null }));
 			scheduleResults();
 		}
-		void (async () => {
-			try {
-				const scheduled = new Set<string>();
-				const readWalletState = async (processId: string, signal?: AbortSignal) => {
-					const result = await readAssetStateCached(processId, {
-						force: true,
-						maxAge: 0,
-						maxAttempts: 1,
-						signal,
-						...(retry === 0 ? { staleWhileRevalidate: DISPLAY_STATE_CACHE.staleWhileRevalidate } : {}),
-					});
-					if (result.revalidation) {
-						revalidations.push(result.revalidation);
-						if (active()) {
-							setStatus((current) => ({
-								...current,
-								revalidationTotal: (current.revalidationTotal ?? 0) + 1,
-							}));
-						}
-					}
-					return result;
-				};
-				const resolver = createAssetCandidateResolver(market.collections, {
-					signal: controller.signal,
-					requireHolderBalances: true,
-					read: readWalletState,
-					onSettled: (result, candidate, error) => {
-						if (!active()) return;
-						const latest = session.latestCandidates.get(candidate.processId) ?? candidate;
-						session.screened.add(candidate.processId);
-						session.completed.add(candidate.processId);
-						if (error) failedCandidates.current.set(candidate.processId, latest);
-						else failedCandidates.current.delete(candidate.processId);
-						trackRateLimitFailure(computeRateLimits.current, candidate.processId, error);
-						setStatus((current) => ({
-							...current,
-							resolved: current.resolved + 1,
-							failures: current.failures + (error ? 1 : 0),
-							rateLimited:
-								current.rateLimited +
-								(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
-						}));
-						if (!error && updateWalletResolvedAsset(session, result, latest, walletAddress))
-							scheduleResults();
-					},
-					onRevalidated: (result, candidate, error) => {
-						if (!active()) return;
-						const latest = session.latestCandidates.get(candidate.processId) ?? candidate;
-						if (error) failedCandidates.current.set(candidate.processId, latest);
-						else failedCandidates.current.delete(candidate.processId);
-						trackRateLimitFailure(computeRateLimits.current, candidate.processId, error);
-						if (error) {
-							if (session.resolvedAssets.delete(candidate.processId)) scheduleResults();
-						} else if (updateWalletResolvedAsset(session, result, latest, walletAddress)) {
-							scheduleResults();
-						}
-						setStatus((current) => ({
-							...current,
-							revalidated: (current.revalidated ?? 0) + 1,
-							failures: current.failures + (error ? 1 : 0),
-							rateLimited:
-								current.rateLimited +
-								(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
-						}));
-					},
-				});
-				let supportTail = Promise.resolve();
-				const resolvePage = (page: AssetCandidate[]) => {
-					let reopened = 0;
-					let reopenedFailures = 0;
-					let reopenedIndexFailures = 0;
-					let reopenedRateLimits = 0;
-					let reopenedIndexRateLimits = 0;
-					for (const candidate of page) {
-						const wasComputeFailure = failedCandidates.current.has(candidate.processId);
-						const wasIndexFailure = supportFailures.current.has(candidate.processId);
-						const wasComputeRateLimited = computeRateLimits.current.has(candidate.processId);
-						const wasIndexRateLimited = indexRateLimits.current.has(candidate.processId);
-						const refresh = reopenWalletCandidate(session, candidate);
-						if (refresh.completed) {
-							reopened += 1;
-							reopenedFailures += Number(wasComputeFailure || wasIndexFailure);
-							reopenedIndexFailures += Number(wasIndexFailure);
-							reopenedRateLimits += Number(wasComputeRateLimited || wasIndexRateLimited);
-							reopenedIndexRateLimits += Number(wasIndexRateLimited);
-						}
-						if (refresh.reopened) {
-							failedCandidates.current.delete(candidate.processId);
-							supportFailures.current.delete(candidate.processId);
-							computeRateLimits.current.delete(candidate.processId);
-							indexRateLimits.current.delete(candidate.processId);
-							if (refresh.removedResult) scheduleResults();
-						}
-						session.latestCandidates.set(candidate.processId, candidate);
-						refreshCandidateRetryMetadata(candidate, failedCandidates.current, supportFailures.current);
-						const existing = session.resolvedAssets.get(candidate.processId);
-						if (existing) {
-							session.resolvedAssets.set(candidate.processId, { ...existing, activity: candidate });
-							scheduleResults();
-						}
-					}
-					if (reopened && active()) {
-						setStatus((current) => ({
-							...current,
-							resolved: Math.max(0, current.resolved - reopened),
-							failures: Math.max(0, current.failures - reopenedFailures),
-							indexFailures: Math.max(0, current.indexFailures - reopenedIndexFailures),
-							rateLimited: Math.max(0, current.rateLimited - reopenedRateLimits),
-							indexRateLimited: Math.max(0, current.indexRateLimited - reopenedIndexRateLimits),
-						}));
-					}
-					const unchecked = page.filter(
-						(candidate) => !session.screened.has(candidate.processId) && !scheduled.has(candidate.processId)
-					);
-					const { supported, unverified } = partitionAssetCandidateSupport(unchecked, market.collections);
-					const candidates = [...supported, ...unverified];
-					for (const candidate of candidates) scheduled.add(candidate.processId);
-					const candidateIds = new Set(candidates.map((candidate) => candidate.processId));
-					for (const candidate of unchecked) {
-						if (!candidateIds.has(candidate.processId)) session.screened.add(candidate.processId);
-					}
-					const newlyCounted = candidates.filter((candidate) => !session.counted.has(candidate.processId));
-					for (const candidate of newlyCounted) session.counted.add(candidate.processId);
-					if (active()) {
-						setStatus((current) => ({
-							...current,
-							phase: candidates.length ? 'resolving' : current.phase,
-							discovered: session.latestCandidates.size,
-							total: current.total + newlyCounted.length,
-						}));
-					}
-					resolver.enqueue(supported);
-					if (unverified.length) {
-						supportTail = supportTail.then(async () => {
-							const verification = await verifyAssetCandidateSupport(unverified, market.collections, {
-								signal: controller.signal,
-								onVerified: (verified) => resolver.enqueue(verified),
-							});
-							if (!active()) return;
-							for (const candidate of unverified) supportFailures.current.delete(candidate.processId);
-							for (const failure of verification.unavailable) {
-								supportFailures.current.set(failure.candidate.processId, failure);
-								trackRateLimitFailure(
-									indexRateLimits.current,
-									failure.candidate.processId,
-									failure.error
-								);
-							}
-							for (const candidate of unverified) {
-								if (!supportFailures.current.has(candidate.processId))
-									indexRateLimits.current.delete(candidate.processId);
-							}
-							const verifiedIds = new Set(verification.supported.map((candidate) => candidate.processId));
-							for (const candidate of unverified) {
-								if (!verifiedIds.has(candidate.processId)) session.screened.add(candidate.processId);
-							}
-							const checkedWithoutCompute = unverified.length - verification.supported.length;
-							const rateLimited = verification.unavailable.filter(
-								(failure) => marketplaceFailureKind(failure.error) === 'rate-limited'
-							).length;
-							if (checkedWithoutCompute && active()) {
-								for (const candidate of unverified) {
-									if (!verifiedIds.has(candidate.processId))
-										session.completed.add(candidate.processId);
-								}
-								setStatus((current) => ({
-									...current,
-									resolved: current.resolved + checkedWithoutCompute,
-									failures: current.failures + verification.unavailable.length,
-									indexFailures: current.indexFailures + verification.unavailable.length,
-									rateLimited: current.rateLimited + rateLimited,
-									indexRateLimited: current.indexRateLimited + rateLimited,
-								}));
-							}
-						});
-					}
-				};
-				const pendingCandidates = [...session.latestCandidates.values()].filter(
-					(candidate) => !session.screened.has(candidate.processId)
+		// Collections are read through the ref so streaming collections refine
+		// support in place instead of restarting the wallet GraphQL scan and resolver.
+		const discovery = runWalletDiscovery({
+			address: walletAddress,
+			session,
+			signal: controller.signal,
+			collections: () => marketCollectionsRef.current,
+			collectionsLoaded: () => !marketLoadingRef.current,
+			failures: {
+				compute: failedCandidates.current,
+				support: supportFailures.current,
+				computeRateLimits: computeRateLimits.current,
+				indexRateLimits: indexRateLimits.current,
+			},
+			discover: (walletScan, onPage, signal) =>
+				discoverWalletAssetCandidates(walletAddress, { signal, scan: walletScan, catchUp: true, onPage }),
+			read: (processId, signal) =>
+				readAssetStateCached(processId, {
+					force: true,
+					maxAge: 0,
+					maxAttempts: 1,
+					signal,
+					...(retry === 0 ? { staleWhileRevalidate: DISPLAY_STATE_CACHE.staleWhileRevalidate } : {}),
+				}),
+			active,
+			setStatus,
+			onResultsChanged: scheduleResults,
+			onDiscoveryComplete: () => {
+				cancelScanStore = scheduleIdleTask(
+					() => storeCompletedWalletCandidateScan(window.localStorage, session.scan),
+					500
 				);
-				if (pendingCandidates.length) resolvePage(pendingCandidates);
-				let discoveredCandidates: AssetCandidate[] = [];
-				let discoveryFailure: unknown;
-				try {
-					discoveredCandidates = await discoverWalletAssetCandidates(walletAddress, {
-						signal: controller.signal,
-						scan: session.scan,
-						catchUp: true,
-						onPage: resolvePage,
-					});
-				} catch (cause) {
-					discoveryFailure = cause;
-				}
-				if (!active()) return;
-				if (!discoveryFailure) {
-					cancelScanStore = scheduleIdleTask(
-						() => storeCompletedWalletCandidateScan(window.localStorage, session.scan),
-						500
-					);
-				}
-				resolvePage(discoveredCandidates.filter((candidate) => !session.screened.has(candidate.processId)));
-				let resolutionFailure: unknown;
-				try {
-					await supportTail;
-				} catch (cause) {
-					resolutionFailure = cause;
-				}
-				try {
-					await resolver.finish();
-				} catch (cause) {
-					resolutionFailure ??= cause;
-				}
-				if (discoveryFailure || resolutionFailure) throw discoveryFailure ?? resolutionFailure;
-				if (revalidations.length && active()) {
-					setStatus((current) => ({
-						...current,
-						phase: 'revalidating',
-						discoveryComplete: true,
-					}));
-					await Promise.allSettled(revalidations);
-				}
-				if (active()) {
-					session.complete = true;
-					if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
-					flushResults();
-					setStatus((current) => ({
-						...current,
-						phase: 'done',
-						discoveryComplete: true,
-						discovered: session.latestCandidates.size,
-						revalidated: undefined,
-						revalidationTotal: undefined,
-					}));
-				}
-			} catch (cause) {
-				if (active()) {
-					setStatus((current) => ({
-						...current,
-						phase: 'error',
-						error: marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)),
-					}));
-				}
-			}
-		})();
+			},
+			onComplete: () => {
+				if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
+				flushResults();
+			},
+		});
+		walletDiscovery.current = discovery;
 		return () => {
+			if (walletDiscovery.current === discovery) walletDiscovery.current = undefined;
 			controller.abort();
 			cancelScanStore?.();
 			if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
 		};
-	}, [discoveryRetry, discoveryScope, gateway, market.error, retry, walletAddress]);
+	}, [discoveryRetry, discoveryScope, market.error, retry]);
+	React.useEffect(() => {
+		walletDiscovery.current?.supportChanged();
+	}, [market.loading, walletSupportVersion]);
 	React.useEffect(() => {
 		if (
 			!failedRetry ||
 			!walletAddress ||
-			!market.collections.length ||
+			!collectionsReady ||
 			market.error ||
 			(!failedCandidates.current.size && !supportFailures.current.size)
 		)
@@ -429,7 +245,7 @@ export default function MyAssetsRoute({
 			error: null,
 		}));
 		const resolveFailed = (failed: AssetCandidate[]) =>
-			resolveAssetCandidates(failed, market.collections, {
+			resolveAssetCandidates(failed, marketCollectionsRef.current, {
 				signal: controller.signal,
 				requireHolderBalances: true,
 				onSettled: (result, candidate, error) => {
@@ -449,7 +265,9 @@ export default function MyAssetsRoute({
 			});
 		const retryUnavailable = async () => {
 			const verification = unverified.length
-				? await verifyAssetCandidateSupport(unverified, market.collections, { signal: controller.signal })
+				? await verifyAssetCandidateSupport(unverified, marketCollectionsRef.current, {
+						signal: controller.signal,
+				  })
 				: { supported: [], unavailable: [] };
 			if (!active()) return;
 			for (const candidate of unverified) supportFailures.current.delete(candidate.processId);
@@ -485,6 +303,7 @@ export default function MyAssetsRoute({
 						(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp
 					)
 				);
+				setPreviews(walletCandidatePreviews(session, marketCollectionsRef.current, failedCandidates.current));
 				setStatus((current) => ({
 					...current,
 					phase: 'done',
@@ -501,44 +320,18 @@ export default function MyAssetsRoute({
 			}
 		);
 		return () => controller.abort();
-	}, [failedRetry, gateway, market.collections, market.error, requestedSessionScope, walletAddress]);
+	}, [collectionsReady, failedRetry, market.error, requestedSessionScope, walletAddress]);
 
-	if (!walletAddress) {
+	if (market.loading && !market.collections.length) {
 		return (
 			<section className={pageClassName}>
-				<p className="eyebrow">Your wallet</p>
-				<h1>My assets</h1>
-				<div className="empty-state">
-					<h3>Connect a wallet to resolve its assets</h3>
-					<p>No signature is requested. Candidate history and live state are read-only.</p>
-					<ConnectWalletButton />
-				</div>
+				<Loading label="Reading supported asset collections from Arweave…" />
 			</section>
-		);
-	}
-	if (market.loading && !market.collections.length) {
-		if (embedded) {
-			return (
-				<section className={pageClassName}>
-					<Loading label="Reading supported asset collections from Arweave…" />
-				</section>
-			);
-		}
-		return (
-			<RouteState title="My assets">
-				<Loading label="Reading the supported asset collections from Arweave…" />
-			</RouteState>
 		);
 	}
 	if (market.error) {
 		return (
 			<section className={pageClassName}>
-				{!embedded ? (
-					<>
-						<p className="eyebrow">Live wallet inventory</p>
-						<h1>My assets</h1>
-					</>
-				) : null}
 				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</section>
 		);
@@ -579,51 +372,38 @@ export default function MyAssetsRoute({
 		},
 		aggregateFailureMessage
 	);
+	const tokenPreviews =
+		tokenView === 'all' ? visiblePreviews.filter((preview) => preview.collection.kind === 'tokens') : [];
+	const uniquePreviews =
+		uniqueView === 'all' ? visiblePreviews.filter((preview) => preview.collection.kind !== 'tokens') : [];
+	const failureBlock = walletFailureBlock(status, visibleResults.length + visiblePreviews.length);
+	const unavailableCopy = walletUnavailableCandidatesCopy(status, aggregateFailureMessage);
+	const resolutionSlot = walletResolutionSlot(status, failureBlock, working, resolutionCopy.announcement);
 	return (
 		<section className={pageClassName}>
-			{!embedded ? (
-				<div className="my-assets-heading">
-					<div>
-						<p className="eyebrow">Live wallet inventory</p>
-						<h1>My assets</h1>
-						<p>Your assets, read from live Arweave state.</p>
-						<span className="gateway-pill">
-							<Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
-							<Tooltip content={new URL(gateway).host}>
-								{(tooltipId) => (
-									<span aria-describedby={tooltipId} className="gateway-pill-host">
-										{new URL(gateway).host}
-									</span>
-								)}
-							</Tooltip>
-						</span>
-					</div>
-				</div>
-			) : null}
-			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
-				<div className="my-assets-heading-status retry-notice">
-					<span role="status">
-						{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
-						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
-						remain visible.
-					</span>
-					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-					</Button>
-				</div>
-			) : null}
 			<p className="sr-only" aria-live="polite" role="status">
-				{resolutionCopy.announcement}
+				{walletStatusAnnouncement(failureBlock, status.failures, resolutionCopy.announcement)}
 			</p>
-			{working ? (
-				<div className="my-assets-resolution-status" aria-busy="true">
+			{resolutionSlot ? (
+				<div className="my-assets-resolution-status" aria-busy={!resolutionSlot.settled}>
 					<div>
-						<Loading label={resolutionCopy.heading} />
-						<p>{resolutionCopy.announcement}</p>
+						{resolutionSlot.settled ? (
+							<div className="my-assets-resolution-settled">
+								{status.failures ? (
+									<CircleAlert className="ui-icon ui-icon--sm" aria-hidden="true" />
+								) : (
+									<CircleCheck className="ui-icon ui-icon--sm" aria-hidden="true" />
+								)}
+								{resolutionCopy.heading}
+							</div>
+						) : (
+							<Loading label={resolutionCopy.heading} />
+						)}
+						<p>{resolutionSlot.settled ? resolutionSlot.detail : resolutionCopy.announcement}</p>
 					</div>
 				</div>
 			) : null}
-			{status.error ? (
+			{failureBlock === 'error' ? (
 				<div className="inline-error retry-notice">
 					<span role="status">{status.error}</span>
 					<Button className="with-icon" onClick={retryDiscovery} size="custom">
@@ -631,40 +411,56 @@ export default function MyAssetsRoute({
 					</Button>
 				</div>
 			) : null}
-			{!working || visibleResults.length ? (
+			{!working || visibleResults.length || visiblePreviews.length ? (
 				<>
 					<AssetGroup
 						title="Tokens"
 						results={tokenResults}
+						previews={tokenPreviews}
 						address={walletAddress}
 						kind="tokens"
 						onViewChange={setTokenView}
 						settled={status.phase === 'done'}
+						unavailable={status.phase === 'error'}
 						view={tokenView}
 					/>
 					<AssetGroup
 						title="Uniques"
 						results={uniqueResults}
+						previews={uniquePreviews}
 						address={walletAddress}
 						kind="uniques"
 						onViewChange={setUniqueView}
 						settled={status.phase === 'done'}
+						unavailable={status.phase === 'error'}
 						view={uniqueView}
 					/>
 				</>
 			) : null}
-			{status.phase === 'done' && !visibleResults.length ? (
+			{failureBlock === 'partial' ? (
+				<div className="my-assets-heading-status my-assets-partial-notice retry-notice">
+					<span role="status">{unavailableCopy}</span>
+					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+					</Button>
+				</div>
+			) : null}
+			{failureBlock === 'empty' ? (
 				<div className="empty-state">
 					<h3>
 						{status.failures
 							? 'Ownership could not be checked'
 							: 'No indexed candidates currently resolve to this address'}
 					</h3>
-					<p>
-						{status.failures
-							? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates still need to be checked.`
-							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this profile opens; live state remains authoritative for every candidate found.'}
-					</p>
+					{status.failures ? (
+						<p role="status">{unavailableCopy}</p>
+					) : (
+						<p>
+							Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed
+							candidates appear the next time this profile opens; live state remains authoritative for
+							every candidate found.
+						</p>
+					)}
 					{status.failures ? (
 						<Button
 							className="with-icon retry-notice-action"
@@ -681,36 +477,153 @@ export default function MyAssetsRoute({
 	);
 }
 
+export type WalletFailureBlock = 'none' | 'error' | 'partial' | 'empty';
+
+/**
+ * The wallet assets surface shows at most one failure block: the discovery error
+ * notice, a partial-failure banner above assets that are actually visible, or the
+ * empty state (which carries its own failure copy and Retry). A partial-failure
+ * banner never stacks above an empty state saying the same thing.
+ */
+/**
+ * What an empty asset group says. After a discovery error nothing more is being checked, so it must
+ * not keep saying "Checking…" under the error notice, nor claim there are no assets.
+ */
+export function walletAssetGroupEmptyCopy(assetLabel: string, settled: boolean, unavailable: boolean) {
+	if (settled) return `No ${assetLabel}.`;
+	return unavailable ? `Could not check for ${assetLabel}.` : `Checking for ${assetLabel}…`;
+}
+
+export function walletFailureBlock(
+	status: Pick<WalletResolutionStatus, 'error' | 'failures' | 'phase'>,
+	visibleCount: number
+): WalletFailureBlock {
+	if (status.error) return 'error';
+	if (status.phase !== 'done') return 'none';
+	if (!visibleCount) return 'empty';
+	return status.failures ? 'partial' : 'none';
+}
+
+/**
+ * What the status slot above the asset groups shows. It holds the progress line while discovery
+ * runs and keeps the same two-line box once checks finish, so the groups below never move when work
+ * ends: a short count when some candidates could not be checked (the full explanation and Retry sit
+ * after the groups), or the resolved summary otherwise. A discovery error or the empty state carry
+ * their own blocks, so the slot gives way to them.
+ */
+export function walletResolutionSlot(
+	status: Pick<WalletResolutionStatus, 'failures' | 'phase' | 'total'>,
+	failureBlock: WalletFailureBlock,
+	working: boolean,
+	announcement: string
+): { settled: false } | { settled: true; detail: string } | null {
+	if (working) return { settled: false };
+	if (status.phase !== 'done') return null;
+	if (failureBlock === 'partial') return { settled: true, detail: walletUnavailableCandidatesCopy(status, '') };
+	return failureBlock === 'none' ? { settled: true, detail: announcement } : null;
+}
+
+/**
+ * The polite status region carries progress. Once a visible notice states the
+ * outcome (with its own status role and Retry), the region is cleared so the
+ * surface shows and announces one live-state message instead of two.
+ */
+export function walletStatusAnnouncement(failureBlock: WalletFailureBlock, failures: number, announcement: string) {
+	if (failureBlock === 'error' || failureBlock === 'partial') return '';
+	if (failureBlock === 'empty' && failures) return '';
+	return announcement;
+}
+
 export function listedUniquePrice(result: ResolvedAsset, address: string): string | undefined {
 	if (result.collection.kind === 'tokens') return undefined;
 	const order = liveOrdersOfAsset(result.state).find((candidate) => sameAccount(candidate.creator, address));
 	return order ? orderPriceLabel(order, result.state) : undefined;
 }
 
+export type WalletAssetGroupEntry =
+	| { id: string; result: ResolvedAsset; preview?: undefined }
+	| { id: string; result?: undefined; preview: WalletCandidatePreview };
+
+/**
+ * Confirmed assets and discovery previews in one activity order, newest first.
+ * A preview sits where its confirmed card will appear, so confirming it updates
+ * the card in place instead of moving it.
+ */
+export function walletAssetGroupEntries(
+	results: ResolvedAsset[],
+	previews: WalletCandidatePreview[]
+): WalletAssetGroupEntry[] {
+	const entries: Array<WalletAssetGroupEntry & { activity: AssetCandidate }> = [
+		...results.map((result) => ({ id: result.asset.id, result, activity: result.activity })),
+		...previews.map((preview) => ({ id: preview.asset.id, preview, activity: preview.activity })),
+	];
+	entries.sort((a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp);
+	return entries.map(({ activity: _activity, ...entry }) => entry as WalletAssetGroupEntry);
+}
+
 const AssetGroup = React.memo(function AssetGroup({
 	title,
 	results,
+	previews,
 	address,
 	kind,
 	onViewChange,
 	settled,
+	unavailable,
 	view,
 }: {
 	title: string;
 	results: ResolvedAsset[];
+	previews: WalletCandidatePreview[];
 	address: string;
 	kind: 'tokens' | 'uniques';
 	onViewChange(view: 'all' | 'listed'): void;
 	settled: boolean;
+	/** Discovery ended in an error, so an empty group is unknown rather than empty or still checking. */
+	unavailable: boolean;
 	view: 'all' | 'listed';
 }) {
+	const { collections, rememberIndexedAssets } = React.useContext(MarketContext);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
 	const gridId = React.useId();
 	const resultSummaryRef = React.useRef<HTMLParagraphElement>(null);
-	const resultCountRef = React.useRef(results.length);
+	const rankedEntries = React.useMemo(() => walletAssetGroupEntries(results, previews), [previews, results]);
+	// Cards already painted, confirmed or preview, keep their slots while ownership checks resolve; the
+	// group re-ranks by activity when the viewer switches view or once wallet resolution is done.
+	const order = useStableOrder(
+		rankedEntries.map((entry) => entry.id),
+		`${address}|${view}`,
+		settled
+	);
+	const entries = React.useMemo(
+		() => applyStableOrder(rankedEntries, order, (entry) => entry.id),
+		[order, rankedEntries]
+	);
+	const gridRef = React.useRef<HTMLDivElement>(null);
+	useGridReorderMotion(gridRef, order);
+	// Shown cards, preview or confirmed, carry the name the market store holds now; short-ID titles
+	// among them are asked for through the shared batched name lookup.
+	const shownEntries = React.useMemo(
+		() =>
+			entries.slice(0, limit).map((entry) => {
+				const source = entry.preview ?? entry.result;
+				return { entry, asset: walletEntryWithCurrentName(source.asset, source.collection, collections) };
+			}),
+		[collections, entries, limit]
+	);
+	useIndexedAssetNames(
+		shownEntries.flatMap(({ entry, asset }) =>
+			(entry.preview ?? entry.result).collection.kind === 'images' ? [asset] : []
+		),
+		rememberIndexedAssets
+	);
+	const count = walletAssetGroupCount(results.length, previews);
+	// Until wallet resolution settles, the count is a running total that can still grow a lot.
+	const countPending = !settled && !unavailable;
+	const resultCountRef = React.useRef(entries.length);
 	const [revealAnnouncement, setRevealAnnouncement] = React.useState('');
-	resultCountRef.current = results.length;
+	resultCountRef.current = entries.length;
 	const assetLabel = `${view === 'listed' ? 'listed ' : ''}${kind}`;
 	const revealNextAssetPage = React.useCallback(() => {
 		setLimit((current) => {
@@ -719,7 +632,7 @@ const AssetGroup = React.memo(function AssetGroup({
 			return nextLimit;
 		});
 	}, [assetLabel, pageSize]);
-	const progressiveRevealRef = useProgressiveReveal(limit < results.length, revealNextAssetPage);
+	const progressiveRevealRef = useProgressiveReveal(limit < entries.length, revealNextAssetPage);
 	React.useEffect(() => {
 		setLimit(pageSize);
 		setRevealAnnouncement('');
@@ -729,8 +642,22 @@ const AssetGroup = React.memo(function AssetGroup({
 		<section className="asset-group">
 			<div className="asset-group-title">
 				<div className="asset-group-heading">
-					<h2 aria-label={`${title}, ${results.length.toLocaleString()}`}>{title}</h2>
-					<span aria-hidden="true">{results.length.toLocaleString()}</span>
+					<h2
+						aria-label={`${title}, ${count.shown.toLocaleString()}${countPending ? ' so far' : ''}${
+							count.detail ? `, ${count.detail}` : ''
+						}`}
+					>
+						{title}
+					</h2>
+					<span aria-hidden="true">
+						{count.shown.toLocaleString()}
+						{countPending ? <i className="asset-group-count-spinner" /> : null}
+					</span>
+					{count.detail ? (
+						<small aria-hidden="true" className="asset-group-pending-count">
+							{count.detail}
+						</small>
+					) : null}
 				</div>
 				<MarketSelect<'all' | 'listed'>
 					label={`${title} view`}
@@ -743,10 +670,22 @@ const AssetGroup = React.memo(function AssetGroup({
 					value={view}
 				/>
 			</div>
-			{results.length ? (
+			{entries.length ? (
 				<>
-					<div className="asset-grid" id={gridId}>
-						{results.slice(0, limit).map((result, index) => {
+					<div className="asset-grid" id={gridId} ref={gridRef}>
+						{shownEntries.map(({ entry: { result, preview }, asset }, index) => {
+							if (preview) {
+								return (
+									<AssetCard
+										key={preview.asset.id}
+										collection={preview.collection}
+										asset={asset}
+										orderId={preview.asset.id}
+										badge={preview.state === 'unavailable' ? 'State unavailable' : 'Checking…'}
+										priority={index < 2}
+									/>
+								);
+							}
 							const listed = walletAssetGroups(result, address).includes('listed');
 							const listedBalance = listedBalanceOf(result.state, address);
 							const uniquePrice = listed ? listedUniquePrice(result, address) : undefined;
@@ -760,7 +699,8 @@ const AssetGroup = React.memo(function AssetGroup({
 								<AssetCard
 									key={result.asset.id}
 									collection={result.collection}
-									asset={result.asset}
+									asset={asset}
+									orderId={result.asset.id}
 									badge={view === 'listed' || listed ? 'For sale' : 'Owned'}
 									priority={index < 2}
 									price={
@@ -777,28 +717,28 @@ const AssetGroup = React.memo(function AssetGroup({
 					</div>
 					<p
 						className={
-							results.length > pageSize && limit >= results.length
+							entries.length > pageSize && limit >= entries.length
 								? 'collection-result-count reveal-complete'
 								: 'sr-only'
 						}
 						ref={resultSummaryRef}
 						tabIndex={-1}
 					>
-						{results.length > pageSize && limit >= results.length
-							? `All ${results.length.toLocaleString()} ${assetLabel} are shown.`
+						{entries.length > pageSize && limit >= entries.length
+							? `All ${entries.length.toLocaleString()} ${assetLabel} are shown.`
 							: `Showing ${Math.min(
 									limit,
-									results.length
-							  ).toLocaleString()} of ${results.length.toLocaleString()} ${assetLabel}.`}
+									entries.length
+							  ).toLocaleString()} of ${entries.length.toLocaleString()} ${assetLabel}.`}
 					</p>
 					<span aria-live="polite" className="sr-only" role="status">
 						{revealAnnouncement}
 					</span>
 				</>
 			) : (
-				<p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `Checking for ${assetLabel}…`}</p>
+				<p className="asset-group-empty">{walletAssetGroupEmptyCopy(assetLabel, settled, unavailable)}</p>
 			)}
-			{results.length && limit < results.length ? (
+			{entries.length && limit < entries.length ? (
 				<>
 					<span aria-hidden="true" className="progressive-reveal-sentinel" ref={progressiveRevealRef} />
 					<Button
@@ -806,9 +746,9 @@ const AssetGroup = React.memo(function AssetGroup({
 						className="load-more"
 						size="custom"
 						onClick={() => {
-							const nextLimit = Math.min(results.length, limit + pageSize);
+							const nextLimit = Math.min(entries.length, limit + pageSize);
 							setLimit(nextLimit);
-							setRevealAnnouncement(assetGroupRevealAnnouncement(nextLimit, results.length, assetLabel));
+							setRevealAnnouncement(assetGroupRevealAnnouncement(nextLimit, entries.length, assetLabel));
 							window.requestAnimationFrame(() => {
 								if (assetGroupRevealComplete(nextLimit, resultCountRef.current)) {
 									resultSummaryRef.current?.focus();
@@ -816,7 +756,7 @@ const AssetGroup = React.memo(function AssetGroup({
 							});
 						}}
 					>
-						Show {Math.min(pageSize, results.length - limit).toLocaleString()} more {assetLabel}
+						Show {Math.min(pageSize, entries.length - limit).toLocaleString()} more {assetLabel}
 					</Button>
 				</>
 			) : null}

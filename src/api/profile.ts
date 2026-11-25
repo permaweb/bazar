@@ -4,10 +4,13 @@ import {
 	arweaveDataUrl,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
+	isArweaveNetGateway,
 } from 'helpers/config';
 
 import { signedTransactionSignerAddress } from './arweave-transaction-signature';
 import { type AssetUploadData, type AssetUploadOptions } from './asset-uploader';
+import { fetchJsonWithDeadline } from './fetch-with-deadline';
+import { graphqlEndpointList, postGraphql, usableGraphqlPayload } from './graphql';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 export const ACCOUNT_PROFILE_PROTOCOL = 'Account-0.3';
@@ -18,6 +21,12 @@ export const PROFILE_AVATAR_CONTENT_TYPES: ReadonlyArray<string> = [
 	'image/webp',
 ];
 export const PROFILE_AVATAR_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * Bound for each profile request: the index lookup on each endpoint it tries, then the
+ * profile data read. Shared reads hold one of six slots until they settle, so a read
+ * lasts at most this long per index tried plus once more for the data.
+ */
+export const PROFILE_REQUEST_TIMEOUT_MS = 15_000;
 
 export type AccountProfile = {
 	address: string;
@@ -32,6 +41,7 @@ export type ProfileReadOptions = {
 	fetch?: typeof fetch;
 	gateway?: string;
 	signal?: AbortSignal;
+	requestTimeoutMs?: number;
 };
 
 export type ProfileClientOptions = {
@@ -63,9 +73,26 @@ export function profileDisplayName(profile: AccountProfile | null | undefined): 
 
 export function profileAvatarUrl(profile: AccountProfile | null | undefined, gateway = arweaveGatewayFromLocation()) {
 	if (!profile?.avatar) return undefined;
-	if (!profile.avatar.startsWith('ar://')) return profile.avatar;
+	if (!profile.avatar.startsWith('ar://')) return storedAvatarUrl(profile.avatar);
 	const id = profile.avatar.slice(5);
 	return ARWEAVE_ID.test(id) ? arweaveDataUrl(id, gateway) : undefined;
+}
+
+/**
+ * Profiles saved before content URLs were built by gateway kind store an arweave.net `/<id>` URL
+ * (e.g. https://bazar.arweave.net/<id>). arweave.net redirects that to a sandbox subdomain that
+ * answers 200 with an empty body for process-with-data items, so the avatar never renders; read the
+ * same gateway's `/raw/<id>` route instead, as artwork does for a requested arweave.net URL.
+ */
+function storedAvatarUrl(value: string): string {
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		return value;
+	}
+	const id = url.pathname.match(/^\/([A-Za-z0-9_-]{43})$/)?.[1];
+	return id && !url.search && !url.hash && isArweaveNetGateway(url.origin) ? arweaveDataUrl(id, url.origin) : value;
 }
 
 export async function readAccountProfile(
@@ -76,12 +103,13 @@ export async function readAccountProfile(
 	if (cached.has(address)) return aborted(options.signal, Promise.resolve(cached.get(address) ?? null));
 	const pending = inflight.get(address);
 	if (pending) return aborted(options.signal, pending);
-	const request = limitedProfileRead(() => fetchAccountProfile(address, { ...options, signal: undefined })).then(
-		(profile) => {
-			cached.set(address, profile);
-			return profile;
-		}
-	);
+	const request = limitedProfileRead(() =>
+		fetchAccountProfile(address, graphqlEndpointList(), { ...options, signal: undefined })
+	).then(({ profile, endpoint }) => {
+		// A fallback index may lack the latest record; keep only the preferred index's answer for the session.
+		if (endpoint === arweaveGraphqlEndpoint()) cached.set(address, profile);
+		return profile;
+	});
 	inflight.set(address, request);
 	try {
 		return await aborted(options.signal, request);
@@ -212,6 +240,22 @@ export class ProfileClient {
 		return readAccountProfile(address, { fetch: this.#fetch, gateway: this.#gateway, signal });
 	}
 
+	/**
+	 * A new Account-0.3 body is rebuilt from the latest record, so a missing or older
+	 * record would publish blanked or stale fields. Read it from the preferred index
+	 * only and fail closed instead of falling back to an index that may lack it.
+	 */
+	async #latestForWrite(owner: string, signal?: AbortSignal): Promise<AccountProfile | null> {
+		const { profile } = await limitedProfileRead(() =>
+			fetchAccountProfile(owner, [arweaveGraphqlEndpoint()], {
+				fetch: this.#fetch,
+				gateway: this.#gateway,
+				signal,
+			})
+		);
+		return profile;
+	}
+
 	async uploadAvatar(
 		owner: string,
 		data: Uint8Array,
@@ -242,13 +286,7 @@ export class ProfileClient {
 		if (update.displayName === undefined && update.avatar === undefined) {
 			throw new TypeError('empty-profile-update');
 		}
-		const existing = await limitedProfileRead(() =>
-			fetchAccountProfile(owner, {
-				fetch: this.#fetch,
-				gateway: this.#gateway,
-				signal: options.signal,
-			})
-		);
+		const existing = await this.#latestForWrite(owner, options.signal);
 		const displayName = update.displayName?.trim();
 		const avatar = update.avatar?.trim();
 		const body = {
@@ -276,13 +314,7 @@ export class ProfileClient {
 	async setAvatar(owner: string, avatar: string, options: AssetUploadOptions = {}): Promise<AccountProfile> {
 		assertId(owner, 'invalid-profile-address');
 		const avatarUrl = normalizeAvatar(avatar);
-		const existing = await limitedProfileRead(() =>
-			fetchAccountProfile(owner, {
-				fetch: this.#fetch,
-				gateway: this.#gateway,
-				signal: options.signal,
-			})
-		);
+		const existing = await this.#latestForWrite(owner, options.signal);
 		const body = {
 			handle: existing?.handle ?? '',
 			name: existing?.name ?? '',
@@ -318,37 +350,59 @@ function normalizeAvatar(value: string): string {
 	throw new TypeError('invalid-profile-avatar');
 }
 
-async function fetchAccountProfile(address: string, options: ProfileReadOptions): Promise<AccountProfile | null> {
+async function fetchAccountProfile(
+	address: string,
+	endpoints: readonly string[],
+	options: ProfileReadOptions
+): Promise<{ profile: AccountProfile | null; endpoint: string }> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const gateway = options.gateway ?? arweaveGatewayFromLocation();
-	const response = await fetcher(arweaveGraphqlEndpoint(), {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({
-			query: `query LatestAccountProfile($owners: [String!]) {
+	const timeoutMs = options.requestTimeoutMs ?? PROFILE_REQUEST_TIMEOUT_MS;
+	const {
+		response,
+		body: payload,
+		endpoint,
+	} = await postGraphql<any>(
+		fetcher,
+		endpoints,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				query: `query LatestAccountProfile($owners: [String!]) {
 				transactions(owners: $owners, tags: [{ name: "Protocol-Name", values: ["Account-0.3"] }], sort: HEIGHT_DESC, first: 1) {
 					edges { node { id } }
 				}
 			}`,
-			variables: { owners: [address] },
-		}),
-		signal: options.signal,
-	});
+				variables: { owners: [address] },
+			}),
+			signal: options.signal,
+		},
+		{ timeoutMs, timeoutError: 'profile-index-timeout' }
+	);
 	if (!response.ok) throw new Error(`profile-index-${response.status}`);
-	const payload = await response.json();
+	// An answer without data is not "no profile": treating it as one would cache or publish blanks.
+	if (!usableGraphqlPayload({ response, body: payload })) throw new Error('profile-index-invalid');
 	const transactionId = payload?.data?.transactions?.edges?.[0]?.node?.id;
-	if (!transactionId) return null;
+	if (!transactionId) return { profile: null, endpoint };
 	assertId(transactionId, 'invalid-profile-transaction');
-	const data = await fetcher(arweaveDataUrl(transactionId, gateway), { signal: options.signal });
+	const { response: data, body } = await fetchJsonWithDeadline<any>(
+		fetcher,
+		arweaveDataUrl(transactionId, gateway),
+		{ signal: options.signal },
+		{ timeoutMs, timeoutError: 'profile-data-timeout' }
+	);
 	if (!data.ok) throw new Error(`profile-data-${data.status}`);
-	const body = await data.json();
 	return {
-		address,
-		transactionId,
-		handle: stringField(body?.handle),
-		name: stringField(body?.name),
-		bio: stringField(body?.bio),
-		avatar: stringField(body?.avatar),
+		profile: {
+			address,
+			transactionId,
+			handle: stringField(body?.handle),
+			name: stringField(body?.name),
+			bio: stringField(body?.bio),
+			avatar: stringField(body?.avatar),
+		},
+		endpoint,
 	};
 }
 

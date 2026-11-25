@@ -19,8 +19,10 @@ import {
 	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
+	readAssetDetailState,
 	readAssetStateCached,
 	readAssetStateWithDeadline,
+	readCurrentAssetState,
 } from './asset-state-store';
 
 const processId = 'P'.repeat(43);
@@ -276,6 +278,111 @@ describe('asset state store', () => {
 		expect(cachedAssetState(processId)).toBeUndefined();
 	});
 
+	describe('invalidation retires in-flight reads', () => {
+		const before = { ...result, state: { raw: { 'at-slot': 5 }, totalSupply: '1' } };
+		const after = { ...result, state: { raw: { 'at-slot': 10 }, totalSupply: '1' } };
+
+		function pendingReads() {
+			const pending: Array<{ resolve: (value: unknown) => void; signal: AbortSignal }> = [];
+			mocks.readAssetState.mockImplementation(
+				(_processId, options) =>
+					new Promise((resolve, reject) => {
+						pending.push({ resolve, signal: options.signal });
+						options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+					})
+			);
+			return pending;
+		}
+
+		it('keeps a post-invalidation result when a pre-invalidation read lands late', async () => {
+			const pending = pendingReads();
+			const stale = readAssetStateCached(processId);
+			invalidateAssetState(processId);
+			const fresh = readAssetStateCached(processId, { force: true, maxAge: 0 });
+			expect(pending).toHaveLength(2);
+
+			pending[1]!.resolve(after);
+			await expect(fresh).resolves.toBe(after);
+			pending[0]!.resolve(before);
+			// The caller that asked before the invalidation still gets its answer.
+			await expect(stale).resolves.toBe(before);
+
+			expect(cachedAssetState(processId)).toBe(after);
+			expect(await readAssetStateCached(processId)).toBe(after);
+			expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		});
+
+		it('starts a fresh read instead of joining a pre-invalidation request', async () => {
+			const pending = pendingReads();
+			const stale = readAssetStateCached(processId);
+			invalidateAssetState(processId);
+			const fresh = readAssetStateCached(processId);
+
+			expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+			pending[0]!.resolve(before);
+			pending[1]!.resolve(after);
+			await expect(stale).resolves.toBe(before);
+			await expect(fresh).resolves.toBe(after);
+			expect(cachedAssetState(processId)).toBe(after);
+		});
+
+		it('does not let a refreshed force read join the aborted pre-invalidation force read', async () => {
+			const pending = pendingReads();
+			const first = new AbortController();
+			const stale = readAssetStateCached(processId, { force: true, maxAge: 0, signal: first.signal });
+			const staleRejected = expect(stale).rejects.toMatchObject({ name: 'AbortError' });
+
+			// AssetView's refresh after an operation: invalidate, abort, force read, same tick.
+			invalidateAssetState(processId);
+			first.abort(new DOMException('Refreshing', 'AbortError'));
+			const fresh = readAssetStateCached(processId, {
+				force: true,
+				maxAge: 0,
+				signal: new AbortController().signal,
+			});
+
+			expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+			await staleRejected;
+			expect(pending[0]!.signal.aborted).toBe(true);
+			expect(pending[1]!.signal.aborted).toBe(false);
+			pending[1]!.resolve(after);
+			await expect(fresh).resolves.toBe(after);
+			expect(cachedAssetState(processId)).toBe(after);
+		});
+
+		it('does not cache the revalidation of a pre-invalidation stale result', async () => {
+			const pending = pendingReads();
+			let revalidate!: (value: unknown) => void;
+			const stale = readAssetStateCached(processId);
+			invalidateAssetState(processId);
+			const fresh = readAssetStateCached(processId, { force: true, maxAge: 0 });
+
+			pending[1]!.resolve(after);
+			await expect(fresh).resolves.toBe(after);
+			pending[0]!.resolve({
+				...before,
+				cacheStatus: 'stale',
+				revalidation: new Promise((resolve) => {
+					revalidate = resolve;
+				}),
+			});
+			const staleResult = await stale;
+			revalidate({ ...before, verifiedAt: 3 });
+			await staleResult.revalidation;
+			await Promise.resolve();
+
+			expect(cachedAssetState(processId)).toBe(after);
+		});
+
+		it('still caches reads that started after the invalidation', async () => {
+			invalidateAssetState(processId);
+			await readAssetStateCached(processId);
+			expect(cachedAssetState(processId)).toBe(result);
+			await readAssetStateCached(processId);
+			expect(mocks.readAssetState).toHaveBeenCalledOnce();
+		});
+	});
+
 	it('bounds a shared foreground read even when the transport ignores abort', async () => {
 		vi.useFakeTimers();
 		let requestSignal!: AbortSignal;
@@ -449,5 +556,93 @@ describe('asset state store', () => {
 
 		expect(cachedAssetState(processIds[0])).toBeUndefined();
 		expect(cachedAssetState(processIds.at(-1)!)).toBe(result);
+	});
+});
+
+describe('asset detail state reads', () => {
+	beforeEach(() => {
+		clearAssetStateCache();
+		mocks.readAssetState.mockReset();
+	});
+
+	it('paints from bounded max-age compute state, then replaces it with current state', async () => {
+		const display = { ...result, verifiedAt: 1, maxAge: 30 };
+		const current = { ...result, verifiedAt: 2, maxAge: 0 };
+		mocks.readAssetState.mockImplementation(async (_id, options) => (options.maxAge === 0 ? current : display));
+		const updates: unknown[] = [];
+
+		await readAssetDetailState(processId, { onUpdate: (update) => updates.push(update) });
+
+		expect(mocks.readAssetState).toHaveBeenNthCalledWith(
+			1,
+			processId,
+			expect.objectContaining({ maxAge: 30, staleWhileRevalidate: 86_400 })
+		);
+		expect(mocks.readAssetState).toHaveBeenNthCalledWith(
+			2,
+			processId,
+			expect.objectContaining({ maxAge: 0, staleWhileRevalidate: undefined })
+		);
+		expect(updates).toEqual([
+			{ result: display, current: false, refreshing: true },
+			{ result: current, current: true, refreshing: false },
+		]);
+	});
+
+	it('shares the display read with the prefetch started when the asset opens', async () => {
+		mocks.readAssetState.mockResolvedValue(result);
+		const prefetch = prioritizeAssetStatePrefetch(processId);
+
+		await readAssetDetailState(processId, { onUpdate: () => undefined });
+		await prefetch;
+
+		expect(mocks.readAssetState.mock.calls.map(([, options]) => options.maxAge)).toEqual([30, 0]);
+	});
+
+	it('goes straight to current state after an action', async () => {
+		mocks.readAssetState.mockResolvedValue(result);
+		const updates: unknown[] = [];
+
+		await readAssetDetailState(processId, { current: true, onUpdate: (update) => updates.push(update) });
+
+		expect(mocks.readAssetState).toHaveBeenCalledOnce();
+		expect(mocks.readAssetState).toHaveBeenCalledWith(processId, expect.objectContaining({ maxAge: 0 }));
+		expect(updates).toEqual([{ result, current: true, refreshing: false }]);
+	});
+
+	it('keeps the display state when the current-state refresh fails', async () => {
+		mocks.readAssetState.mockImplementation(async (_id, options) => {
+			if (options.maxAge === 0) throw new Error('HTTP 429');
+			return result;
+		});
+		const updates: unknown[] = [];
+
+		await expect(readAssetDetailState(processId, { onUpdate: (update) => updates.push(update) })).rejects.toThrow(
+			'HTTP 429'
+		);
+
+		expect(updates).toEqual([{ result, current: false, refreshing: true }]);
+	});
+
+	it('does not request current state from peers that failed the display read', async () => {
+		mocks.readAssetState.mockRejectedValue(new Error('HTTP 404'));
+		const onUpdate = vi.fn();
+
+		await expect(readAssetDetailState(processId, { onUpdate })).rejects.toThrow('HTTP 404');
+
+		expect(mocks.readAssetState).toHaveBeenCalledOnce();
+		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it('forces current state for commerce preflight even when display state is cached', async () => {
+		mocks.readAssetState.mockResolvedValue(result);
+		await readAssetStateCached(processId, { maxAge: 30, staleWhileRevalidate: 86_400 });
+		const controller = new AbortController();
+
+		await readCurrentAssetState(processId, { signal: controller.signal });
+
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		expect(mocks.readAssetState).toHaveBeenLastCalledWith(processId, expect.objectContaining({ maxAge: 0 }));
+		expect(mocks.readAssetState.mock.lastCall?.[1].staleWhileRevalidate).toBeUndefined();
 	});
 });
